@@ -60,6 +60,7 @@ const POSScreen: React.FC = () => {
   const fxRateRef = useRef<number>(1);
   const prevFxRateRef = useRef<number>(1);
   const prevCurrencyRef = useRef<string>('');
+  const [fxRateProblem, setFxRateProblem] = useState<string>('');
   const [transactionCurrency, setTransactionCurrency] = useState<string>(() => {
     const ops = (settings as any)?.operationalCurrencies;
     const first = Array.isArray(ops) ? String(ops[0] || '').trim().toUpperCase() : '';
@@ -195,6 +196,15 @@ const POSScreen: React.FC = () => {
     const nextCode = String(transactionCurrency || '').trim().toUpperCase();
     const base = String(baseCode || '').trim().toUpperCase();
     if (!nextCode) return;
+    if (mcPricingEnabled && base && nextCode !== base) {
+      setFxRateProblem('');
+    }
+    if (!mcPricingEnabled && base && nextCode !== base) {
+      showNotification('ميزة تعدد العملات في التسعير غير مفعّلة. فعّلها من الإعدادات أو استخدم عملة الأساس.', 'error');
+      setFxRateProblem('ميزة تعدد العملات في التسعير غير مفعّلة.');
+      setTransactionCurrency(base);
+      return;
+    }
     let cancelled = false;
     const run = async () => {
       const currentFx = fxRateRef.current;
@@ -203,6 +213,7 @@ const POSScreen: React.FC = () => {
       if (base && nextCode === base) {
         if (!cancelled) {
           fxRateRef.current = 1;
+          setFxRateProblem('');
         }
         return;
       }
@@ -215,6 +226,7 @@ const POSScreen: React.FC = () => {
         return;
       }
       fxRateRef.current = rate;
+      setFxRateProblem(rate === 1 ? 'سعر الصرف لهذه العملة يساوي 1. تحقق من أسعار الصرف أو أدخل سعر بيع لهذه العملة.' : '');
     };
     void run();
     return () => {
@@ -414,6 +426,7 @@ const POSScreen: React.FC = () => {
         const key = buildPricingKey(warehouseId, item, pricingQty);
         const cached = pricingCacheRef.current.get(key);
         if (!cached) {
+          missing = true;
           return item;
         }
         const nextItem: any = { ...item, price: cached.unitPrice, _pricedByRpc: true, _pricingKey: key };
@@ -483,7 +496,16 @@ const POSScreen: React.FC = () => {
           if (!hasSession || fefoPricingDisabledRef.current) {
             const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
             const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
-            entry = { baseUnitPrice, unitPrice: baseUnitPrice, baseUnitPricePerKg, unitPricePerKg: baseUnitPricePerKg };
+            const baseCur = String(baseCode || '').trim().toUpperCase();
+            const trxCur = String(transactionCurrency || '').trim().toUpperCase();
+            const fx = Number(fxRateRef.current) || 1;
+            const toTrx = (v: number) => (baseCur && trxCur && baseCur !== trxCur && fx > 0) ? (v / fx) : v;
+            entry = {
+              baseUnitPrice,
+              unitPrice: toTrx(baseUnitPrice),
+              baseUnitPricePerKg,
+              unitPricePerKg: baseUnitPricePerKg != null ? toTrx(baseUnitPricePerKg) : undefined,
+            };
           } else {
             let { data, error } = await call();
             if (error && isRpcNotFoundError(error)) {
@@ -498,7 +520,16 @@ const POSScreen: React.FC = () => {
               fefoPricingDisabledRef.current = true;
               const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
               const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
-              entry = { baseUnitPrice, unitPrice: baseUnitPrice, baseUnitPricePerKg, unitPricePerKg: baseUnitPricePerKg };
+              const baseCur = String(baseCode || '').trim().toUpperCase();
+              const trxCur = String(transactionCurrency || '').trim().toUpperCase();
+              const fx = Number(fxRateRef.current) || 1;
+              const toTrx = (v: number) => (baseCur && trxCur && baseCur !== trxCur && fx > 0) ? (v / fx) : v;
+              entry = {
+                baseUnitPrice,
+                unitPrice: toTrx(baseUnitPrice),
+                baseUnitPricePerKg,
+                unitPricePerKg: baseUnitPricePerKg != null ? toTrx(baseUnitPricePerKg) : undefined,
+              };
             } else if (error) {
               throw error;
             } else {
@@ -632,11 +663,12 @@ const POSScreen: React.FC = () => {
     const initialWid = String(initialWarehouseIdRef.current || '').trim();
     const warehouseChanged = items.length > 0 && initialWid && currentWid && currentWid !== initialWid;
     if (warehouseChanged) return 'لا يمكن تغيير المستودع بعد إضافة أصناف. امسح القائمة أو أنهِ البيع.';
+    if (items.length > 0 && fxRateProblem) return fxRateProblem;
     if (!items.length) return '';
     if (pricingBusy) return 'جارٍ تسعير الأصناف من الخادم...';
     if (!pricingReady) return 'تعذر تسعير الأصناف من الخادم. تحقق من الاتصال ثم أعد المحاولة.';
     return '';
-  }, [items.length, pricingBusy, pricingReady, sessionScope.scope?.warehouseId]);
+  }, [fxRateProblem, items.length, pricingBusy, pricingReady, sessionScope.scope?.warehouseId]);
 
   const addLine = (item: MenuItem, input: { quantity?: number; weight?: number }) => {
     if (pendingOrderId) return;
@@ -1520,7 +1552,7 @@ const POSScreen: React.FC = () => {
                 const wid = String(sessionScope.scope?.warehouseId || '').trim();
                 const initWid = String(initialWarehouseIdRef.current || '').trim();
                 const changed = items.length > 0 && initWid && wid && wid !== initWid;
-                return items.length > 0 && pricingReady && !pricingBusy && !changed;
+                return items.length > 0 && pricingReady && !pricingBusy && !changed && !fxRateProblem;
               })()}
                 blockReason={pricingBlockReason}
                 onHold={handleHold}
