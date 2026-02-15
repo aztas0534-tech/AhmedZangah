@@ -483,6 +483,30 @@ const PurchaseOrderScreen: React.FC = () => {
             .eq('receipt_id', receiptId)
             .order('created_at', { ascending: true });
         if (bErr) throw bErr;
+        const { data: receiptItemRows, error: riErr } = await supabase
+            .from('purchase_receipt_items')
+            .select('item_id,quantity,unit_cost,total_cost,menu_items(name)')
+            .eq('receipt_id', receiptId)
+            .order('created_at', { ascending: true });
+        if (riErr) throw riErr;
+        const receiptItemByItemId = new Map<string, { quantity: number; unitCost: number; totalCost: number; itemName: string }>();
+        (Array.isArray(receiptItemRows) ? receiptItemRows : []).forEach((r: any) => {
+            const itemId = String(r?.item_id || '').trim();
+            if (!itemId) return;
+            const quantity = Number(r?.quantity || 0) || 0;
+            const unitCost = Number(r?.unit_cost || 0) || 0;
+            const totalCost = Number(r?.total_cost || 0) || 0;
+            const itemName = String(r?.menu_items?.name?.ar || r?.menu_items?.name?.en || itemId);
+            const prev = receiptItemByItemId.get(itemId);
+            if (!prev) {
+                receiptItemByItemId.set(itemId, { quantity, unitCost, totalCost, itemName });
+                return;
+            }
+            const nextQty = prev.quantity + quantity;
+            const nextTotal = prev.totalCost + totalCost;
+            const nextUnit = nextQty > 0 ? (nextTotal / nextQty) : prev.unitCost;
+            receiptItemByItemId.set(itemId, { quantity: nextQty, unitCost: nextUnit, totalCost: nextTotal, itemName: prev.itemName || itemName });
+        });
         const items = (Array.isArray(batchRows) ? batchRows : []).map((b: any) => ({
             itemId: String(b.item_id),
             itemName: String(b?.menu_items?.name?.ar || b?.menu_items?.name?.en || b.item_id),
@@ -492,6 +516,28 @@ const PurchaseOrderScreen: React.FC = () => {
             expiryDate: b.expiry_date ? String(b.expiry_date) : null,
             totalCost: Number(b.quantity_received || 0) * Number(b.unit_cost || 0),
         })).filter((x: any) => Number(x.quantity || 0) > 0);
+        const hasMeaningfulBatchCost = items.some((it: any) => Number(it.unitCost || 0) > 0);
+        const normalizedItems = hasMeaningfulBatchCost
+            ? items.map((it: any) => {
+                const fallback = receiptItemByItemId.get(String(it.itemId || '').trim());
+                const unitCost = (Number(it.unitCost || 0) > 0) ? Number(it.unitCost || 0) : (Number(fallback?.unitCost || 0) || 0);
+                const qty = Number(it.quantity || 0) || 0;
+                return {
+                    ...it,
+                    itemName: it.itemName || fallback?.itemName || it.itemId,
+                    unitCost,
+                    totalCost: Number(it.totalCost ?? (qty * unitCost)),
+                };
+            })
+            : (Array.from(receiptItemByItemId.entries()).map(([itemId, r]) => ({
+                itemId,
+                itemName: r.itemName || itemId,
+                quantity: Number(r.quantity || 0) || 0,
+                unitCost: Number(r.unitCost || 0) || 0,
+                productionDate: null,
+                expiryDate: null,
+                totalCost: Number(r.totalCost || ((Number(r.quantity || 0) || 0) * (Number(r.unitCost || 0) || 0))),
+            }))).filter((x: any) => Number(x.quantity || 0) > 0);
 
         const grn: PrintableGrnData = {
             grnNumber: String((receipt as any)?.grn_number || `GRN-${receiptId.slice(-6).toUpperCase()}`),
@@ -502,7 +548,7 @@ const PurchaseOrderScreen: React.FC = () => {
             supplierName: po.supplierName || undefined,
             warehouseName: po.warehouseName || undefined,
             notes: (receipt as any)?.notes ?? null,
-            items,
+            items: normalizedItems,
             currency: String(po.currency || ''),
         };
 
