@@ -256,6 +256,9 @@ type JournalEntryHeader = {
   voided_by?: string | null;
   voided_at?: string | null;
   void_reason?: string | null;
+  currency_code?: string | null;
+  fx_rate?: number | null;
+  foreign_amount?: number | null;
 };
 
 type JournalEntryLine = {
@@ -266,6 +269,9 @@ type JournalEntryLine = {
   line_memo: string | null;
   account_code: string;
   account_name: string;
+  currency_code?: string | null;
+  fx_rate?: number | null;
+  foreign_amount?: number | null;
 };
 
 const getMonthRange = (d: Date) => {
@@ -395,6 +401,31 @@ const FinancialReports: React.FC = () => {
     const n = Number(value);
     const v = Number.isFinite(n) ? n : 0;
     return `${v.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${baseCode || '—'}`;
+  };
+  const formatAmountWithCode = (value: number, code: string) => {
+    const n = Number(value);
+    const v = Number.isFinite(n) ? n : 0;
+    const c = String(code || '').trim().toUpperCase() || '—';
+    return `${v.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
+  };
+  const moneyRound = (value: number) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+  };
+  const computeBaseSideAmount = (line: { debit: number; credit: number; currency_code?: string | null; fx_rate?: number | null; foreign_amount?: number | null }) => {
+    const base = String(baseCode || '').trim().toUpperCase();
+    const code = String(line.currency_code || '').trim().toUpperCase();
+    const fx = Number(line.fx_rate);
+    const foreign = Number(line.foreign_amount);
+    const hasFx = Number.isFinite(fx) && fx > 0;
+    const hasForeign = Number.isFinite(foreign) && foreign > 0;
+    if (code && base && code !== base && hasFx && hasForeign) {
+      const converted = moneyRound(foreign * fx);
+      if ((Number(line.debit) || 0) > 0) return { debit: converted, credit: 0 };
+      if ((Number(line.credit) || 0) > 0) return { debit: 0, credit: converted };
+    }
+    return { debit: Number(line.debit) || 0, credit: Number(line.credit) || 0 };
   };
   const ledgerSectionRef = useRef<HTMLDivElement | null>(null);
   const canViewAccounting = hasPermission('accounting.view');
@@ -1116,12 +1147,12 @@ const FinancialReports: React.FC = () => {
       const [{ data: header, error: headerError }, { data: lines, error: linesError }] = await Promise.all([
         supabase
           .from('journal_entries')
-          .select('id,entry_date,memo,source_table,source_id,source_event,created_by,created_at,status,approved_by,approved_at,voided_by,voided_at,void_reason')
+          .select('id,entry_date,memo,source_table,source_id,source_event,created_by,created_at,status,approved_by,approved_at,voided_by,voided_at,void_reason,currency_code,fx_rate,foreign_amount')
           .eq('id', journalEntryId)
           .single(),
         supabase
           .from('journal_lines')
-          .select('id,account_id,debit,credit,line_memo,chart_of_accounts(code,name)')
+          .select('id,account_id,debit,credit,line_memo,currency_code,fx_rate,foreign_amount,chart_of_accounts(code,name)')
           .eq('journal_entry_id', journalEntryId)
           .order('created_at', { ascending: true }),
       ]);
@@ -1144,16 +1175,27 @@ const FinancialReports: React.FC = () => {
         voided_by: (header as any).voided_by ? String((header as any).voided_by) : null,
         voided_at: typeof (header as any).voided_at === 'string' ? (header as any).voided_at : null,
         void_reason: typeof (header as any).void_reason === 'string' ? (header as any).void_reason : null,
+        currency_code: typeof (header as any).currency_code === 'string' ? (header as any).currency_code : null,
+        fx_rate: (header as any).fx_rate != null ? (Number((header as any).fx_rate) || 0) : null,
+        foreign_amount: (header as any).foreign_amount != null ? (Number((header as any).foreign_amount) || 0) : null,
       });
 
       setEntryLines(((lines as any[]) || []).map((l) => ({
+        ...computeBaseSideAmount({
+          debit: Number(l.debit) || 0,
+          credit: Number(l.credit) || 0,
+          currency_code: typeof l.currency_code === 'string' ? l.currency_code : null,
+          fx_rate: l.fx_rate != null ? (Number(l.fx_rate) || 0) : null,
+          foreign_amount: l.foreign_amount != null ? (Number(l.foreign_amount) || 0) : null,
+        }),
         id: String(l.id),
         account_id: String(l.account_id),
-        debit: Number(l.debit) || 0,
-        credit: Number(l.credit) || 0,
         line_memo: typeof l.line_memo === 'string' ? l.line_memo : null,
         account_code: typeof l.chart_of_accounts?.code === 'string' ? l.chart_of_accounts.code : '',
         account_name: typeof l.chart_of_accounts?.name === 'string' ? l.chart_of_accounts.name : '',
+        currency_code: typeof l.currency_code === 'string' ? l.currency_code : null,
+        fx_rate: l.fx_rate != null ? (Number(l.fx_rate) || 0) : null,
+        foreign_amount: l.foreign_amount != null ? (Number(l.foreign_amount) || 0) : null,
       })));
     } catch (err: any) {
       showNotification(err?.message || 'تعذر تحميل القيد', 'error');
@@ -1161,7 +1203,7 @@ const FinancialReports: React.FC = () => {
     } finally {
       setIsEntryLoading(false);
     }
-  }, [closeEntryModal, showNotification, supabase]);
+  }, [baseCode, closeEntryModal, showNotification, supabase]);
 
   const loadDraftManualEntries = useCallback(async () => {
     if (!supabase) return;
@@ -1182,16 +1224,23 @@ const FinancialReports: React.FC = () => {
       }
       const { data: lines, error: linesError } = await supabase
         .from('journal_lines')
-        .select('journal_entry_id,debit,credit')
+        .select('journal_entry_id,debit,credit,currency_code,fx_rate,foreign_amount')
         .in('journal_entry_id', ids);
       if (linesError) throw linesError;
       const totals = new Map<string, { debit: number; credit: number }>();
       ((lines as any[]) || []).forEach((l) => {
         const id = String(l.journal_entry_id);
+        const computed = computeBaseSideAmount({
+          debit: Number(l.debit) || 0,
+          credit: Number(l.credit) || 0,
+          currency_code: typeof l.currency_code === 'string' ? l.currency_code : null,
+          fx_rate: l.fx_rate != null ? (Number(l.fx_rate) || 0) : null,
+          foreign_amount: l.foreign_amount != null ? (Number(l.foreign_amount) || 0) : null,
+        });
         const prev = totals.get(id) || { debit: 0, credit: 0 };
         totals.set(id, {
-          debit: prev.debit + (Number(l.debit) || 0),
-          credit: prev.credit + (Number(l.credit) || 0),
+          debit: prev.debit + (computed.debit || 0),
+          credit: prev.credit + (computed.credit || 0),
         });
       });
       setDraftManualEntries(
@@ -2185,8 +2234,38 @@ const FinancialReports: React.FC = () => {
                               <div className="font-semibold">{l.account_name || '—'}</div>
                               <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{l.account_code || ''}</div>
                             </td>
-                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(l.debit)}</td>
-                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(l.credit)}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">
+                              <div>{formatMoney(l.debit)}</div>
+                              {(() => {
+                                const base = String(baseCode || '').trim().toUpperCase();
+                                const code = String(l.currency_code || '').trim().toUpperCase();
+                                const fx = Number(l.fx_rate);
+                                const foreign = Number(l.foreign_amount);
+                                const show = code && base && code !== base && Number.isFinite(foreign) && foreign > 0;
+                                if (!show) return null;
+                                return (
+                                  <div className="text-[11px] text-gray-500 dark:text-gray-400" dir="ltr">
+                                    {formatAmountWithCode(foreign, code)}{Number.isFinite(fx) && fx > 0 ? ` • FX=${fx.toFixed(6)}` : ''}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">
+                              <div>{formatMoney(l.credit)}</div>
+                              {(() => {
+                                const base = String(baseCode || '').trim().toUpperCase();
+                                const code = String(l.currency_code || '').trim().toUpperCase();
+                                const fx = Number(l.fx_rate);
+                                const foreign = Number(l.foreign_amount);
+                                const show = code && base && code !== base && Number.isFinite(foreign) && foreign > 0;
+                                if (!show) return null;
+                                return (
+                                  <div className="text-[11px] text-gray-500 dark:text-gray-400" dir="ltr">
+                                    {formatAmountWithCode(foreign, code)}{Number.isFinite(fx) && fx > 0 ? ` • FX=${fx.toFixed(6)}` : ''}
+                                  </div>
+                                );
+                              })()}
+                            </td>
                             <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{l.line_memo || ''}</td>
                           </tr>
                         ))}
