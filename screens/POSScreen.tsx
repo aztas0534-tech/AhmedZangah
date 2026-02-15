@@ -393,6 +393,9 @@ const POSScreen: React.FC = () => {
 
     const isOnline = typeof navigator !== 'undefined' && navigator.onLine !== false;
     const supabase = isOnline ? getSupabaseClient() : null;
+    const buildPricingKey = (warehouseId: string, item: CartItem, pricingQty: number) => {
+      return `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}:${String((item as any).forcedBatchId || '')}`;
+    };
 
     if (!supabase) {
       let missing = false;
@@ -408,7 +411,7 @@ const POSScreen: React.FC = () => {
           return item;
         }
         const pricingQty = getPricingQty(item);
-        const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
+        const key = buildPricingKey(warehouseId, item, pricingQty);
         const cached = pricingCacheRef.current.get(key);
         if (!cached) {
           return item;
@@ -457,7 +460,7 @@ const POSScreen: React.FC = () => {
         const hasSession = Boolean(sessionData.data.session);
         const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
-          const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}:${String((item as any).forcedBatchId || '')}`;
+          const key = buildPricingKey(warehouseId, item, pricingQty);
           const cached = pricingCacheRef.current.get(key);
           if (cached) {
             const hasFefoSignal = Boolean((cached as any)?.batchId) || (cached as any)?.baseMinPrice != null || (cached as any)?.minPrice != null;
@@ -528,12 +531,13 @@ const POSScreen: React.FC = () => {
           return { key, itemId: item.id, unitType: item.unitType, ...entry };
         }));
         if (pricingRunIdRef.current !== runId) return;
+        const pricedByKey = new Map(results.map((r) => [r.key, r]));
         const next = items.map((item) => {
           if (isPromotionLine(item)) return item;
           const pricingQty = getPricingQty(item);
           const warehouseId = sessionScope.requireScope().warehouseId;
-          const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
-          const priced = results.find((r) => r.key === key);
+          const key = buildPricingKey(warehouseId, item, pricingQty);
+          const priced = pricedByKey.get(key);
           if (!priced) return item;
           const nextItem: any = {
             ...item,
