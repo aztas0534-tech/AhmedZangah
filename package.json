@@ -1,4 +1,5 @@
 {
+  "$schema": "./.vscode/package.schema.json",
   "name": "ahmed-zenkah-trading",
   "version": "1.0.0",
   "description": "نظام مبيعات وإدارة لمؤسسة أحمد زنقاح للتجارة والتوكيلات.",
