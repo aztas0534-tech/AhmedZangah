@@ -20,6 +20,7 @@ import OsmMapEmbed from '../../components/OsmMapEmbed';
 import NumberInput from '../../components/NumberInput';
 import { useMenu } from '../../contexts/MenuContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
+import { useGovernance } from '../../contexts/GovernanceContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import { printReceiptVoucherByPaymentId } from '../../utils/vouchers';
@@ -107,6 +108,7 @@ const ManageOrdersScreen: React.FC = () => {
     const { getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
     const { isWeightBasedUnit } = useItemMeta();
+    const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
@@ -283,7 +285,7 @@ const ManageOrdersScreen: React.FC = () => {
         if (parts.length === 0) return [];
         try {
             const { data, error } = await supabase
-                .from('customers')
+                .from('customers_business')
                 .select('auth_user_id, full_name, phone_number')
                 .or(parts.join(','))
                 .limit(8);
@@ -357,13 +359,10 @@ const ManageOrdersScreen: React.FC = () => {
         if (base && code === base) return 1;
         const supabase = getSupabaseClient();
         if (!supabase) return null;
-        const d = new Date().toISOString().slice(0, 10);
         try {
-            const { data, error } = await supabase.rpc('get_fx_rate', {
-                p_currency: code,
-                p_date: d,
-                p_rate_type: 'operational',
-            });
+            const { data, error } = await supabase.rpc('get_fx_rate_rpc', {
+                p_currency_code: code,
+            } as any);
             if (error) return null;
             const n = Number(data);
             return Number.isFinite(n) && n > 0 ? n : null;
@@ -1829,6 +1828,7 @@ const ManageOrdersScreen: React.FC = () => {
                           currencyCode={(order as any).currency}
                           baseAmount={(order as any).baseTotal}
                           fxRate={(order as any).fxRate}
+                          baseCurrencyCode={baseCode}
                           label="الإجمالي"
                         />
                     </div>
@@ -2243,6 +2243,7 @@ const ManageOrdersScreen: React.FC = () => {
                           currencyCode={(order as any).currency}
                           baseAmount={(order as any).baseTotal}
                           fxRate={(order as any).fxRate}
+                          baseCurrencyCode={baseCode}
                           compact
                         />
                                             {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
@@ -2334,14 +2335,21 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                 if (order.status === 'delivered') {
                                                     const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
-                                                    const canIssueInvoice = !isCod && (Boolean(order.paidAt) || order.paymentMethod === 'ar');
+                                                    const canIssueInvoice = !isCod && (Boolean(order.paidAt) || order.paymentMethod === 'ar') && canManageAccounting;
                                                     return (
                                                         <div className="flex flex-col gap-2">
                                                             {canIssueInvoice && (
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="text-xs text-gray-500 dark:text-gray-400">جاري إصدار الفاتورة...</div>
                                                                     <button
-                                                                        onClick={() => issueInvoiceNow(order.id)}
+                                                                        onClick={() => {
+                                                                            const g = guardPosting();
+                                                                            if (!g.ok) {
+                                                                                showNotification(g.reason || 'لا تملك صلاحية إصدار الفاتورة.', 'error');
+                                                                                return;
+                                                                            }
+                                                                            issueInvoiceNow(order.id);
+                                                                        }}
                                                                         className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs"
                                                                     >
                                                                         إصدار الآن
@@ -2637,18 +2645,31 @@ const ManageOrdersScreen: React.FC = () => {
                           compact
                         />
                     </div>
-                    <div className="flex items-center gap-2 text-xs">
-                        <label className="text-gray-600 dark:text-gray-300">عملة المعاملة</label>
-                        <select
-                            value={inStoreTransactionCurrency}
-                            onChange={(e) => setInStoreTransactionCurrency(String(e.target.value || '').trim().toUpperCase())}
-                            disabled={inStorePricingBusy || isInStoreCreating}
-                            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        >
-                            {operationalCurrencies.map((c) => (
-                                <option key={c} value={c}>{c}</option>
-                            ))}
-                        </select>
+                    <div className="flex items-center gap-3 text-xs">
+                        <div className="flex items-center gap-2">
+                            <label className="text-gray-600 dark:text-gray-300">عملة المعاملة</label>
+                            <select
+                                value={inStoreTransactionCurrency}
+                                onChange={(e) => {
+                                    const next = String(e.target.value || '').trim().toUpperCase();
+                                    if (inStoreLines.length > 0) {
+                                        showNotification('لا يمكن تغيير العملة بعد إضافة أصناف. احفظ أو امسح الأصناف أولاً.', 'error');
+                                        return;
+                                    }
+                                    setInStoreTransactionCurrency(next);
+                                }}
+                                disabled={inStorePricingBusy || isInStoreCreating || inStoreLines.length > 0}
+                                className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            >
+                                {operationalCurrencies.map((c) => (
+                                    <option key={c} value={c}>{c}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
+                            <span className="text-gray-600 dark:text-gray-300 mr-1">FX</span>
+                            <span className="font-mono" dir="ltr">{Number(inStoreTransactionFxRate || 1).toFixed(6)}</span>
+                        </div>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                         <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600">
@@ -3895,6 +3916,7 @@ const ManageOrdersScreen: React.FC = () => {
                                       currencyCode={(order as any).currency}
                                       baseAmount={(order as any).baseTotal}
                                       fxRate={(order as any).fxRate}
+                                      baseCurrencyCode={baseCode}
                                       compact
                                     />
                                 </div>
@@ -4116,6 +4138,7 @@ const ManageOrdersScreen: React.FC = () => {
                                             currencyCode={(order as any).currency}
                                             baseAmount={(order as any).baseTotal}
                                             fxRate={(order as any).fxRate}
+                                            baseCurrencyCode={baseCode}
                                             compact
                                           />
                                         );
@@ -4235,6 +4258,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                   currencyCode={(returnsOrder as any)?.currency}
                                                   baseAmount={(returnsOrder as any)?.baseTotal}
                                                   fxRate={(returnsOrder as any)?.fxRate}
+                                                  baseCurrencyCode={baseCode}
                                                   label="المبلغ"
                                                   compact
                                                 />

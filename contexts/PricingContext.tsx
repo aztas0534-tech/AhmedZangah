@@ -23,7 +23,7 @@ interface PricingContextType {
     getSpecialPricesForCustomer: (customerId: string) => CustomerSpecialPrice[];
 
     // Price calculation
-    getItemPrice: (itemId: string, customerId: string | null, quantity: number) => Promise<number>;
+    getItemPrice: (itemId: string, quantity: number, warehouseId: string, currencyCode: string) => Promise<number>;
     getItemDiscount: (itemId: string, customerId: string | null, quantity: number) => Promise<number>;
 
     // Fetch functions
@@ -272,19 +272,23 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, [specialPrices]);
 
     // Get item price using RPC function
-    const getItemPrice = useCallback(async (itemId: string, customerId: string | null, quantity: number): Promise<number> => {
+    const getItemPrice = useCallback(async (itemId: string, quantity: number, warehouseId: string, currencyCode: string): Promise<number> => {
         const supabase = getSupabaseClient();
         if (!supabase) throw new Error('قاعدة البيانات غير متاحة');
+        const code = String(currencyCode || '').trim().toUpperCase();
+        if (!code) throw new Error('عملة التسعير مطلوبة');
+        if (!warehouseId) throw new Error('المستودع مطلوب');
 
-        const { data, error } = await supabase.rpc('get_item_price', {
+        const { data, error } = await supabase.rpc('get_fefo_pricing', {
             p_item_id: itemId,
-            p_customer_id: customerId,
+            p_warehouse_id: warehouseId,
             p_quantity: quantity,
+            p_currency_code: code,
         });
 
         if (error) throw error;
-
-        return data || 0;
+        const row = (Array.isArray(data) ? data[0] : data) as any;
+        return Number(row?.suggested_price) || 0;
     }, []);
 
     // Get item discount using RPC function

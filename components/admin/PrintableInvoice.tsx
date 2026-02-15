@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import { Order } from '../../types';
 import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
+import CurrencyDualAmount from '../common/CurrencyDualAmount';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -153,6 +154,15 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
 
+    const fxMeta = useMemo(() => {
+        const snap: any = (order as any)?.invoiceSnapshot || {};
+        const baseC = String(snap.baseCurrency || '').toUpperCase();
+        const fx = Number(snap.fxRate ?? (order as any)?.fxRate ?? 1) || 1;
+        const txC = String((invoiceOrder as any)?.currency || '').toUpperCase();
+        const show = Boolean(baseC && txC && baseC !== txC && fx > 0);
+        return { baseCurrency: baseC, fxRate: fx, show };
+    }, [order, invoiceOrder]);
+
     return (
         <div className="thermal-invoice" dir="rtl">
             <style>{`
@@ -301,6 +311,18 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div className="total-box text-center mb-4">
                 <div className="text-sm font-bold mb-1">الإجمالي النهائي</div>
                 <div className="text-xl font-bold tabular" dir="ltr">{formatAmount(invoiceOrder.total)} {currencyLabel}</div>
+                {fxMeta.show ? (
+                    <div className="mt-1 text-xs">
+                        <CurrencyDualAmount
+                          amount={Number(invoiceOrder.total) || 0}
+                          currencyCode={String((invoiceOrder as any)?.currency || '').toUpperCase()}
+                          baseAmount={Number(invoiceOrder.total) * Number(fxMeta.fxRate)}
+                          fxRate={fxMeta.fxRate}
+                          baseCurrencyCode={fxMeta.baseCurrency}
+                          compact
+                        />
+                    </div>
+                ) : null}
             </div>
 
             <div className="mb-4 text-sm border-b pb-2">

@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { CartItem } from '../../types';
 import NumericKeypadModal from './NumericKeypadModal';
 import { useStock } from '../../contexts/StockContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
+import { getSupabaseClient } from '../../supabase';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 
 interface Props {
   items: CartItem[];
   currencyCode?: string;
-  onUpdate: (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number }) => void;
+  onUpdate: (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; forcedBatchId?: string | null }) => void;
   onRemove: (cartItemId: string) => void;
   onEditAddons?: (cartItemId: string) => void;
   selectedCartItemId?: string | null;
@@ -35,6 +37,12 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
   const [keypadTarget, setKeypadTarget] = useState<{ id: string; kind: 'qty' | 'weight' } | null>(null);
   const { getStockByItemId } = useStock();
   const { language } = useSettings();
+  const sessionScope = useSessionScope();
+  const [openBreakdownFor, setOpenBreakdownFor] = useState<string>('');
+  const [batchRowsByItemId, setBatchRowsByItemId] = useState<Record<string, Array<{ batchId: string; remaining: number; unitCost: number; occurredAt?: string }>>>({});
+  const [batchLoadingByItemId, setBatchLoadingByItemId] = useState<Record<string, boolean>>({});
+  const [batchPickerCartItemId, setBatchPickerCartItemId] = useState<string>('');
+  const [batchPickerItemId, setBatchPickerItemId] = useState<string>('');
   const code = String(currencyCode || '').toUpperCase() || '—';
 
   const InlineMoney = ({ amount, className }: { amount: number; className?: string }) => (
@@ -42,6 +50,53 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
       <span className="font-mono">{fmt(amount)}</span> <span className="text-xs">{code}</span>
     </span>
   );
+
+  const warehouseId = useMemo(() => String(sessionScope.scope?.warehouseId || '').trim(), [sessionScope.scope?.warehouseId]);
+
+  const toggleBreakdown = async (itemId: string) => {
+    const id = String(itemId || '').trim();
+    if (!id) return;
+    if (openBreakdownFor === id) {
+      setOpenBreakdownFor('');
+      return;
+    }
+    setOpenBreakdownFor(id);
+    if (batchRowsByItemId[id]) return;
+    const supabase = getSupabaseClient();
+    if (!supabase || !warehouseId) return;
+    setBatchLoadingByItemId(prev => ({ ...prev, [id]: true }));
+    try {
+      const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: id, p_warehouse_id: warehouseId } as any);
+      if (error) throw error;
+      const rows = (Array.isArray(data) ? data : []).map((r: any) => {
+        const batchId = String((r?.batch_id || r?.id || '')).trim();
+        const remaining = Number(r?.remaining_quantity ?? r?.remaining ?? 0) || 0;
+        const unitCost = Number(r?.unit_cost ?? r?.cost_per_unit ?? 0) || 0;
+        const occurredAt = r?.occurred_at ? String(r.occurred_at) : undefined;
+        return batchId ? { batchId, remaining, unitCost, occurredAt } : null;
+      }).filter(Boolean) as Array<{ batchId: string; remaining: number; unitCost: number; occurredAt?: string }>;
+      setBatchRowsByItemId(prev => ({ ...prev, [id]: rows }));
+    } catch {
+      setBatchRowsByItemId(prev => ({ ...prev, [id]: [] }));
+    } finally {
+      setBatchLoadingByItemId(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const openBatchPicker = async (cartItemId: string, itemId: string) => {
+    const cid = String(cartItemId || '').trim();
+    const iid = String(itemId || '').trim();
+    if (!cid || !iid) return;
+    setBatchPickerCartItemId(cid);
+    setBatchPickerItemId(iid);
+    if (batchRowsByItemId[iid] || batchLoadingByItemId[iid]) return;
+    await toggleBreakdown(iid);
+  };
+
+  const closeBatchPicker = () => {
+    setBatchPickerCartItemId('');
+    setBatchPickerItemId('');
+  };
 
   const openKeypad = (id: string, kind: 'qty' | 'weight', current: number) => {
     setKeypadTarget({ id, kind });
@@ -62,6 +117,66 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
 
   return (
     <div className="space-y-3">
+      {Boolean(batchPickerCartItemId && batchPickerItemId) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeBatchPicker}>
+          <div className="w-full max-w-lg rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="font-bold dark:text-white">اختيار الدفعة</div>
+              <button type="button" onClick={closeBatchPicker} className="px-3 py-1 rounded-lg border dark:border-gray-600">
+                إغلاق
+              </button>
+            </div>
+            <div className="text-xs text-gray-600 dark:text-gray-300 mb-3">
+              سيتم تسعير السطر وربط خصم المخزون بهذه الدفعة.
+            </div>
+            <div className="space-y-2 max-h-[60dvh] overflow-auto">
+              {Boolean(batchLoadingByItemId[batchPickerItemId]) ? (
+                <div className="text-sm text-gray-600 dark:text-gray-300">جاري التحميل...</div>
+              ) : (batchRowsByItemId[batchPickerItemId] || []).length === 0 ? (
+                <div className="text-sm text-gray-600 dark:text-gray-300">لا توجد دفعات متاحة.</div>
+              ) : (
+                (batchRowsByItemId[batchPickerItemId] || []).map((r) => (
+                  <button
+                    key={r.batchId}
+                    type="button"
+                    onClick={() => {
+                      onUpdate(batchPickerCartItemId, { forcedBatchId: r.batchId });
+                      closeBatchPicker();
+                    }}
+                    className="w-full text-right p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold dark:text-white" dir="ltr">{r.batchId.slice(0, 8)}</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-300">
+                        متبقٍ {Number(r.remaining || 0).toLocaleString('ar-EG-u-nu-latn')}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      كلفة أساس: {fmt(Number(r.unitCost || 0))}
+                      {r.occurredAt ? ` • ${new Date(r.occurredAt).toLocaleString('ar-EG-u-nu-latn')}` : ''}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdate(batchPickerCartItemId, { forcedBatchId: null });
+                  closeBatchPicker();
+                }}
+                className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700"
+              >
+                إلغاء التحديد
+              </button>
+              <button type="button" onClick={closeBatchPicker} className="px-3 py-2 rounded-xl bg-gray-800 text-white dark:bg-gray-700">
+                تم
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {items.length === 0 && (
         <div className="text-center text-gray-500 dark:text-gray-300">لا توجد سطور بعد</div>
       )}
@@ -135,9 +250,35 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   const reservedUom = (f > 0 && item.unitType !== 'kg' && item.unitType !== 'gram') ? Math.floor((reservedBase / f) + 1e-9) : reservedBase;
                   const baseLabel = item.unitType === 'piece' ? 'قطعة' : item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : item.unitType;
                   const uomLabel = localizeUomCodeAr(String((item as any).uomCode || item.unitType || 'piece'));
+                  const id = String((item as any)?.id || (item as any)?.itemId || '').trim();
+                  const expanded = openBreakdownFor === id;
+                  const rows = (batchRowsByItemId[id] || []);
+                  const loading = Boolean(batchLoadingByItemId[id]);
                   return (
                     <span className="text-[11px] text-gray-500 dark:text-gray-400">
                       متاح: {availUom} {uomLabel} <span className="text-gray-400">({availBase} {baseLabel})</span> • محجوز: {reservedUom}
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => toggleBreakdown(id)}
+                        className="underline decoration-dotted hover:text-gray-700 dark:hover:text-gray-200"
+                      >
+                        تفصيل
+                      </button>
+                      {expanded && (
+                        <span className="block mt-1 text-[11px]">
+                          {loading ? 'جاري التحميل...' : (
+                            rows.length > 0
+                              ? rows.slice(0, 4).map((r, i) => (
+                                  <span key={r.batchId} className="inline-block mr-2">
+                                    {r.remaining} من دفعة {r.batchId.slice(0, 6)}
+                                    {i < Math.min(rows.length, 4) - 1 ? ' • ' : ''}
+                                  </span>
+                                ))
+                              : 'لا يوجد تفصيل دفعات.'
+                          )}
+                        </span>
+                      )}
                     </span>
                   );
                 })()}
@@ -147,6 +288,18 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   <span className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700">
                     دفعة: {String((item as any)._fefoBatchCode || '').trim() || String((item as any)._fefoBatchId || '').slice(-6).toUpperCase()}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => openBatchPicker(item.cartItemId, String((item as any)?.id || (item as any)?.itemId || ''))}
+                    className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                  >
+                    اختيار
+                  </button>
+                  {String((item as any).forcedBatchId || '').trim() && (
+                    <span className="px-2 py-1 rounded-full bg-slate-50 text-slate-800 border border-slate-200 dark:bg-slate-900/20 dark:text-slate-200 dark:border-slate-900">
+                      محددة
+                    </span>
+                  )}
                   {(item as any)?._fefoExpiryDate && (
                     <span className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700" dir="ltr">
                       EXP: {String((item as any)._fefoExpiryDate)}

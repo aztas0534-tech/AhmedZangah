@@ -207,14 +207,11 @@ const PartyLedgerStatementScreen: React.FC = () => {
     }
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    const d = new Date().toISOString().slice(0, 10);
     let cancelled = false;
     const run = async () => {
       try {
-        const { data, error } = await supabase.rpc('get_fx_rate', {
-          p_currency: code,
-          p_date: d,
-          p_rate_type: 'operational',
+        const { data, error } = await supabase.rpc('get_fx_rate_rpc', {
+          p_currency_code: code,
         } as any);
         if (error) throw error;
         const n = Number(data);

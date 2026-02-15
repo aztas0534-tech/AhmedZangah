@@ -18,7 +18,7 @@ import { createLogger } from '../utils/logger';
 import { findNearestDeliveryZone, verifyZoneMatch, formatDistance } from '../utils/geoUtils';
 import InteractiveMap from '../components/InteractiveMap';
 import type { Bank, TransferRecipient } from '../types';
-import { getBaseCurrencyCode, getOperationalFxRate, getSupabaseClient } from '../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../supabase';
 import { toDateTimeLocalInputValue, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
 
@@ -90,7 +90,7 @@ const CheckoutScreen: React.FC = () => {
             return '';
         }
     });
-    const [transactionFxRate, setTransactionFxRate] = useState<number | null>(null);
+    const [checkoutWarehouseId, setCheckoutWarehouseId] = useState<string>('');
 
     useEffect(() => {
         const base = String(baseCode || '').trim().toUpperCase();
@@ -106,49 +106,25 @@ const CheckoutScreen: React.FC = () => {
         }
     }, [baseCode, operationalCurrencies, transactionCurrency]);
 
+    const txnCurrency = useMemo(() => String(transactionCurrency || '').trim().toUpperCase(), [transactionCurrency]);
+    const effectiveCurrency = txnCurrency || String(baseCode || '').trim().toUpperCase();
+
     useEffect(() => {
-        const code = String(transactionCurrency || '').trim().toUpperCase();
-        const base = String(baseCode || '').trim().toUpperCase();
-        if (!code || !base) return;
         let cancelled = false;
         const run = async () => {
-            if (code === base) {
-                if (!cancelled) setTransactionFxRate(1);
-                return;
-            }
-            const rate = await getOperationalFxRate(code);
+            if (checkoutWarehouseId) return;
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const { data, error } = await supabase.rpc('_resolve_default_warehouse_id');
             if (cancelled) return;
-            if (!rate) {
-                setTransactionCurrency(base);
-                setTransactionFxRate(1);
-                try {
-                    localStorage.setItem('AZTA_CUSTOMER_TRANSACTION_CURRENCY', base);
-                } catch {
-                }
-                return;
-            }
-            setTransactionFxRate(rate);
+            if (error) return;
+            if (data) setCheckoutWarehouseId(String(data));
         };
         void run();
         return () => {
             cancelled = true;
         };
-    }, [baseCode, transactionCurrency]);
-
-    const txnCurrency = useMemo(() => String(transactionCurrency || '').trim().toUpperCase(), [transactionCurrency]);
-    const txnFx = useMemo(() => {
-        const base = String(baseCode || '').trim().toUpperCase();
-        if (!txnCurrency || !base) return 1;
-        if (txnCurrency === base) return 1;
-        const fx = Number(transactionFxRate);
-        return Number.isFinite(fx) && fx > 0 ? fx : 1;
-    }, [baseCode, transactionFxRate, txnCurrency]);
-    const convertBaseToTxn = (amount: number) => {
-        const base = String(baseCode || '').trim().toUpperCase();
-        if (!txnCurrency || !base) return Number(amount || 0);
-        if (txnCurrency === base) return Number(amount || 0);
-        return Number(amount || 0) / txnFx;
-    };
+    }, [checkoutWarehouseId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -239,6 +215,9 @@ const CheckoutScreen: React.FC = () => {
                     return;
                 }
                 const customerId = currentUser?.id ?? null;
+                const warehouseId = checkoutWarehouseId;
+                if (!warehouseId) throw new Error('المستودع غير محدد');
+                if (!effectiveCurrency) throw new Error('العملة غير محددة');
                 let subtotalAgg = 0;
                 let pricingDiscountAgg = 0;
                 for (const item of cartItems) {
@@ -247,7 +226,7 @@ const CheckoutScreen: React.FC = () => {
                     if (item.unitType === 'kg' || item.unitType === 'gram') {
                         effectiveQuantity = item.weight || item.quantity;
                     }
-                    const unitPriceRaw = await getItemPrice(item.id, customerId, effectiveQuantity);
+                    const unitPriceRaw = await getItemPrice(item.id, effectiveQuantity, warehouseId, effectiveCurrency);
                     const discountPct = await getItemDiscount(item.id, customerId, effectiveQuantity);
                     const unitPriceNormalized = (item.unitType === 'gram' && item.pricePerUnit) ? (Number(unitPriceRaw) / 1000) : Number(unitPriceRaw);
                     const lineBaseSubtotal = (unitPriceNormalized + addonsUnitPrice) * effectiveQuantity;
@@ -270,7 +249,7 @@ const CheckoutScreen: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [cartItems, currentUser?.id]);
+    }, [cartItems, currentUser?.id, checkoutWarehouseId, effectiveCurrency, getItemPrice, getItemDiscount]);
 
     const referralDiscount = useMemo(() => {
         const isFirstOrder = userOrders.length === 0;
@@ -707,6 +686,7 @@ const CheckoutScreen: React.FC = () => {
                 deliveryZoneId: selectedDeliveryZone?.id,
                 total,
                 currency: txnCurrency || baseCode,
+                warehouseId: checkoutWarehouseId || undefined,
                 customerName: customerName.trim(),
                 phoneNumber: phoneNumber.trim(),
                 notes,
@@ -1190,7 +1170,7 @@ const CheckoutScreen: React.FC = () => {
                                         <h2 className="text-xl font-bold text-yellow-800 dark:text-yellow-300 mb-3">نقاط الولاء</h2>
                                         <p className="text-gray-700 dark:text-gray-300 mb-4">
                                           لديك <span className="font-bold">{currentUser.loyaltyPoints}</span> نقطة بقيمة{' '}
-                                          <CurrencyDualAmount amount={Number(convertBaseToTxn(Number(pointsValueInCurrency) || 0)) || 0} currencyCode={txnCurrency || baseCode} compact />.
+                                          <CurrencyDualAmount amount={Number(pointsValueInCurrency) || 0} currencyCode={effectiveCurrency} compact />.
                                         </p>
                                         <label className="flex items-center cursor-pointer">
                                             <input type="checkbox" checked={redeemPoints} onChange={(e) => setRedeemPoints(e.target.checked)} className="form-checkbox h-5 w-5 text-primary-600 rounded focus:ring-gold-500" />
@@ -1225,41 +1205,41 @@ const CheckoutScreen: React.FC = () => {
                                         )}
                                         <div className="flex justify-between text-gray-700 dark:text-gray-300">
                                           <span>المجموع الفرعي:</span>
-                                          <CurrencyDualAmount amount={Number(convertBaseToTxn(Number(computedSubtotal) || 0)) || 0} currencyCode={txnCurrency || baseCode} compact />
+                                          <CurrencyDualAmount amount={Number(computedSubtotal) || 0} currencyCode={effectiveCurrency} compact />
                                         </div>
                                         {couponDiscount > 0 && (
                                           <div className="flex justify-between text-green-600 dark:text-green-400">
                                             <span>الخصم:</span>
-                                            <CurrencyDualAmount amount={-Math.abs(Number(convertBaseToTxn(Number(couponDiscount) || 0)) || 0)} currencyCode={txnCurrency || baseCode} compact />
+                                            <CurrencyDualAmount amount={-Math.abs(Number(couponDiscount) || 0)} currencyCode={effectiveCurrency} compact />
                                           </div>
                                         )}
                                         {referralDiscount > 0 && (
                                           <div className="flex justify-between text-green-600 dark:text-green-400">
                                             <span>خصم الدعوة:</span>
-                                            <CurrencyDualAmount amount={-Math.abs(Number(convertBaseToTxn(Number(referralDiscount) || 0)) || 0)} currencyCode={txnCurrency || baseCode} compact />
+                                            <CurrencyDualAmount amount={-Math.abs(Number(referralDiscount) || 0)} currencyCode={effectiveCurrency} compact />
                                           </div>
                                         )}
                                         {tierDiscount > 0 && (
                                           <div className="flex justify-between text-green-600 dark:text-green-400">
                                             <span>خصم المستوى:</span>
-                                            <CurrencyDualAmount amount={-Math.abs(Number(convertBaseToTxn(Number(tierDiscount) || 0)) || 0)} currencyCode={txnCurrency || baseCode} compact />
+                                            <CurrencyDualAmount amount={-Math.abs(Number(tierDiscount) || 0)} currencyCode={effectiveCurrency} compact />
                                           </div>
                                         )}
                                         {pointsDiscount > 0 && (
                                           <div className="flex justify-between text-green-600 dark:text-green-400">
                                             <span>خصم النقاط:</span>
-                                            <CurrencyDualAmount amount={-Math.abs(Number(convertBaseToTxn(Number(pointsDiscount) || 0)) || 0)} currencyCode={txnCurrency || baseCode} compact />
+                                            <CurrencyDualAmount amount={-Math.abs(Number(pointsDiscount) || 0)} currencyCode={effectiveCurrency} compact />
                                           </div>
                                         )}
                                         <div className="flex justify-between text-gray-700 dark:text-gray-300">
                                           <span>رسوم التوصيل:</span>
-                                          <CurrencyDualAmount amount={Number(convertBaseToTxn(Number(effectiveDeliveryFee) || 0)) || 0} currencyCode={txnCurrency || baseCode} compact />
+                                          <CurrencyDualAmount amount={Number(effectiveDeliveryFee) || 0} currencyCode={effectiveCurrency} compact />
                                         </div>
                                         <div className="border-t border-gray-200 dark:border-gray-600 my-2"></div>
                                         <div className="flex justify-between items-center font-bold text-lg">
                                             <span className="dark:text-white">الإجمالي:</span>
                                             <span className="text-2xl text-gold-500">
-                                              <CurrencyDualAmount amount={Number(convertBaseToTxn(Number(total) || 0)) || 0} currencyCode={txnCurrency || baseCode} compact />
+                                              <CurrencyDualAmount amount={Number(total) || 0} currencyCode={effectiveCurrency} compact />
                                             </span>
                                         </div>
                                     </div>

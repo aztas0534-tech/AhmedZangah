@@ -10,6 +10,8 @@ import type { AdminPermission } from '../../types';
 import type { AdminRole } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import ShiftManagementModal from '../../components/admin/ShiftManagementModal';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
 import AdminCommandPalette from './AdminCommandPalette';
 
@@ -223,6 +225,15 @@ const AdminLayout: React.FC = () => {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const { currentShift } = useCashShift();
   const { settings } = useSettings();
+  const sessionScope = useSessionScope();
+  const { warehouses } = useWarehouses();
+  const activeWarehouses = (warehouses || []).filter((w: any) => Boolean((w as any)?.isActive ?? (w as any)?.is_active ?? true));
+  const currentWarehouseName = (() => {
+    const wid = sessionScope.scope?.warehouseId || '';
+    if (!wid) return '—';
+    const w = activeWarehouses.find((x: any) => String(x.id) === String(wid));
+    return String((w as any)?.name || (w as any)?.code || '—');
+  })();
 
   const canAccessLink = (link: (typeof navLinks)[number]) => {
     if (link.to === 'chart-of-accounts') {
@@ -456,6 +467,14 @@ const AdminLayout: React.FC = () => {
             title={settings.maintenanceEnabled ? (settings.maintenanceMessage || 'وضع الصيانة مفعل') : 'النظام يعمل بشكل طبيعي'}
           >
             {settings.maintenanceEnabled ? 'الصيانة: مفعّلة' : 'الصيانة: موقفة'}
+          </Link>
+          <Link
+            to="/admin/stock"
+            className="hidden md:inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            title="المستودع النشط للجلسة"
+          >
+            <span>المستودع:</span>
+            <span className="ml-2 rtl:ml-0 rtl:mr-2">{currentWarehouseName}</span>
           </Link>
           <Link
             to="/admin/workspace"

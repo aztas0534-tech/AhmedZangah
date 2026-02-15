@@ -12,6 +12,7 @@
     "typecheck": "node --max-old-space-size=16384 ./node_modules/typescript/bin/tsc --noEmit",
     "preview": "vite preview",
     "test:ui:smoke": "playwright test --config=playwright.config.ts",
+    "test:ui:regression": "playwright test --config=playwright.config.ts \"tests/e2e/regression-.*\\.spec\\.ts\"",
     "test:ui:smoke:headed": "playwright test --config=playwright.config.ts --headed",
     "test:ui:smoke:report": "playwright show-report",
     "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name ahmedzangah",
@@ -22,7 +23,9 @@
     "apk:publish": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force -Path .\\public\\downloads | Out-Null; $src='.\\android\\app\\build\\outputs\\apk\\release\\app-release.apk'; if (!(Test-Path $src)) { $src='.\\android\\app\\build\\outputs\\apk\\release\\app-release-unsigned.apk' }; if (!(Test-Path $src)) { throw 'APK not found. Build android release first.' }; Copy-Item -Force -Path $src -Destination .\\public\\downloads\\ahmed-zenkah-trading-latest.apk\"",
     "db:link": "npx supabase link",
     "db:pull": "npx supabase db pull",
-    "db:push": "npx supabase db push",
+    "db:push": "npx supabase db push --local --yes",
+    "db:push:local": "npx supabase db push --local --yes",
+    "db:push:remote": "npx supabase db push",
     "db:seed": "npx supabase db seed",
     "db:reset": "npx supabase db reset",
     "supabase:start": "npx supabase start",
@@ -35,7 +38,9 @@
     "smoke:tamper": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_tamper_detection.sql --report SMOKE_TAMPER_DETECTION_REPORT.md --ok-token TAMPER_SMOKE_OK",
     "smoke:workflow": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_workflow_engine.sql --report SMOKE_WORKFLOW_ENGINE_REPORT.md --ok-token WORKFLOW_SMOKE_OK",
     "smoke:consolidation": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_consolidation.sql --report SMOKE_CONSOLIDATION_REPORT.md --ok-token CONSOLIDATION_SMOKE_OK",
-    "smoke:budget": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_budgeting.sql --report SMOKE_BUDGETING_REPORT.md --ok-token BUDGET_SMOKE_OK"
+    "smoke:budget": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_budgeting.sql --report SMOKE_BUDGETING_REPORT.md --ok-token BUDGET_SMOKE_OK",
+    "smoke:regression:v2": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_regression_v2.sql --report SMOKE_REGRESSION_V2_REPORT.md --ok-token REGRESSION_V2_OK",
+    "test:regression:v2": "npm run smoke:regression:v2 && npm run test:ui:regression"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",

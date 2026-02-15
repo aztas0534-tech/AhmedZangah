@@ -585,6 +585,10 @@ export const translateArToEn = async (text: string): Promise<string | null> => {
   const trimmed = text.trim();
   if (!trimmed) return null;
 
+  const flag = String((import.meta as any)?.env?.VITE_ENABLE_EXTERNAL_TRANSLATE ?? '').trim().toLowerCase();
+  const externalEnabled = flag === '1' || flag === 'true';
+  if (!externalEnabled) return null;
+
   const endpoints = [
     'https://libretranslate.de/translate',
     'https://translate.argosopentech.com/translate',

@@ -70,6 +70,19 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                     batchId: r.batch_id,
                     occurredAt: r.occurred_at,
                     unitCost: Number(r.unit_cost) || 0,
+                    unitCostOriginal: ((): number | undefined => {
+                        const c = Number((r as any)?.unit_cost_original ?? (r as any)?.unit_cost_currency ?? (r as any)?.supplier_unit_cost);
+                        return Number.isFinite(c) && c > 0 ? c : undefined;
+                    })(),
+                    unitCostCurrency: ((): string | undefined => {
+                        const curVal = (r as any)?.currency ?? (r as any)?.cost_currency ?? (r as any)?.unit_cost_currency_code;
+                        const cur = String(curVal || '').trim().toUpperCase();
+                        return cur || undefined;
+                    })(),
+                    fxAtReceipt: ((): number | undefined => {
+                        const fx = Number((r as any)?.fx_rate_at_receipt ?? (r as any)?.fx_rate);
+                        return Number.isFinite(fx) && fx > 0 ? fx : undefined;
+                    })(),
                     receivedQuantity: Number(r.received_quantity) || 0,
                     consumedQuantity: Number(r.consumed_quantity) || 0,
                     remainingQuantity: Number(r.remaining_quantity) || 0,
@@ -273,7 +286,13 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
                                                 <div className="font-semibold">
-                                                    {String(b.batchId).slice(0, 8)} • كلفة {Number(b.unitCost || 0).toLocaleString('en-US')} {baseCode || '—'}
+                                                    {String(b.batchId).slice(0, 8)} • كلفة {Number((b as any).unitCost || 0).toLocaleString('en-US')} {baseCode || '—'}
+                                                    {((b as any).unitCostOriginal && (b as any).unitCostCurrency) ? (
+                                                        <>
+                                                            {' '}• أصل {Number((b as any).unitCostOriginal).toLocaleString('en-US')} {(b as any).unitCostCurrency}
+                                                            {Number((b as any).fxAtReceipt || 0) > 0 ? ` @FX=${Number((b as any).fxAtReceipt).toFixed(6)}` : ''}
+                                                        </>
+                                                    ) : null}
                                                 </div>
                                                 <div className="text-gray-500 dark:text-gray-400">
                                                     وارد {Number(b.receivedQuantity || 0).toLocaleString('en-US')} • مستهلك {Number(b.consumedQuantity || 0).toLocaleString('en-US')} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}

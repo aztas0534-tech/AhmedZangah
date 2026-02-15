@@ -273,7 +273,7 @@ const ManageCustomersScreen: React.FC = () => {
           return;
         }
         const { data, error } = await supabase
-          .from('customers')
+          .from('customers_business')
           .select('auth_user_id')
           .eq('phone_number', phone)
           .limit(1)

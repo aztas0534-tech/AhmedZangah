@@ -15,6 +15,8 @@ if (typeof window !== 'undefined') {
       }).join(' ').toLowerCase();
       if (text.includes('net::err_aborted')) return;
       if (text.includes('ide_webview_request_time')) return;
+      if (text.includes('invalid refresh token')) return;
+      if (text.includes('refresh token not found')) return;
     } catch {}
     __origError(...args);
   };

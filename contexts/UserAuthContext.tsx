@@ -253,48 +253,11 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
         setCustomers([]);
         return;
       }
-      const { data: rows, error } = await supabase
-        .from('customers')
-        .select('auth_user_id, full_name, phone_number, email, auth_provider, password_salt, password_hash, referral_code, referred_by, loyalty_points, loyalty_tier, total_spent, first_order_discount_applied, avatar_url, preferred_currency, data');
+      const { data: rows, error } = await supabase.rpc('list_customers_directory', { p_limit: 1000 } as any);
       if (error) throw error;
-      let adminIds = new Set<string>();
-      try {
-        const { data: adminRows } = await supabase.from('admin_users').select('auth_user_id');
-        adminIds = new Set((adminRows || []).map((r: any) => String(r?.auth_user_id || '')).filter(Boolean));
-      } catch {
-      }
-      const remoteCustomers = (rows || [])
-        .map(toCustomerFromRow)
-        .filter(Boolean)
-        .filter((c) => !adminIds.has(String((c as any).id || '')));
-      let partyCustomers: Customer[] = [];
-      try {
-        const { data: partyRows } = await supabase
-          .from('financial_parties')
-          .select('id,name,currency_preference,party_type,is_active')
-          .eq('party_type', 'customer')
-          .eq('is_active', true);
-        const list = (partyRows || []).map((r: any) => {
-          const now = new Date().toISOString();
-          return {
-            id: String(r?.id || ''),
-            fullName: typeof r?.name === 'string' ? r.name : undefined,
-            preferredCurrency: typeof r?.currency_preference === 'string' ? r.currency_preference : undefined,
-            authProvider: 'password',
-            loyaltyPoints: 0,
-            loyaltyTier: 'regular',
-            totalSpent: 0,
-            firstOrderDiscountApplied: false,
-            createdAt: now,
-            updatedAt: now,
-          } as Customer;
-        }).filter((c: Customer) => Boolean(c.id));
-        partyCustomers = list;
-      } catch {
-        partyCustomers = [];
-      }
-      const merged = [...remoteCustomers, ...partyCustomers];
-      setCustomers(merged as Customer[]);
+      const normalizedRows = (Array.isArray(rows) ? rows : []).map((r: any) => ({ ...r, auth_user_id: r?.id }));
+      const list = normalizedRows.map(toCustomerFromRow).filter(Boolean);
+      setCustomers(list as Customer[]);
     } catch (error) {
       setCustomers([]);
       if (import.meta.env.DEV) {

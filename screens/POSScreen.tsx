@@ -19,6 +19,7 @@ import POSPaymentPanel from '../components/pos/POSPaymentPanel';
 import ConfirmationModal from '../components/admin/ConfirmationModal';
 import { usePromotions } from '../contexts/PromotionContext';
 import { useSessionScope } from '../contexts/SessionScopeContext';
+import { useWarehouses } from '../contexts/WarehouseContext';
 
 const POSScreen: React.FC = () => {
   const { showNotification } = useToast();
@@ -30,6 +31,8 @@ const POSScreen: React.FC = () => {
   const { fetchStock } = useStock();
   const { activePromotions, refreshActivePromotions, applyPromotionToCart } = usePromotions();
   const sessionScope = useSessionScope();
+  const { warehouses } = useWarehouses();
+  const mcPricingEnabled = Boolean((settings as any)?.ENABLE_MULTI_CURRENCY_PRICING);
   const [items, setItems] = useState<CartItem[]>([]);
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState<number>(0);
@@ -54,7 +57,6 @@ const POSScreen: React.FC = () => {
   const [touchMode, setTouchMode] = useState<boolean>(false);
   const [baseCode, setBaseCode] = useState<string>('');
   const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
-  const [transactionFxRate, setTransactionFxRate] = useState<number>(1);
   const fxRateRef = useRef<number>(1);
   const prevFxRateRef = useRef<number>(1);
   const prevCurrencyRef = useRef<string>('');
@@ -83,6 +85,7 @@ const POSScreen: React.FC = () => {
   const pricingRunIdRef = useRef(0);
   const [pricingBusy, setPricingBusy] = useState(false);
   const [pricingReady, setPricingReady] = useState(true);
+  const initialWarehouseIdRef = useRef<string>('');
   const [costSummaryByItemId, setCostSummaryByItemId] = useState<Record<string, { distinctCosts: number; layersCount: number }>>({});
   const [isPortrait, setIsPortrait] = useState<boolean>(() => {
     try {
@@ -170,18 +173,6 @@ const POSScreen: React.FC = () => {
     return fallback ? [fallback] : [];
   }, [baseCode, currencyOptions, settings.operationalCurrencies, transactionCurrency]);
 
-  const roundMoney = (v: number) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return 0;
-    return Math.round(n * 100) / 100;
-  };
-
-  const convertBaseToTxn = (baseAmount: number, rate: number) => {
-    const r = Number(rate) || 0;
-    if (!(r > 0)) return roundMoney(baseAmount);
-    return roundMoney((Number(baseAmount) || 0) / r);
-  };
-
   const fetchOperationalFxRate = async (currencyCode: string): Promise<number | null> => {
     const code = String(currencyCode || '').trim().toUpperCase();
     if (!code) return null;
@@ -189,18 +180,11 @@ const POSScreen: React.FC = () => {
     if (base && code === base) return 1;
     const supabase = getSupabaseClient();
     if (!supabase) return null;
-    const d = new Date().toISOString().slice(0, 10);
     try {
       const { data, error } = await supabase
-        .from('fx_rates')
-        .select('rate,rate_date')
-        .eq('currency_code', code)
-        .eq('rate_type', 'operational')
-        .lte('rate_date', d)
-        .order('rate_date', { ascending: false })
-        .limit(1);
+        .rpc('get_fx_rate_rpc', { p_currency_code: code } as any);
       if (error) return null;
-      const n = Number((Array.isArray(data) && data.length > 0 ? (data[0] as any)?.rate : null));
+      const n = Number(data);
       return Number.isFinite(n) && n > 0 ? n : null;
     } catch {
       return null;
@@ -219,7 +203,6 @@ const POSScreen: React.FC = () => {
       if (base && nextCode === base) {
         if (!cancelled) {
           fxRateRef.current = 1;
-          setTransactionFxRate(1);
         }
         return;
       }
@@ -232,7 +215,6 @@ const POSScreen: React.FC = () => {
         return;
       }
       fxRateRef.current = rate;
-      setTransactionFxRate(rate);
     };
     void run();
     return () => {
@@ -241,52 +223,9 @@ const POSScreen: React.FC = () => {
   }, [baseCode, operationalCurrencies, showNotification, transactionCurrency]);
 
   useEffect(() => {
-    const newRate = Number(transactionFxRate) || 1;
-    if (!(newRate > 0)) return;
-    const oldRate = Number(prevFxRateRef.current) || 1;
-    if (discountType === 'amount' && (Number(discountValue) || 0) > 0 && !pendingOrderId && oldRate > 0) {
-      const baseAmt = (Number(discountValue) || 0) * oldRate;
-      const nextDiscount = roundMoney(baseAmt / newRate);
-      if (Math.abs(nextDiscount - (Number(discountValue) || 0)) > 0.0001) {
-        setDiscountValue(nextDiscount);
-      }
-    }
-    setItems((prev) => {
-      const next = prev.map((item: any) => {
-        if ((item as any)?.lineType === 'promotion' || Boolean((item as any)?.promotionId)) return item;
-        const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
-        const basePerUnit = Number(item._basePricePerUnit != null ? item._basePricePerUnit : (item.pricePerUnit != null ? item.pricePerUnit : 0)) || 0;
-        const addonsList = Array.isArray(item.addons) ? item.addons : [];
-        const nextAddonsList = addonsList.map((a: any) => {
-          const aBase = Number(a?._basePrice != null ? a._basePrice : a?.price) || 0;
-          return { ...a, _basePrice: aBase, price: convertBaseToTxn(aBase, newRate) };
-        });
-        const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
-        const nextSelected: any = {};
-        for (const [id, entry] of Object.entries(selected)) {
-          const e: any = entry as any;
-          const addon = e?.addon;
-          const aBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
-          nextSelected[id] = {
-            ...e,
-            addon: addon ? { ...addon, _basePrice: aBase, price: convertBaseToTxn(aBase, newRate) } : addon,
-          };
-        }
-        return {
-          ...item,
-          _basePrice: basePrice,
-          _basePricePerUnit: basePerUnit,
-          price: convertBaseToTxn(basePrice, newRate),
-          ...(item.unitType === 'gram' ? { pricePerUnit: convertBaseToTxn(basePerUnit, newRate) } : {}),
-          addons: nextAddonsList,
-          selectedAddons: nextSelected,
-          _fefoMinPrice: item._fefoMinPriceBase != null ? convertBaseToTxn(Number(item._fefoMinPriceBase) || 0, newRate) : item._fefoMinPrice,
-          _fefoNextBatchMinPrice: item._fefoNextBatchMinPriceBase != null ? convertBaseToTxn(Number(item._fefoNextBatchMinPriceBase) || 0, newRate) : item._fefoNextBatchMinPrice,
-        };
-      });
-      return next;
-    });
-  }, [discountType, discountValue, pendingOrderId, transactionFxRate]);
+    if (!items.length) return;
+    setPricingReady(false);
+  }, [transactionCurrency, items.length]);
 
   useEffect(() => {
     const current = String(transactionCurrency || '').trim().toUpperCase();
@@ -435,13 +374,12 @@ const POSScreen: React.FC = () => {
       .map((i) => {
         if (isPromotionLine(i)) return `promo:${(i as any).promotionId || i.id}:${getPricingQty(i)}`;
         const factor = Number((i as any)?.uomQtyInBase || 1) || 1;
-        const priceSig = `${Number((i as any)?.price) || 0}:${Number((i as any)?.pricePerUnit) || 0}`;
-        return `${i.id}:${i.unitType || ''}:${getPricingQty(i)}:u${factor}:p${priceSig}`;
+        return `${i.id}:${i.unitType || ''}:${getPricingQty(i)}:u${factor}:c${transactionCurrency}`;
       })
       .sort()
       .join('|');
     return `${base}|cust:${selectedCustomerId || ''}`;
-  }, [getPricingQty, isPromotionLine, items, selectedCustomerId]);
+  }, [getPricingQty, isPromotionLine, items, selectedCustomerId, transactionCurrency]);
 
   useEffect(() => {
     if (pendingOrderId) return;
@@ -517,14 +455,9 @@ const POSScreen: React.FC = () => {
         const warehouseId = sessionScope.requireScope().warehouseId;
         const sessionData = await supabase.auth.getSession();
         const hasSession = Boolean(sessionData.data.session);
-        if (!hasSession) {
-          fefoPricingDisabledRef.current = true;
-        }
-        // force local pricing for in-store POS
-        fefoPricingDisabledRef.current = true;
         const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
-          const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
+          const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}:${String((item as any).forcedBatchId || '')}`;
           const cached = pricingCacheRef.current.get(key);
           if (cached) {
             const hasFefoSignal = Boolean((cached as any)?.batchId) || (cached as any)?.baseMinPrice != null || (cached as any)?.minPrice != null;
@@ -533,29 +466,21 @@ const POSScreen: React.FC = () => {
             }
           }
           const customerId = (selectedCustomerId && selectedCustomerId.trim() !== '') ? selectedCustomerId : null;
-          const resolveLocal = async () => {
-            const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
-            const unitPrice = convertBaseToTxn(baseUnitPrice, fxRateRef.current);
-            const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
-            const unitPricePerKg = item.unitType === 'gram' ? convertBaseToTxn(baseUnitPricePerKg || 0, fxRateRef.current) : undefined;
-            return { baseUnitPrice, unitPrice, baseUnitPricePerKg, unitPricePerKg };
-          };
-          // server fallback disabled: use local price only
           const call = async () => {
             return await supabase.rpc('get_fefo_pricing', {
               p_item_id: item.id,
               p_warehouse_id: warehouseId,
               p_quantity: pricingQty,
               p_customer_id: customerId,
+              p_currency_code: transactionCurrency,
+              p_batch_id: (item as any).forcedBatchId || null,
             });
           };
-          const resolveViaFallback = async () => {
-            return await resolveLocal();
-          };
-
           let entry: any;
           if (!hasSession || fefoPricingDisabledRef.current) {
-            entry = await resolveViaFallback();
+            const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
+            const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
+            entry = { baseUnitPrice, unitPrice: baseUnitPrice, baseUnitPricePerKg, unitPricePerKg: baseUnitPricePerKg };
           } else {
             let { data, error } = await call();
             if (error && isRpcNotFoundError(error)) {
@@ -568,31 +493,31 @@ const POSScreen: React.FC = () => {
             }
             if (error && isRpcNotFoundError(error)) {
               fefoPricingDisabledRef.current = true;
-              entry = await resolveViaFallback();
+              const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
+              const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
+              entry = { baseUnitPrice, unitPrice: baseUnitPrice, baseUnitPricePerKg, unitPricePerKg: baseUnitPricePerKg };
             } else if (error) {
-              entry = await resolveViaFallback();
+              throw error;
             } else {
               const row = (Array.isArray(data) ? data[0] : data) as any;
               const baseUnitPrice = Number(row?.suggested_price);
               if (!Number.isFinite(baseUnitPrice) || baseUnitPrice < 0) {
-                entry = await resolveViaFallback();
+                throw new Error('تعذر احتساب السعر.');
               } else {
-                const unitPrice = convertBaseToTxn(baseUnitPrice, fxRateRef.current);
                 const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
-                const unitPricePerKg = item.unitType === 'gram' ? convertBaseToTxn(baseUnitPricePerKg || 0, fxRateRef.current) : undefined;
                 entry = {
                   baseUnitPrice,
-                  unitPrice,
+                  unitPrice: baseUnitPrice,
                   baseUnitPricePerKg,
-                  unitPricePerKg,
+                  unitPricePerKg: baseUnitPricePerKg,
                   batchId: row?.batch_id ? String(row.batch_id) : undefined,
                   batchCode: row?.batch_code ? String(row.batch_code) : undefined,
                   expiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
                   unitCost: Number(row?.unit_cost) || 0,
                   baseMinPrice: Number(row?.min_price) || 0,
-                  minPrice: convertBaseToTxn(Number(row?.min_price) || 0, fxRateRef.current),
+                  minPrice: Number(row?.min_price) || 0,
                   baseNextBatchMinPrice: row?.next_batch_min_price != null ? (Number(row.next_batch_min_price) || 0) : undefined,
-                  nextBatchMinPrice: row?.next_batch_min_price != null ? convertBaseToTxn((Number(row.next_batch_min_price) || 0), fxRateRef.current) : undefined,
+                  nextBatchMinPrice: row?.next_batch_min_price != null ? (Number(row.next_batch_min_price) || 0) : undefined,
                   warningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
                   reasonCode: row?.reason_code ? String(row.reason_code) : undefined,
                 };
@@ -656,7 +581,7 @@ const POSScreen: React.FC = () => {
     };
 
     void run();
-  }, [pendingOrderId, pricingSignature, sessionScope, showNotification]);
+  }, [pendingOrderId, pricingSignature, sessionScope, showNotification, mcPricingEnabled]);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -699,15 +624,18 @@ const POSScreen: React.FC = () => {
   }, [items, sessionScope]);
 
   const pricingBlockReason = useMemo(() => {
+    const currentWid = String(sessionScope.scope?.warehouseId || '').trim();
+    const initialWid = String(initialWarehouseIdRef.current || '').trim();
+    const warehouseChanged = items.length > 0 && initialWid && currentWid && currentWid !== initialWid;
+    if (warehouseChanged) return 'لا يمكن تغيير المستودع بعد إضافة أصناف. امسح القائمة أو أنهِ البيع.';
     if (!items.length) return '';
     if (pricingBusy) return 'جارٍ تسعير الأصناف من الخادم...';
     if (!pricingReady) return 'تعذر تسعير الأصناف من الخادم. تحقق من الاتصال ثم أعد المحاولة.';
     return '';
-  }, [items.length, pricingBusy, pricingReady]);
+  }, [items.length, pricingBusy, pricingReady, sessionScope.scope?.warehouseId]);
 
   const addLine = (item: MenuItem, input: { quantity?: number; weight?: number }) => {
     if (pendingOrderId) return;
-    const fx = fxRateRef.current > 0 ? fxRateRef.current : 1;
     const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
     const qty = isWeight ? 1 : Number(input.quantity || 0);
     const wt = isWeight ? Number(input.weight || 0) : undefined;
@@ -717,7 +645,7 @@ const POSScreen: React.FC = () => {
     const addons = Array.isArray((item as any).addons) ? (item as any).addons : [];
     const nextAddons = addons.map((a: any) => {
       const aBase = Number(a?._basePrice != null ? a._basePrice : a?.price) || 0;
-      return { ...a, _basePrice: aBase, price: convertBaseToTxn(aBase, fx) };
+      return { ...a, _basePrice: aBase, price: aBase };
     });
     const cartItem: CartItem = {
       ...item,
@@ -727,7 +655,7 @@ const POSScreen: React.FC = () => {
       cartItemId: crypto.randomUUID(),
       unit: item.unitType || 'piece',
       lineType: 'menu',
-      price: convertBaseToTxn(basePrice, fx),
+      price: basePrice,
       uomCode: String(item.unitType || 'piece'),
       uomQtyInBase: 1,
     };
@@ -735,14 +663,14 @@ const POSScreen: React.FC = () => {
     if (String(item.unitType || '') === 'gram') {
       const basePerUnit = basePrice * 1000;
       (cartItem as any)._basePricePerUnit = basePerUnit;
-      (cartItem as any).pricePerUnit = convertBaseToTxn(basePerUnit, fx);
+      (cartItem as any).pricePerUnit = basePerUnit;
     }
     (cartItem as any).addons = nextAddons;
     setItems(prev => [cartItem, ...prev]);
     setSelectedCartItemId(cartItem.cartItemId);
   };
 
-  const updateLine = (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number }) => {
+  const updateLine = (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; forcedBatchId?: string | null }) => {
     if (pendingOrderId) return;
     setItems(prev => {
       const updated = prev.map(i => {
@@ -757,6 +685,7 @@ const POSScreen: React.FC = () => {
           weight: isWeight ? nextWeight : undefined,
           uomCode: next.uomCode != null ? next.uomCode : i.uomCode,
           uomQtyInBase: next.uomQtyInBase != null ? next.uomQtyInBase : i.uomQtyInBase,
+          forcedBatchId: typeof next.forcedBatchId === 'undefined' ? (i as any).forcedBatchId : (next.forcedBatchId || undefined),
         };
       });
 
@@ -866,6 +795,14 @@ const POSScreen: React.FC = () => {
   }, [addonsCartItemId, items, openAddons, pendingOrderId, removeLine, selectedCartItemId, updateLine]);
 
   const openPromotionPicker = () => {
+  useEffect(() => {
+    const wid = String(sessionScope.scope?.warehouseId || '').trim();
+    if (items.length === 0) {
+      initialWarehouseIdRef.current = wid;
+    }
+  }, [items.length, sessionScope.scope?.warehouseId]);
+
+    if (pendingOrderId) return;
     if (pendingOrderId) return;
     const online = typeof navigator !== 'undefined' && navigator.onLine !== false;
     if (!online) {
@@ -1015,7 +952,8 @@ const POSScreen: React.FC = () => {
         menuItemId: i.id,
         quantity: isWeight ? undefined : i.quantity,
         weight: isWeight ? (i.weight || 0) : undefined,
-        selectedAddons: addons
+        selectedAddons: addons,
+        batchId: (i as any).forcedBatchId || undefined,
       };
     });
     createInStorePendingOrder({
@@ -1269,7 +1207,8 @@ const POSScreen: React.FC = () => {
         menuItemId: i.id,
         quantity: isWeight ? undefined : i.quantity,
         weight: isWeight ? (i.weight || 0) : undefined,
-        selectedAddons: addons
+        selectedAddons: addons,
+        batchId: (i as any).forcedBatchId || undefined,
       };
     });
     if (pendingOrderId) {
@@ -1430,6 +1369,28 @@ const POSScreen: React.FC = () => {
         <POSHeaderShiftStatus />
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="px-3 py-2 rounded-xl border dark:border-gray-700 text-xs font-semibold bg-gray-50 dark:bg-gray-900/30">
+          <span className="text-gray-600 dark:text-gray-300">المستودع:</span>{' '}
+          <span className="font-mono">
+            {(() => {
+              const wid = String(sessionScope.scope?.warehouseId || '').trim();
+              const w = (warehouses || []).find((x: any) => String(x?.id || '') === wid);
+              return String((w as any)?.name || (w as any)?.code || wid || '—');
+            })()}
+          </span>
+        </div>
+        <div className="px-3 py-2 rounded-xl border dark:border-gray-700 text-xs font-semibold bg-gray-50 dark:bg-gray-900/30">
+          <span className="text-gray-600 dark:text-gray-300">FX:</span>{' '}
+          <span dir="ltr" className="font-mono">
+            {(() => {
+              const base = String(baseCode || '').toUpperCase();
+              const cur = String(transactionCurrency || '').toUpperCase();
+              const rate = Number(fxRateRef.current) || 1;
+              if (base && cur && base !== cur) return rate.toFixed(6);
+              return '1.000000';
+            })()}
+          </span>
+        </div>
         <button
           type="button"
           onClick={() => navigate('/admin/orders')}
@@ -1492,7 +1453,7 @@ const POSScreen: React.FC = () => {
           <select
             value={transactionCurrency}
             onChange={(e) => setTransactionCurrency(String(e.target.value || '').trim().toUpperCase())}
-            disabled={Boolean(pendingOrderId) || pricingBusy}
+            disabled={Boolean(pendingOrderId) || pricingBusy || items.length > 0}
             className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {operationalCurrencies.map((c) => (
@@ -1548,10 +1509,15 @@ const POSScreen: React.FC = () => {
             </div>
             <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
               <POSPaymentPanel
-                key={`pay:${transactionCurrency}:${transactionFxRate}`}
+                key={`pay:${transactionCurrency}`}
                 total={total}
                 currencyCode={transactionCurrency}
-                canFinalize={items.length > 0 && pricingReady && !pricingBusy}
+              canFinalize={(() => {
+                const wid = String(sessionScope.scope?.warehouseId || '').trim();
+                const initWid = String(initialWarehouseIdRef.current || '').trim();
+                const changed = items.length > 0 && initWid && wid && wid !== initWid;
+                return items.length > 0 && pricingReady && !pricingBusy && !changed;
+              })()}
                 blockReason={pricingBlockReason}
                 onHold={handleHold}
                 onFinalize={handleFinalize}

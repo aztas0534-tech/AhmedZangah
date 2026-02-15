@@ -240,7 +240,7 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
 
     if (typeof window !== 'undefined') {
       const status = Number(res.status);
-      if (status === 401 || status === 403) {
+      if (status === 401 || status === 403 || status === 400) {
         try {
           const urlStr = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : String((input as any)?.url || ''));
           const cloned = res.clone();
@@ -250,7 +250,14 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
             normalized.includes('jwt cryptographic operation failed') ||
             normalized.includes('invalid jwt') ||
             normalized.includes('session_verification_failed');
-          if (isAuthHeaderIssue) {
+          const isInvalidRefreshToken =
+            status === 400 &&
+            /\/auth\/v1\/token/i.test(urlStr) &&
+            (normalized.includes('invalid refresh token') ||
+              normalized.includes('refresh token not found') ||
+              normalized.includes('refresh_token_not_found') ||
+              normalized.includes('invalid_refresh_token'));
+          if (isAuthHeaderIssue || isInvalidRefreshToken) {
             window.dispatchEvent(new CustomEvent(SUPABASE_AUTH_ERROR_EVENT, { detail: { status, url: urlStr, message: txt } }));
           }
         } catch {
@@ -520,34 +527,31 @@ export const getOperationalFxRate = async (currencyCode: string, rateDate?: stri
     if (base && code === base) return 1;
 
     try {
-      const { data, error } = await supabase.rpc('get_fx_rate', {
-        p_currency: code,
-        p_date: dateStr,
-        p_rate_type: 'operational',
-      } as any);
-      if (!error) {
-        const n = Number(data);
-        if (Number.isFinite(n) && n > 0) return n;
-        if (data == null) return null;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (dateStr !== todayStr) {
+        const { data, error } = await supabase.rpc('get_fx_rate', {
+          p_currency: code,
+          p_date: dateStr,
+          p_rate_type: 'operational',
+        } as any);
+        if (!error) {
+          const n = Number(data);
+          if (Number.isFinite(n) && n > 0) return n;
+          if (data == null) return null;
+        }
+      } else {
+        const { data, error } = await supabase.rpc('get_fx_rate_rpc', {
+          p_currency_code: code,
+        } as any);
+        if (!error) {
+          const n = Number(data);
+          if (Number.isFinite(n) && n > 0) return n;
+          if (data == null) return null;
+        }
       }
     } catch {
     }
-
-    try {
-      const { data, error } = await supabase
-        .from('fx_rates')
-        .select('rate,rate_date')
-        .eq('currency_code', code)
-        .eq('rate_type', 'operational')
-        .lte('rate_date', dateStr)
-        .order('rate_date', { ascending: false })
-        .limit(1);
-      if (error) return null;
-      const n = Number((Array.isArray(data) && data.length > 0 ? (data[0] as any)?.rate : null));
-      return Number.isFinite(n) && n > 0 ? n : null;
-    } catch {
-      return null;
-    }
+    return null;
   })()
     .then((value) => {
       opFxCache!.set(cacheKey, { at: Date.now(), value });

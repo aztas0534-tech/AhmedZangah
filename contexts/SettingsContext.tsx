@@ -133,6 +133,7 @@ const defaultSettings: AppSettings = {
   address: 'مأرب، اليمن',
   baseCurrency: '',
   operationalCurrencies: [],
+  ENABLE_MULTI_CURRENCY_PRICING: false,
   maintenanceEnabled: false,
   maintenanceMessage: 'التطبيق في وضع الصيانة مؤقتًا. الرجاء المحاولة لاحقًا.',
   brandColors: {

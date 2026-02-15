@@ -610,6 +610,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const supabase = getSupabaseClient();
       if (!supabase) return;
+      const existing = orders.find((o) => o.id === order.id);
+      if (existing && (existing.invoiceIssuedAt || existing.invoiceSnapshot)) {
+        const existingCurrency = String((existing as any).currency || '').trim().toUpperCase();
+        const nextCurrency = String((order as any).currency || '').trim().toUpperCase();
+        if (existingCurrency && nextCurrency && existingCurrency !== nextCurrency) {
+          throw new Error('لا يمكن تغيير عملة الطلب بعد إصدار الفاتورة.');
+        }
+        if (existingCurrency && !nextCurrency) {
+          (order as any).currency = existingCurrency;
+        }
+      }
       const isSchemaCacheMissingColumnError = (err: any, column: string) => {
         const code = String(err?.code || '');
         const msg = String(err?.message || '');
@@ -937,8 +948,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const ensureInvoiceIssued = useCallback(async (order: Order, issuedAtIso?: string): Promise<Order> => {
     if (order.invoiceIssuedAt && order.invoiceNumber) return order;
     if (!isInvoiceEligible(order)) return order;
+    const orderWarehouseId =
+      (order as any).warehouseId ||
+      (order as any).warehouse_id ||
+      (order as any).data?.warehouseId ||
+      (order as any).data?.warehouse_id;
+    if (!orderWarehouseId) {
+      throw new Error('لا يمكن إصدار فاتورة بدون مستودع.');
+    }
 
     const invoiceIssuedAt = order.invoiceIssuedAt || issuedAtIso || order.deliveredAt || order.createdAt || order.paidAt || new Date().toISOString();
+    const baseCurrency = (await getBaseCurrencyCode()) || undefined;
+    const rawFxRate = (order as any).fxRate ?? (order as any).fx_rate ?? (order as any).data?.fxRate ?? (order as any).data?.fx_rate;
+    const fxRate = Number(rawFxRate);
+    const fxRateSnapshot = Number.isFinite(fxRate) ? fxRate : undefined;
     let invoiceNumber = order.invoiceNumber || '';
     try {
       const supabase = getSupabaseClient();
@@ -962,6 +985,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         createdAt: order.createdAt,
         orderSource: order.orderSource,
         items: typeof structuredClone === 'function' ? structuredClone(order.items) : JSON.parse(JSON.stringify(order.items)),
+        currency: order.currency,
+        fxRate: fxRateSnapshot,
+        baseCurrency,
+        totals: {
+          subtotal: order.subtotal,
+          discountAmount: order.discountAmount,
+          deliveryFee: order.deliveryFee,
+          taxAmount: (order as any).taxAmount,
+          total: order.total,
+        },
         subtotal: order.subtotal,
         deliveryFee: order.deliveryFee,
         discountAmount: order.discountAmount,
@@ -1334,6 +1367,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     });
 
+    let scopedWarehouseId: string | null = null;
+    try {
+      scopedWarehouseId = sessionScope?.scope?.warehouseId || sessionScope.requireScope().warehouseId;
+    } catch {
+      scopedWarehouseId = null;
+    }
+    if (!scopedWarehouseId) {
+      const wid = (orderData as any)?.warehouseId;
+      if (typeof wid === 'string' && wid.trim().length > 0) {
+        scopedWarehouseId = wid.trim();
+      }
+    }
     const rpcPayload = {
         p_items: simplifiedItems,
         p_delivery_zone_id: orderData.deliveryZoneId,
@@ -1349,7 +1394,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_points_redeemed_value: orderData.pointsRedeemedValue || 0,
         p_payment_proof_type: orderData.paymentProofType || null,
         p_payment_proof: orderData.paymentProof || null,
-        p_currency: (orderData as any)?.currency ? String((orderData as any).currency).trim().toUpperCase() : null
+        p_currency: (orderData as any)?.currency ? String((orderData as any).currency).trim().toUpperCase() : null,
+        p_warehouse_id: scopedWarehouseId
     };
 
     const { data: createdOrderData, error } = await supabase.rpc('create_order_secure_with_payment_proof', rpcPayload);
@@ -1531,6 +1577,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         menuItemId: String(l.menuItemId),
         quantity: typeof l.quantity === 'number' ? l.quantity : undefined,
         weight: typeof l.weight === 'number' ? l.weight : undefined,
+        batchId: typeof l.batchId === 'string' && l.batchId.trim() ? String(l.batchId) : undefined,
         selectedAddons: l.selectedAddons || {},
       }));
     const normalizedPromoLines = rawLines
@@ -1593,6 +1640,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         quantity,
         weight,
         selectedAddons: resolvedAddons,
+        forcedBatchId: line.batchId,
         cartItemId: crypto.randomUUID(),
       };
     });
@@ -1681,16 +1729,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
           ? (item.weight || item.quantity)
           : item.quantity;
+        const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
         const call = async (customerId: string | null) => {
-          return await supabaseForPricing!.rpc('get_item_price_with_discount', {
+          return await supabaseForPricing!.rpc('get_fefo_pricing', {
             p_item_id: item.id,
-            p_customer_id: customerId,
+            p_warehouse_id: warehouseId,
             p_quantity: pricingQty,
+            p_customer_id: customerId,
+            p_currency_code: desiredCurrency,
+            p_batch_id: (item as any).forcedBatchId || null,
           });
         };
-        const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
         let { data, error } = await call(rawCustomerId);
-        
+
         if (error && isRpcNotFoundError(error)) {
             const reloaded = await reloadPostgrestSchema();
             if (reloaded) {
@@ -1700,42 +1751,26 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
         }
 
-        if (error) {
-          const code = String((error as any)?.code || '');
-          const msg = String((error as any)?.message || '');
-          if (code === '42883' || /operator does not exist:\s*text\s*=\s*uuid/i.test(msg)) {
-            const retry = await call(null);
-            data = retry.data;
-            error = retry.error;
-          }
-          if (error && /could not choose the best candidate function/i.test(msg)) {
-            const { data: d2, error: e2 } = await supabaseForPricing!.rpc('get_item_price', {
-              p_item_id: item.id,
-              p_quantity: pricingQty,
-              p_customer_id: rawCustomerId,
-            });
-            data = d2;
-            error = e2;
-            if (error && /operator does not exist:\s*text\s*=\s*uuid/i.test(String((error as any)?.message || ''))) {
-              const { data: d3, error: e3 } = await supabaseForPricing!.rpc('get_item_price', {
-                p_item_id: item.id,
-                p_quantity: pricingQty,
-                p_customer_id: null,
-              });
-              data = d3;
-              error = e3;
-            }
-          }
-        }
         if (error) throw new Error(localizeSupabaseError(error));
-        const unitPrice = Number(data);
+        const row = (Array.isArray(data) ? data[0] : data) as any;
+        const unitPrice = Number(row?.suggested_price);
         if (!Number.isFinite(unitPrice) || unitPrice < 0) {
           throw new Error('تعذر احتساب السعر.');
         }
+        const basePatch: any = {
+          _pricedByRpc: true,
+          _fefoBatchId: row?.batch_id ? String(row.batch_id) : undefined,
+          _fefoBatchCode: row?.batch_code ? String(row.batch_code) : undefined,
+          _fefoExpiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
+          _fefoUnitCost: Number(row?.unit_cost) || 0,
+          _fefoMinPrice: row?.min_price != null ? Number(row?.min_price) : undefined,
+          _fefoNextBatchMinPrice: row?.next_batch_min_price != null ? Number(row?.next_batch_min_price) : undefined,
+          _fefoWarningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
+        };
         if (item.unitType === 'gram') {
-          return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000 };
+          return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
         }
-        return { ...item, price: unitPrice };
+        return { ...item, price: unitPrice, ...basePatch };
         }));
       }
     } else {
@@ -1757,16 +1792,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     items = pricedItems;
 
     let fxRate = 1;
-    const roundMoney = (v: number) => {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return 0;
-      return Math.round(n * 100) / 100;
-    };
-    const convertBaseToTxn = (baseAmount: number) => {
-      const r = Number(fxRate) || 0;
-      if (!(r > 0)) return roundMoney(baseAmount);
-      return roundMoney((Number(baseAmount) || 0) / r);
-    };
 
     items = items.map((item: any) => {
       const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
@@ -1798,44 +1823,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       const supabaseFx = getSupabaseClient();
       if (!supabaseFx) throw new Error('Supabase غير مهيأ.');
-      const d = new Date().toISOString().slice(0, 10);
-      const { data: fxValue, error: fxErr } = await supabaseFx.rpc('get_fx_rate', {
-        p_currency: desiredCurrency,
-        p_date: d,
-        p_rate_type: 'operational',
-      });
+      const { data: fxValue, error: fxErr } = await supabaseFx.rpc('get_fx_rate_rpc', {
+        p_currency_code: desiredCurrency,
+      } as any);
       if (fxErr) throw new Error(localizeSupabaseError(fxErr));
       const fx = Number(fxValue);
       if (!Number.isFinite(fx) || !(fx > 0)) {
         throw new Error('لا يوجد سعر صرف تشغيلي صالح لهذه العملة. أضف السعر من شاشة أسعار الصرف.');
       }
       fxRate = fx;
-
-      items = items.map((item: any) => {
-        const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
-        const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
-        const nextSelected: any = {};
-        for (const [id, entry] of Object.entries(selected)) {
-          const e: any = entry as any;
-          const addon = e?.addon;
-          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
-          nextSelected[id] = {
-            ...e,
-            addon: addon ? { ...addon, _basePrice: addonBase, price: convertBaseToTxn(addonBase) } : addon,
-          };
-        }
-        const next: any = {
-          ...item,
-          price: convertBaseToTxn(basePrice),
-          selectedAddons: nextSelected,
-        };
-        if (item.unitType === 'gram') {
-          const basePerUnit = Number(item._basePricePerUnit != null ? item._basePricePerUnit : (Number(item.pricePerUnit) || basePrice * 1000)) || 0;
-          next._basePricePerUnit = basePerUnit;
-          next.pricePerUnit = convertBaseToTxn(basePerUnit);
-        }
-        return next as CartItem;
-      });
     }
 
     const computedSubtotal = items.reduce((total, item) => {
@@ -2051,6 +2047,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       netDays: input.isCredit ? creditDays : 0,
       dueDate: dueYmd,
     };
+    (newOrder as any).fxRate = fxRate;
+    (newOrder as any).baseCurrency = baseCurrency;
 
     const payloadItems = newOrder.items
       .filter((item: any) => !(item?.lineType === 'promotion' || item?.promotionId))
@@ -2058,6 +2056,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         itemId: String((item as any)?.itemId || item.id || ''),
         quantity: getRequestedItemQuantity(item),
         uomCode: String((item as any)?.uomCode || '').trim() || undefined,
+        uomQtyInBase: Number((item as any)?.uomQtyInBase) || 1,
+        batchId: (item as any)?._fefoBatchId || (item as any)?.forcedBatchId || undefined,
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     if (shouldAttemptImmediatePayment && payloadItems.length === 0 && !hasPromoLines) {
@@ -2150,12 +2150,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           throw new Error('انتهت الجلسة. الرجاء تسجيل الدخول مرة أخرى.');
         }
 
-        const merged = new Map<string, number>();
+        const merged = new Map<string, { quantity: number; itemId: string; batchId?: string }>();
         for (const item of (newOrder.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId))) {
           const itemId = String((item as any)?.itemId || (item as any)?.id || '');
           const quantity = Number(getRequestedBaseQuantity(item)) || 0;
           if (!itemId || !(quantity > 0)) continue;
-          merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+          const batchId = String((item as any)?._fefoBatchId || (item as any)?.forcedBatchId || '').trim();
+          const key = `${itemId}:${batchId}`;
+          const prev = merged.get(key);
+          merged.set(key, { itemId, batchId: batchId || undefined, quantity: (prev?.quantity || 0) + quantity });
         }
 
         const promoLines = Array.isArray((newOrder as any).promotionLines) ? (newOrder as any).promotionLines : [];
@@ -2165,12 +2168,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
             const quantity = Number((pi as any)?.quantity) || 0;
             if (!itemId || !(quantity > 0)) continue;
-            merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+            const key = `${itemId}:`;
+            const prev = merged.get(key);
+            merged.set(key, { itemId, quantity: (prev?.quantity || 0) + quantity });
           }
         }
 
-        const reserveItems = Array.from(merged.entries())
-          .map(([itemId, quantity]) => ({ itemId, quantity }))
+        const reserveItems = Array.from(merged.values())
+          .map(({ itemId, quantity, batchId }) => ({ itemId, quantity, batchId }))
           .filter((x) => x.itemId && Number(x.quantity) > 0);
 
         if (reserveItems.length > 0) {
@@ -2410,15 +2415,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
         ? (item.weight || item.quantity)
         : item.quantity;
-      const { data, error } = await supabaseForPricing!.rpc('get_item_price_with_discount', {
+      const { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
+        p_warehouse_id: warehouseId,
+        p_currency_code: desiredCurrency,
         p_customer_id: input.customerId ? String(input.customerId) : null,
         p_quantity: pricingQty,
       });
       if (error) {
         throw new Error(localizeSupabaseError(error));
       }
-      const unitPrice = Number(data);
+      const row = (Array.isArray(data) ? data[0] : data) as any;
+      const unitPrice = Number(row?.suggested_price);
       if (!Number.isFinite(unitPrice) || unitPrice < 0) {
         throw new Error('تعذر احتساب السعر.');
       }
@@ -2430,16 +2438,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     items = pricedItems;
 
     let fxRate = 1;
-    const roundMoney = (v: number) => {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return 0;
-      return Math.round(n * 100) / 100;
-    };
-    const convertBaseToTxn = (baseAmount: number) => {
-      const r = Number(fxRate) || 0;
-      if (!(r > 0)) return roundMoney(baseAmount);
-      return roundMoney((Number(baseAmount) || 0) / r);
-    };
 
     items = items.map((item: any) => {
       const basePrice = Number(item.price) || 0;
@@ -2468,43 +2466,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (desiredCurrency !== baseCurrency) {
       const supabaseFx = getSupabaseClient();
       if (!supabaseFx) throw new Error('Supabase غير مهيأ.');
-      const d = new Date().toISOString().slice(0, 10);
-      const { data: fxValue, error: fxErr } = await supabaseFx.rpc('get_fx_rate', {
-        p_currency: desiredCurrency,
-        p_date: d,
-        p_rate_type: 'operational',
-      });
+      const { data: fxValue, error: fxErr } = await supabaseFx.rpc('get_fx_rate_rpc', {
+        p_currency_code: desiredCurrency,
+      } as any);
       if (fxErr) throw new Error(localizeSupabaseError(fxErr));
       const fx = Number(fxValue);
       if (!Number.isFinite(fx) || !(fx > 0)) {
         throw new Error('لا يوجد سعر صرف تشغيلي صالح لهذه العملة. أضف السعر من شاشة أسعار الصرف.');
       }
       fxRate = fx;
-      items = items.map((item: any) => {
-        const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
-        const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
-        const nextSelected: any = {};
-        for (const [id, entry] of Object.entries(selected)) {
-          const e: any = entry as any;
-          const addon = e?.addon;
-          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
-          nextSelected[id] = {
-            ...e,
-            addon: addon ? { ...addon, _basePrice: addonBase, price: convertBaseToTxn(addonBase) } : addon,
-          };
-        }
-        const next: any = {
-          ...item,
-          price: convertBaseToTxn(basePrice),
-          selectedAddons: nextSelected,
-        };
-        if (item.unitType === 'gram') {
-          const basePerUnit = Number(item._basePricePerUnit != null ? item._basePricePerUnit : (Number(item.pricePerUnit) || basePrice * 1000)) || 0;
-          next._basePricePerUnit = basePerUnit;
-          next.pricePerUnit = convertBaseToTxn(basePerUnit);
-        }
-        return next as CartItem;
-      });
     }
 
     const computedSubtotal = items.reduce((total, item) => {
@@ -2638,17 +2608,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (items.some((i) => getRequestedItemQuantity(i) <= 0)) {
       throw new Error('الكمية/الوزن يجب أن يكون أكبر من صفر.');
     }
+    const desiredCurrency = String(((input as any).currency || (await getBaseCurrencyCode()) || '')).toUpperCase();
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
       const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram') ? (item.weight || item.quantity) : item.quantity;
-      const { data, error } = await supabaseForPricing!.rpc('get_item_price_with_discount', {
+      let { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
+        p_warehouse_id: warehouseId,
         p_customer_id: input.customerId ? String(input.customerId) : null,
         p_quantity: pricingQty,
+        p_currency_code: desiredCurrency,
       });
       if (error) throw new Error(localizeSupabaseError(error));
-      const unitPrice = Number(data);
+      const row = (Array.isArray(data) ? data[0] : data) as any;
+      const unitPrice = Number(row?.suggested_price);
       if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('تعذر احتساب السعر.');
       if (item.unitType === 'gram') return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000 };
       return { ...item, price: unitPrice };
@@ -2674,7 +2648,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       : Math.max(0, Math.min(computedSubtotal, discountValue));
     const computedTotal = Math.max(0, computedSubtotal - discountAmount);
     const nowIso = new Date().toISOString();
-    const desiredCurrency = String(((input as any).currency || (await getBaseCurrencyCode()) || '')).toUpperCase();
     const newOrder: Order = {
       id: crypto.randomUUID(),
       userId: isUuid(input.customerId) ? input.customerId : undefined,

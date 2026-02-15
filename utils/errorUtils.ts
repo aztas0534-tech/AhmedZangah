@@ -211,6 +211,16 @@ export const localizeSupabaseError = (error: unknown): string => {
   if (isAbortLikeError(error)) return '';
   const anyErr = error as any;
   const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+  if (code === '23503') {
+    const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
+    const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+    const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+    const combined = `${msg}\n${details}\n${hint}`.toLowerCase();
+    if (combined.includes('journal_entries_journal_id_fk') || (combined.includes('journal_entries') && combined.includes('journal_id'))) {
+      return 'تعذر إنشاء القيد المحاسبي لأن دفتر اليومية غير مهيأ (journals). طبّق تحديثات قاعدة البيانات (migrations) أو أنشئ دفتر يومية افتراضي ثم أعد المحاولة.';
+    }
+    return 'تعذر الحفظ بسبب ارتباطات بيانات مفقودة (مرجع غير موجود).';
+  }
   if (code === '23505') {
     const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
     const details = typeof anyErr?.details === 'string' ? anyErr.details : '';

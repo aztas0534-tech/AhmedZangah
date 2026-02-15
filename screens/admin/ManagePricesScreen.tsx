@@ -5,7 +5,8 @@ import type { MenuItem, PriceHistory } from '../../types';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useToast } from '../../contexts/ToastContext';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
-import { getBaseCurrencyCode } from '../../supabase';
+import { getBaseCurrencyCode, getOperationalFxRate, getSupabaseClient } from '../../supabase';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 const ManagePricesScreen: React.FC = () => {
     const { menuItems } = useMenu();
@@ -18,12 +19,17 @@ const ManagePricesScreen: React.FC = () => {
     const [selectedGroup, setSelectedGroup] = useState('all');
     const [selectedItem, setSelectedItem] = useState<string | null>(null);
     const [newPrice, setNewPrice] = useState('');
+    const [editingCurrency, setEditingCurrency] = useState<string>(''); // baseCode or YER
     const [reason, setReason] = useState('');
+    const [currencyPriceMap, setCurrencyPriceMap] = useState<Record<string, number>>({});
+    const [currencyPriceLoading, setCurrencyPriceLoading] = useState<Record<string, boolean>>({});
+    const [savingCurrency, setSavingCurrency] = useState(false);
 
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
             if (!c) return;
             setBaseCode(c);
+            if (!editingCurrency) setEditingCurrency(c);
         });
     }, []);
 
@@ -54,17 +60,86 @@ const ManagePricesScreen: React.FC = () => {
             return;
         }
         try {
-            await updatePrice(itemId, price, reason);
+            const currency = String(editingCurrency || baseCode || '').toUpperCase();
+            const base = String(baseCode || '').toUpperCase();
+            if (!currency || currency === base) {
+                await updatePrice(itemId, price, reason);
+            } else {
+                const supabase = getSupabaseClient();
+                if (!supabase) throw new Error('قاعدة البيانات غير متاحة');
+                setSavingCurrency(true);
+                const { error } = await supabase.rpc('upsert_item_currency_price_admin', {
+                    p_item_id: itemId,
+                    p_currency_code: currency,
+                    p_price_value: price,
+                    p_effective_from: new Date().toISOString().slice(0, 10),
+                } as any);
+                if (error) throw error;
+                setCurrencyPriceMap((prev) => ({ ...prev, [`${itemId}:${currency}`]: price }));
+            }
             setSelectedItem(null);
             setNewPrice('');
+            setEditingCurrency(baseCode);
             setReason('');
             showNotification('تم تحديث السعر', 'success');
         } catch (error) {
-            const raw = error instanceof Error ? error.message : '';
-            const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تحديث السعر';
+            const message = localizeSupabaseError(error) || 'فشل تحديث السعر';
             showNotification(message, 'error');
+        } finally {
+            setSavingCurrency(false);
         }
     };
+
+    const loadCurrencyPrice = async (itemId: string, currency: string, basePrice?: number) => {
+        const cur = String(currency || '').trim().toUpperCase();
+        if (!cur) return;
+        const key = `${itemId}:${cur}`;
+        if (currencyPriceMap[key] != null) return;
+        if (currencyPriceLoading[key]) return;
+        setCurrencyPriceLoading((prev) => ({ ...prev, [key]: true }));
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('قاعدة البيانات غير متاحة');
+            const { data, error } = await supabase
+                .from('product_prices_multi_currency')
+                .select('price_value,pricing_method,is_active,effective_from,updated_at')
+                .eq('item_id', itemId)
+                .eq('currency_code', cur)
+                .eq('is_active', true)
+                .order('effective_from', { ascending: false })
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (!error && data && typeof (data as any).price_value !== 'undefined') {
+                const v = Number((data as any).price_value);
+                if (Number.isFinite(v)) {
+                    setCurrencyPriceMap((prev) => ({ ...prev, [key]: v }));
+                    return;
+                }
+            }
+            if (cur === 'YER' && typeof basePrice === 'number' && basePrice > 0) {
+                const fx = await getOperationalFxRate('YER');
+                if (fx && fx > 0) {
+                    const suggested = Number((basePrice / fx).toFixed(2));
+                    setCurrencyPriceMap((prev) => ({ ...prev, [key]: suggested }));
+                }
+            }
+        } catch {
+        } finally {
+            setCurrencyPriceLoading((prev) => ({ ...prev, [key]: false }));
+        }
+    };
+
+    useEffect(() => {
+        const base = String(baseCode || '').toUpperCase();
+        const cur = String(editingCurrency || '').toUpperCase();
+        if (!base || cur !== 'YER') return;
+        const targets = filteredItems.slice(0, 50);
+        for (const it of targets) {
+            const basePrice = Number((it as any)?.price || 0);
+            void loadCurrencyPrice(String(it.id), 'YER', basePrice);
+        }
+    }, [baseCode, editingCurrency, filteredItems]);
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -80,6 +155,20 @@ const ManagePricesScreen: React.FC = () => {
             {/* Filters */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-3 flex items-center gap-3">
+                        <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">عملة تحرير الأسعار</div>
+                        <select
+                            value={editingCurrency || baseCode}
+                            onChange={(e) => setEditingCurrency(String(e.target.value || '').trim().toUpperCase())}
+                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        >
+                            <option value={baseCode}>{baseCode}</option>
+                            <option value="YER">YER</option>
+                        </select>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                            السعر الأساسي يُدار بالعملة الأساسية. لتثبيت سعر YER بدون التأثر بـ FX، اختر YER وحدّث السعر.
+                        </div>
+                    </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                             البحث
@@ -139,7 +228,7 @@ const ManagePricesScreen: React.FC = () => {
                                     المنتج
                                 </th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                    السعر الحالي
+                                    السعر الأساسي
                                 </th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                     الوحدة
@@ -158,6 +247,7 @@ const ManagePricesScreen: React.FC = () => {
                                 const lastUpdate = history[0];
                                 const isEditing = selectedItem === item.id;
                                 const itemName = item.name['ar'] || '';
+                                const basePrice = Number(item.price || 0);
 
                                 return (
                                     <React.Fragment key={item.id}>
@@ -173,9 +263,25 @@ const ManagePricesScreen: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className="text-gold-600 dark:text-gold-400">
-                                                    <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
-                                                </span>
+                                                <div className="space-y-1">
+                                                    <span className="text-gold-600 dark:text-gold-400">
+                                                        <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
+                                                    </span>
+                                                    {String(editingCurrency || baseCode || '').toUpperCase() === 'YER' && (
+                                                        <div className="text-[11px] text-gray-600 dark:text-gray-400" dir="ltr">
+                                                            {(() => {
+                                                                const key = `${item.id}:YER`;
+                                                                const v = currencyPriceMap[key];
+                                                                const loading = Boolean(currencyPriceLoading[key]);
+                                                                if (loading) return 'YER: ...';
+                                                                if (typeof v === 'number') {
+                                                                    return `YER: ${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                                                }
+                                                                return 'YER: —';
+                                                            })()}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                 {getUnitLabel(item.unitType as any, 'ar')}
@@ -187,12 +293,24 @@ const ManagePricesScreen: React.FC = () => {
                                                 <button
                                                     onClick={() => {
                                                         setSelectedItem(item.id);
-                                                        setNewPrice(item.price.toString());
+                                                        const currency = String(editingCurrency || baseCode || '').toUpperCase();
+                                                        if (currency && currency !== String(baseCode || '').toUpperCase()) {
+                                                            void loadCurrencyPrice(item.id, currency, basePrice);
+                                                            const v = currencyPriceMap[`${item.id}:${currency}`];
+                                                            setNewPrice(String(typeof v === 'number' ? v : ''));
+                                                        } else {
+                                                            setNewPrice(item.price.toString());
+                                                        }
                                                     }}
                                                     className="text-gold-600 hover:text-gold-800 dark:text-gold-400 dark:hover:text-gold-300 font-medium"
                                                 >
-                                                    تحديث السعر
+                                                    {String(editingCurrency || baseCode || '').toUpperCase() === 'YER' ? 'تحديث سعر YER' : 'تحديث السعر'}
                                                 </button>
+                                                <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                                    {String(editingCurrency || baseCode || '').toUpperCase() === 'YER'
+                                                        ? 'سعر YER مستقل ولن يتغير بتحرك FX.'
+                                                        : `تغييرات هذا الجدول تخص السعر الأساسي (${String(baseCode || '').toUpperCase() || '—'}).`}
+                                                </div>
                                             </td>
                                         </tr>
                                         {isEditing && (
@@ -201,7 +319,7 @@ const ManagePricesScreen: React.FC = () => {
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                                السعر الجديد
+                                                                السعر الجديد ({String(editingCurrency || baseCode || '').toUpperCase()})
                                                             </label>
                                                             <input
                                                                 type="number"
@@ -211,10 +329,15 @@ const ManagePricesScreen: React.FC = () => {
                                                                 step="0.01"
                                                                 min="0"
                                                             />
+                                                            {String(editingCurrency || baseCode || '').toUpperCase() === 'YER' && (
+                                                                <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                                                    هذا السعر ثابت باليمني ولن يتغير بتحرك FX.
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                                سبب التغيير (اختياري)
+                                                                سبب التغيير
                                                             </label>
                                                             <input
                                                                 type="text"
@@ -227,7 +350,8 @@ const ManagePricesScreen: React.FC = () => {
                                                         <div className="flex items-end gap-2">
                                                             <button
                                                                 onClick={() => handleUpdatePrice(item.id)}
-                                                                className="flex-1 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition"
+                                                                disabled={savingCurrency}
+                                                                className="flex-1 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition disabled:opacity-60 disabled:cursor-not-allowed"
                                                             >
                                                                 حفظ
                                                             </button>
@@ -235,6 +359,7 @@ const ManagePricesScreen: React.FC = () => {
                                                                 onClick={() => {
                                                                     setSelectedItem(null);
                                                                     setNewPrice('');
+                                                                    setEditingCurrency(baseCode);
                                                                     setReason('');
                                                                 }}
                                                                 className="flex-1 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition"
@@ -246,7 +371,7 @@ const ManagePricesScreen: React.FC = () => {
                                                     {history.length > 0 && (
                                                         <div className="mt-4">
                                                             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                                تاريخ التغييرات
+                                                                تاريخ تغييرات السعر الأساسي
                                                             </h4>
                                                             <div className="space-y-2">
                                                                 {history.slice(0, 5).map((h: PriceHistory) => (
@@ -265,6 +390,11 @@ const ManagePricesScreen: React.FC = () => {
                                                                     </div>
                                                                 ))}
                                                             </div>
+                                                        </div>
+                                                    )}
+                                                    {String(editingCurrency || baseCode || '').toUpperCase() === 'YER' && (
+                                                        <div className="mt-3 text-[11px] text-gray-500 dark:text-gray-400">
+                                                            تغييرات سعر YER تُسجل كسعر مستقل ضمن التسعير متعدد العملات.
                                                         </div>
                                                     )}
                                                 </td>

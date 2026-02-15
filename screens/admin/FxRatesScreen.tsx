@@ -63,10 +63,12 @@ const FxRatesScreen: React.FC = () => {
       setCurrencies(list);
 
       const { data: rows, error: rowsErr } = await supabase
-        .from('fx_rates')
-        .select('id,currency_code,rate,rate_date,rate_type')
-        .order('rate_date', { ascending: false })
-        .limit(500);
+        .rpc('get_fx_rates_admin', {
+          p_currency: null,
+          p_rate_type: null,
+          p_limit: 500,
+          p_offset: 0,
+        } as any);
       if (rowsErr) throw rowsErr;
       setRates((Array.isArray(rows) ? rows : []).map((r: any) => ({
         id: String(r.id),
@@ -91,16 +93,14 @@ const FxRatesScreen: React.FC = () => {
         performed_by: l.performed_by ? String(l.performed_by) : null,
       })));
 
-      if (!formCurrency) {
-        const first = list[0]?.code || '';
-        setFormCurrency(first);
-      }
+      const first = list[0]?.code || '';
+      if (first) setFormCurrency((prev) => (prev ? prev : first));
     } catch (err: any) {
       showNotification(String(err?.message || 'تعذر تحميل أسعار الصرف.'), 'error');
     } finally {
       setLoading(false);
     }
-  }, [formCurrency, showNotification]);
+  }, [showNotification]);
 
   useEffect(() => {
     void loadAll();
@@ -142,11 +142,13 @@ const FxRatesScreen: React.FC = () => {
     }
     setSaving(true);
     try {
-      const { error } = await supabase.from('fx_rates').upsert(
-        { currency_code: code, rate, rate_date: date, rate_type: rt },
-        { onConflict: 'currency_code,rate_date,rate_type' }
-      );
-      if (error) throw error;
+      const { error: fxErr } = await supabase.rpc('upsert_fx_rate_admin', {
+        p_currency_code: code,
+        p_rate: rate,
+        p_rate_date: date,
+        p_rate_type: rt,
+      } as any);
+      if (fxErr) throw fxErr;
       showNotification('تم حفظ سعر الصرف.', 'success');
       await loadAll();
     } catch (err: any) {
@@ -161,8 +163,8 @@ const FxRatesScreen: React.FC = () => {
     if (!supabase) return;
     setDeletingId(row.id);
     try {
-      const { error } = await supabase.from('fx_rates').delete().eq('id', row.id);
-      if (error) throw error;
+      const { error: delErr } = await supabase.rpc('delete_fx_rate_admin', { p_id: row.id } as any);
+      if (delErr) throw delErr;
       showNotification('تم حذف السعر.', 'success');
       await loadAll();
     } catch (err: any) {

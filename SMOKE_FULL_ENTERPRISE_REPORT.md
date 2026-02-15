@@ -1,42 +1,80 @@
 # تقرير اختبار دخان شامل (Full Enterprise Smoke)
 
-- وقت البدء: 2026-02-09T17:55:34.736Z
-- وقت النهاية: 2026-02-09T17:55:35.655Z
-- الحالة: PASS
-- عدد الاختبارات الناجحة: 25
-- عدد الاختبارات الفاشلة: 0
-- الزمن الإجمالي (تقريبي): 423 ms
+- وقت البدء: 2026-02-14T21:49:44.882Z
+- وقت النهاية: 2026-02-14T21:49:45.430Z
+- الحالة: FAIL
+- عدد الاختبارات الناجحة: 16
+- عدد الاختبارات الفاشلة: 1
+- الزمن الإجمالي (تقريبي): 208 ms
+- آخر خطوة مكتملة: PO02 — Purchase return
 
 ## نتائج الخطوات
 
 - ✅ INIT01 — Prerequisites and owner session (5 ms)
-- ✅ INIT02 — Default warehouse available (3 ms) | {"warehouse_id":"182ee297-2a98-4250-85c7-beb5f60598bf"}
-- ✅ GL01 — Manual balanced journal entry (24 ms) | {"entry_id":"6cadb7de-4fbb-4c36-b2f7-68bd36b75989"}
-- ✅ GL02 — Unbalanced journal entry rejected (7 ms) | {"entry_id":"ea5d1ae5-ec1a-422a-89db-1e6764e87c3e"}
-- ✅ GL03 — Journal line debit+credit rejected (4 ms) | {"entry_id":"6ca46c13-2527-4162-aca5-622940db81bb"}
-- ✅ DOC01 — Document engine numbering/approval/immutability (8 ms) | {"document_id":"cc117431-fc5e-4a08-8303-88ec01c13f67","number":"JV-MAIN-2026-000001"}
-- ✅ GL04 — Period closing and closed-period enforcement (12 ms) | {"period_id":"34c7a611-78e4-47be-b9f0-215177525791"}
-- ✅ GL05 — Reverse journal entry (10 ms) | {"entry_id":"6cadb7de-4fbb-4c36-b2f7-68bd36b75989","reversal_id":"f66447bf-8892-44c0-a6c2-450d70c65f14"}
-- ✅ GL06 — Immutability of posted journal entries/lines (2 ms) | {"entry_id":"f66447bf-8892-44c0-a6c2-450d70c65f14"}
-- ✅ FX01 — Multi-currency order+payment realized FX (44 ms) | {"order_id":"ae29efdb-2cf5-491f-a4e1-92035035ab26","payment_id":"d8c8b560-1f2f-4ba6-a94a-6ba3724890b4"}
-- ✅ FX02 — Unrealized FX revaluation + auto-reversal (22 ms) | {"period_end":"2026-02-19","audit_rows":1}
-- ✅ FX03 — High-inflation FX normalization (5 ms) | {"base":"SAR","base_is_high":false}
-- ✅ PO01 — Purchase order receive+partial payment (80 ms) | {"po_id":"7b1f51d6-e53a-4219-9e27-5bb6598fd6d2","receipt_id":"f393e24f-b9f4-410d-93b9-14a65cf059d6","item_id":"SMOKE-PO-fb31d7b7111949dca6ecf9290439bc24"}
-- ✅ PO02 — Purchase return (28 ms) | {"purchase_return_id":"733c9252-4b57-4331-b397-65f718406fb6"}
-- ✅ SALES01 — Sales delivery + partial/full payments + COGS movements (49 ms) | {"order_id":"79d37257-c811-4817-bb13-e3540d2babb4","payments":2}
-- ✅ SALES02 — Sales return flow (22 ms) | {"sales_return_id":"ed2a70d7-cf01-42e3-ab35-a21a4757eeae"}
-- ✅ INV01 — Inventory posted journal immutability (2 ms) | {"entry_id":"ea85fa57-50f8-4d21-96b7-1e326ce590bf"}
-- ✅ INV02 — Inventory movement append-only after posting (3 ms) | {"movement_id":"ab6b35e2-d393-4c71-a616-127a11afc09c"}
-- ✅ EXP01 — Expense accrual + override + payment + delete guard (27 ms) | {"expense_id":"02cfda21-c1b5-406d-8600-2f519fbc834d"}
-- ✅ PAY01 — Payroll run compute + accrual posting (21 ms) | {"run_id":"6f156a8f-b420-493a-b85f-4bc943bb2fef","entry_id":"74bd702a-e5b0-4f2f-872d-b415d04df7a8"}
-- ✅ BANK01 — Bank reconciliation import/match/close (19 ms) | {"batch_id":"870135b9-4f4b-4cc1-96f0-e876c3b66c7d"}
-- ✅ IMM01 — Immutability: orders.base_total and payments.base_amount (10 ms) | {"order_id":"79d37257-c811-4817-bb13-e3540d2babb4","payment_id":"174f1e07-5213-4995-a223-cd92a7b3adad"}
-- ✅ IMM02 — Delete guards: orders/payments/inventory (9 ms)
-- ✅ SEC01 — RLS: payments read + journal/fx write blocked for unauthorized (6 ms)
-- ✅ AUD01 — Audit logs coverage for critical events (1 ms) | {"rows":5}
+- ✅ CUST01 — System users blocked from customers (7 ms) | {"owner_id":"eb5ce2a9-86a4-4d34-b540-6b16bf352946"}
+- ✅ INIT02 — Default warehouse available (1 ms) | {"warehouse_id":"6c8e2cc2-9228-4109-8b9e-8a77348031ae"}
+- ✅ INIT03 — Default journal available (2 ms) | {"journal_id":"00000000-0000-4000-8000-000000000001"}
+- ✅ GL01 — Manual balanced journal entry (16 ms) | {"entry_id":"b395085e-84f0-4205-b2b1-837ab46dc840"}
+- ✅ GL02 — Unbalanced journal entry rejected (5 ms) | {"entry_id":"05ed5910-bc1b-4639-9ace-970bd5ccc0b8"}
+- ✅ GL03 — Journal line debit+credit rejected (4 ms) | {"entry_id":"74dc7421-fb8d-46ba-b5e7-7700f8775360"}
+- ✅ DOC01 — Document engine numbering/approval/immutability (6 ms) | {"document_id":"0f9a546a-9c21-4d79-a3c4-8f0b60665f71","number":"JV-MAIN-2026-000001"}
+- ✅ GL04 — Period closing and closed-period enforcement (10 ms) | {"period_id":"7de46a77-98b8-4c58-bb3e-43fc9b5f7bd8"}
+- ✅ GL05 — Reverse journal entry (6 ms) | {"entry_id":"b395085e-84f0-4205-b2b1-837ab46dc840","reversal_id":"48f51067-6e66-46d8-b996-48fbc3cc5d70"}
+- ✅ GL06 — Immutability of posted journal entries/lines (1 ms) | {"entry_id":"48f51067-6e66-46d8-b996-48fbc3cc5d70"}
+- ✅ FX01 — Multi-currency order+payment realized FX (37 ms) | {"order_id":"c3b7094a-330e-4af3-aa88-5f964b46f222","payment_id":"ca248fa3-9ae8-495b-a6f2-58e210705d7d"}
+- ✅ FX02 — Unrealized FX revaluation + auto-reversal (16 ms) | {"period_end":"2026-02-24","audit_rows":1}
+- ✅ FX03 — High-inflation FX normalization (3 ms) | {"base":"SAR","base_is_high":false}
+- ✅ PO01 — Purchase order receive+partial payment (63 ms) | {"po_id":"3320ef84-2126-434e-a85b-5401c2e9602f","receipt_id":"d1ea30e0-f339-4f35-96f8-9be59b309da4","item_id":"SMOKE-PO-2952f2341247448fac5e160e6e3ba692"}
+- ✅ PO02 — Purchase return (26 ms) | {"purchase_return_id":"a3c18ea0-5b9e-4b20-8b28-84f3e2d3f2e4"}
+
+## سجل الخطأ
+
+```
+DO
+DO
+SET
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+
+NOTICE:  SMOKE_PASS|INIT01|Prerequisites and owner session|5|{}
+NOTICE:  SMOKE_PASS|CUST01|System users blocked from customers|7|{"owner_id":"eb5ce2a9-86a4-4d34-b540-6b16bf352946"}
+NOTICE:  SMOKE_PASS|INIT02|Default warehouse available|1|{"warehouse_id":"6c8e2cc2-9228-4109-8b9e-8a77348031ae"}
+NOTICE:  SMOKE_PASS|INIT03|Default journal available|2|{"journal_id":"00000000-0000-4000-8000-000000000001"}
+NOTICE:  SMOKE_PASS|GL01|Manual balanced journal entry|16|{"entry_id":"b395085e-84f0-4205-b2b1-837ab46dc840"}
+NOTICE:  SMOKE_PASS|GL02|Unbalanced journal entry rejected|5|{"entry_id":"05ed5910-bc1b-4639-9ace-970bd5ccc0b8"}
+NOTICE:  SMOKE_PASS|GL03|Journal line debit+credit rejected|4|{"entry_id":"74dc7421-fb8d-46ba-b5e7-7700f8775360"}
+NOTICE:  SMOKE_PASS|DOC01|Document engine numbering/approval/immutability|6|{"document_id":"0f9a546a-9c21-4d79-a3c4-8f0b60665f71","number":"JV-MAIN-2026-000001"}
+NOTICE:  SMOKE_PASS|GL04|Period closing and closed-period enforcement|10|{"period_id":"7de46a77-98b8-4c58-bb3e-43fc9b5f7bd8"}
+NOTICE:  SMOKE_PASS|GL05|Reverse journal entry|6|{"entry_id":"b395085e-84f0-4205-b2b1-837ab46dc840","reversal_id":"48f51067-6e66-46d8-b996-48fbc3cc5d70"}
+NOTICE:  SMOKE_PASS|GL06|Immutability of posted journal entries/lines|1|{"entry_id":"48f51067-6e66-46d8-b996-48fbc3cc5d70"}
+NOTICE:  SMOKE_PASS|FX01|Multi-currency order+payment realized FX|37|{"order_id":"c3b7094a-330e-4af3-aa88-5f964b46f222","payment_id":"ca248fa3-9ae8-495b-a6f2-58e210705d7d"}
+NOTICE:  SMOKE_PASS|FX02|Unrealized FX revaluation + auto-reversal|16|{"period_end":"2026-02-24","audit_rows":1}
+NOTICE:  SMOKE_PASS|FX03|High-inflation FX normalization|3|{"base":"SAR","base_is_high":false}
+NOTICE:  SMOKE_PASS|PO01|Purchase order receive+partial payment|63|{"po_id":"3320ef84-2126-434e-a85b-5401c2e9602f","receipt_id":"d1ea30e0-f339-4f35-96f8-9be59b309da4","item_id":"SMOKE-PO-2952f2341247448fac5e160e6e3ba692"}
+NOTICE:  SMOKE_PASS|PO02|Purchase return|26|{"purchase_return_id":"a3c18ea0-5b9e-4b20-8b28-84f3e2d3f2e4"}
+ERROR:  invoice_snapshot_fields_missing
+CONTEXT:  PL/pgSQL function trg_validate_invoice_snapshot() line 13 at RAISE
+SQL statement "update public.orders set status = 'delivered', data = v_final_data, updated_at = now() where id = p_order_id"
+PL/pgSQL function confirm_order_delivery(uuid,jsonb,jsonb,uuid) line 150 at SQL statement
+PL/pgSQL function confirm_order_delivery(jsonb) line 42 at RETURN
+SQL statement "SELECT public.confirm_order_delivery(v_payload)"
+PL/pgSQL function inline_code_block line 40 at PERFORM
+```
 
 ## تقييم جاهزية الإنتاج
 
-- جاهز من منظور Smoke Test: نعم
-- مخاطر محاسبية مكتشفة: لا
-- خروقات صلاحيات مكتشفة: لا
+- جاهز من منظور Smoke Test: لا
+- مخاطر محاسبية/تشغيلية محتملة: مرتفعة حتى معالجة سبب الفشل
+- التوصية: إصلاح السبب ثم إعادة تشغيل smoke:full حتى PASS

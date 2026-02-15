@@ -255,6 +255,29 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const ensureApprovalRequest = useCallback(async (orderId: string, type: 'po' | 'receipt', amount: number) => {
     if (!supabase) return null;
+    try {
+      const tryCheck = async () => await supabase.rpc('approval_required', {
+        p_request_type: type,
+        p_amount: amount,
+      } as any);
+      let { data: required, error: reqErr } = await tryCheck();
+      if (reqErr) {
+        const msg = String((reqErr as any)?.message || '');
+        const code = String((reqErr as any)?.code || '');
+        if (/schema cache|could not find the function|PGRST202/i.test(msg) || code === 'PGRST202') {
+          const reloaded = await reloadPostgrestSchema();
+          if (reloaded) {
+            const retry = await tryCheck();
+            required = retry.data as any;
+            reqErr = retry.error as any;
+          }
+        }
+      }
+      if (reqErr) return null;
+      if (!required) return null;
+    } catch {
+      return null;
+    }
     const { data: existingRows, error: existingErr } = await supabase
       .from('approval_requests')
       .select('id,status')

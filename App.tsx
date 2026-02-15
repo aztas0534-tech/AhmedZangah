@@ -20,6 +20,7 @@ import { startQueueProcessor } from './utils/offlineQueue';
 import { getSupabaseClient } from './supabase';
 import { isRpcWrappersAvailable } from './supabase';
 import { useSystemAudit } from './contexts/SystemAuditContext';
+import { GovernanceProvider } from './contexts/GovernanceContext';
 
 // Lazy load screens
 const HomeScreen = lazy(() => import('./screens/HomeScreen'));
@@ -285,13 +286,14 @@ const App: React.FC = () => {
   }, []);
   return (
     <ThemeProvider>
-      <ErrorBoundary>
-        <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <HardwareBackButtonHandler />
-          <AppStateListener />
-          <RpcHealthCheck />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
+      <GovernanceProvider>
+        <ErrorBoundary>
+          <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <HardwareBackButtonHandler />
+            <AppStateListener />
+            <RpcHealthCheck />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
               {/* Customer Facing Routes */}
               <Route path="/" element={<CustomerLayout />}>
                 <Route index element={<HomeScreen />} />
@@ -437,10 +439,11 @@ const App: React.FC = () => {
                   </AdminProtectedRoute>
                 }
               />
-            </Routes>
-          </Suspense>
-        </HashRouter>
-      </ErrorBoundary>
+              </Routes>
+            </Suspense>
+          </HashRouter>
+        </ErrorBoundary>
+      </GovernanceProvider>
     </ThemeProvider>
   );
 };

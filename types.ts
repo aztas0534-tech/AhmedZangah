@@ -342,6 +342,7 @@ export interface CartItem extends MenuItem {
   unit?: UnitType; // Unit type for this cart item
   uomCode?: string;
   uomQtyInBase?: number;
+  forcedBatchId?: string;
 }
 
 export type OrderStatus = 'pending' | 'preparing' | 'out_for_delivery' | 'delivered' | 'scheduled' | 'cancelled';
@@ -430,6 +431,14 @@ export interface Order {
     orderSource?: 'online' | 'in_store';
     currency?: string;
     fxRate?: number;
+    baseCurrency?: string;
+    totals?: {
+      subtotal: number;
+      discountAmount?: number;
+      deliveryFee: number;
+      taxAmount?: number;
+      total: number;
+    };
     items: CartItem[];
     subtotal: number;
     deliveryFee: number;
@@ -542,6 +551,7 @@ export interface AppSettings {
   address: string;
   baseCurrency?: string;
   operationalCurrencies?: string[];
+  ENABLE_MULTI_CURRENCY_PRICING?: boolean;
   maintenanceEnabled?: boolean;
   maintenanceMessage?: string;
   brandColors?: {

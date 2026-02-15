@@ -14,6 +14,27 @@ end $$;
 
 do $$
 declare
+  v_default_id uuid := '00000000-0000-4000-8000-000000000001'::uuid;
+begin
+  if to_regclass('public.journals') is null then
+    return;
+  end if;
+  if not exists (select 1 from public.journals where id = v_default_id) then
+    insert into public.journals(id, code, name, is_default, is_active)
+    values (v_default_id, 'GEN', 'دفتر اليومية العام', true, true)
+    on conflict (code) do update
+    set name = excluded.name,
+        is_active = true;
+  end if;
+  update public.journals
+  set is_default = (id = v_default_id)
+  where is_default = true or id = v_default_id;
+exception when others then
+  null;
+end $$;
+
+do $$
+declare
   v_company uuid;
   v_branch uuid;
   v_wh uuid;

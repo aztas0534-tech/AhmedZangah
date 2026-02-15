@@ -463,8 +463,8 @@ begin
 end;
 $$;
 
-revoke all on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text) from public;
-grant execute on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text) to authenticated;
+revoke all on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text, uuid) from public;
+grant execute on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text, uuid) to authenticated;
 
 create or replace function public.create_order_secure_with_payment_proof(
     p_items jsonb,
@@ -483,7 +483,8 @@ create or replace function public.create_order_secure_with_payment_proof(
     p_payment_proof text default null,
     p_order_source text default 'online',
     p_explicit_customer_id uuid default null,
-    p_currency text default null
+    p_currency text default null,
+    p_warehouse_id uuid default null
 )
 returns jsonb
 language plpgsql
@@ -578,7 +579,8 @@ begin
     p_points_redeemed_value,
     p_explicit_customer_id,
     p_order_source,
-    p_currency
+    p_currency,
+    p_warehouse_id
   );
 
   v_order_id := (v_order->>'id')::uuid;
@@ -605,5 +607,5 @@ begin
 end;
 $$;
 
-revoke all on function public.create_order_secure_with_payment_proof(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, text, text, text, uuid, text) from public;
-grant execute on function public.create_order_secure_with_payment_proof(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, text, text, text, uuid, text) to authenticated;
+revoke all on function public.create_order_secure_with_payment_proof(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, text, text, text, uuid, text, uuid) from public;
+grant execute on function public.create_order_secure_with_payment_proof(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, text, text, text, uuid, text, uuid) to authenticated;

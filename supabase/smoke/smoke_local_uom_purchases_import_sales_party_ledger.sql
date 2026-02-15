@@ -28,6 +28,21 @@ declare
   v_cnt int;
   v_stock_available numeric;
   v_stock_avg numeric;
+  v_price_base numeric;
+  v_price_base_legacy numeric;
+  v_price_yer_1 numeric;
+  v_price_yer_2 numeric;
+  v_fx_change numeric;
+  v_overlap_failed boolean := false;
+  v_dup_failed boolean := false;
+  v_foreign_lock_failed boolean := false;
+  v_fx_missing_failed boolean := false;
+  v_batch1 uuid;
+  v_batch2 uuid;
+  v_price_fefo_1 numeric;
+  v_price_fefo_2 numeric;
+  v_margin numeric := 10;
+  v_other_currency text;
 
   v_order uuid;
   v_items jsonb;
@@ -274,6 +289,191 @@ begin
   raise notice 'SMOKE_PASS|STMT12|Customer statement rows USD|0|{"rows":%}', v_cnt;
   select count(1) into v_cnt from public.party_ledger_statement_v2(v_party_customer,null,'YER',null,null);
   raise notice 'SMOKE_PASS|STMT13|Customer statement rows YER|0|{"rows":%}', v_cnt;
+
+  select suggested_price
+  into v_price_base
+  from public.get_fefo_pricing(v_item, v_wh, 1, v_customer, v_base)
+  limit 1;
+  v_price_base_legacy := public.get_item_price_with_discount(v_item, v_customer, 1);
+  if abs(coalesce(v_price_base, 0) - coalesce(v_price_base_legacy, 0)) > 0.000001 then
+    raise exception 'MCPRICE_BASE_MISMATCH';
+  end if;
+
+  insert into public.product_prices_multi_currency(item_id, currency_code, pricing_method, price_value, fx_source, is_active, effective_from)
+  select v_item, 'YER', 'FIXED', 12345, 'NONE', true, v_today
+  where not exists (
+    select 1 from public.product_prices_multi_currency
+    where item_id = v_item and currency_code = 'YER' and pricing_method = 'FIXED' and price_value = 12345 and is_active = true
+  );
+
+  select suggested_price
+  into v_price_yer_1
+  from public.get_fefo_pricing(v_item, v_wh, 1, v_customer, 'YER')
+  limit 1;
+  v_fx_change := v_rate_yer * 1.25;
+  update public.fx_rates
+  set rate = v_fx_change
+  where currency_code = 'YER' and rate_type = 'operational' and rate_date = v_today;
+  select suggested_price
+  into v_price_yer_2
+  from public.get_fefo_pricing(v_item, v_wh, 1, v_customer, 'YER')
+  limit 1;
+  if abs(coalesce(v_price_yer_1, 0) - coalesce(v_price_yer_2, 0)) > 0.000001 then
+    raise exception 'MCPRICE_FIXED_CHANGED_ON_FX';
+  end if;
+
+  begin
+    insert into public.product_prices_multi_currency(item_id, currency_code, pricing_method, price_value, fx_source, is_active, effective_from, effective_to)
+    values (v_item, v_base, 'FIXED', 10, 'NONE', true, v_today, v_today + 10);
+    insert into public.product_prices_multi_currency(item_id, currency_code, pricing_method, price_value, fx_source, is_active, effective_from, effective_to)
+    values (v_item, v_base, 'FIXED', 11, 'NONE', true, v_today + 5, v_today + 20);
+  exception when others then
+    v_overlap_failed := true;
+  end;
+  if not v_overlap_failed then
+    raise exception 'MCPRICE_OVERLAP_NOT_BLOCKED';
+  end if;
+
+  begin
+    insert into public.product_prices_multi_currency(item_id, currency_code, pricing_method, price_value, fx_source, is_active, effective_from)
+    values (v_item, v_base, 'FIXED', 12, 'NONE', true, v_today + 30);
+    insert into public.product_prices_multi_currency(item_id, currency_code, pricing_method, price_value, fx_source, is_active, effective_from)
+    values (v_item, v_base, 'FIXED', 13, 'NONE', true, v_today + 40);
+  exception when others then
+    v_dup_failed := true;
+  end;
+  if not v_dup_failed then
+    raise exception 'MCPRICE_DUP_ACTIVE_NOT_BLOCKED';
+  end if;
+
+  update public.batches
+  set foreign_unit_cost = coalesce(foreign_unit_cost, 10)
+  where ctid in (
+    select ctid
+    from public.batches
+    where item_id = v_item
+      and warehouse_id is not null
+      and coalesce(status,'active')='active'
+      and coalesce(qc_status,'released')='released'
+    limit 1
+  );
+  begin
+    update public.batches
+    set foreign_unit_cost = 99
+    where ctid in (
+      select ctid
+      from public.batches
+      where item_id = v_item
+        and warehouse_id is not null
+        and coalesce(status,'active')='active'
+        and coalesce(qc_status,'released')='released'
+        and foreign_unit_cost is not null
+      limit 1
+    );
+  exception when others then
+    v_foreign_lock_failed := true;
+  end;
+  if not v_foreign_lock_failed then
+    raise exception 'MCPRICE_FOREIGN_LOCK_NOT_BLOCKED';
+  end if;
+
+  begin
+    perform public.get_fefo_pricing(v_item, v_wh, 1, v_customer, 'ZZZ');
+  exception when others then
+    v_fx_missing_failed := true;
+  end;
+  if not v_fx_missing_failed then
+    raise exception 'MCPRICE_FX_MISSING_NOT_BLOCKED';
+  end if;
+
+  update public.app_settings
+  set data = jsonb_set(coalesce(data,'{}'::jsonb), '{settings,ENABLE_MULTI_CURRENCY_PRICING}', 'true'::jsonb, true)
+  where id in ('app','singleton');
+
+  select id
+  into v_batch1
+  from public.batches
+  where item_id = v_item
+    and warehouse_id = v_wh
+    and coalesce(status,'active')='active'
+    and coalesce(qc_status,'released')='released'
+    and greatest(coalesce(quantity_received,0) - coalesce(quantity_consumed,0) - coalesce(quantity_transferred,0),0) > 0
+  limit 1;
+
+  select id
+  into v_batch2
+  from public.batches
+  where item_id = v_item
+    and warehouse_id = v_wh
+    and coalesce(status,'active')='active'
+    and coalesce(qc_status,'released')='released'
+    and greatest(coalesce(quantity_received,0) - coalesce(quantity_consumed,0) - coalesce(quantity_transferred,0),0) > 0
+    and id <> v_batch1
+  limit 1;
+
+  if v_batch1 is null then
+    raise exception 'MCPRICE_NO_BATCH_FOR_FEFO';
+  end if;
+  if v_batch2 is null then
+    insert into public.batches(
+      id, item_id, receipt_item_id, receipt_id, warehouse_id,
+      batch_code, production_date, expiry_date,
+      quantity_received, quantity_consumed, unit_cost, status, qc_status, data
+    )
+    values (
+      gen_random_uuid(), v_item, null, null, v_wh,
+      null, null, v_today + 2,
+      1, 0, 0, 'active', 'released', jsonb_build_object('source','smoke_mc_pricing')
+    )
+    returning id into v_batch2;
+  end if;
+
+  update public.batches
+  set foreign_unit_cost = 100,
+      foreign_currency = 'YER',
+      fx_rate_at_receipt = v_rate_yer,
+      expiry_date = v_today
+  where id = v_batch1;
+  update public.batches
+  set foreign_unit_cost = 200,
+      foreign_currency = 'YER',
+      fx_rate_at_receipt = v_rate_yer,
+      expiry_date = v_today + 3
+  where id = v_batch2;
+
+  insert into public.product_prices_multi_currency(item_id, currency_code, pricing_method, margin_percent, fx_source, is_active, effective_from)
+  select v_item, 'YER', 'FOREIGN_COST_PLUS_MARGIN', v_margin, 'NONE', true, v_today
+  where not exists (
+    select 1 from public.product_prices_multi_currency
+    where item_id = v_item and currency_code = 'YER' and pricing_method = 'FOREIGN_COST_PLUS_MARGIN' and is_active = true
+  );
+
+  select suggested_price
+  into v_price_fefo_1
+  from public.get_fefo_pricing(v_item, v_wh, 1, v_customer, 'YER')
+  limit 1;
+  if abs(coalesce(v_price_fefo_1,0) - (100 * (1 + (v_margin/100)))) > 0.000001 then
+    raise exception 'MCPRICE_FEFO_BATCH_NOT_APPLIED';
+  end if;
+
+  update public.batches
+  set expiry_date = v_today + 5
+  where id = v_batch1;
+  update public.batches
+  set expiry_date = v_today
+  where id = v_batch2;
+
+  select suggested_price
+  into v_price_fefo_2
+  from public.get_fefo_pricing(v_item, v_wh, 1, v_customer, 'YER')
+  limit 1;
+  if abs(coalesce(v_price_fefo_2,0) - (200 * (1 + (v_margin/100)))) > 0.000001 then
+    raise exception 'MCPRICE_FEFO_BATCH_SWITCH_FAILED';
+  end if;
+
+  v_other_currency := case when upper(v_base) = 'YER' then 'USD' else 'YER' end;
+  perform public.get_fefo_pricing(v_item, v_wh, 1, v_customer, v_base);
+  perform public.get_fefo_pricing(v_item, v_wh, 1, v_customer, v_other_currency);
 end $$;
 
 select 'LOCAL_SCENARIO_SMOKE_OK' as ok_token;

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useOrders } from '../contexts/OrderContext';
 import { useToast } from '../contexts/ToastContext';
@@ -21,6 +21,7 @@ import { useWarehouses } from '../contexts/WarehouseContext';
 import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
 import QRCode from 'qrcode';
 import { AZTA_IDENTITY } from '../config/identity';
+import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
 
 
 const InvoiceScreen: React.FC = () => {
@@ -446,6 +447,16 @@ const InvoiceScreen: React.FC = () => {
         );
     }
 
+    const fxInfo = useMemo(() => {
+        const snap: any = (order as any)?.invoiceSnapshot || {};
+        const currency = String((snap.currency || (order as any)?.currency || '')).toUpperCase();
+        const baseC = String((snap.baseCurrency || '')).toUpperCase();
+        const fx = Number(snap.fxRate ?? (order as any)?.fxRate ?? 1) || 1;
+        const baseTotal = Number((order as any)?.baseTotal) || undefined;
+        const locked = Boolean((order as any)?.invoiceIssuedAt);
+        return { currency, baseCurrency: baseC, fxRate: fx, baseTotal, locked };
+    }, [order]);
+
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="my-6 flex justify-between items-center gap-4">
@@ -453,7 +464,26 @@ const InvoiceScreen: React.FC = () => {
                     <BackArrowIcon />
                     رجوع
                 </button>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                    <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-col">
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {fxInfo.locked ? 'لقطة مثبتة' : 'غير مثبتة'}
+                            </div>
+                            <div className="text-xs text-gray-700 dark:text-gray-300" dir="ltr">
+                                FX={fxInfo.fxRate ? fxInfo.fxRate.toFixed(6) : '—'}
+                            </div>
+                        </div>
+                        <div className="border-l dark:border-gray-700 h-6" />
+                        <CurrencyDualAmount
+                            amount={Number((order as any)?.total || 0)}
+                            currencyCode={fxInfo.currency || undefined}
+                            baseAmount={fxInfo.baseTotal}
+                            fxRate={fxInfo.fxRate || undefined}
+                            baseCurrencyCode={fxInfo.baseCurrency || undefined}
+                            compact
+                        />
+                    </div>
                     {isAdminInvoice && (
                         <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">القالب:</span>
