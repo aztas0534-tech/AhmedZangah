@@ -270,11 +270,11 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                           {loading ? 'جاري التحميل...' : (
                             rows.length > 0
                               ? rows.slice(0, 4).map((r, i) => (
-                                  <span key={r.batchId} className="inline-block mr-2">
-                                    {r.remaining} من دفعة {r.batchId.slice(0, 6)}
-                                    {i < Math.min(rows.length, 4) - 1 ? ' • ' : ''}
-                                  </span>
-                                ))
+                                <span key={r.batchId} className="inline-block mr-2">
+                                  {r.remaining} من دفعة {r.batchId.slice(0, 6)}
+                                  {i < Math.min(rows.length, 4) - 1 ? ' • ' : ''}
+                                </span>
+                              ))
                               : 'لا يوجد تفصيل دفعات.'
                           )}
                         </span>
@@ -283,10 +283,10 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   );
                 })()}
               </div>
-              {!isPromotionLine && ((item as any)?._fefoBatchCode || (item as any)?._fefoExpiryDate) && (
+              {!isPromotionLine && (
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
                   <span className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700">
-                    دفعة: {String((item as any)._fefoBatchCode || '').trim() || String((item as any)._fefoBatchId || '').slice(-6).toUpperCase()}
+                    دفعة: {String((item as any)._fefoBatchCode || '').trim() || String((item as any)._fefoBatchId || '').slice(-6).toUpperCase() || 'تلقائي'}
                   </span>
                   <button
                     type="button"
@@ -347,15 +347,15 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   onChange={e => onUpdate(item.cartItemId, { weight: Number(e.target.value) || 0 })}
                   className={`border rounded-xl dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'w-36 p-4 text-lg' : 'w-28 p-3 text-base'}`}
                 />
-                ) : null}
-                {isWeight && !isPromotionLine ? (
-                  <button
-                    type="button"
-                    onClick={() => openKeypad(item.cartItemId, 'weight', Number(qty || 0))}
-                    className={`rounded-xl border dark:border-gray-600 text-sm font-semibold ${touchMode ? 'px-5 py-4' : 'px-4 py-3'}`}
-                  >
-                    لوحة
-                  </button>
+              ) : null}
+              {isWeight && !isPromotionLine ? (
+                <button
+                  type="button"
+                  onClick={() => openKeypad(item.cartItemId, 'weight', Number(qty || 0))}
+                  className={`rounded-xl border dark:border-gray-600 text-sm font-semibold ${touchMode ? 'px-5 py-4' : 'px-4 py-3'}`}
+                >
+                  لوحة
+                </button>
               ) : (
                 <div className="flex items-center gap-2">
                   <button
