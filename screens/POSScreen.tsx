@@ -232,7 +232,7 @@ const POSScreen: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [baseCode, operationalCurrencies, showNotification, transactionCurrency]);
+  }, [baseCode, mcPricingEnabled, operationalCurrencies, showNotification, transactionCurrency]);
 
   useEffect(() => {
     if (!items.length) return;
@@ -621,7 +621,13 @@ const POSScreen: React.FC = () => {
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    const warehouseId = sessionScope.requireScope().warehouseId;
+    let warehouseId = '';
+    try {
+      warehouseId = String(sessionScope.scope?.warehouseId || sessionScope.requireScope().warehouseId || '').trim();
+    } catch {
+      setCostSummaryByItemId({});
+      return;
+    }
     const ids = Array.from(new Set(items
       .filter((it: any) => !((it as any)?.lineType === 'promotion' || Boolean((it as any)?.promotionId)))
       .map((it: any) => String(it?.id || it?.itemId || '').trim())

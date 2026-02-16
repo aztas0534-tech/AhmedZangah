@@ -906,6 +906,10 @@ const SettingsScreen: React.FC = () => {
       const isChecked = (e.target as HTMLInputElement).checked;
       setFormState(prev => ({ ...prev, maintenanceEnabled: isChecked }));
     }
+    else if (name === 'ENABLE_MULTI_CURRENCY_PRICING') {
+      const isChecked = (e.target as HTMLInputElement).checked;
+      setFormState(prev => ({ ...prev, ENABLE_MULTI_CURRENCY_PRICING: isChecked }));
+    }
     else if (name === 'maintenanceMessage') {
       setFormState(prev => ({ ...prev, maintenanceMessage: value }));
     }
@@ -1586,6 +1590,21 @@ const SettingsScreen: React.FC = () => {
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">أضف رموز العملات التي ستتعامل بها. اضغط Enter للإضافة.</p>
               </div>
+            </div>
+            <div className="mt-4">
+              <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  name="ENABLE_MULTI_CURRENCY_PRICING"
+                  checked={Boolean((formState as any)?.ENABLE_MULTI_CURRENCY_PRICING)}
+                  onChange={handleChange}
+                  className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                />
+                تفعيل التسعير متعدد العملات في نقاط البيع
+              </label>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                يسمح باختيار عملة الفاتورة في شاشة نقاط البيع عند توفر أسعار الصرف والعملات التشغيلية.
+              </p>
             </div>
             <div className="border-t pt-4">
               <div className="flex items-center justify-between gap-2">

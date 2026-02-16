@@ -463,8 +463,8 @@ begin
 end;
 $$;
 
-revoke all on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text, uuid) from public;
-grant execute on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text, uuid) to authenticated;
+revoke all on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text) from public;
+grant execute on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text) to authenticated;
 
 create or replace function public.create_order_secure_with_payment_proof(
     p_items jsonb,
