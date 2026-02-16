@@ -3,6 +3,11 @@
 
 set app.allow_ledger_ddl = '1';
 
+-- Must DROP old signatures first because we are changing the return type
+drop function if exists public.general_ledger(text, date, date);
+drop function if exists public.general_ledger(text, date, date, uuid);
+drop function if exists public.general_ledger(text, date, date, uuid, uuid);
+
 create or replace function public.general_ledger(
   p_account_code text,
   p_start date,
@@ -135,7 +140,7 @@ as $$
       from public.journal_lines jl
       join public.journal_entries je on je.id = jl.journal_entry_id
       join acct a on a.id = jl.account_id
-      cross join state st
+      left join state st on true
       where public.can_view_reports()
         and p_start is not null
         and je.entry_date::date < p_start
@@ -167,7 +172,7 @@ as $$
     from public.journal_lines jl
     join public.journal_entries je on je.id = jl.journal_entry_id
     join acct a on a.id = jl.account_id
-    cross join state st
+    left join state st on true
     left join lateral (
       select
         case
@@ -273,5 +278,8 @@ as $$
   from lines l
   order by l.entry_date, l.entry_created_at, l.line_created_at, l.journal_entry_id;
 $$;
+
+grant execute on function public.general_ledger(text, date, date, uuid, uuid) to authenticated;
+grant execute on function public.general_ledger(text, date, date, uuid, uuid) to service_role;
 
 notify pgrst, 'reload schema';

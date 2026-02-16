@@ -57,14 +57,33 @@ export default function PrintablePartyLedgerStatement(props: {
   const selectedCode = String(printCurrencyCode || '').trim().toUpperCase();
   const baseCode = String(baseCurrencyCode || '').trim().toUpperCase();
   const rate = Number(printFxRate || 1) || 1;
-  const convert = (v: number): number => {
+  const convertValue = (v: number): number => {
     if (selectedCode && baseCode && selectedCode !== baseCode) return (Number(v || 0) / rate);
     return Number(v || 0);
   };
+
+  const getRowAmount = (row: StatementRow): number => {
+    // If printing in the SAME currency as the transaction, use the original foreign amount!
+    if (selectedCode && row.currency_code && selectedCode === row.currency_code.toUpperCase()) {
+      return Number(row.foreign_amount || 0);
+    }
+    // Otherwise, convert Base Amount
+    return convertValue(Number(row.base_amount || 0));
+  };
+
+  const getOpenAmount = (row: StatementRow): number => {
+    // If printing in the SAME currency as the transaction, use the original foreign open amount!
+    if (selectedCode && row.currency_code && selectedCode === row.currency_code.toUpperCase()) {
+      return Number(row.open_foreign_amount || 0);
+    }
+    // Otherwise, convert Base Open Amount
+    return convertValue(Number(row.open_base_amount || 0));
+  };
+
   const totals = (() => {
-    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? convert(Number(r.base_amount || 0)) : 0), 0);
-    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? convert(Number(r.base_amount || 0)) : 0), 0);
-    const last = rows.length ? convert(rows[rows.length - 1].running_balance) : 0;
+    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? getRowAmount(r) : 0), 0);
+    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? getRowAmount(r) : 0), 0);
+    const last = rows.length ? convertValue(rows[rows.length - 1].running_balance) : 0;
     return { debit, credit, last };
   })();
   const periodText = [start ? formatDateOnly(start) : null, end ? formatDateOnly(end) : null]
@@ -255,20 +274,20 @@ export default function PrintablePartyLedgerStatement(props: {
               <td className="tabular" dir="ltr" style={{ fontWeight: 700, color: '#475569' }}>{r.account_code}</td>
               <td style={{ fontWeight: 600 }}>{r.account_name}</td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'debit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'debit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
+                {r.direction === 'debit' ? fmt(getRowAmount(r)) : '—'}
                 <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
               </td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'credit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'credit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
+                {r.direction === 'credit' ? fmt(getRowAmount(r)) : '—'}
                 <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
               </td>
-              <td className="tabular text-center" dir="ltr">{fmt(convert(Number(r.running_balance || 0)))}</td>
+              <td className="tabular text-center" dir="ltr">{fmt(convertValue(Number(r.running_balance || 0)))}</td>
               <td>
                 <div className="tabular" style={{ fontSize: 11 }}>{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
               </td>
               <td>
                 <div className="tabular" dir="ltr" style={{ fontSize: 12 }}>
-                  {r.open_base_amount == null ? '—' : fmt(convert(Number(r.open_base_amount || 0)))}
+                  {r.open_base_amount == null ? '—' : fmt(getOpenAmount(r))}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b' }}>
                   {localizeOpenStatusAr(r.open_status)}
