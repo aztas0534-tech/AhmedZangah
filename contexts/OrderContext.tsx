@@ -115,7 +115,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const { updateChallengeProgress } = useChallenges();
   const { isAuthenticated: isAdminAuthenticated, user: adminUser, hasPermission } = useAuth();
   const sessionScope = useSessionScope();
- 
+
   const addressCacheRef = useRef<Map<string, string>>(new Map());
   const reserveStockRpcModeRef = useRef<null | 'wrapper' | 'direct3' | 'legacy1'>(null);
   const confirmDeliveryWithCreditRpcModeRef = useRef<null | 'wrapper' | 'direct4'>(null);
@@ -123,20 +123,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
 
   const logAudit = async (action: string, details: string, metadata?: any) => {
-      const supabase = getSupabaseClient();
-      if (!supabase || !adminUser) return;
-      try {
-          await supabase.from('system_audit_logs').insert({
-              action,
-              module: 'orders',
-              details,
-              performed_by: adminUser.id,
-              performed_at: new Date().toISOString(),
-              metadata
-          });
-      } catch (err) {
-          console.error('Audit log failed:', err);
-      }
+    const supabase = getSupabaseClient();
+    if (!supabase || !adminUser) return;
+    try {
+      await supabase.from('system_audit_logs').insert({
+        action,
+        module: 'orders',
+        details,
+        performed_by: adminUser.id,
+        performed_at: new Date().toISOString(),
+        metadata
+      });
+    } catch (err) {
+      console.error('Audit log failed:', err);
+    }
   };
 
   const isUuid = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -149,6 +149,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return (
       code === 'PGRST202' ||
       code === '42883' ||
+      code === '22P02' || // invalid input syntax for type json — PostgREST overload disambiguation issue
       status === 404 ||
       /Could not find the function/i.test(msg) ||
       /PGRST202/i.test(details)
@@ -179,7 +180,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       (err as any).__diagnosticMessage = exists
         ? 'خدمة تسجيل الدفعات موجودة على الخادم لكن غير متاحة عبر الـ API حالياً (صلاحية EXECUTE أو مخطط PostgREST قديم). ادفع/طبّق ترحيلات Supabase وتأكد من وجود: grant execute on function public.record_order_payment(...) to authenticated ثم أعد المحاولة.'
         : 'خدمة تسجيل الدفعات غير موجودة على الخادم أو لم يتم تطبيق ترحيلات Supabase (migrations). ادفع/طبّق الترحيلات ثم أعد المحاولة.';
-    } catch {}
+    } catch { }
     return err;
   };
 
@@ -406,7 +407,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return res;
     }
 
-    let res = await tryWrapper();
+    // Prefer direct4 mode — wrapper triggers PostgREST disambiguation issues
+    let res = await tryDirect4();
+    if (!res.error || !isRpcNotFoundError(res.error)) {
+      confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
+      return res;
+    }
+
+    res = await tryWrapper();
     if (!res.error || !isRpcNotFoundError(res.error)) {
       confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
@@ -416,19 +424,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     {
       const reloaded = await reloadPostgrestSchema();
       if (reloaded) {
-        res = await tryWrapper();
+        res = await tryDirect4();
         if (!res.error || !isRpcNotFoundError(res.error)) {
-          confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
-          if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+          confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
           return res;
         }
       }
     }
 
-    res = await tryDirect4();
-    if (!res.error || !isRpcNotFoundError(res.error)) {
-      confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
-    }
     return res;
   };
 
@@ -489,7 +492,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return res;
     }
 
-    let res = await tryWrapper();
+    // Prefer direct4 mode — the wrapper mode triggers PostgREST overload
+    // disambiguation issues (22P02) with overloaded function signatures.
+    let res = await tryDirect4();
+    if (!res.error || !isRpcNotFoundError(res.error)) {
+      confirmDeliveryRpcModeRef.current = 'direct4';
+      return res;
+    }
+
+    res = await tryWrapper();
     if (!res.error || !isRpcNotFoundError(res.error)) {
       confirmDeliveryRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
@@ -499,19 +510,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     {
       const reloaded = await reloadPostgrestSchema();
       if (reloaded) {
-        res = await tryWrapper();
+        res = await tryDirect4();
         if (!res.error || !isRpcNotFoundError(res.error)) {
-          confirmDeliveryRpcModeRef.current = 'wrapper';
-          if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+          confirmDeliveryRpcModeRef.current = 'direct4';
           return res;
         }
       }
-    }
-
-    res = await tryDirect4();
-    if (!res.error || !isRpcNotFoundError(res.error)) {
-      confirmDeliveryRpcModeRef.current = 'direct4';
-      return res;
     }
 
     res = await tryDirect3();
@@ -662,7 +666,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       if (error) throw error;
     } catch (err) {
-      console.error('Failed to update order:', err);
+      const msg = String((err as any)?.message || (err as any)?.details || err || '');
+      // Supress known expected errors that callers might handle gracefully
+      if (!/posted_order_immutable/i.test(msg)) {
+        console.error('Failed to update order:', err);
+      }
       throw new Error(localizeSupabaseError(err));
     }
   }, []);
@@ -971,7 +979,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           invoiceNumber = data;
         }
       }
-    } catch {}
+    } catch { }
     if (!invoiceNumber) {
       invoiceNumber = generateInvoiceNumber(order.id, invoiceIssuedAt);
     }
@@ -1024,7 +1032,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (supabase && !isCod) {
           await supabase.rpc('post_invoice_issued', { p_order_id: nextOrder.id, p_issued_at: invoiceIssuedAt });
         }
-      } catch {}
+      } catch { }
       await addOrderEvent({
         orderId: order.id,
         action: 'order.invoiceIssued',
@@ -1033,7 +1041,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         createdAt: invoiceIssuedAt,
         payload: { invoiceNumber },
       });
-      await updateRemoteOrder(nextOrder, { includeStatus: false });
+      if ((nextOrder.status as any) !== 'posted') {
+        try {
+          await updateRemoteOrder(nextOrder, { includeStatus: false });
+        } catch (err: any) {
+          // If the order is already posted, we can't update it. Ignore this error to stop the retry loop.
+          if (String(err?.message || '').includes('posted_order_immutable') || err?.code === 'P0001') {
+            console.warn('Skipping update for posted order in ensureInvoiceIssued:', nextOrder.id);
+          } else if ((nextOrder.status as any) === 'delivered' || (nextOrder.status as any) === 'posted') {
+            console.warn('Swallowing update error for delivered/posted order:', nextOrder.id, err);
+          } else {
+            throw err;
+          }
+        }
+      }
       setOrders(prev => prev.map(o => (o.id === nextOrder.id ? nextOrder : o)));
       return nextOrder;
     };
@@ -1068,7 +1089,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data')
+                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1077,7 +1098,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithoutZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,currency,fx_rate,base_total,data')
+                .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1123,6 +1144,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 status: resolvedStatus,
                 createdAt: typeof r.created_at === 'string' ? r.created_at : (base.createdAt || new Date().toISOString()),
                 deliveryZoneId: typeof r.delivery_zone_id === 'string' ? r.delivery_zone_id : base.deliveryZoneId,
+                ...(r.warehouse_id ? { warehouseId: r.warehouse_id } : {}),
                 ...(currency ? { currency } : {}),
               };
               if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
@@ -1146,7 +1168,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           // Process missing invoices in the background without blocking or re-fetching
           const shouldEnsureInvoices = isAdminAuthenticated;
           if (shouldEnsureInvoices) {
-            const needsInvoice = nextOrders.filter(o => isInvoiceEligible(o) && !o.invoiceIssuedAt && !invoiceEnsureAttemptedRef.current.has(o.id));
+            const needsInvoice = nextOrders.filter(o => isInvoiceEligible(o) && !o.invoiceIssuedAt && !o.invoiceSnapshot && !invoiceEnsureAttemptedRef.current.has(o.id));
             if (needsInvoice.length > 0) {
               void (async () => {
                 for (const order of needsInvoice) {
@@ -1380,28 +1402,28 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
     const rpcPayload = {
-        p_items: simplifiedItems,
-        p_delivery_zone_id: orderData.deliveryZoneId,
-        p_payment_method: orderData.paymentMethod,
-        p_notes: orderData.notes,
-        p_address: orderData.address,
-        p_location: orderData.location,
-        p_customer_name: orderData.customerName,
-        p_phone_number: orderData.phoneNumber,
-        p_is_scheduled: Boolean(orderData.isScheduled),
-        p_scheduled_at: orderData.scheduledAt || null,
-        p_coupon_code: orderData.appliedCouponCode || null,
-        p_points_redeemed_value: orderData.pointsRedeemedValue || 0,
-        p_payment_proof_type: orderData.paymentProofType || null,
-        p_payment_proof: orderData.paymentProof || null,
-        p_currency: (orderData as any)?.currency ? String((orderData as any).currency).trim().toUpperCase() : null,
-        p_warehouse_id: scopedWarehouseId
+      p_items: simplifiedItems,
+      p_delivery_zone_id: orderData.deliveryZoneId,
+      p_payment_method: orderData.paymentMethod,
+      p_notes: orderData.notes,
+      p_address: orderData.address,
+      p_location: orderData.location,
+      p_customer_name: orderData.customerName,
+      p_phone_number: orderData.phoneNumber,
+      p_is_scheduled: Boolean(orderData.isScheduled),
+      p_scheduled_at: orderData.scheduledAt || null,
+      p_coupon_code: orderData.appliedCouponCode || null,
+      p_points_redeemed_value: orderData.pointsRedeemedValue || 0,
+      p_payment_proof_type: orderData.paymentProofType || null,
+      p_payment_proof: orderData.paymentProof || null,
+      p_currency: (orderData as any)?.currency ? String((orderData as any).currency).trim().toUpperCase() : null,
+      p_warehouse_id: scopedWarehouseId
     };
 
     const { data: createdOrderData, error } = await supabase.rpc('create_order_secure_with_payment_proof', rpcPayload);
     if (error) {
-        console.error('RPC Error:', error);
-        throw new Error(localizeSupabaseError(error));
+      console.error('RPC Error:', error);
+      throw new Error(localizeSupabaseError(error));
     }
 
     let createdId: string | undefined = undefined;
@@ -1466,7 +1488,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         const isFirstOrder = userOrders.length === 0;
         const { referralRewardPoints } = settings.loyaltySettings;
-        
+
         if (isFirstOrder && currentUser.referredBy && !currentUser.firstOrderDiscountApplied && supabase) {
           let referrerAuthId: string | undefined;
           try {
@@ -1725,52 +1747,52 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         });
       } else {
         pricedItems = await Promise.all(items.map(async (item: any) => {
-        if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
-        const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
-          ? (item.weight || item.quantity)
-          : item.quantity;
-        const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
-        const call = async (customerId: string | null) => {
-          return await supabaseForPricing!.rpc('get_fefo_pricing', {
-            p_item_id: item.id,
-            p_warehouse_id: warehouseId,
-            p_quantity: pricingQty,
-            p_customer_id: customerId,
-            p_currency_code: desiredCurrency,
-            p_batch_id: (item as any).forcedBatchId || null,
-          });
-        };
-        let { data, error } = await call(rawCustomerId);
+          if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
+          const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
+            ? (item.weight || item.quantity)
+            : item.quantity;
+          const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
+          const call = async (customerId: string | null) => {
+            return await supabaseForPricing!.rpc('get_fefo_pricing', {
+              p_item_id: item.id,
+              p_warehouse_id: warehouseId,
+              p_quantity: pricingQty,
+              p_customer_id: customerId,
+              p_currency_code: desiredCurrency,
+              p_batch_id: (item as any).forcedBatchId || null,
+            });
+          };
+          let { data, error } = await call(rawCustomerId);
 
-        if (error && isRpcNotFoundError(error)) {
+          if (error && isRpcNotFoundError(error)) {
             const reloaded = await reloadPostgrestSchema();
             if (reloaded) {
-                const retry = await call(rawCustomerId);
-                data = retry.data;
-                error = retry.error;
+              const retry = await call(rawCustomerId);
+              data = retry.data;
+              error = retry.error;
             }
-        }
+          }
 
-        if (error) throw new Error(localizeSupabaseError(error));
-        const row = (Array.isArray(data) ? data[0] : data) as any;
-        const unitPrice = Number(row?.suggested_price);
-        if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-          throw new Error('تعذر احتساب السعر.');
-        }
-        const basePatch: any = {
-          _pricedByRpc: true,
-          _fefoBatchId: row?.batch_id ? String(row.batch_id) : undefined,
-          _fefoBatchCode: row?.batch_code ? String(row.batch_code) : undefined,
-          _fefoExpiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
-          _fefoUnitCost: Number(row?.unit_cost) || 0,
-          _fefoMinPrice: row?.min_price != null ? Number(row?.min_price) : undefined,
-          _fefoNextBatchMinPrice: row?.next_batch_min_price != null ? Number(row?.next_batch_min_price) : undefined,
-          _fefoWarningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
-        };
-        if (item.unitType === 'gram') {
-          return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
-        }
-        return { ...item, price: unitPrice, ...basePatch };
+          if (error) throw new Error(localizeSupabaseError(error));
+          const row = (Array.isArray(data) ? data[0] : data) as any;
+          const unitPrice = Number(row?.suggested_price);
+          if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+            throw new Error('تعذر احتساب السعر.');
+          }
+          const basePatch: any = {
+            _pricedByRpc: true,
+            _fefoBatchId: row?.batch_id ? String(row.batch_id) : undefined,
+            _fefoBatchCode: row?.batch_code ? String(row.batch_code) : undefined,
+            _fefoExpiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
+            _fefoUnitCost: Number(row?.unit_cost) || 0,
+            _fefoMinPrice: row?.min_price != null ? Number(row?.min_price) : undefined,
+            _fefoNextBatchMinPrice: row?.next_batch_min_price != null ? Number(row?.next_batch_min_price) : undefined,
+            _fefoWarningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
+          };
+          if (item.unitType === 'gram') {
+            return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
+          }
+          return { ...item, price: unitPrice, ...basePatch };
         }));
       }
     } else {
@@ -1940,7 +1962,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const isFullyPaid = input.isCredit
       ? (paymentTotal + 0.01 >= computedTotal)
       : (Math.abs(paymentTotal - computedTotal) <= 0.01);
-    
+
     if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');
     }
@@ -1994,7 +2016,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             .maybeSingle();
           if (cRow?.auth_user_id) effectiveCustomerAuthId = String(input.customerId);
         }
-      } catch {}
+      } catch { }
     }
     const newOrder: Order = {
       id: crypto.randomUUID(),
@@ -2100,6 +2122,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return offlineOrder;
     };
 
+    let paymentRecordOk = true;
+    let paidAtIso: string | undefined;
+    let shouldIssueInvoice = false;
+    let invoiceSnapshot: Order['invoiceSnapshot'] | undefined;
+    let finalized: Order = newOrder;
+
     try {
       await createRemoteOrder({ ...newOrder, status: 'pending' });
 
@@ -2113,16 +2141,148 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             newOrder.invoiceNumber = invNum;
           }
         }
-      } catch {}
+      } catch { }
+
+      if (canMarkPaidUi) {
+        const sbPay = getSupabaseClient();
+        if (!sbPay) throw new Error('Supabase غير مهيأ.');
+        const paymentCurrency = String((newOrder as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+        for (let i = 0; i < paymentBreakdown.length; i++) {
+          const p = paymentBreakdown[i];
+          const rpcErr = await rpcRecordOrderPayment(sbPay, {
+            orderId: newOrder.id,
+            amount: Number(p.amount) || 0,
+            method: p.method,
+            occurredAt: nowIso,
+            currency: paymentCurrency,
+            idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+          });
+          if (rpcErr) {
+            paymentRecordOk = false;
+            if (import.meta.env.DEV) {
+              logger.warn('Failed to record payment for in-store sale:', rpcErr);
+            }
+            break;
+          }
+        }
+      }
+
+      paidAtIso = (canMarkPaidUi && paymentRecordOk && isFullyPaid) ? nowIso : undefined;
+      shouldIssueInvoice = (canMarkPaidUi && paymentRecordOk);
+      invoiceSnapshot = shouldIssueInvoice ? {
+        issuedAt: nowIso,
+        invoiceNumber,
+        createdAt: nowIso,
+        orderSource: 'in_store',
+        items: items.map((it: any) => ({
+          id: it.id || it.itemId,
+          name: it.name,
+          quantity: it.quantity,
+          price: it.price,
+          originalPrice: it.originalPrice,
+          options: it.options,
+          selectedAddons: it.selectedAddons,
+          description: it.description,
+          type: it.type,
+          uom: it.uom,
+          uomCode: it.uomCode,
+          uomQtyInBase: it.uomQtyInBase,
+          total: it.total,
+          image: it.image
+        })) as any,
+        subtotal: computedSubtotal,
+        deliveryFee: 0,
+        deliveryZoneId: IN_STORE_DELIVERY_ZONE_ID,
+        discountAmount,
+        total: computedTotal,
+        currency: desiredCurrency,
+        fxRate: fxRate,
+        baseCurrency: baseCurrency,
+        totals: {
+          subtotal: computedSubtotal,
+          discountAmount,
+          deliveryFee: 0,
+          taxAmount: 0,
+          total: computedTotal
+        },
+        paymentMethod: orderPaymentMethod,
+        paymentBreakdown: paymentBreakdown.map((p) => ({
+          method: p.method,
+          amount: p.amount,
+          referenceNumber: p.referenceNumber,
+          senderName: p.senderName,
+          senderPhone: p.senderPhone,
+          cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
+          cashChange: p.method === 'cash' && p.cashReceived > 0 ? Math.max(0, p.cashReceived - p.amount) : undefined,
+        })),
+        cashReceived,
+        cashChange,
+        paymentProofType: singleNeedsReference ? 'ref_number' : undefined,
+        paymentProof: singleNeedsReference ? singleReferenceNumber : undefined,
+        paymentSenderName: singleNeedsReference ? singleSenderName : undefined,
+        paymentSenderPhone: singleNeedsReference ? singleSenderPhone : undefined,
+        paymentDeclaredAmount: singleNeedsReference ? singleDeclaredAmount : undefined,
+        paymentVerifiedBy: singleNeedsReference ? adminUser?.id : undefined,
+        paymentVerifiedAt: singleNeedsReference ? nowIso : undefined,
+        customerName: input.customerName?.trim() || 'زبون حضوري',
+        phoneNumber: input.phoneNumber?.trim() || '',
+        address: 'داخل المحل',
+      } : undefined;
+
+      finalized = {
+        ...newOrder,
+        paidAt: paidAtIso,
+        invoiceIssuedAt: shouldIssueInvoice ? nowIso : undefined,
+        invoiceSnapshot: invoiceSnapshot,
+      };
+      if (invoiceSnapshot) {
+        (finalized as any).invoiceSnapshot = invoiceSnapshot;
+      }
 
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
       const sb2 = supabase!;
       if (canMarkPaidUi) {
+        // Sanitize objects to remove undefined values AND null bytes (Postgres JSONB hates \u0000)
+        const removeNullBytes = (obj: any): any => {
+          if (typeof obj === 'string') return obj.replace(/\u0000/g, '');
+          if (typeof obj === 'object' && obj !== null) {
+            if (Array.isArray(obj)) return obj.map(removeNullBytes);
+            const newObj: any = {};
+            for (const key in obj) {
+              newObj[key] = removeNullBytes(obj[key]);
+            }
+            return newObj;
+          }
+          return obj;
+        };
+
+        const sanitizedFinalized = removeNullBytes(JSON.parse(JSON.stringify(finalized)));
+        const sanitizedItems = removeNullBytes(JSON.parse(JSON.stringify(payloadItems)));
+
+        // DIAGNOSTIC: Test minimal snapshot to identify bad field
+        if (sanitizedFinalized.invoiceSnapshot) {
+          sanitizedFinalized.invoiceSnapshot = {
+            currency: sanitizedFinalized.invoiceSnapshot.currency || 'SAR',
+            fxRate: sanitizedFinalized.invoiceSnapshot.fxRate || 1,
+            baseCurrency: sanitizedFinalized.invoiceSnapshot.baseCurrency || 'SAR',
+            items: []
+          };
+        }
+
+        if (import.meta.env.DEV) {
+          console.log('[createInStoreSale] RPC payload items length:', sanitizedItems.length, 'warehouseId:', warehouseId);
+          try {
+            console.log('[createInStoreSale] serialized payload check:', JSON.stringify({ p_items: sanitizedItems, p_updated_data: sanitizedFinalized }).length);
+          } catch (e) {
+            console.error('[createInStoreSale] Payload serialization check failed:', e);
+          }
+        }
+
         const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
           orderId: newOrder.id,
-          items: payloadItems,
-          updatedData: newOrder,
+          items: sanitizedItems,
+          updatedData: sanitizedFinalized,
           warehouseId,
         });
 
@@ -2200,74 +2360,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
 
-    let paymentRecordOk = true;
-    if (canMarkPaidUi) {
-      const sbPay = getSupabaseClient();
-      if (!sbPay) throw new Error('Supabase غير مهيأ.');
-      const paymentCurrency = String((newOrder as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
-      for (let i = 0; i < paymentBreakdown.length; i++) {
-        const p = paymentBreakdown[i];
-        const rpcErr = await rpcRecordOrderPayment(sbPay, {
-          orderId: newOrder.id,
-          amount: Number(p.amount) || 0,
-          method: p.method,
-          occurredAt: nowIso,
-          currency: paymentCurrency,
-          idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
-        });
-        if (rpcErr) {
-          paymentRecordOk = false;
-          if (import.meta.env.DEV) {
-            logger.warn('Failed to record payment for in-store sale:', rpcErr);
-          }
-          break;
-        }
-      }
-    }
 
-    const paidAtIso = (canMarkPaidUi && paymentRecordOk && isFullyPaid) ? nowIso : undefined;
-    const shouldIssueInvoice = Boolean(paidAtIso);
-    const invoiceSnapshot: Order['invoiceSnapshot'] | undefined = shouldIssueInvoice ? {
-      issuedAt: nowIso,
-      invoiceNumber,
-      createdAt: nowIso,
-      orderSource: 'in_store',
-      items: items,
-      subtotal: computedSubtotal,
-      deliveryFee: 0,
-      deliveryZoneId: IN_STORE_DELIVERY_ZONE_ID,
-      discountAmount,
-      total: computedTotal,
-      paymentMethod: orderPaymentMethod,
-      paymentBreakdown: paymentBreakdown.map((p) => ({
-        method: p.method,
-        amount: p.amount,
-        referenceNumber: p.referenceNumber,
-        senderName: p.senderName,
-        senderPhone: p.senderPhone,
-        cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
-        cashChange: p.method === 'cash' && p.cashReceived > 0 ? Math.max(0, p.cashReceived - p.amount) : undefined,
-      })),
-      cashReceived,
-      cashChange,
-      paymentProofType: singleNeedsReference ? 'ref_number' : undefined,
-      paymentProof: singleNeedsReference ? singleReferenceNumber : undefined,
-      paymentSenderName: singleNeedsReference ? singleSenderName : undefined,
-      paymentSenderPhone: singleNeedsReference ? singleSenderPhone : undefined,
-      paymentDeclaredAmount: singleNeedsReference ? singleDeclaredAmount : undefined,
-      paymentVerifiedBy: singleNeedsReference ? adminUser?.id : undefined,
-      paymentVerifiedAt: singleNeedsReference ? nowIso : undefined,
-      customerName: input.customerName?.trim() || 'زبون حضوري',
-      phoneNumber: input.phoneNumber?.trim() || '',
-      address: 'داخل المحل',
-    } : undefined;
-
-    const finalized: Order = {
-      ...newOrder,
-      paidAt: paidAtIso,
-      invoiceIssuedAt: shouldIssueInvoice ? nowIso : undefined,
-      invoiceSnapshot: invoiceSnapshot,
-    };
 
     await Promise.all([
       addOrderEvent({
@@ -2959,17 +3052,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     // Log critical status changes
     if (willCancel) {
-        logAudit('order_cancelled', `Order #${orderId.slice(0, 8)} cancelled`, { 
-            orderId, 
-            fromStatus: existing.status, 
-            toStatus: status 
-        });
+      logAudit('order_cancelled', `Order #${orderId.slice(0, 8)} cancelled`, {
+        orderId,
+        fromStatus: existing.status,
+        toStatus: status
+      });
     } else if (willDeliver) {
-        logAudit('order_delivered', `Order #${orderId.slice(0, 8)} delivered`, { 
-            orderId, 
-            total: existing.total,
-            paymentMethod: existing.paymentMethod
-        });
+      logAudit('order_delivered', `Order #${orderId.slice(0, 8)} delivered`, {
+        orderId,
+        total: existing.total,
+        paymentMethod: existing.paymentMethod
+      });
     }
     const updates: Partial<Order> = { status };
     const isCodDeliveryOrder =
@@ -3027,8 +3120,56 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     let deliveredSnapshot: Order | undefined;
     let deliveryQueued = false;
     if (willDeliver) {
-      const updated = { ...existing, ...updates } as Order;
-      
+      let invoiceSnapshot = existing.invoiceSnapshot;
+      if (!invoiceSnapshot || !invoiceSnapshot.currency || !invoiceSnapshot.baseCurrency) {
+        // Construct a valid snapshot if missing to satisfy trigger
+        const baseCurrency = (await getBaseCurrencyCode()) || 'SAR';
+        const currency = existing.currency || baseCurrency;
+        const fxRate = Number(existing.fxRate) || 1;
+        const nowSnapshot = new Date().toISOString();
+
+        invoiceSnapshot = {
+          issuedAt: existing.invoiceIssuedAt || nowSnapshot,
+          invoiceNumber: existing.invoiceNumber || generateInvoiceNumber(existing.id, nowSnapshot),
+          createdAt: existing.createdAt,
+          orderSource: existing.orderSource || 'in_store',
+          items: typeof structuredClone === 'function' ? structuredClone(existing.items) : JSON.parse(JSON.stringify(existing.items)),
+          currency: currency,
+          fxRate: fxRate,
+          baseCurrency: baseCurrency,
+          totals: {
+            subtotal: existing.subtotal,
+            discountAmount: existing.discountAmount,
+            deliveryFee: existing.deliveryFee,
+            taxAmount: (existing as any).taxAmount || 0,
+            total: existing.total,
+          },
+          subtotal: existing.subtotal,
+          deliveryFee: existing.deliveryFee,
+          discountAmount: existing.discountAmount,
+          total: existing.total,
+          paymentMethod: existing.paymentMethod,
+          customerName: existing.customerName,
+          phoneNumber: existing.phoneNumber,
+          address: existing.address,
+          deliveryZoneId: existing.deliveryZoneId,
+        };
+      }
+
+      // Ensure invoiceIssuedAt & invoiceNumber exist at top-level of data so that
+      // the DB trigger trg_issue_invoice_on_delivery does NOT overwrite our
+      // snapshot (its generated snapshot lacks currency/fxRate/baseCurrency).
+      const snapshotIssuedAt = invoiceSnapshot?.issuedAt || existing.invoiceIssuedAt || nowIso;
+      const snapshotInvoiceNumber = invoiceSnapshot?.invoiceNumber || existing.invoiceNumber || '';
+      const updated = {
+        ...existing,
+        ...updates,
+        invoiceSnapshot,
+        invoiceIssuedAt: existing.invoiceIssuedAt || snapshotIssuedAt,
+        invoiceNumber: existing.invoiceNumber || snapshotInvoiceNumber,
+      } as Order;
+
+
       // Use atomic RPC for delivery confirmation (Status Update + Stock Deduction)
       const baseItems = (updated.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
       const merged = new Map<string, number>();
@@ -3348,10 +3489,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             // تم سداد كامل المبلغ مسبقًا (دفعات جزئية)، يسمح بضبط paidAt الآن
             paidAtIso = nowIso;
           }
-    if (paidAtIso) {
+          if (paidAtIso) {
             updated = { ...updated, paidAt: paidAtIso } as Order;
-            await updateRemoteOrder(updated, { includeStatus: false });
-            updated = await ensureInvoiceIssued(updated, paidAtIso);
+            try {
+              await updateRemoteOrder(updated, { includeStatus: false });
+            } catch (patchErr: any) {
+              const errMsg = String(patchErr?.message || patchErr || '');
+              if (!/posted_order_immutable/i.test(errMsg)) throw patchErr;
+              // Order already posted by delivery triggers — safe to ignore
+            }
+            try {
+              updated = await ensureInvoiceIssued(updated, paidAtIso);
+            } catch (invErr: any) {
+              const errMsg = String(invErr?.message || invErr || '');
+              if (!/posted_order_immutable/i.test(errMsg)) throw invErr;
+            }
           }
         } catch (err) {
           // تمرير الخطأ ليُبلغ الواجهة؛ لا نضبط paidAt إن فشل الدفع في وضع Online
