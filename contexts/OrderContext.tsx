@@ -2243,22 +2243,35 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (!supabase) throw new Error('Supabase غير مهيأ.');
       const sb2 = supabase!;
       if (canMarkPaidUi) {
-        // Sanitize objects to remove undefined values AND null bytes (Postgres JSONB hates \u0000)
-        const removeNullBytes = (obj: any): any => {
-          if (typeof obj === 'string') return obj.replace(/\u0000/g, '');
-          if (typeof obj === 'object' && obj !== null) {
-            if (Array.isArray(obj)) return obj.map(removeNullBytes);
+        // Deep-sanitize for PostgreSQL JSONB: remove null bytes, control chars,
+        // NaN, Infinity, and any other non-JSON-safe values.
+        const sanitizeForJsonb = (obj: any): any => {
+          if (obj === undefined || obj === null) return null;
+          if (typeof obj === 'number') {
+            if (!Number.isFinite(obj)) return null; // NaN, Infinity, -Infinity → null
+            return obj;
+          }
+          if (typeof obj === 'string') {
+            // Remove null bytes and other control chars (U+0000–U+001F) except tab/LF/CR
+            // eslint-disable-next-line no-control-regex
+            return obj.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+          }
+          if (typeof obj === 'boolean') return obj;
+          if (Array.isArray(obj)) return obj.map(sanitizeForJsonb);
+          if (typeof obj === 'object') {
             const newObj: any = {};
-            for (const key in obj) {
-              newObj[key] = removeNullBytes(obj[key]);
+            for (const key of Object.keys(obj)) {
+              const val = obj[key];
+              if (val === undefined) continue; // skip undefined keys
+              newObj[key] = sanitizeForJsonb(val);
             }
             return newObj;
           }
-          return obj;
+          return null; // functions, symbols, etc. → null
         };
 
-        const sanitizedFinalized = removeNullBytes(JSON.parse(JSON.stringify(finalized)));
-        const sanitizedItems = removeNullBytes(JSON.parse(JSON.stringify(payloadItems)));
+        const sanitizedFinalized = sanitizeForJsonb(JSON.parse(JSON.stringify(finalized)));
+        const sanitizedItems = sanitizeForJsonb(JSON.parse(JSON.stringify(payloadItems)));
 
 
 
