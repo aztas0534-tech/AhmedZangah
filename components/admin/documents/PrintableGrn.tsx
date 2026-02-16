@@ -49,7 +49,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
 
   return (
     <div className="grn-container" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-        <style>{`
+      <style>{`
             @media print {
                 @page { size: A4; margin: 0; }
                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -165,84 +165,72 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
 
       <div className="header-section">
         <div className="company-info">
-            {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 60, marginBottom: 10 }} />}
-            <h1>{(brand?.name || '').trim()}</h1>
-            {brand?.branchName && <p>{brand.branchName}</p>}
-            {brand?.address && <p>{brand.address}</p>}
-            {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
-            {brand?.vatNumber && <p>{language === 'en' ? 'VAT No:' : 'الرقم الضريبي:'} <span dir="ltr" className="tabular">{brand.vatNumber}</span></p>}
+          {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 60, marginBottom: 10 }} />}
+          <h1>{(brand?.name || '').trim()}</h1>
+          {brand?.branchName && <p>{brand.branchName}</p>}
+          {brand?.address && <p>{brand.address}</p>}
+          {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
+          {brand?.vatNumber && <p>{language === 'en' ? 'VAT No:' : 'الرقم الضريبي:'} <span dir="ltr" className="tabular">{brand.vatNumber}</span></p>}
         </div>
         <div className="doc-title">
-            <h2>{language === 'en' ? 'Goods Receipt Note' : 'إشعار استلام بضائع'}</h2>
-            <div className="ref-number tabular" dir="ltr">#{data.grnNumber}</div>
-            <div style={{ marginTop: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 'bold', background: data.documentStatus === 'posted' ? '#dcfce7' : '#f1f5f9', color: data.documentStatus === 'posted' ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
-                    {language === 'ar' ? localizeDocStatusAr(data.documentStatus) : (data.documentStatus || 'DRAFT')}
-                </span>
-            </div>
+          <h2>{language === 'en' ? 'Goods Receipt Note' : 'إشعار استلام بضائع'}</h2>
+          <div className="ref-number tabular" dir="ltr">#{data.grnNumber}</div>
+          <div style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 'bold', background: data.documentStatus === 'posted' ? '#dcfce7' : '#f1f5f9', color: data.documentStatus === 'posted' ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
+              {language === 'ar' ? localizeDocStatusAr(data.documentStatus) : (data.documentStatus || 'DRAFT')}
+            </span>
+          </div>
         </div>
       </div>
 
       <div className="info-grid">
         <div className="info-item">
-            <span className="info-label">{language === 'en' ? 'Date' : 'التاريخ'}</span>
-            <span className="info-value tabular" dir="ltr">{new Date(data.receivedAt).toLocaleDateString('en-GB')}</span>
+          <span className="info-label">{language === 'en' ? 'Date' : 'التاريخ'}</span>
+          <span className="info-value tabular" dir="ltr">{new Date(data.receivedAt).toLocaleDateString('en-GB')}</span>
         </div>
         <div className="info-item">
-            <span className="info-label">{language === 'en' ? 'Reference' : 'المرجع'}</span>
-            <span className="info-value tabular" dir="ltr">{data.referenceId ? shortId(data.referenceId) : '—'}</span>
+          <span className="info-label">{language === 'en' ? 'Reference' : 'المرجع'}</span>
+          <span className="info-value tabular" dir="ltr">{data.referenceId ? shortId(data.referenceId) : '—'}</span>
         </div>
         <div className="info-item">
-            <span className="info-label">{language === 'en' ? 'PO Number' : 'رقم أمر الشراء'}</span>
-            <span className="info-value tabular" dir="ltr">{data.purchaseOrderNumber || '—'}</span>
+          <span className="info-label">{language === 'en' ? 'PO Number' : 'رقم أمر الشراء'}</span>
+          <span className="info-value tabular" dir="ltr">{data.purchaseOrderNumber || '—'}</span>
         </div>
         <div className="info-item">
-            <span className="info-label">{language === 'en' ? 'Supplier' : 'المورد'}</span>
-            <span className="info-value">{data.supplierName || '—'}</span>
+          <span className="info-label">{language === 'en' ? 'Supplier' : 'المورد'}</span>
+          <span className="info-value">{data.supplierName || '—'}</span>
         </div>
         <div className="info-item">
-            <span className="info-label">{language === 'en' ? 'Warehouse' : 'المستودع'}</span>
-            <span className="info-value">{data.warehouseName || '—'}</span>
+          <span className="info-label">{language === 'en' ? 'Warehouse' : 'المستودع'}</span>
+          <span className="info-value">{data.warehouseName || '—'}</span>
         </div>
       </div>
 
       <table className="lines-table">
-          <thead>
-            <tr>
-              <th style={{ width: '40%' }}>{language === 'en' ? 'Item' : 'الصنف'}</th>
-              <th style={{ width: '15%' }}>{language === 'en' ? 'Qty' : 'الكمية'}</th>
-              <th style={{ width: '15%' }}>{language === 'en' ? 'Unit Cost' : 'سعر الوحدة'}</th>
-              <th style={{ width: '15%' }}>{language === 'en' ? 'Expiry' : 'الانتهاء'}</th>
-              <th style={{ width: '15%' }}>{language === 'en' ? 'Total' : 'الإجمالي'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.items.length === 0 ? (
-              <tr><td colSpan={5} className="text-center" style={{ padding: 30, color: '#94a3b8' }}>{language === 'en' ? 'No items' : 'لا توجد أصناف'}</td></tr>
-            ) : data.items.map((it, idx) => {
-              const qty = Number(it.quantity || 0);
-              const unit = Number(it.unitCost || 0);
-              const line = Number(it.totalCost ?? qty * unit);
-              return (
-                <tr key={`${it.itemId}-${idx}`}>
-                  <td>
-                      <div style={{ fontWeight: 600 }}>{it.itemName || it.itemId}</div>
-                      {it.productionDate && <div style={{ fontSize: 10, color: '#64748b' }}>Prod: <span dir="ltr">{formatDateOnly(it.productionDate)}</span></div>}
-                  </td>
-                  <td className="text-center tabular font-bold" dir="ltr">{qty}</td>
-                  <td className="text-center tabular" dir="ltr">{fmt(unit)}</td>
-                  <td className="text-center tabular" dir="ltr">{it.expiryDate ? formatDateOnly(it.expiryDate) : '—'}</td>
-                  <td className="text-center tabular font-bold" dir="ltr">{fmt(line)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="total-row">
-              <td colSpan={4} style={{ textAlign: language === 'ar' ? 'left' : 'right', padding: '10px 20px' }}>{language === 'en' ? 'Grand Total' : 'الإجمالي الكلي'}</td>
-              <td className="text-center tabular" dir="ltr">{fmt(total)} <span style={{ fontSize: 10 }}>{currency}</span></td>
-            </tr>
-          </tfoot>
+        <thead>
+          <tr>
+            <th style={{ width: '55%' }}>{language === 'en' ? 'Item' : 'الصنف'}</th>
+            <th style={{ width: '20%' }}>{language === 'en' ? 'Qty' : 'الكمية'}</th>
+            <th style={{ width: '25%' }}>{language === 'en' ? 'Expiry' : 'الانتهاء'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.items.length === 0 ? (
+            <tr><td colSpan={3} className="text-center" style={{ padding: 30, color: '#94a3b8' }}>{language === 'en' ? 'No items' : 'لا توجد أصناف'}</td></tr>
+          ) : data.items.map((it, idx) => {
+            const qty = Number(it.quantity || 0);
+            return (
+              <tr key={`${it.itemId}-${idx}`}>
+                <td>
+                  <div style={{ fontWeight: 600 }}>{it.itemName || it.itemId}</div>
+                  {it.productionDate && <div style={{ fontSize: 10, color: '#64748b' }}>Prod: <span dir="ltr">{formatDateOnly(it.productionDate)}</span></div>}
+                </td>
+                <td className="text-center tabular font-bold" dir="ltr">{qty}</td>
+                <td className="text-center tabular" dir="ltr">{it.expiryDate ? formatDateOnly(it.expiryDate) : '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
       </table>
 
       {data.notes && (
@@ -254,19 +242,19 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
 
       <div className="signatures-section">
         <div className="signature-box">
-            <div className="signature-label">{language === 'en' ? 'Storekeeper' : 'أمين المخزن'}</div>
+          <div className="signature-label">{language === 'en' ? 'Storekeeper' : 'أمين المخزن'}</div>
         </div>
         <div className="signature-box">
-            <div className="signature-label">{language === 'en' ? 'Receiver' : 'المستلم'}</div>
+          <div className="signature-label">{language === 'en' ? 'Receiver' : 'المستلم'}</div>
         </div>
       </div>
 
       <div className="footer-meta">
         <div>
-            {language === 'en' ? 'Printed at' : 'تم الطباعة'}: <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span>
+          {language === 'en' ? 'Printed at' : 'تم الطباعة'}: <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span>
         </div>
         <div>
-            Generated by {brand?.name || 'AZTA ERP'}
+          Generated by {brand?.name || 'AZTA ERP'}
         </div>
       </div>
     </div>
