@@ -62,6 +62,9 @@ type LedgerRow = {
   credit: number;
   amount: number;
   running_balance: number;
+  currency_code: string | null;
+  fx_rate: number | null;
+  foreign_amount: number | null;
 };
 
 type UomInflationRow = {
@@ -454,7 +457,7 @@ const FinancialReports: React.FC = () => {
       </div>
     );
   }
-  
+
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   useEffect(() => {
     const fetchCC = async () => {
@@ -820,6 +823,9 @@ const FinancialReports: React.FC = () => {
         credit: Number(r.credit) || 0,
         amount: Number(r.amount) || 0,
         running_balance: Number(r.running_balance) || 0,
+        currency_code: typeof r.currency_code === 'string' && r.currency_code.trim() ? r.currency_code.trim().toUpperCase() : null,
+        fx_rate: r.fx_rate != null ? (Number(r.fx_rate) || null) : null,
+        foreign_amount: r.foreign_amount != null ? (Number(r.foreign_amount) || null) : null,
       })));
     } catch (err: any) {
       showNotification(err?.message || 'تعذر تحميل دفتر الأستاذ', 'error');
@@ -842,7 +848,7 @@ const FinancialReports: React.FC = () => {
       const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }] = await Promise.all([
         supabase.rpc('trial_balance', periodRangeParams),
         supabase.rpc('income_statement', periodRangeParams),
-        supabase.rpc('balance_sheet', { 
+        supabase.rpc('balance_sheet', {
           p_as_of: appliedFilters.asOfDate || null,
           p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
           p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
@@ -1034,8 +1040,8 @@ const FinancialReports: React.FC = () => {
       const now = new Date(appliedFilters.startDate || toYmdLocal(new Date()));
       const { start, end } = getPreviousMonthRange(now);
       const [{ data: isData, error: isError }] = await Promise.all([
-        supabase.rpc('income_statement', { 
-          p_start: start || null, 
+        supabase.rpc('income_statement', {
+          p_start: start || null,
           p_end: end || null,
           p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
           p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
@@ -1371,7 +1377,7 @@ const FinancialReports: React.FC = () => {
         setPrevBalanceSheet(null);
         return;
       }
-      const { data: bsData, error: bsError } = await supabase.rpc('balance_sheet', { 
+      const { data: bsData, error: bsError } = await supabase.rpc('balance_sheet', {
         p_as_of: prevAsOf || null,
         p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
         p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
@@ -1474,7 +1480,7 @@ const FinancialReports: React.FC = () => {
 
   const loadAging = useCallback(async () => {
     if (!supabase) return;
-    
+
     // Aging reports do not support Cost Center filtering yet.
     if (appliedFilters.costCenterId) {
       setArAging([]);
@@ -1607,7 +1613,7 @@ const FinancialReports: React.FC = () => {
     if (!supabase || !customerId) return;
     setArDetailsOpen({ open: true, customerId, title: customerNames[customerId] || `#${shortRef(customerId, 8)}` });
     setArDetailsLoading(true);
-  try {
+    try {
       const { data: orders, error: oErr } = await supabase
         .from('orders')
         .select('id,updated_at,base_total,status,customer_auth_user_id,invoice_number')
@@ -1649,7 +1655,7 @@ const FinancialReports: React.FC = () => {
     if (!supabase || !supplierId) return;
     setApDetailsOpen({ open: true, supplierId, title: supplierNames[supplierId] || `#${shortRef(supplierId, 8)}` });
     setApDetailsLoading(true);
-  try {
+    try {
       const { data: pos, error: poErr } = await supabase
         .from('purchase_orders')
         .select('id,purchase_date,status,base_total,supplier_id,reference_number')
@@ -1778,14 +1784,14 @@ const FinancialReports: React.FC = () => {
       headers,
       data,
       `ledger_${accountCode}_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`,
-      { 
-        sheetName: 'Ledger', 
-        currencyColumns: [6, 7, 8, 9], 
+      {
+        sheetName: 'Ledger',
+        currencyColumns: [6, 7, 8, 9],
         currencyFormat: '#,##0.00',
         preludeRows: [
           [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '', '', '', '', '', '', '', '', ''],
-          ['تقرير: دفتر الأستاذ','','','','','','','','',''],
-          [`الفترة: ${appliedFilters.startDate || '—'} → ${appliedFilters.endDate || '—'}`,'','','','','','','','','']
+          ['تقرير: دفتر الأستاذ', '', '', '', '', '', '', '', '', ''],
+          [`الفترة: ${appliedFilters.startDate || '—'} → ${appliedFilters.endDate || '—'}`, '', '', '', '', '', '', '', '', '']
         ],
         accentColor: settings.brandColors?.primary || '#2F2B7C'
       }
@@ -2299,9 +2305,9 @@ const FinancialReports: React.FC = () => {
                     const headers = ['الفترة', 'صافي الربح'];
                     const rows = incomeTrend.map((r) => [r.label, r.value]);
                     void exportToXlsx(
-                      headers, 
-                      rows, 
-                      `income_trend_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`, 
+                      headers,
+                      rows,
+                      `income_trend_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`,
                       { sheetName: 'Net Profit Trend', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'اتجاه صافي الربح', headers.length, { periodText: `الفترة: ${appliedFilters.startDate || '—'} → ${appliedFilters.endDate || '—'}` }) }
                     );
                   }}
@@ -2519,14 +2525,14 @@ const FinancialReports: React.FC = () => {
                         headers,
                         rows,
                         `ar_details_${appliedFilters.asOfDate || 'asof'}.xlsx`,
-                        { 
-                          sheetName: 'AR Details', 
-                          currencyColumns: [2, 3, 4], 
+                        {
+                          sheetName: 'AR Details',
+                          currencyColumns: [2, 3, 4],
                           currencyFormat: '#,##0.00',
                           preludeRows: [
-                            [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '','','',''],
-                            ['تقرير: تفاصيل ذمم العملاء','','','',''],
-                            [`كما في: ${appliedFilters.asOfDate || '—'}`,'','','','']
+                            [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '', '', '', ''],
+                            ['تقرير: تفاصيل ذمم العملاء', '', '', '', ''],
+                            [`كما في: ${appliedFilters.asOfDate || '—'}`, '', '', '', '']
                           ],
                           accentColor: settings.brandColors?.primary || '#2F2B7C'
                         }
@@ -2648,14 +2654,14 @@ const FinancialReports: React.FC = () => {
                         headers,
                         rows,
                         `ap_details_${appliedFilters.asOfDate || 'asof'}.xlsx`,
-                        { 
-                          sheetName: 'AP Details', 
-                          currencyColumns: [2, 3, 4], 
+                        {
+                          sheetName: 'AP Details',
+                          currencyColumns: [2, 3, 4],
                           currencyFormat: '#,##0.00',
                           preludeRows: [
-                            [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '','','',''],
-                            ['تقرير: تفاصيل ذمم الموردين','','','',''],
-                            [`كما في: ${appliedFilters.asOfDate || '—'}`,'','','','']
+                            [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '', '', '', ''],
+                            ['تقرير: تفاصيل ذمم الموردين', '', '', '', ''],
+                            [`كما في: ${appliedFilters.asOfDate || '—'}`, '', '', '', '']
                           ],
                           accentColor: settings.brandColors?.primary || '#2F2B7C'
                         }
@@ -3558,12 +3564,12 @@ const FinancialReports: React.FC = () => {
                   headerTitle: settings.cafeteriaName?.ar || 'تقارير',
                   headerSubtitle: 'قائمة التدفقات النقدية',
                   logoUrl: settings.logoUrl || '',
-                    footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-                    accentColor: settings.brandColors?.primary || '#2F2B7C',
-                    brandLines: [
-                      settings.taxSettings?.taxNumber ? `الرقم الضريبي: ${settings.taxSettings.taxNumber}` : ''
-                    ],
-                    pageNumbers: true
+                  footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
+                  accentColor: settings.brandColors?.primary || '#2F2B7C',
+                  brandLines: [
+                    settings.taxSettings?.taxNumber ? `الرقم الضريبي: ${settings.taxSettings.taxNumber}` : ''
+                  ],
+                  pageNumbers: true
                 }
               )}
               className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
@@ -4017,6 +4023,7 @@ const FinancialReports: React.FC = () => {
                 <th className="py-2 px-3 text-right border-l dark:border-gray-700">البيان</th>
                 <th className="py-2 px-3 text-right border-l dark:border-gray-700">مدين</th>
                 <th className="py-2 px-3 text-right border-l dark:border-gray-700">دائن</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">العملة الأجنبية</th>
                 <th className="py-2 px-3 text-right border-l dark:border-gray-700">الرصيد التراكمي</th>
                 <th className="py-2 px-3 text-right border-l dark:border-gray-700">المرجع</th>
               </tr>
@@ -4043,12 +4050,22 @@ const FinancialReports: React.FC = () => {
                   </td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{formatMoney(r.debit)}</td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{formatMoney(r.credit)}</td>
+                  <td className="py-2 px-3 border-l dark:border-gray-700" dir="ltr">
+                    {r.currency_code && r.currency_code !== 'SAR' && r.foreign_amount != null ? (
+                      <div>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">{Number(r.foreign_amount).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {r.currency_code}</span>
+                        {r.fx_rate != null && <div className="text-[10px] text-gray-400 dark:text-gray-500">FX: {Number(r.fx_rate).toFixed(6)}</div>}
+                      </div>
+                    ) : (
+                      <span className="text-gray-300 dark:text-gray-600">—</span>
+                    )}
+                  </td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{formatMoney(r.running_balance)}</td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{`#${shortRef(r.journal_entry_id, 8)}`}</td>
                 </tr>
               ))}
               {pagedLedgerRows.length === 0 && (
-                <tr><td colSpan={6} className="py-6 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+                <tr><td colSpan={7} className="py-6 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
               )}
             </tbody>
           </table>

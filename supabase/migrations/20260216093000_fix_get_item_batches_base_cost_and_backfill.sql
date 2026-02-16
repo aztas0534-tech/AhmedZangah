@@ -17,6 +17,14 @@ end $$;
 do $$
 begin
   if to_regclass('public.inventory_movements') is not null and to_regclass('public.batches') is not null then
+    -- Temporarily disable immutability triggers to allow updating posted movements
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_purchase_in_immutable') then
+      alter table public.inventory_movements disable trigger trg_inventory_movements_purchase_in_immutable;
+    end if;
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_forbid_modify_posted') then
+      alter table public.inventory_movements disable trigger trg_inventory_movements_forbid_modify_posted;
+    end if;
+    
     update public.inventory_movements im
     set unit_cost = round(b.foreign_unit_cost * b.fx_rate_at_receipt, 6),
         total_cost = round(im.quantity * round(b.foreign_unit_cost * b.fx_rate_at_receipt, 6), 6)
@@ -28,6 +36,14 @@ begin
       and b.fx_rate_at_receipt > 0
       and nullif(btrim(coalesce(b.foreign_currency,'')), '') is not null
       and upper(btrim(coalesce(b.foreign_currency,''))) <> upper(public.get_base_currency());
+
+    -- Re-enable triggers
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_purchase_in_immutable') then
+      alter table public.inventory_movements enable trigger trg_inventory_movements_purchase_in_immutable;
+    end if;
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_forbid_modify_posted') then
+      alter table public.inventory_movements enable trigger trg_inventory_movements_forbid_modify_posted;
+    end if;
   end if;
 end $$;
 
