@@ -2260,15 +2260,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const sanitizedFinalized = removeNullBytes(JSON.parse(JSON.stringify(finalized)));
         const sanitizedItems = removeNullBytes(JSON.parse(JSON.stringify(payloadItems)));
 
-        // DIAGNOSTIC: Test minimal snapshot to identify bad field
-        if (sanitizedFinalized.invoiceSnapshot) {
-          sanitizedFinalized.invoiceSnapshot = {
-            currency: sanitizedFinalized.invoiceSnapshot.currency || 'SAR',
-            fxRate: sanitizedFinalized.invoiceSnapshot.fxRate || 1,
-            baseCurrency: sanitizedFinalized.invoiceSnapshot.baseCurrency || 'SAR',
-            items: []
-          };
-        }
+
 
         if (import.meta.env.DEV) {
           console.log('[createInStoreSale] RPC payload items length:', sanitizedItems.length, 'warehouseId:', warehouseId);
@@ -2407,20 +2399,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     if (!canMarkPaidUi) {
-      await addOrderEvent({
-        orderId: newOrder.id,
-        action: 'order.created',
-        actorType: 'admin',
-        actorId: adminUser?.id,
-        toStatus: newOrder.status,
-        createdAt: nowIso,
-        payload: {
-          orderSource: 'in_store',
-          discountAmount,
-          total: newOrder.total,
-          awaitingPayment: true,
-        },
-      });
       setOrders(prev => [newOrder, ...prev]);
       return newOrder;
     }
