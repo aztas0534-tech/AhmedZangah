@@ -27,7 +27,7 @@ import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
 const InvoiceScreen: React.FC = () => {
     const { orderId } = useParams<{ orderId: string }>();
     const { getOrderById, incrementInvoicePrintCount, loading } = useOrders();
-  const { showNotification } = useToast();
+    const { showNotification } = useToast();
     const navigate = useNavigate();
     const location = useLocation();
     const order = getOrderById(orderId || '');
@@ -266,29 +266,23 @@ const InvoiceScreen: React.FC = () => {
             contactNumber: brand.contactNumber,
         };
 
-        if (Capacitor.isNativePlatform()) {
-            setIsPrintingA4(true);
-            sharePdf(
-                'print-area',
-                `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
-                `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
-                { ...buildPdfBrandOptions(brandSettings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false }) }
-            ).then((success) => {
-                if (success) {
+        // Use sharePdf for both web and native — window.print() is unreliable for RTL A4 layouts
+        setIsPrintingA4(true);
+        sharePdf(
+            'print-area',
+            `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
+            `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
+            { ...buildPdfBrandOptions(brandSettings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false }) }
+        ).then((success) => {
+            if (success) {
+                if (Capacitor.isNativePlatform()) {
                     showNotification('اختر "طباعة" من خيارات المشاركة إذا كانت متاحة', 'success');
-                    incrementInvoicePrintCount(order.id);
-                } else {
-                    showNotification('تعذر إنشاء ملف PDF للطباعة', 'error');
                 }
-            }).finally(() => setIsPrintingA4(false));
-            return;
-        }
-
-        try {
-            window.print();
-            incrementInvoicePrintCount(order.id);
-        } catch {
-        }
+                incrementInvoicePrintCount(order.id);
+            } else {
+                showNotification('تعذر إنشاء ملف PDF للطباعة', 'error');
+            }
+        }).finally(() => setIsPrintingA4(false));
     };
 
     const handlePrintA4WithPageNumbers = () => {
