@@ -121,7 +121,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     };
 
     return (
-        <div ref={ref} className="bg-white text-gray-900 w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 md:p-12 relative print:p-4 print:m-0 print:mx-0 print:w-full print:max-w-none print:h-auto print:min-h-0 border-t-[5px] print:border-t-[3px] print:break-after-page box-border" style={{ borderColor: accentColor || '#1e293b', fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id || "print-area"} dir="rtl">
+        <div ref={ref} className="bg-white text-gray-900 w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 md:p-12 relative flex flex-col print:p-4 print:m-0 print:mx-0 print:w-full print:max-w-none print:h-auto print:min-h-0 border-t-[5px] print:border-t-[2px] print:break-after-page box-border" style={{ borderColor: accentColor || '#1e293b', fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id || "print-area"} dir="rtl">
             {/* Watermark for Copy */}
             {(isCopy || copyLabel) && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
@@ -145,7 +145,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <div className="flex-1">
                         <div className="flex items-start gap-5">
                             {storeLogoUrl && (
-                                <img src={storeLogoUrl} alt="Logo" className="h-28 w-auto object-contain drop-shadow-sm" />
+                                <img src={storeLogoUrl} alt="Logo" className="h-28 print:h-20 w-auto object-contain drop-shadow-sm" />
                             )}
                             <div>
                                 <h1 className="text-4xl font-black text-slate-900 tracking-tight">{systemName}</h1>
@@ -204,7 +204,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Info Grid */}
-            <div className="grid grid-cols-2 gap-12 mb-10 relative z-10">
+            <div className="grid grid-cols-2 gap-12 print:gap-6 mb-10 print:mb-6 relative z-10">
                 {/* Bill To */}
                 <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-1 h-full bg-slate-800"></div>
@@ -312,7 +312,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Footer Section: QR & Totals */}
-            <div className="flex flex-col md:flex-row gap-12 items-start relative z-10">
+            <div className="flex flex-col md:flex-row gap-12 print:gap-6 items-start relative z-10">
                 {/* Left: QR & Notes */}
                 <div className="flex-1">
                     {qrUrl && (
@@ -394,7 +394,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Footer Bottom */}
-            <div className="mt-auto pt-16">
+            <div className="mt-auto pt-16 print:pt-4">
                 <div className="grid grid-cols-3 gap-12 text-center text-sm text-slate-500 border-t border-slate-200 pt-8">
                     <div className="space-y-3">
                         <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">المستلم (Receiver)</div>
