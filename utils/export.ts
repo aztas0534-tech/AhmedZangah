@@ -77,7 +77,30 @@ const createPdfDataUriFromElement = async (
     const headerTitle = options?.headerTitle ?? '';
     const headerSubtitle = options?.headerSubtitle ?? title;
     const footerText = brandFooter || `تم الإنشاء: ${new Date().toLocaleString('ar-EG-u-nu-latn')}`;
-    const canvas = await html2canvas(element, { scale });
+
+    // For A4 PDF: temporarily constrain element width to prevent clipping
+    let savedWidth: string | null = null;
+    let savedMaxWidth: string | null = null;
+    let savedBoxSizing: string | null = null;
+    if (!usePx) {
+        // A4 width = 210mm ≈ 794px at 96dpi. We use 760px to account for margins.
+        savedWidth = element.style.width;
+        savedMaxWidth = element.style.maxWidth;
+        savedBoxSizing = element.style.boxSizing;
+        element.style.width = '760px';
+        element.style.maxWidth = '760px';
+        element.style.boxSizing = 'border-box';
+    }
+
+    const canvas = await html2canvas(element, { scale, width: !usePx ? 760 : undefined });
+
+    // Restore original styles
+    if (!usePx) {
+        element.style.width = savedWidth || '';
+        element.style.maxWidth = savedMaxWidth || '';
+        element.style.boxSizing = savedBoxSizing || '';
+    }
+
     const imgData = canvas.toDataURL('image/png');
 
     let dataUri = '';
