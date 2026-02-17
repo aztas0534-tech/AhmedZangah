@@ -42,3 +42,7 @@ supabase/.temp/
 # Environment files
 .env*
 !.env.example
+
+# Local scripts/snippets (do not commit)
+scripts/test_customer_management.mjs
+supabase/snippets/
