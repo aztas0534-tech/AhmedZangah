@@ -44,16 +44,17 @@ const ProductReports: React.FC = () => {
     const sessionScope = useSessionScope();
     const [isSharing, setIsSharing] = useState(false);
     const [loading, setLoading] = useState(false);
-    
+
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedZoneId, setSelectedZoneId] = useState<string>('');
     const [rangePreset, setRangePreset] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
     const [productSearch, setProductSearch] = useState('');
     const [showAllProducts, setShowAllProducts] = useState(false);
-    
+
     const [reportData, setReportData] = useState<ProductSalesRow[]>([]);
     const [quantitySourceFromMovements, setQuantitySourceFromMovements] = useState(false);
+    const [allStockInventoryValue, setAllStockInventoryValue] = useState(0);
     const [recallBatchId, setRecallBatchId] = useState('');
     const [recallLoading, setRecallLoading] = useState(false);
     const [recallRows, setRecallRows] = useState<RecallRow[]>([]);
@@ -100,7 +101,7 @@ const ProductReports: React.FC = () => {
         if (!startDate && !endDate) return null;
         const start = startDate ? startOfDayFromYmd(startDate) : null;
         const end = endDate ? endOfDayFromYmd(endDate) : null;
-        
+
         if (!start || !end) return null;
 
         return { start, end };
@@ -162,15 +163,21 @@ const ProductReports: React.FC = () => {
                     }
                     const { data: stocks, error: smErr } = await stockQuery;
                     if (smErr) throw smErr;
+                    let inventoryTotal = 0;
                     for (const s of stocks || []) {
                         const id = String((s as any)?.item_id || '');
                         if (!id) continue;
+                        const qty = parseNumber((s as any)?.available_quantity);
+                        const reserved = parseNumber((s as any)?.reserved_quantity);
+                        const cost = parseNumber((s as any)?.avg_cost);
                         stockById.set(id, {
-                            current_stock: parseNumber((s as any)?.available_quantity),
-                            reserved_stock: parseNumber((s as any)?.reserved_quantity),
-                            current_cost_price: parseNumber((s as any)?.avg_cost),
+                            current_stock: qty,
+                            reserved_stock: reserved,
+                            current_cost_price: cost,
                         });
+                        inventoryTotal += (qty + reserved) * cost;
                     }
+                    if (active) setAllStockInventoryValue(inventoryTotal);
                 }
 
                 let rpcRows: ProductSalesRow[] | null = null;
@@ -184,7 +191,7 @@ const ProductReports: React.FC = () => {
                     if (!rpcErr && Array.isArray(rpcData)) {
                         rpcRows = (rpcData as any[]).map(normalizeRpcRow);
                     }
-                } catch (_) {}
+                } catch (_) { }
 
                 const quantityFromMovements = new Map<string, number>();
                 try {
@@ -199,7 +206,7 @@ const ProductReports: React.FC = () => {
                             if (id) quantityFromMovements.set(id, parseNumber(row?.quantity_sold));
                         }
                     }
-                } catch (_) {}
+                } catch (_) { }
 
                 if (rpcRows) {
                     const merged = rpcRows.map((r) => {
@@ -559,7 +566,7 @@ const ProductReports: React.FC = () => {
 
             // Derived metrics
             const profitMargin = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-            
+
             // Turnover: Quantity Sold / Average Inventory (preferred)
             const averageInv = typeof row.avg_inventory === 'number' ? Number(row.avg_inventory || 0) : currentStock;
             const turnoverRate = averageInv > 0 ? qtySold / averageInv : 0;
@@ -609,13 +616,9 @@ const ProductReports: React.FC = () => {
             return name.includes(q) || idShort.includes(q) || unit.includes(q);
         });
     }, [processedData, productSearch]);
-    
-    const totalInventoryValue = useMemo(() => {
-        return processedData.reduce((sum, item) => {
-            const physicalQty = Number(item.current_stock || 0) + Number(item.reserved_stock || 0);
-            return sum + (physicalQty * Number(item.current_cost_price || 0));
-        }, 0);
-    }, [processedData]);
+
+    // Use inventory value from ALL stock_management records (not just products with sales)
+    const totalInventoryValue = allStockInventoryValue;
     const totals = useMemo(() => {
         const qty = processedData.reduce((s, p) => s + Number(p.quantity_sold || 0), 0);
         const sales = processedData.reduce((s, p) => s + Number(p.total_sales || 0), 0);
@@ -934,33 +937,33 @@ const ProductReports: React.FC = () => {
                             </div>
                         </div>
 
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                            <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-                                <div className="text-sm text-gray-600 dark:text-gray-300">
-                                    عدد الأصناف: <span className="font-bold">{visibleProducts.length.toLocaleString('en-US')}</span>
-                                </div>
-                                <div className="flex flex-col md:flex-row gap-3 md:items-center">
-                                    <input
-                                        value={productSearch}
-                                        onChange={(e) => setProductSearch(e.target.value)}
-                                        placeholder="بحث: الاسم، رقم الصنف، الوحدة"
-                                        className="w-full md:w-[420px] p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                                    />
-                                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+                            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                                <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+                                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                                        عدد الأصناف: <span className="font-bold">{visibleProducts.length.toLocaleString('en-US')}</span>
+                                    </div>
+                                    <div className="flex flex-col md:flex-row gap-3 md:items-center">
                                         <input
-                                            type="checkbox"
-                                            checked={showAllProducts}
-                                            onChange={(e) => setShowAllProducts(e.target.checked)}
-                                            className="h-4 w-4"
+                                            value={productSearch}
+                                            onChange={(e) => setProductSearch(e.target.value)}
+                                            placeholder="بحث: الاسم، رقم الصنف، الوحدة"
+                                            className="w-full md:w-[420px] p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                                         />
-                                        عرض كل النتائج
-                                    </label>
+                                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                                            <input
+                                                type="checkbox"
+                                                checked={showAllProducts}
+                                                onChange={(e) => setShowAllProducts(e.target.checked)}
+                                                className="h-4 w-4"
+                                            />
+                                            عرض كل النتائج
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                     <thead className="bg-gray-50 dark:bg-gray-700">
                                         <tr>
                                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">اسم المنتج</th>
@@ -998,8 +1001,8 @@ const ProductReports: React.FC = () => {
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                                     <span className={`font-semibold ${product.turnoverRate >= 2 ? 'text-green-600 dark:text-green-400' :
-                                                            product.turnoverRate >= 1 ? 'text-yellow-600 dark:text-yellow-400' :
-                                                                'text-gray-600 dark:text-gray-400'
+                                                        product.turnoverRate >= 1 ? 'text-yellow-600 dark:text-yellow-400' :
+                                                            'text-gray-600 dark:text-gray-400'
                                                         }`}>
                                                         {product.turnoverRate.toFixed(2)}×
                                                     </span>
@@ -1007,8 +1010,8 @@ const ProductReports: React.FC = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                                     {product.daysUntilStockout !== null ? (
                                                         <span className={`font-semibold ${product.daysUntilStockout <= 7 ? 'text-red-600 dark:text-red-400' :
-                                                                product.daysUntilStockout <= 14 ? 'text-yellow-600 dark:text-yellow-400' :
-                                                                    'text-green-600 dark:text-green-400'
+                                                            product.daysUntilStockout <= 14 ? 'text-yellow-600 dark:text-yellow-400' :
+                                                                'text-green-600 dark:text-green-400'
                                                             }`}>
                                                             {Math.ceil(product.daysUntilStockout).toLocaleString('en-US')} يوم
                                                         </span>
