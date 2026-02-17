@@ -272,7 +272,7 @@ const InvoiceScreen: React.FC = () => {
             'print-area',
             `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
             `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
-            { ...buildPdfBrandOptions(brandSettings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false }) }
+            { ...buildPdfBrandOptions(brandSettings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false, headerHeight: 0, footerHeight: 0 }) }
         ).then((success) => {
             if (success) {
                 if (Capacitor.isNativePlatform()) {
