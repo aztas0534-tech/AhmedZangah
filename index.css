@@ -259,14 +259,25 @@ svg {
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  body {
+    width: 210mm;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: white;
+  }
+
+  /* Hide everything by default using visibility to preserve layout */
   body * {
     visibility: hidden;
   }
 
-  .print-only {
-    display: block;
-  }
-
+  /* Only show print area and its children */
   #print-area,
   #print-area * {
     visibility: visible;
@@ -274,17 +285,21 @@ svg {
 
   #print-area {
     position: absolute;
-    right: 0;
     top: 0;
-    width: 100% !important;
-    max-width: 100% !important;
-    padding: 0 !important;
+    right: 0;
+    left: auto;
+    width: 210mm !important;
+    max-width: 210mm !important;
     margin: 0;
+    padding: 0 !important;
+    /* Let component handle internal padding */
+    overflow: visible;
+    /* CRITICAL: Allow paginated content to flow */
     font-size: 11pt;
     box-sizing: border-box !important;
-    overflow: hidden;
   }
 
+  /* Reset some styles for print */
   #print-area .shadow-md,
   #print-area .shadow-lg,
   #print-area .shadow-xl {
@@ -305,6 +320,8 @@ svg {
 
   #print-area thead {
     background-color: #f2f2f2 !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
   }
 
   #print-area button {
@@ -328,9 +345,10 @@ svg {
     font-size: 1.25rem !important;
   }
 
-  @page {
-    size: A4;
-    margin: 10mm;
+  /* Ensure page breaks work */
+  .print\:break-after-page {
+    break-after: page;
+    page-break-after: always;
   }
 }
 

@@ -266,23 +266,29 @@ const InvoiceScreen: React.FC = () => {
             contactNumber: brand.contactNumber,
         };
 
-        // Use sharePdf for both web and native — window.print() is unreliable for RTL A4 layouts
-        setIsPrintingA4(true);
-        sharePdf(
-            'print-area',
-            `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
-            `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
-            { ...buildPdfBrandOptions(brandSettings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false, headerHeight: 0, footerHeight: 0 }) }
-        ).then((success) => {
-            if (success) {
-                if (Capacitor.isNativePlatform()) {
+        if (Capacitor.isNativePlatform()) {
+            setIsPrintingA4(true);
+            sharePdf(
+                'print-area',
+                `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
+                `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
+                { ...buildPdfBrandOptions(brandSettings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false }) }
+            ).then((success) => {
+                if (success) {
                     showNotification('اختر "طباعة" من خيارات المشاركة إذا كانت متاحة', 'success');
+                    incrementInvoicePrintCount(order.id);
+                } else {
+                    showNotification('تعذر إنشاء ملف PDF للطباعة', 'error');
                 }
-                incrementInvoicePrintCount(order.id);
-            } else {
-                showNotification('تعذر إنشاء ملف PDF للطباعة', 'error');
-            }
-        }).finally(() => setIsPrintingA4(false));
+            }).finally(() => setIsPrintingA4(false));
+            return;
+        }
+
+        try {
+            window.print();
+            incrementInvoicePrintCount(order.id);
+        } catch {
+        }
     };
 
     const handlePrintA4WithPageNumbers = () => {
