@@ -278,11 +278,13 @@ svg {
     top: 0;
     width: 100% !important;
     max-width: 100% !important;
-    padding: 0;
+    padding: 5mm !important;
     margin: 0;
-    font-size: 12pt;
-    box-sizing: border-box;
+    font-size: 11pt;
+    box-sizing: border-box !important;
     overflow: hidden;
+    transform: scale(0.92);
+    transform-origin: top right;
   }
 
   #print-area .shadow-md,
@@ -311,9 +313,26 @@ svg {
     display: none !important;
   }
 
+  /* Scale down large headings for print */
+  #print-area .text-5xl {
+    font-size: 2rem !important;
+  }
+
+  #print-area .text-4xl {
+    font-size: 1.75rem !important;
+  }
+
+  #print-area .text-3xl {
+    font-size: 1.5rem !important;
+  }
+
+  #print-area .text-2xl {
+    font-size: 1.25rem !important;
+  }
+
   @page {
     size: A4;
-    margin: 20mm;
+    margin: 10mm;
   }
 }
 
