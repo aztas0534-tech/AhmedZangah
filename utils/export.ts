@@ -92,7 +92,13 @@ const createPdfDataUriFromElement = async (
         element.style.boxSizing = 'border-box';
     }
 
-    const canvas = await html2canvas(element, { scale, width: !usePx ? 760 : undefined });
+    const canvas = await html2canvas(element, {
+        scale,
+        width: !usePx ? 760 : undefined,
+        useCORS: true,
+        logging: false,
+        imageTimeout: 0,
+    });
 
     // Restore original styles
     if (!usePx) {
