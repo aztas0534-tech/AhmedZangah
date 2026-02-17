@@ -364,12 +364,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const rpcConfirmOrderDeliveryWithCredit = async (supabase: any, input: { orderId: string; items: any[]; updatedData: any; warehouseId: string }) => {
     const tryDirect4 = async () => {
-      const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+      const args = {
         p_order_id: input.orderId,
         p_items: input.items,
         p_updated_data: input.updatedData,
         p_warehouse_id: input.warehouseId,
-      });
+      };
+
+      const preferred = await supabase.rpc('confirm_order_delivery_with_credit_rpc', args);
+      if (!preferred?.error || !isRpcNotFoundError(preferred.error)) return preferred;
+
+      const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', args);
       return { data, error };
     };
     const tryWrapper = async () => {
@@ -394,7 +399,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const strict = isRpcStrictMode();
     if (strict) {
-      let res = await tryWrapper();
+      let res = await tryDirect4();
+      if (res.error && isRpcNotFoundError(res.error)) {
+        const reloaded = await reloadPostgrestSchema();
+        if (reloaded) res = await tryDirect4();
+      }
+      if (!res.error || !isRpcNotFoundError(res.error)) {
+        confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
+        return res;
+      }
+      res = await tryWrapper();
       if (res.error && isRpcNotFoundError(res.error)) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryWrapper();
@@ -437,12 +451,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const rpcConfirmOrderDelivery = async (supabase: any, input: { orderId: string; items: any[]; updatedData: any; warehouseId: string }) => {
     const tryDirect4 = async () => {
-      const { data, error } = await supabase.rpc('confirm_order_delivery', {
+      const args = {
         p_order_id: input.orderId,
         p_items: input.items,
         p_updated_data: input.updatedData,
         p_warehouse_id: input.warehouseId,
-      });
+      };
+
+      const preferred = await supabase.rpc('confirm_order_delivery_rpc', args);
+      if (!preferred?.error || !isRpcNotFoundError(preferred.error)) return preferred;
+
+      const { data, error } = await supabase.rpc('confirm_order_delivery', args);
       return { data, error };
     };
     const tryDirect3 = async () => {
@@ -479,7 +498,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const strict = isRpcStrictMode();
     if (strict) {
-      let res = await tryWrapper();
+      let res = await tryDirect4();
+      if (res.error && isRpcNotFoundError(res.error)) {
+        const reloaded = await reloadPostgrestSchema();
+        if (reloaded) res = await tryDirect4();
+      }
+      if (!res.error || !isRpcNotFoundError(res.error)) {
+        confirmDeliveryRpcModeRef.current = 'direct4';
+        return res;
+      }
+      res = await tryWrapper();
       if (res.error && isRpcNotFoundError(res.error)) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryWrapper();
@@ -2125,7 +2153,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     let paymentRecordOk = true;
     let paidAtIso: string | undefined;
     let shouldIssueInvoice = false;
-    let invoiceSnapshot: Order['invoiceSnapshot'] | undefined;
+    // invoiceNumber already declared above
     let finalized: Order = newOrder;
 
     try {
@@ -2168,92 +2196,47 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       paidAtIso = (canMarkPaidUi && paymentRecordOk && isFullyPaid) ? nowIso : undefined;
-      shouldIssueInvoice = (canMarkPaidUi && paymentRecordOk);
-      invoiceSnapshot = shouldIssueInvoice ? {
-        issuedAt: nowIso,
-        invoiceNumber,
-        createdAt: nowIso,
-        orderSource: 'in_store',
-        items: items.map((it: any) => ({
-          id: it.id || it.itemId,
-          name: it.name,
-          quantity: it.quantity,
-          price: it.price,
-          originalPrice: it.originalPrice,
-          options: it.options,
-          selectedAddons: it.selectedAddons,
-          description: it.description,
-          type: it.type,
-          uom: it.uom,
-          uomCode: it.uomCode,
-          uomQtyInBase: it.uomQtyInBase,
-          total: it.total,
-          image: it.image
-        })) as any,
-        subtotal: computedSubtotal,
-        deliveryFee: 0,
-        deliveryZoneId: IN_STORE_DELIVERY_ZONE_ID,
-        discountAmount,
-        total: computedTotal,
-        currency: desiredCurrency,
-        fxRate: fxRate,
-        baseCurrency: baseCurrency,
-        totals: {
-          subtotal: computedSubtotal,
-          discountAmount,
-          deliveryFee: 0,
-          taxAmount: 0,
-          total: computedTotal
-        },
-        paymentMethod: orderPaymentMethod,
-        paymentBreakdown: paymentBreakdown.map((p) => ({
-          method: p.method,
-          amount: p.amount,
-          referenceNumber: p.referenceNumber,
-          senderName: p.senderName,
-          senderPhone: p.senderPhone,
-          cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
-          cashChange: p.method === 'cash' && p.cashReceived > 0 ? Math.max(0, p.cashReceived - p.amount) : undefined,
-        })),
-        cashReceived,
-        cashChange,
-        paymentProofType: singleNeedsReference ? 'ref_number' : undefined,
-        paymentProof: singleNeedsReference ? singleReferenceNumber : undefined,
-        paymentSenderName: singleNeedsReference ? singleSenderName : undefined,
-        paymentSenderPhone: singleNeedsReference ? singleSenderPhone : undefined,
-        paymentDeclaredAmount: singleNeedsReference ? singleDeclaredAmount : undefined,
-        paymentVerifiedBy: singleNeedsReference ? adminUser?.id : undefined,
-        paymentVerifiedAt: singleNeedsReference ? nowIso : undefined,
-        customerName: input.customerName?.trim() || 'زبون حضوري',
-        phoneNumber: input.phoneNumber?.trim() || '',
-        address: 'داخل المحل',
-      } : undefined;
+      shouldIssueInvoice = (canMarkPaidUi && paymentRecordOk && isFullyPaid);
 
+      // Note: We do NOT generate invoiceNumber or invoiceSnapshot here in the frontend.
+      // We rely on the backend trigger `trg_issue_invoice_on_delivery` to generate them when status changes to 'delivered'.
+      // This avoids the 22P02 (Invalid JSON) error caused by sending the complex snapshot structure from frontend.
       finalized = {
         ...newOrder,
         paidAt: paidAtIso,
-        invoiceIssuedAt: shouldIssueInvoice ? nowIso : undefined,
-        invoiceSnapshot: invoiceSnapshot,
+        // We explicitly clear invoiceNumber/invoiceIssuedAt/invoiceSnapshot so the backend sees them as missing
+        // and generates them.
+        invoiceNumber: undefined,
+        invoiceIssuedAt: undefined,
+        invoiceSnapshot: undefined,
       };
-      if (invoiceSnapshot) {
-        (finalized as any).invoiceSnapshot = invoiceSnapshot;
-      }
 
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
       const sb2 = supabase!;
       if (canMarkPaidUi) {
-        // Deep-sanitize for PostgreSQL JSONB: remove null bytes, control chars,
-        // NaN, Infinity, and any other non-JSON-safe values.
+        const rollbackCreatedOrder = async (reason: string) => {
+          try {
+            const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
+            if (!deleteErr) return;
+            const cancelled = {
+              ...finalized,
+              status: 'cancelled',
+              cancelledAt: nowIso,
+              cancelReason: reason,
+            };
+            await sb2.from('orders').update({ status: 'cancelled', data: cancelled }).eq('id', newOrder.id);
+          } catch {
+          }
+        };
+
         const sanitizeForJsonb = (obj: any): any => {
           if (obj === undefined || obj === null) return null;
           if (typeof obj === 'number') {
-            if (!Number.isFinite(obj)) return null; // NaN, Infinity, -Infinity → null
+            if (!Number.isFinite(obj)) return null;
             return obj;
           }
           if (typeof obj === 'string') {
-            // Remove null bytes and other control chars (U+0000–U+001F) except tab/LF/CR
-            // eslint-disable-next-line no-control-regex
             return obj.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
           }
           if (typeof obj === 'boolean') return obj;
@@ -2262,26 +2245,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const newObj: any = {};
             for (const key of Object.keys(obj)) {
               const val = obj[key];
-              if (val === undefined) continue; // skip undefined keys
+              if (val === undefined) continue;
               newObj[key] = sanitizeForJsonb(val);
             }
             return newObj;
           }
-          return null; // functions, symbols, etc. → null
+          return null;
         };
 
         const sanitizedFinalized = sanitizeForJsonb(JSON.parse(JSON.stringify(finalized)));
         const sanitizedItems = sanitizeForJsonb(JSON.parse(JSON.stringify(payloadItems)));
 
-
-
         if (import.meta.env.DEV) {
           console.log('[createInStoreSale] RPC payload items length:', sanitizedItems.length, 'warehouseId:', warehouseId);
-          try {
-            console.log('[createInStoreSale] serialized payload check:', JSON.stringify({ p_items: sanitizedItems, p_updated_data: sanitizedFinalized }).length);
-          } catch (e) {
-            console.error('[createInStoreSale] Payload serialization check failed:', e);
-          }
+          console.log('[createInStoreSale] Delegating invoice generation to backend.');
         }
 
         const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
@@ -2294,10 +2271,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (rpcError) {
           const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
           if (offlineNow || isAbortLikeError(rpcError)) {
-            await sb2.from('orders').delete().eq('id', newOrder.id);
+            await rollbackCreatedOrder('offline_or_aborted');
             return await queueOfflineSale();
           }
-          await sb2.from('orders').delete().eq('id', newOrder.id);
+          await rollbackCreatedOrder(localizeSupabaseError(rpcError) || 'rpc_error');
           console.error('In-store sale confirmation failed:', rpcError);
           const msg = localizeSupabaseError(rpcError);
           throw new Error(
@@ -2307,7 +2284,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           );
         }
 
-        await fetchRemoteOrderById(newOrder.id);
+        // Fetch fresh order to get the backend-generated invoice details
+        const freshOrder = await fetchRemoteOrderById(newOrder.id);
+        if (freshOrder) {
+          finalized = freshOrder;
+        } else {
+          // Fallback if fetch fails (unlikely)
+          console.warn('[createInStoreSale] Could not fetch fresh order after delivery.');
+        }
+
       } else {
         const { data: sessionData, error: sessionError } = await sb2.auth.getSession();
         if (sessionError || !sessionData.session) {
@@ -2384,22 +2369,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           paymentBreakdown: newOrder.paymentBreakdown,
           discountAmount,
           total: newOrder.total,
-          invoiceNumber,
+          invoiceNumber: finalized.invoiceNumber, // Used backend generated number if available
           paymentRecordOk,
         },
       }),
-      ...(shouldIssueInvoice ? [addOrderEvent({
+      ...(shouldIssueInvoice && finalized.invoiceNumber ? [addOrderEvent({
         orderId: newOrder.id,
         action: 'order.invoiceIssued',
         actorType: 'system',
         createdAt: nowIso,
-        payload: { invoiceNumber },
+        payload: { invoiceNumber: finalized.invoiceNumber },
       })] : []),
     ]);
 
-    if (shouldIssueInvoice) {
-      await updateRemoteOrder(finalized, { includeStatus: false });
-    }
+    // We already have the fresh order in `finalized` (if canMarkPaidUi path was taken)
+    // No need to call updateRemoteOrder again for "shouldIssueInvoice" as backend did it.
+
 
     if (canMarkPaidUi && !paymentRecordOk) {
       setOrders(prev => [finalized, ...prev]);
