@@ -121,7 +121,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     };
 
     return (
-        <div ref={ref} className="bg-white text-gray-900 w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 md:p-12 relative print:p-4 print:m-0 print:w-full print:max-w-none print:h-auto border-t-[5px] print:border-t-[3px] print:break-after-page box-border" style={{ borderColor: accentColor || '#1e293b', fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id || "print-area"} dir="rtl">
+        <div ref={ref} className="bg-white text-gray-900 w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 md:p-12 relative print:p-6 print:m-0 print:mx-0 print:w-full print:max-w-none print:h-auto print:min-h-0 border-t-[5px] print:border-t-[3px] print:break-after-page box-border" style={{ borderColor: accentColor || '#1e293b', fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id || "print-area"} dir="rtl">
             {/* Watermark for Copy */}
             {(isCopy || copyLabel) && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
