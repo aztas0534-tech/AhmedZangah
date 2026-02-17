@@ -89,6 +89,11 @@ const createPdfDataUriFromElement = async (
         const pdf = new jsPDF({ orientation, unit: 'px', format: pageSize });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
+
+        // Add a small margin to prevent printer clipping on thermal
+        const sideMargin = 4;
+        const printWidth = pageWidth - (sideMargin * 2);
+
         let headerTop = 8;
         if (accent) {
             pdf.setFillColor(accent.r, accent.g, accent.b);
@@ -113,7 +118,7 @@ const createPdfDataUriFromElement = async (
             pdf.text(headerSubtitle, pageWidth / 2, subtitleY, { align: 'center' as any });
         }
         pdf.setTextColor(0, 0, 0);
-        pdf.addImage(imgData, 'PNG', 0, headerPx, pageWidth, pageHeight - headerPx - footerPx);
+        pdf.addImage(imgData, 'PNG', sideMargin, headerPx, printWidth, pageHeight - headerPx - footerPx);
         pdf.setFontSize(10);
         const pageLabelPx = options?.pageNumbers ? `الصفحة 1 من 1` : '';
         const footerLinePx = [footerText, pageLabelPx].filter(Boolean).join(' • ');
@@ -126,7 +131,10 @@ const createPdfDataUriFromElement = async (
         const headerMm = Math.max(0, options?.headerHeight ?? 10);
         const footerMm = Math.max(0, options?.footerHeight ?? 8);
         const contentHeightMm = Math.max(0.1, pageHeight - headerMm - footerMm);
-        const imgWidth = pageWidth;
+
+        // Add 10mm margin for A4 to avoid printer clipping
+        const sideMarginMm = 10;
+        const printableWidthMm = pageWidth - (sideMarginMm * 2);
 
         const imgDataPxWidth = canvas.width;
         const imgDataPxHeight = canvas.height;
@@ -136,7 +144,8 @@ const createPdfDataUriFromElement = async (
         if (!sliceContext) throw new Error('Failed to initialize canvas context');
         sliceCanvas.width = imgDataPxWidth;
 
-        const mmPerPx = pageWidth / imgDataPxWidth;
+        // Calculate scaling based on printable width (with margins) NOT full page width
+        const mmPerPx = printableWidthMm / imgDataPxWidth;
         const pageHeightPx = contentHeightMm / mmPerPx;
         const totalPages = Math.max(1, Math.ceil(imgDataPxHeight / pageHeightPx));
         let currentPage = 1;
@@ -172,7 +181,10 @@ const createPdfDataUriFromElement = async (
                 pdf.text(headerSubtitle, pageWidth / 2, subtitleYmm, { align: 'center' as any });
             }
             pdf.setTextColor(0, 0, 0);
-            pdf.addImage(sliceData, 'PNG', 0, headerMm, imgWidth, (sliceHeightPx * mmPerPx));
+
+            // Use printableWidthMm and sideMarginMm
+            pdf.addImage(sliceData, 'PNG', sideMarginMm, headerMm, printableWidthMm, (sliceHeightPx * mmPerPx));
+
             pdf.setFontSize(9);
             const pageLabel = options?.pageNumbers ? `الصفحة ${currentPage} من ${totalPages}` : '';
             const footerLine = [footerText, pageLabel].filter(Boolean).join(' • ');
@@ -219,7 +231,7 @@ export const sharePdf = async (
                 if (perms.publicStorage !== 'granted') {
                     await Filesystem.requestPermissions();
                 }
-            } catch {}
+            } catch { }
 
             const base64Data = dataUri.split(',')[1];
             const targetPath = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
@@ -308,7 +320,7 @@ export const exportToCsv = async (headers: string[], rows: (string | number)[][]
                 if (perms.publicStorage !== 'granted') {
                     await Filesystem.requestPermissions();
                 }
-            } catch {}
+            } catch { }
 
             const result = await Filesystem.writeFile({
                 path: filename,
@@ -323,7 +335,7 @@ export const exportToCsv = async (headers: string[], rows: (string | number)[][]
                 url: result.uri,
             });
         } else {
-             // Web fallback: download
+            // Web fallback: download
             const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
@@ -482,7 +494,7 @@ export const exportToXlsx = async (
                 if (perms.publicStorage !== 'granted') {
                     await Filesystem.requestPermissions();
                 }
-            } catch {}
+            } catch { }
 
             const wbBase64 = toBase64(await buildBytes());
             const targetPath = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
