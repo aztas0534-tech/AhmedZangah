@@ -21,6 +21,7 @@ import { getSupabaseClient } from './supabase';
 import { isRpcWrappersAvailable } from './supabase';
 import { useSystemAudit } from './contexts/SystemAuditContext';
 import { GovernanceProvider } from './contexts/GovernanceContext';
+import { ToastProvider } from './contexts/ToastContext';
 
 // Lazy load screens
 const HomeScreen = lazy(() => import('./screens/HomeScreen'));
@@ -288,160 +289,162 @@ const App: React.FC = () => {
     <ThemeProvider>
       <GovernanceProvider>
         <ErrorBoundary>
-          <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <HardwareBackButtonHandler />
-            <AppStateListener />
-            <RpcHealthCheck />
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-              {/* Customer Facing Routes */}
-              <Route path="/" element={<CustomerLayout />}>
-                <Route index element={<HomeScreen />} />
-                <Route path="item/:id" element={<ItemDetailsScreen />} />
-                <Route path="promotion/:id" element={<PromotionDetailsScreen />} />
-                <Route path="cart" element={<CartScreen />} />
-                <Route path="login" element={<LoginScreen />} />
-                <Route path="otp" element={<OtpScreen />} />
-                <Route path="checkout" element={<ProtectedRoute><CheckoutScreen /></ProtectedRoute>} />
-                <Route path="order/:orderId" element={<OrderConfirmationScreen />} />
-                <Route path="my-orders" element={<ProtectedRoute><MyOrdersScreen /></ProtectedRoute>} />
-                <Route path="profile" element={<ProtectedRoute><UserProfileScreen /></ProtectedRoute>} />
-                <Route path="invoice/:orderId" element={<ProtectedRoute><InvoiceScreen /></ProtectedRoute>} />
-                <Route path="download-app" element={<DownloadAppScreen />} />
-                <Route path="help" element={<HelpCenterScreen />} />
-              </Route>
+          <ToastProvider>
+            <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <HardwareBackButtonHandler />
+              <AppStateListener />
+              <RpcHealthCheck />
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  {/* Customer Facing Routes */}
+                  <Route path="/" element={<CustomerLayout />}>
+                    <Route index element={<HomeScreen />} />
+                    <Route path="item/:id" element={<ItemDetailsScreen />} />
+                    <Route path="promotion/:id" element={<PromotionDetailsScreen />} />
+                    <Route path="cart" element={<CartScreen />} />
+                    <Route path="login" element={<LoginScreen />} />
+                    <Route path="otp" element={<OtpScreen />} />
+                    <Route path="checkout" element={<ProtectedRoute><CheckoutScreen /></ProtectedRoute>} />
+                    <Route path="order/:orderId" element={<OrderConfirmationScreen />} />
+                    <Route path="my-orders" element={<ProtectedRoute><MyOrdersScreen /></ProtectedRoute>} />
+                    <Route path="profile" element={<ProtectedRoute><UserProfileScreen /></ProtectedRoute>} />
+                    <Route path="invoice/:orderId" element={<ProtectedRoute><InvoiceScreen /></ProtectedRoute>} />
+                    <Route path="download-app" element={<DownloadAppScreen />} />
+                    <Route path="help" element={<HelpCenterScreen />} />
+                  </Route>
 
-              {/* Admin Dashboard Routes */}
-              <Route path="/admin/login" element={<AdminLoginScreen />} />
-              <Route path="/admin" element={<AdminProtectedRoute><AdminLayout /></AdminProtectedRoute>}>
-                <Route index element={<AdminIndexRedirect />} />
-                <Route path="workspace" element={<AdminProtectedRoute permissions={['dashboard.view', 'orders.view', 'stock.manage', 'shipments.view']} requireAllPermissions={false}><AdminWorkspaceScreen /></AdminProtectedRoute>} />
-                <Route path="dashboard" element={<AdminProtectedRoute permissions={['dashboard.view']}><AdminDashboardScreen /></AdminProtectedRoute>} />
-                <Route path="orders" element={<AdminProtectedRoute permissions={['orders.view']}><ManageOrdersScreen /></AdminProtectedRoute>} />
-                <Route path="invoice/:orderId" element={<AdminProtectedRoute permissions={['orders.view']}><InvoiceScreen /></AdminProtectedRoute>} />
-                <Route path="delivery-zones" element={<AdminProtectedRoute permissions={['deliveryZones.manage']}><ManageDeliveryZonesScreen /></AdminProtectedRoute>} />
-                <Route path="items" element={<AdminProtectedRoute permissions={['items.manage']}><ManageItemsScreen /></AdminProtectedRoute>} />
-                <Route path="addons" element={<AdminProtectedRoute permissions={['addons.manage']}><ManageAddonsScreen /></AdminProtectedRoute>} />
-                <Route path="ads" element={<AdminProtectedRoute permissions={['ads.manage']}><ManageAdsScreen /></AdminProtectedRoute>} />
-                <Route path="customers" element={<AdminProtectedRoute permissions={['customers.manage']}><ManageCustomersScreen /></AdminProtectedRoute>} />
-                <Route path="challenges" element={<AdminProtectedRoute permissions={['challenges.manage']}><ManageChallengesScreen /></AdminProtectedRoute>} />
-                <Route path="coupons" element={<AdminProtectedRoute permissions={['coupons.manage']}><ManageCouponsScreen /></AdminProtectedRoute>} />
-                <Route path="promotions" element={<AdminProtectedRoute permissions={['promotions.manage']}><ManagePromotionsScreen /></AdminProtectedRoute>} />
-                <Route path="reviews" element={<AdminProtectedRoute permissions={['reviews.manage']}><ManageReviewsScreen /></AdminProtectedRoute>} />
-                <Route
-                  path="stock"
-                  element={
-                    <AdminProtectedRoute permissions={['inventory.view', 'stock.manage']} requireAllPermissions={false}>
-                      <ManageStockScreen />
-                    </AdminProtectedRoute>
-                  }
-                />
-                <Route path="wastage" element={<AdminProtectedRoute permissions={['stock.manage']}><WastageScreen /></AdminProtectedRoute>} />
-                <Route path="expiry-batches" element={<AdminProtectedRoute permissions={['stock.manage']}><ExpiryBatchesScreen /></AdminProtectedRoute>} />
-                <Route
-                  path="wastage-expiry-reports"
-                  element={
-                    <AdminProtectedRoute permissions={['inventory.movements.view', 'reports.view', 'stock.manage']} requireAllPermissions={false}>
-                      <WastageExpiryReportsScreen />
-                    </AdminProtectedRoute>
-                  }
-                />
-                <Route path="suppliers" element={<AdminProtectedRoute permissions={['stock.manage']}><SuppliersScreen /></AdminProtectedRoute>} />
-                <Route path="purchases" element={<AdminProtectedRoute permissions={['stock.manage']}><PurchaseOrderScreen /></AdminProtectedRoute>} />
-                <Route path="supplier-contracts" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierContractsScreen /></AdminProtectedRoute>} />
-                <Route path="supplier-evaluations" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierEvaluationsScreen /></AdminProtectedRoute>} />
-                <Route path="supplier-credit-notes" element={<AdminProtectedRoute permissions={['accounting.manage']}><SupplierCreditNotesScreen /></AdminProtectedRoute>} />
-                <Route
-                  path="import-shipments"
-                  element={
-                    <AdminProtectedRoute permissions={['shipments.view', 'stock.manage']} requireAllPermissions={false}>
-                      <ImportShipmentsScreen />
-                    </AdminProtectedRoute>
-                  }
-                />
-                <Route
-                  path="import-shipments/:id"
-                  element={
-                    <AdminProtectedRoute permissions={['shipments.view', 'stock.manage']} requireAllPermissions={false}>
-                      <ImportShipmentDetailsScreen />
-                    </AdminProtectedRoute>
-                  }
-                />
-                <Route path="warehouses" element={<AdminProtectedRoute permissions={['stock.manage']}><WarehousesScreen /></AdminProtectedRoute>} />
-                <Route path="warehouse-transfers" element={<AdminProtectedRoute permissions={['stock.manage']}><WarehouseTransfersScreen /></AdminProtectedRoute>} />
-                <Route path="price-tiers" element={<AdminProtectedRoute permissions={['prices.manage']}><PriceTiersScreen /></AdminProtectedRoute>} />
-                <Route path="prices" element={<AdminProtectedRoute permissions={['prices.manage']}><ManagePricesScreen /></AdminProtectedRoute>} />
-                <Route path="cost-centers" element={<AdminProtectedRoute permissions={['expenses.manage']}><ManageCostCentersScreen /></AdminProtectedRoute>} />
-                <Route path="expenses" element={<AdminProtectedRoute permissions={['expenses.manage']}><ManageExpensesScreen /></AdminProtectedRoute>} />
-                <Route path="reports" element={<AdminProtectedRoute permissions={['reports.view']}><ReportsScreen /></AdminProtectedRoute>} />
-                <Route path="reports/sales" element={<AdminProtectedRoute permissions={['reports.view']}><SalesReports /></AdminProtectedRoute>} />
-                <Route path="reports/products" element={<AdminProtectedRoute permissions={['reports.view']}><ProductReports /></AdminProtectedRoute>} />
-                <Route path="reports/customers" element={<AdminProtectedRoute permissions={['reports.view']}><CustomerReports /></AdminProtectedRoute>} />
-                <Route path="reports/reservations" element={<AdminProtectedRoute permissions={['reports.view']}><ReservationsReports /></AdminProtectedRoute>} />
-                <Route path="reports/food-trace" element={<AdminProtectedRoute permissions={['reports.view']}><FoodTraceReports /></AdminProtectedRoute>} />
-                <Route path="reports/inventory-stock" element={<AdminProtectedRoute permissions={['reports.view']}><InventoryStockReportScreen /></AdminProtectedRoute>} />
-                <Route path="reports/supplier-stock" element={<AdminProtectedRoute permissions={['reports.view']}><SupplierStockReportScreen /></AdminProtectedRoute>} />
-                <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
-                <Route path="reports/financial-journals" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReportsByJournal /></AdminProtectedRoute>} />
-                <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
-                <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
-                <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
-                <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
-                <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
-                <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
-                <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
-                <Route path="bank-reconciliation" element={<AdminProtectedRoute permissions={['accounting.manage']}><BankReconciliationScreen /></AdminProtectedRoute>} />
-                <Route path="payroll-config" element={<AdminProtectedRoute permissions={['accounting.manage']}><PayrollConfigScreen /></AdminProtectedRoute>} />
-                <Route path="financial-dimensions" element={<AdminProtectedRoute permissions={['accounting.manage']}><FinancialDimensionsScreen /></AdminProtectedRoute>} />
-                <Route path="financial-parties" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialPartiesScreen /></AdminProtectedRoute>} />
-                <Route path="financial-parties/:partyId" element={<AdminProtectedRoute permissions={['accounting.view']}><PartyLedgerStatementScreen /></AdminProtectedRoute>} />
-                <Route path="party-documents" element={<AdminProtectedRoute permissions={['accounting.manage']}><PartyDocumentsScreen /></AdminProtectedRoute>} />
-                <Route path="settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><SettlementWorkspaceScreen /></AdminProtectedRoute>} />
-                <Route path="advances" element={<AdminProtectedRoute permissions={['accounting.manage']}><AdvanceManagementScreen /></AdminProtectedRoute>} />
-                <Route
-                  path="reports/party-aging"
-                  element={
-                    <AdminProtectedRoute permissions={['accounting.view', 'reports.view']} requireAllPermissions={false}>
-                      <PartyAgingReportsScreen />
-                    </AdminProtectedRoute>
-                  }
-                />
-                <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
-                <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
-                <Route path="approvals" element={<AdminProtectedRoute permissions={['approvals.manage']}><ApprovalsScreen /></AdminProtectedRoute>} />
-                <Route path="audit" element={<AdminProtectedRoute permissions={['settings.manage']}><SystemAuditScreen /></AdminProtectedRoute>} />
-                <Route path="database" element={<AdminProtectedRoute permissions={['settings.manage']}><DatabaseExplorerScreen /></AdminProtectedRoute>} />
-                <Route path="shift-reports" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftReportsScreen /></AdminProtectedRoute>} />
-                <Route path="shift-reports/:shiftId" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftDetailsScreen /></AdminProtectedRoute>} />
-                <Route path="cod-settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><CODSettlementsScreen /></AdminProtectedRoute>} />
-                <Route
-                  path="my-shift"
-                  element={
-                    <AdminProtectedRoute permissions={['cashShifts.viewOwn', 'cashShifts.manage']} requireAllPermissions={false}>
-                      <ShiftDetailsScreen />
-                    </AdminProtectedRoute>
-                  }
-                />
-              </Route>
-              <Route
-                path="/pos"
-                element={
-                  <AdminProtectedRoute permissions={['orders.createInStore', 'orders.updateStatus.all']} requireAllPermissions={false}>
-                    <POSScreen />
-                  </AdminProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/pos-test"
-                element={
-                  <AdminProtectedRoute permissions={['orders.updateStatus.all', 'orders.createInStore']} requireAllPermissions={false}>
-                    <POSTestConsole />
-                  </AdminProtectedRoute>
-                }
-              />
-              </Routes>
-            </Suspense>
-          </HashRouter>
+                  {/* Admin Dashboard Routes */}
+                  <Route path="/admin/login" element={<AdminLoginScreen />} />
+                  <Route path="/admin" element={<AdminProtectedRoute><AdminLayout /></AdminProtectedRoute>}>
+                    <Route index element={<AdminIndexRedirect />} />
+                    <Route path="workspace" element={<AdminProtectedRoute permissions={['dashboard.view', 'orders.view', 'stock.manage', 'shipments.view']} requireAllPermissions={false}><AdminWorkspaceScreen /></AdminProtectedRoute>} />
+                    <Route path="dashboard" element={<AdminProtectedRoute permissions={['dashboard.view']}><AdminDashboardScreen /></AdminProtectedRoute>} />
+                    <Route path="orders" element={<AdminProtectedRoute permissions={['orders.view']}><ManageOrdersScreen /></AdminProtectedRoute>} />
+                    <Route path="invoice/:orderId" element={<AdminProtectedRoute permissions={['orders.view']}><InvoiceScreen /></AdminProtectedRoute>} />
+                    <Route path="delivery-zones" element={<AdminProtectedRoute permissions={['deliveryZones.manage']}><ManageDeliveryZonesScreen /></AdminProtectedRoute>} />
+                    <Route path="items" element={<AdminProtectedRoute permissions={['items.manage']}><ManageItemsScreen /></AdminProtectedRoute>} />
+                    <Route path="addons" element={<AdminProtectedRoute permissions={['addons.manage']}><ManageAddonsScreen /></AdminProtectedRoute>} />
+                    <Route path="ads" element={<AdminProtectedRoute permissions={['ads.manage']}><ManageAdsScreen /></AdminProtectedRoute>} />
+                    <Route path="customers" element={<AdminProtectedRoute permissions={['customers.manage']}><ManageCustomersScreen /></AdminProtectedRoute>} />
+                    <Route path="challenges" element={<AdminProtectedRoute permissions={['challenges.manage']}><ManageChallengesScreen /></AdminProtectedRoute>} />
+                    <Route path="coupons" element={<AdminProtectedRoute permissions={['coupons.manage']}><ManageCouponsScreen /></AdminProtectedRoute>} />
+                    <Route path="promotions" element={<AdminProtectedRoute permissions={['promotions.manage']}><ManagePromotionsScreen /></AdminProtectedRoute>} />
+                    <Route path="reviews" element={<AdminProtectedRoute permissions={['reviews.manage']}><ManageReviewsScreen /></AdminProtectedRoute>} />
+                    <Route
+                      path="stock"
+                      element={
+                        <AdminProtectedRoute permissions={['inventory.view', 'stock.manage']} requireAllPermissions={false}>
+                          <ManageStockScreen />
+                        </AdminProtectedRoute>
+                      }
+                    />
+                    <Route path="wastage" element={<AdminProtectedRoute permissions={['stock.manage']}><WastageScreen /></AdminProtectedRoute>} />
+                    <Route path="expiry-batches" element={<AdminProtectedRoute permissions={['stock.manage']}><ExpiryBatchesScreen /></AdminProtectedRoute>} />
+                    <Route
+                      path="wastage-expiry-reports"
+                      element={
+                        <AdminProtectedRoute permissions={['inventory.movements.view', 'reports.view', 'stock.manage']} requireAllPermissions={false}>
+                          <WastageExpiryReportsScreen />
+                        </AdminProtectedRoute>
+                      }
+                    />
+                    <Route path="suppliers" element={<AdminProtectedRoute permissions={['stock.manage']}><SuppliersScreen /></AdminProtectedRoute>} />
+                    <Route path="purchases" element={<AdminProtectedRoute permissions={['stock.manage']}><PurchaseOrderScreen /></AdminProtectedRoute>} />
+                    <Route path="supplier-contracts" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierContractsScreen /></AdminProtectedRoute>} />
+                    <Route path="supplier-evaluations" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierEvaluationsScreen /></AdminProtectedRoute>} />
+                    <Route path="supplier-credit-notes" element={<AdminProtectedRoute permissions={['accounting.manage']}><SupplierCreditNotesScreen /></AdminProtectedRoute>} />
+                    <Route
+                      path="import-shipments"
+                      element={
+                        <AdminProtectedRoute permissions={['shipments.view', 'stock.manage']} requireAllPermissions={false}>
+                          <ImportShipmentsScreen />
+                        </AdminProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="import-shipments/:id"
+                      element={
+                        <AdminProtectedRoute permissions={['shipments.view', 'stock.manage']} requireAllPermissions={false}>
+                          <ImportShipmentDetailsScreen />
+                        </AdminProtectedRoute>
+                      }
+                    />
+                    <Route path="warehouses" element={<AdminProtectedRoute permissions={['stock.manage']}><WarehousesScreen /></AdminProtectedRoute>} />
+                    <Route path="warehouse-transfers" element={<AdminProtectedRoute permissions={['stock.manage']}><WarehouseTransfersScreen /></AdminProtectedRoute>} />
+                    <Route path="price-tiers" element={<AdminProtectedRoute permissions={['prices.manage']}><PriceTiersScreen /></AdminProtectedRoute>} />
+                    <Route path="prices" element={<AdminProtectedRoute permissions={['prices.manage']}><ManagePricesScreen /></AdminProtectedRoute>} />
+                    <Route path="cost-centers" element={<AdminProtectedRoute permissions={['expenses.manage']}><ManageCostCentersScreen /></AdminProtectedRoute>} />
+                    <Route path="expenses" element={<AdminProtectedRoute permissions={['expenses.manage']}><ManageExpensesScreen /></AdminProtectedRoute>} />
+                    <Route path="reports" element={<AdminProtectedRoute permissions={['reports.view']}><ReportsScreen /></AdminProtectedRoute>} />
+                    <Route path="reports/sales" element={<AdminProtectedRoute permissions={['reports.view']}><SalesReports /></AdminProtectedRoute>} />
+                    <Route path="reports/products" element={<AdminProtectedRoute permissions={['reports.view']}><ProductReports /></AdminProtectedRoute>} />
+                    <Route path="reports/customers" element={<AdminProtectedRoute permissions={['reports.view']}><CustomerReports /></AdminProtectedRoute>} />
+                    <Route path="reports/reservations" element={<AdminProtectedRoute permissions={['reports.view']}><ReservationsReports /></AdminProtectedRoute>} />
+                    <Route path="reports/food-trace" element={<AdminProtectedRoute permissions={['reports.view']}><FoodTraceReports /></AdminProtectedRoute>} />
+                    <Route path="reports/inventory-stock" element={<AdminProtectedRoute permissions={['reports.view']}><InventoryStockReportScreen /></AdminProtectedRoute>} />
+                    <Route path="reports/supplier-stock" element={<AdminProtectedRoute permissions={['reports.view']}><SupplierStockReportScreen /></AdminProtectedRoute>} />
+                    <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
+                    <Route path="reports/financial-journals" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReportsByJournal /></AdminProtectedRoute>} />
+                    <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
+                    <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
+                    <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
+                    <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
+                    <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
+                    <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
+                    <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
+                    <Route path="bank-reconciliation" element={<AdminProtectedRoute permissions={['accounting.manage']}><BankReconciliationScreen /></AdminProtectedRoute>} />
+                    <Route path="payroll-config" element={<AdminProtectedRoute permissions={['accounting.manage']}><PayrollConfigScreen /></AdminProtectedRoute>} />
+                    <Route path="financial-dimensions" element={<AdminProtectedRoute permissions={['accounting.manage']}><FinancialDimensionsScreen /></AdminProtectedRoute>} />
+                    <Route path="financial-parties" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialPartiesScreen /></AdminProtectedRoute>} />
+                    <Route path="financial-parties/:partyId" element={<AdminProtectedRoute permissions={['accounting.view']}><PartyLedgerStatementScreen /></AdminProtectedRoute>} />
+                    <Route path="party-documents" element={<AdminProtectedRoute permissions={['accounting.manage']}><PartyDocumentsScreen /></AdminProtectedRoute>} />
+                    <Route path="settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><SettlementWorkspaceScreen /></AdminProtectedRoute>} />
+                    <Route path="advances" element={<AdminProtectedRoute permissions={['accounting.manage']}><AdvanceManagementScreen /></AdminProtectedRoute>} />
+                    <Route
+                      path="reports/party-aging"
+                      element={
+                        <AdminProtectedRoute permissions={['accounting.view', 'reports.view']} requireAllPermissions={false}>
+                          <PartyAgingReportsScreen />
+                        </AdminProtectedRoute>
+                      }
+                    />
+                    <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
+                    <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
+                    <Route path="approvals" element={<AdminProtectedRoute permissions={['approvals.manage']}><ApprovalsScreen /></AdminProtectedRoute>} />
+                    <Route path="audit" element={<AdminProtectedRoute permissions={['settings.manage']}><SystemAuditScreen /></AdminProtectedRoute>} />
+                    <Route path="database" element={<AdminProtectedRoute permissions={['settings.manage']}><DatabaseExplorerScreen /></AdminProtectedRoute>} />
+                    <Route path="shift-reports" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftReportsScreen /></AdminProtectedRoute>} />
+                    <Route path="shift-reports/:shiftId" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftDetailsScreen /></AdminProtectedRoute>} />
+                    <Route path="cod-settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><CODSettlementsScreen /></AdminProtectedRoute>} />
+                    <Route
+                      path="my-shift"
+                      element={
+                        <AdminProtectedRoute permissions={['cashShifts.viewOwn', 'cashShifts.manage']} requireAllPermissions={false}>
+                          <ShiftDetailsScreen />
+                        </AdminProtectedRoute>
+                      }
+                    />
+                  </Route>
+                  <Route
+                    path="/pos"
+                    element={
+                      <AdminProtectedRoute permissions={['orders.createInStore', 'orders.updateStatus.all']} requireAllPermissions={false}>
+                        <POSScreen />
+                      </AdminProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/pos-test"
+                    element={
+                      <AdminProtectedRoute permissions={['orders.updateStatus.all', 'orders.createInStore']} requireAllPermissions={false}>
+                        <POSTestConsole />
+                      </AdminProtectedRoute>
+                    }
+                  />
+                </Routes>
+              </Suspense>
+            </HashRouter>
+          </ToastProvider>
         </ErrorBoundary>
       </GovernanceProvider>
     </ThemeProvider>

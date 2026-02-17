@@ -9,17 +9,17 @@ import { AZTA_IDENTITY } from '../config/identity';
 import { useItemMeta } from '../contexts/ItemMetaContext';
 
 interface InvoiceProps {
-  order: Order;
-  settings: AppSettings;
-  branding?: {
-    name?: string;
-    address?: string;
-    contactNumber?: string;
-    logoUrl?: string;
-  };
-  copyLabel?: string;
-  accentColor?: string;
-  id?: string;
+    order: Order;
+    settings: AppSettings;
+    branding?: {
+        name?: string;
+        address?: string;
+        contactNumber?: string;
+        logoUrl?: string;
+    };
+    copyLabel?: string;
+    accentColor?: string;
+    id?: string;
 }
 
 const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, branding, copyLabel, accentColor, id }, ref) => {
@@ -54,6 +54,11 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             paymentBreakdown: (invoiceSnapshot as any).paymentBreakdown ?? (order as any).paymentBreakdown,
         }
         : order;
+
+    // Safety check: Ensure items is an array to prevent .map() crashes
+    if (!Array.isArray(invoiceOrder.items)) {
+        invoiceOrder.items = [];
+    }
     const deliveryZone = invoiceOrder.deliveryZoneId ? getDeliveryZoneById(invoiceOrder.deliveryZoneId) : undefined;
     const systemName = lang === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn;
     const systemKey = AZTA_IDENTITY.merchantKey;
@@ -183,7 +188,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <div className="text-left rtl:text-left">
                         <h2 className="text-5xl font-black text-slate-900 uppercase tracking-tighter">فاتورة</h2>
                         <div className="text-slate-400 text-sm font-bold tracking-[0.4em] mt-1 uppercase">Tax Invoice</div>
-                        
+
                         <div className="mt-8 flex flex-col gap-3 items-end">
                             <div className="inline-flex flex-col items-end border-r-4 border-slate-800 pr-4">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">رقم الفاتورة / Invoice No</span>
@@ -250,7 +255,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             </div>
                         )}
                         {invoiceOrder.deliveryZoneId && (
-                             <div className="col-span-2">
+                            <div className="col-span-2">
                                 <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">منطقة التوصيل</span>
                                 <span className="font-bold text-slate-800">{(deliveryZone?.name?.[lang] || deliveryZone?.name?.ar || deliveryZone?.name?.en) || invoiceOrder.deliveryZoneId}</span>
                             </div>
@@ -274,7 +279,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         {invoiceOrder.items.map((item: CartItem, idx: number) => {
                             const pricing = computeCartItemPricing(item);
                             const displayQty = pricing.isWeightBased ? `${pricing.quantity} ${getUnitLabel(pricing.unitType as any, 'ar')}` : String(item.quantity);
-                            
+
                             return (
                                 <tr key={item.cartItemId} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors`}>
                                     <td className="py-4 px-6 font-mono text-slate-400 text-center text-xs">{idx + 1}</td>
@@ -323,9 +328,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             </div>
                         </div>
                     )}
-                    
+
                     {/* Payment Breakdown if exists */}
-                    {(invoiceOrder as any).paymentBreakdown?.methods && (invoiceOrder as any).paymentBreakdown.methods.length > 0 && (
+                    {(invoiceOrder as any).paymentBreakdown && (invoiceOrder as any).paymentBreakdown?.methods && (invoiceOrder as any).paymentBreakdown.methods.length > 0 && (
                         <div className="mt-8 text-sm border-t border-slate-200 pt-6 max-w-xs">
                             <div className="font-bold text-slate-900 mb-3 flex items-center gap-2">
                                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
@@ -346,14 +351,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* Right: Totals */}
                 <div className="w-full md:w-[420px]">
                     <div className="bg-slate-900 text-white rounded-2xl p-8 shadow-lg space-y-4 relative overflow-hidden">
-                        
+
                         <div className="flex justify-between items-center text-slate-300 relative z-10">
                             <span className="font-medium text-sm">المجموع الفرعي (Subtotal)</span>
                             <span className="font-mono font-bold text-white" dir="ltr">
                                 <CurrencyDualAmount amount={Number(invoiceOrder.subtotal) || 0} currencyCode={currencyCode} compact />
                             </span>
                         </div>
-                        
+
                         {(invoiceOrder.discountAmount || 0) > 0 && (
                             <div className="flex justify-between items-center text-emerald-400 relative z-10">
                                 <span className="font-medium text-sm">الخصم (Discount)</span>
@@ -364,7 +369,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         )}
 
                         <div className="flex justify-between items-center text-slate-300 relative z-10">
-                            <span className="font-medium text-sm">الضريبة (VAT {Number((invoiceOrder as any).taxRate) || 0}%)</span>
+                            <span className="font-medium text-sm">الضريبة (VAT {Number((invoiceOrder as any).taxRate || 0)}%)</span>
                             <span className="font-mono font-bold text-white" dir="ltr">
                                 <CurrencyDualAmount amount={taxAmount} currencyCode={currencyCode} compact />
                             </span>
@@ -375,12 +380,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         <div className="flex justify-between items-center relative z-10">
                             <span className="font-black text-xl">الإجمالي (Total)</span>
                             <span className="font-black font-mono text-3xl tracking-tight text-white" dir="ltr">
-                                <CurrencyDualAmount 
-                                    amount={Number(invoiceOrder.total) || 0} 
-                                    currencyCode={currencyCode} 
+                                <CurrencyDualAmount
+                                    amount={Number(invoiceOrder.total) || 0}
+                                    currencyCode={currencyCode}
                                     baseAmount={(invoiceOrder as any).baseTotal}
                                     fxRate={(invoiceOrder as any).fxRate}
-                                    compact 
+                                    compact
                                 />
                             </span>
                         </div>
@@ -394,7 +399,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <div className="space-y-3">
                         <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">المستلم (Receiver)</div>
                         <div className="h-20 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
-                             <span className="text-[10px] text-slate-400">التوقيع / Signature</span>
+                            <span className="text-[10px] text-slate-400">التوقيع / Signature</span>
                         </div>
                     </div>
                     <div className="space-y-2 pt-6 flex flex-col items-center justify-center">
@@ -405,7 +410,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <div className="space-y-3">
                         <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">البائع (Seller)</div>
                         <div className="h-20 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
-                             <span className="text-[10px] text-slate-400">الختم / Stamp</span>
+                            <span className="text-[10px] text-slate-400">الختم / Stamp</span>
                         </div>
                     </div>
                 </div>
@@ -424,25 +429,25 @@ export const TriplicateInvoice = forwardRef<HTMLDivElement, InvoiceProps>((props
     return (
         <div ref={ref} id="print-area">
             {/* Original / Customer Copy - Blue/Slate */}
-            <Invoice 
-                {...props} 
-                copyLabel="نسخة العميل (Customer)" 
-                accentColor="#1e293b" 
+            <Invoice
+                {...props}
+                copyLabel="نسخة العميل (Customer)"
+                accentColor="#1e293b"
                 id="invoice-copy-1"
             />
-            
+
             {/* Warehouse Copy - Red/Orange */}
-            <Invoice 
-                {...props} 
-                copyLabel="نسخة المستودع (Warehouse)" 
+            <Invoice
+                {...props}
+                copyLabel="نسخة المستودع (Warehouse)"
                 accentColor="#c2410c" // Orange-700
                 id="invoice-copy-2"
             />
-            
+
             {/* Finance/Box Copy - Green/Emerald */}
-            <Invoice 
-                {...props} 
-                copyLabel="نسخة الصندوق (Finance)" 
+            <Invoice
+                {...props}
+                copyLabel="نسخة الصندوق (Finance)"
                 accentColor="#047857" // Emerald-700
                 id="invoice-copy-3"
             />
