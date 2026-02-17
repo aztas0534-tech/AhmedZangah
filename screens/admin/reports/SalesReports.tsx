@@ -380,7 +380,7 @@ const SalesReports: React.FC = () => {
     }, [serverSummary]);
 
     const displayTotalOrders = useMemo(() => {
-        const s = Number(serverSummary?.total_orders || 0);
+        const s = Number(serverSummary?.total_orders_accrual || serverSummary?.total_orders || 0);
         if (!ordersLoading && showAllOrders && !orderSearch.trim() && serverOrders.length > 0) {
             return serverOrders.length;
         }
