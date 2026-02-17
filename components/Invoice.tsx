@@ -395,10 +395,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
             {/* Footer Bottom */}
             <div className="mt-auto pt-16 print:pt-4">
-                <div className="grid grid-cols-3 gap-12 text-center text-sm text-slate-500 border-t border-slate-200 pt-8">
+                <div className="grid grid-cols-3 gap-12 print:gap-4 text-center text-sm text-slate-500 border-t border-slate-200 pt-8 print:pt-2">
                     <div className="space-y-3">
                         <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">المستلم (Receiver)</div>
-                        <div className="h-20 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
+                        <div className="h-20 print:h-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
                             <span className="text-[10px] text-slate-400">التوقيع / Signature</span>
                         </div>
                     </div>
@@ -409,13 +409,13 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     </div>
                     <div className="space-y-3">
                         <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">البائع (Seller)</div>
-                        <div className="h-20 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
+                        <div className="h-20 print:h-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
                             <span className="text-[10px] text-slate-400">الختم / Stamp</span>
                         </div>
                     </div>
                 </div>
                 {/* Print Meta */}
-                <div className="flex justify-between items-center mt-10 pt-4 border-t border-slate-100 text-[9px] text-slate-400 font-mono">
+                <div className="flex justify-between items-center mt-10 print:mt-4 pt-4 print:pt-2 border-t border-slate-100 text-[9px] text-slate-400 font-mono">
                     <span>System Ref: {invoiceOrder.id}</span>
                     <span>Printed: {new Date().toISOString()}</span>
                     <span>Page 1 of 1</span>
