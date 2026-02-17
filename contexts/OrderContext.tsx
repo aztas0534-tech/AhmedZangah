@@ -3682,26 +3682,43 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!order?.invoiceIssuedAt) return;
     const currentCount = typeof order.invoicePrintCount === 'number' ? order.invoicePrintCount : 0;
     const nowIso = new Date().toISOString();
+
+    // Optimistic UI update
+    const nextCount = currentCount + 1;
+    const updated = { ...order, invoicePrintCount: nextCount, invoiceLastPrintedAt: nowIso } as Order;
+    setOrders(prev => prev.map(o => (o.id === updated.id ? updated : o)));
+
     await addOrderEvent({
       orderId,
       action: 'order.invoicePrinted',
       actorType: isAdminAuthenticated ? 'admin' : 'system',
       actorId: adminUser?.id,
       createdAt: nowIso,
-      payload: { invoiceNumber: order.invoiceNumber, nextPrintCount: currentCount + 1 },
+      payload: { invoiceNumber: order.invoiceNumber, nextPrintCount: nextCount },
     });
+
     if (isAdminAuthenticated && adminUser?.id) {
       await logAudit('invoice_printed', `Invoice printed #${String(order.invoiceNumber || '').trim()}`, {
         orderId,
         invoiceNumber: order.invoiceNumber,
-        nextPrintCount: currentCount + 1,
+        nextPrintCount: nextCount,
         invoiceLastPrintedAt: nowIso,
       });
     }
-    const updated = { ...order, invoicePrintCount: currentCount + 1, invoiceLastPrintedAt: nowIso } as Order;
-    await updateRemoteOrder(updated, { includeStatus: false });
-    setOrders(prev => prev.map(o => (o.id === updated.id ? updated : o)));
-    // await fetchOrders();
+
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { error } = await supabase.rpc('increment_invoice_print_count', { p_order_id: orderId });
+        if (error) {
+          console.error('Failed to increment invoice print count via RPC:', error);
+          // Fallback to updateRemoteOrder if RPC fails (e.g. older migration not applied yet)
+          await updateRemoteOrder(updated, { includeStatus: false });
+        }
+      }
+    } catch (err) {
+      console.error('Error incrementing invoice print count:', err);
+    }
   };
 
   const getOrderById = (orderId: string) => {

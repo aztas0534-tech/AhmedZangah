@@ -330,15 +330,20 @@ const SalesReports: React.FC = () => {
 
 
     const reportData = useMemo(() => {
-        const totalSalesCollected = Number(serverSummary?.total_collected || 0);
+        const totalSalesCollected = Number(serverSummary?.total_collected || 0); // Cash Basis
+        const totalSalesAccrual = Number(serverSummary?.total_sales_accrual || 0); // Accrual Basis (New)
         const returns = Number(serverSummary?.returns || 0);
         const deliveryFees = Number(serverSummary?.delivery_fees || 0);
         const discounts = Number(serverSummary?.discounts || 0);
         const grossSubtotal = Number(serverSummary?.gross_subtotal || 0);
-        const totalOrders = Number(serverSummary?.total_orders || 0);
+        const totalOrders = Number(serverSummary?.total_orders || 0); // Cash Basis Count
+        const totalOrdersAccrual = Number(serverSummary?.total_orders_accrual || 0); // Accrual Basis Count (New)
+
         const netCollected = totalSalesCollected - returns;
-        const netRevenue = netCollected;
-        const averageOrderValue = totalOrders > 0 ? netCollected / totalOrders : 0;
+        // Revenue should reflect Sales (Accrual), not just collection
+        const netRevenue = totalSalesAccrual - returns;
+
+        const averageOrderValue = totalOrdersAccrual > 0 ? netRevenue / totalOrdersAccrual : 0;
         const cancelledCount = Number(serverSummary?.cancelled_orders || 0);
         const deliveredCount = Number(serverSummary?.delivered_orders || 0);
         const outForDeliveryCount = Number(serverSummary?.out_for_delivery_count || 0);
@@ -351,14 +356,14 @@ const SalesReports: React.FC = () => {
         const grossProfit = (grossSubtotal - discounts - returns) - cogs;
         const netProfit = grossProfit - wastageLoss - totalExpenses - deliveryCost;
         return {
-            netRevenue,
+            netRevenue, // Now Accrual
             grossSubtotal,
             returns,
             totalCollected: totalSalesCollected,
             netCollected,
             deliveryFees,
             discounts,
-            totalOrders,
+            totalOrders: totalOrdersAccrual, // Now Accrual
             averageOrderValue,
             cancelledCount,
             deliveredCount,
