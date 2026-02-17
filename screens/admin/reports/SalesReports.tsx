@@ -336,8 +336,7 @@ const SalesReports: React.FC = () => {
         const deliveryFees = Number(serverSummary?.delivery_fees || 0);
         const discounts = Number(serverSummary?.discounts || 0);
         const grossSubtotal = Number(serverSummary?.gross_subtotal || 0);
-        const totalOrders = Number(serverSummary?.total_orders || 0); // Cash Basis Count
-        const totalOrdersAccrual = Number(serverSummary?.total_orders_accrual || 0); // Accrual Basis Count (New)
+        const totalOrdersAccrual = Number(serverSummary?.total_orders_accrual || serverSummary?.total_orders || 0); // Accrual Basis Count
 
         const netCollected = totalSalesCollected - returns;
         // Revenue should reflect Sales (Accrual), not just collection
