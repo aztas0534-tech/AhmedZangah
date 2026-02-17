@@ -34,6 +34,7 @@ const CurrencyDualAmount: React.FC<Props> = ({ amount, currencyCode, baseAmount,
     QAR: 'ر.ق',
   };
   const sym = symbolMap[code] || code || '—';
+  const displayCode = (code === 'SAR' || code === 'YER') ? code : sym;
   const baseCode = String(baseCurrencyCode || '').toUpperCase();
   const hasBase = typeof baseAmount === 'number' && Number.isFinite(baseAmount as number) && (baseAmount as number) !== 0 && typeof fxRate === 'number' && Number(fxRate) > 0;
 
@@ -41,7 +42,7 @@ const CurrencyDualAmount: React.FC<Props> = ({ amount, currencyCode, baseAmount,
     <div className={compact ? '' : 'space-y-0.5'}>
       <div className={compact ? 'text-sm font-bold' : 'text-base font-bold'}>
         {label ? <span className="text-gray-600 dark:text-gray-300 mr-1">{label}:</span> : null}
-        <span dir="ltr">{fmt(amount)} <span className="text-xs">{sym}</span></span>
+        <span dir="ltr">{fmt(amount)} <span className="text-xs">{displayCode}</span></span>
       </div>
       {hasBase ? (
         <div className="text-[11px] text-gray-600 dark:text-gray-400" dir="ltr">

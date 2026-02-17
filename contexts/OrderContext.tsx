@@ -2296,7 +2296,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       } else {
         const { data: sessionData, error: sessionError } = await sb2.auth.getSession();
         if (sessionError || !sessionData.session) {
-          await sb2.from('orders').delete().eq('id', newOrder.id);
+          const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
+          if (deleteErr) {
+            await sb2.from('orders').update({ status: 'cancelled' }).eq('id', newOrder.id);
+          }
           throw new Error('انتهت الجلسة. الرجاء تسجيل الدخول مرة أخرى.');
         }
 
@@ -2333,10 +2336,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           if (reserveErr) {
             const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
             if (offlineNow || isAbortLikeError(reserveErr)) {
-              await sb2.from('orders').delete().eq('id', newOrder.id);
+              const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
+              if (deleteErr) {
+                await sb2.from('orders').update({ status: 'cancelled' }).eq('id', newOrder.id);
+              }
               return await queueOfflineSale();
             }
-            await sb2.from('orders').delete().eq('id', newOrder.id);
+            const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
+            if (deleteErr) {
+              await sb2.from('orders').update({ status: 'cancelled' }).eq('id', newOrder.id);
+            }
             throw new Error(localizeSupabaseError(reserveErr));
           }
         }
@@ -2599,7 +2608,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
-      await supabase.from('orders').delete().eq('id', newOrder.id);
+      const { error: deleteErr } = await supabase.from('orders').delete().eq('id', newOrder.id);
+      if (deleteErr) {
+        await supabase.from('orders').update({ status: 'cancelled' }).eq('id', newOrder.id);
+      }
       throw new Error('انتهت الجلسة. الرجاء تسجيل الدخول مرة أخرى.');
     }
     const payloadItems = newOrder.items
@@ -2611,7 +2623,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const sb3 = supabase!;
     const reserveErr = await rpcReserveStockForOrder(sb3, { items: payloadItems, orderId: newOrder.id, warehouseId });
     if (reserveErr) {
-      await sb3.from('orders').delete().eq('id', newOrder.id);
+      const { error: deleteErr } = await sb3.from('orders').delete().eq('id', newOrder.id);
+      if (deleteErr) {
+        await sb3.from('orders').update({ status: 'cancelled' }).eq('id', newOrder.id);
+      }
       throw new Error(localizeSupabaseError(reserveErr));
     }
     await addOrderEvent({

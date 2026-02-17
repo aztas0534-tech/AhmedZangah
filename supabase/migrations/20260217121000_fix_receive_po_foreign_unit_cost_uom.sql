@@ -1,0 +1,857 @@
+set app.allow_ledger_ddl = '1';
+
+create or replace function public._receive_purchase_order_partial_impl(
+  p_order_id uuid,
+  p_items jsonb,
+  p_occurred_at timestamptz default now()
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_po record;
+  v_item jsonb;
+  v_item_id text;
+  v_qty numeric;
+  v_unit_cost numeric;
+  v_existing_qty numeric;
+  v_apply_qty numeric;
+  v_old_qty numeric;
+  v_old_avg numeric;
+  v_new_qty numeric;
+  v_effective_unit_cost numeric;
+  v_new_avg numeric;
+  v_receipt_id uuid;
+  v_receipt_total numeric := 0;
+  v_all_received boolean := true;
+  v_ordered numeric;
+  v_received numeric;
+  v_expiry text;
+  v_harvest text;
+  v_expiry_iso text;
+  v_harvest_iso text;
+  v_category text;
+  v_is_food boolean;
+  v_expiry_required boolean;
+  v_batch_id uuid;
+  v_movement_id uuid;
+  v_wh uuid;
+  v_receipt_req_id uuid;
+  v_receipt_req_status text;
+  v_receipt_requires_approval boolean;
+  v_receipt_approval_status text;
+  v_po_req_id uuid;
+  v_payload jsonb;
+  v_payload_hash text;
+  v_required_receipt boolean := false;
+  v_required_po boolean := false;
+  v_po_approved boolean := false;
+  v_qc_status text;
+  v_transport_cost numeric;
+  v_supply_tax_cost numeric;
+  v_used_transport_cost numeric;
+  v_used_supply_tax_cost numeric;
+  v_import_shipment_id uuid;
+  v_idempotency_key text;
+  v_existing_receipt_id uuid;
+  v_reuse_receipt boolean := false;
+  v_post_error text := null;
+  v_post_failed boolean := false;
+  v_post_status text := 'pending';
+  v_mark_posted boolean := false;
+  v_cost_sum numeric;
+  v_remaining_to_allocate numeric;
+  v_take_qty numeric;
+  v_line_remaining numeric;
+  v_pi record;
+  v_uom_id uuid;
+  v_uom_code text;
+  v_qty_base numeric;
+  v_cost_sum_foreign numeric;
+  v_unit_cost_foreign numeric;
+  v_base_currency text;
+  v_po_fx_rate numeric;
+begin
+  perform public._require_staff('receive_purchase_order_partial');
+  if p_order_id is null then
+    raise exception 'p_order_id is required';
+  end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' then
+    raise exception 'p_items must be a json array';
+  end if;
+
+  v_base_currency := public.get_base_currency();
+
+  v_idempotency_key := nullif(
+    btrim(
+      coalesce(
+        (p_items->0->>'idempotencyKey'),
+        (p_items->0->>'idempotency_key')
+      )
+    ),
+    ''
+  );
+
+  perform pg_advisory_xact_lock(hashtext('receive_po:' || p_order_id::text));
+
+  select * into v_po
+  from public.purchase_orders
+  where id = p_order_id
+  for update;
+  if not found then
+    raise exception 'purchase order not found';
+  end if;
+  if v_po.status = 'cancelled' then
+    raise exception 'cannot receive cancelled purchase order';
+  end if;
+
+  v_po_fx_rate := coalesce(v_po.fx_rate, 1);
+  if v_po_fx_rate <= 0 then v_po_fx_rate := 1; end if;
+
+  begin
+    update public.purchase_orders
+    set fx_locked = true
+    where id = p_order_id
+      and coalesce(fx_locked, false) = false;
+  exception when undefined_column then
+    null;
+  end;
+
+  select public._resolve_default_warehouse_id() into v_wh;
+  v_wh := coalesce(v_po.warehouse_id, v_wh);
+  if v_wh is null then
+    raise exception 'warehouse_id is required';
+  end if;
+
+  if to_regclass('public.warehouses') is not null then
+    if not exists (select 1 from public.warehouses w where w.id = v_wh and coalesce(w.is_active, true) = true) then
+      select public._resolve_default_warehouse_id() into v_wh;
+      if v_wh is null then
+        raise exception 'warehouse_id is required';
+      end if;
+    end if;
+  end if;
+
+  begin
+    v_import_shipment_id := nullif(coalesce(p_items->0->>'importShipmentId', p_items->0->>'import_shipment_id'), '')::uuid;
+  exception when others then
+    v_import_shipment_id := null;
+  end;
+
+  v_payload := jsonb_build_object(
+    'purchaseOrderId', p_order_id::text,
+    'warehouseId', v_wh::text,
+    'importShipmentId', case when v_import_shipment_id is null then null else v_import_shipment_id::text end
+  );
+  v_payload_hash := md5(coalesce(v_payload::text, ''));
+
+  v_required_receipt := false;
+  v_receipt_req_id := null;
+  v_receipt_req_status := 'approved';
+  v_receipt_requires_approval := false;
+  v_receipt_approval_status := 'approved';
+
+  begin
+    insert into public.purchase_receipts(
+      purchase_order_id,
+      received_at,
+      created_by,
+      approval_status,
+      approval_request_id,
+      requires_approval,
+      warehouse_id,
+      branch_id,
+      company_id,
+      import_shipment_id,
+      idempotency_key,
+      posting_status
+    )
+    values (
+      p_order_id,
+      coalesce(p_occurred_at, now()),
+      auth.uid(),
+      case when v_receipt_req_id is null then 'pending' else 'approved' end,
+      v_receipt_req_id,
+      v_required_receipt,
+      v_wh,
+      v_po.branch_id,
+      v_po.company_id,
+      v_import_shipment_id,
+      v_idempotency_key,
+      'pending'
+    )
+    returning id into v_receipt_id;
+  exception when unique_violation then
+    if v_idempotency_key is not null then
+      select pr.id
+      into v_existing_receipt_id
+      from public.purchase_receipts pr
+      where pr.purchase_order_id = p_order_id
+        and pr.idempotency_key = v_idempotency_key
+      order by pr.created_at desc
+      limit 1;
+      if v_existing_receipt_id is not null then
+        v_receipt_id := v_existing_receipt_id;
+        v_reuse_receipt := true;
+      else
+        raise;
+      end if;
+    else
+      raise;
+    end if;
+  end;
+
+  for v_item in select value from jsonb_array_elements(p_items)
+  loop
+    v_item_id := coalesce(v_item->>'itemId', v_item->>'id');
+    v_qty := coalesce(nullif(v_item->>'quantity', '')::numeric, 0);
+
+    v_transport_cost := nullif(coalesce(v_item->>'transportCost', v_item->>'transport_cost'), '')::numeric;
+    v_supply_tax_cost := nullif(coalesce(v_item->>'supplyTaxCost', v_item->>'supply_tax_cost'), '')::numeric;
+
+    if v_po.currency <> v_base_currency then
+         v_used_transport_cost := coalesce(v_transport_cost, 0) * v_po_fx_rate;
+         v_used_supply_tax_cost := coalesce(v_supply_tax_cost, 0) * v_po_fx_rate;
+    else
+         v_used_transport_cost := coalesce(v_transport_cost, 0);
+         v_used_supply_tax_cost := coalesce(v_supply_tax_cost, 0);
+    end if;
+
+    v_expiry := nullif(v_item->>'expiryDate', '');
+    v_harvest := nullif(coalesce(v_item->>'harvestDate', v_item->>'productionDate'), '');
+    v_expiry_iso := null;
+    v_harvest_iso := null;
+    v_category := null;
+
+    begin
+      v_import_shipment_id := nullif(coalesce(v_item->>'importShipmentId', v_item->>'import_shipment_id'), '')::uuid;
+    exception when others then
+      v_import_shipment_id := null;
+    end;
+
+    if v_item_id is null or v_item_id = '' then
+      raise exception 'Invalid itemId';
+    end if;
+    if v_qty <= 0 then
+      continue;
+    end if;
+
+    v_uom_id := null;
+    begin
+      v_uom_id := nullif(coalesce(v_item->>'uomId', v_item->>'uom_id'), '')::uuid;
+    exception when others then
+      v_uom_id := null;
+    end;
+
+    v_uom_code := nullif(btrim(coalesce(v_item->>'uomCode', v_item->>'uom_code', v_item->>'uom', v_item->>'unit', v_item->>'unitType')), '');
+    if v_uom_id is null and v_uom_code is not null then
+      v_uom_id := public.ensure_uom_code(v_uom_code, null);
+    end if;
+
+    if v_uom_id is null then
+      select base_uom_id into v_uom_id from public.item_uom where item_id = v_item_id limit 1;
+    end if;
+    if v_uom_id is null then
+      select max(pi.uom_id) into v_uom_id
+      from public.purchase_items pi
+      where pi.purchase_order_id = p_order_id
+        and pi.item_id = v_item_id;
+    end if;
+
+    v_qty_base := public.item_qty_to_base(v_item_id, v_qty, v_uom_id);
+
+    select coalesce(sum(coalesce(pri.quantity, 0)), 0)
+    into v_existing_qty
+    from public.purchase_receipt_items pri
+    where pri.receipt_id = v_receipt_id
+      and pri.item_id = v_item_id;
+
+    v_apply_qty := greatest(v_qty_base - coalesce(v_existing_qty, 0), 0);
+    if coalesce(v_apply_qty, 0) <= 0 then
+      continue;
+    end if;
+
+    if v_reuse_receipt then
+      update public.purchase_receipts
+      set posting_status = 'pending',
+          posting_error = null,
+          posted_at = null,
+          branch_id = coalesce(branch_id, v_po.branch_id),
+          company_id = coalesce(company_id, v_po.company_id),
+          import_shipment_id = coalesce(import_shipment_id, v_import_shipment_id)
+      where id = v_receipt_id;
+    end if;
+
+    perform 1
+    from public.purchase_items pi
+    where pi.purchase_order_id = p_order_id
+      and pi.item_id = v_item_id
+    for update;
+    if not found then
+      raise exception 'item % not found in purchase order', v_item_id;
+    end if;
+
+    select
+      coalesce(sum(
+        case
+          when pi.qty_base is not null then pi.qty_base
+          when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+          else coalesce(pi.quantity, 0)
+        end
+      ), 0),
+      coalesce(sum(coalesce(pi.received_quantity, 0)), 0)
+    into v_ordered, v_received
+    from public.purchase_items pi
+    where pi.purchase_order_id = p_order_id
+      and pi.item_id = v_item_id;
+
+    if (v_received + v_apply_qty) > (v_ordered + 1e-9) then
+      raise exception 'received exceeds ordered for item %', v_item_id;
+    end if;
+
+    v_cost_sum := 0;
+    v_cost_sum_foreign := 0;
+    v_remaining_to_allocate := v_apply_qty;
+    for v_pi in
+      select
+        pi.id,
+        coalesce(
+          pi.qty_base,
+          case
+            when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+            else pi.quantity
+          end,
+          0
+        ) as quantity,
+        coalesce(pi.received_quantity, 0) as received_quantity,
+        (
+          case
+            when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
+              then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
+            else coalesce(pi.unit_cost, 0)
+          end
+        ) as unit_cost_po,
+        (
+          case
+            when upper(v_po.currency) <> upper(v_base_currency) then
+              (
+                case
+                  when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
+                    then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
+                  else coalesce(pi.unit_cost, 0)
+                end
+              ) * v_po_fx_rate
+            else
+              (
+                case
+                  when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
+                    then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
+                  else coalesce(pi.unit_cost, 0)
+                end
+              )
+          end
+        ) as unit_cost,
+        (
+          case
+            when upper(v_po.currency) <> upper(v_base_currency) then
+              case
+                when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
+                  then coalesce(pi.unit_cost_foreign, pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
+                else coalesce(pi.unit_cost_foreign, pi.unit_cost, 0)
+              end
+            else 0
+          end
+        ) as unit_cost_foreign
+      from public.purchase_items pi
+      where pi.purchase_order_id = p_order_id
+        and pi.item_id = v_item_id
+      order by pi.created_at asc, pi.id asc
+      for update
+    loop
+      v_line_remaining := greatest(coalesce(v_pi.quantity, 0) - coalesce(v_pi.received_quantity, 0), 0);
+      if v_line_remaining <= 0 then
+        continue;
+      end if;
+      v_take_qty := least(v_line_remaining, v_remaining_to_allocate);
+      if v_take_qty <= 0 then
+        exit;
+      end if;
+
+      update public.purchase_items
+      set received_quantity = coalesce(received_quantity, 0) + v_take_qty
+      where id = v_pi.id;
+
+      v_cost_sum := v_cost_sum + (v_take_qty * coalesce(v_pi.unit_cost, 0));
+      v_cost_sum_foreign := v_cost_sum_foreign + (v_take_qty * coalesce(v_pi.unit_cost_foreign, 0));
+      v_remaining_to_allocate := v_remaining_to_allocate - v_take_qty;
+      exit when v_remaining_to_allocate <= 1e-9;
+    end loop;
+
+    if v_remaining_to_allocate > 1e-9 then
+      raise exception 'received exceeds ordered for item %', v_item_id;
+    end if;
+
+    v_unit_cost := case when v_apply_qty > 0 then (v_cost_sum / v_apply_qty) else 0 end;
+    v_unit_cost_foreign := case when v_apply_qty > 0 then (v_cost_sum_foreign / v_apply_qty) else 0 end;
+
+    insert into public.stock_management(item_id, warehouse_id, available_quantity, qc_hold_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, data)
+    select v_item_id, v_wh, 0, 0, 0, coalesce(mi.unit_type, 'piece'), 5, now(), '{}'::jsonb
+    from public.menu_items mi
+    where mi.id = v_item_id
+    on conflict (item_id, warehouse_id) do nothing;
+
+    select coalesce(sm.available_quantity, 0) + coalesce(sm.qc_hold_quantity, 0), coalesce(sm.avg_cost, 0)
+    into v_old_qty, v_old_avg
+    from public.stock_management sm
+    where sm.item_id::text = v_item_id
+      and sm.warehouse_id = v_wh
+    for update;
+
+    select
+      coalesce(v_used_transport_cost, coalesce(mi.transport_cost, 0)),
+      coalesce(v_used_supply_tax_cost, coalesce(mi.supply_tax_cost, 0)),
+      (v_unit_cost + coalesce(v_used_transport_cost, coalesce(mi.transport_cost, 0)) + coalesce(v_used_supply_tax_cost, coalesce(mi.supply_tax_cost, 0))),
+      mi.category,
+      coalesce(mi.is_food, false),
+      coalesce(mi.expiry_required, false)
+    into v_used_transport_cost, v_used_supply_tax_cost, v_effective_unit_cost, v_category, v_is_food, v_expiry_required
+    from public.menu_items mi
+    where mi.id = v_item_id;
+
+    if v_old_qty < 0 then v_old_qty := 0; end if;
+    if v_effective_unit_cost < 0 then v_effective_unit_cost := 0; end if;
+
+    v_new_qty := v_old_qty + v_apply_qty;
+    v_new_avg := case when v_new_qty > 0 then ((v_old_qty * v_old_avg) + (v_apply_qty * v_effective_unit_cost)) / v_new_qty else v_old_avg end;
+
+    v_is_food := coalesce(v_is_food, (coalesce(v_category,'') = 'food'), false);
+    v_expiry_required := coalesce(v_expiry_required, v_is_food, false);
+
+    if v_expiry is not null and v_expiry <> '' then
+      if v_expiry ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
+        v_expiry_iso := v_expiry;
+      else
+        raise exception 'invalid expiryDate for item %', v_item_id;
+      end if;
+    end if;
+    if v_harvest is not null and v_harvest ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
+      v_harvest_iso := v_harvest;
+    end if;
+
+    if v_expiry_required and (v_expiry_iso is null or v_expiry_iso = '') then
+      raise exception 'expiryDate is required for food item %', v_item_id;
+    end if;
+
+    v_qc_status := case when v_expiry_required then 'pending' else 'released' end;
+
+    insert into public.batches(
+      id,
+      item_id,
+      receipt_item_id,
+      receipt_id,
+      warehouse_id,
+      batch_code,
+      production_date,
+      expiry_date,
+      quantity_received,
+      quantity_consumed,
+      quantity_transferred,
+      unit_cost,
+      qc_status,
+      status,
+      foreign_currency,
+      foreign_unit_cost,
+      fx_rate_at_receipt,
+      fx_rate_date,
+      data
+    )
+    values (
+      gen_random_uuid(),
+      v_item_id,
+      null,
+      v_receipt_id,
+      v_wh,
+      null,
+      case when v_harvest_iso is null then null else v_harvest_iso::date end,
+      case when v_expiry_iso is null then null else v_expiry_iso::date end,
+      v_apply_qty,
+      0,
+      0,
+      v_effective_unit_cost,
+      v_qc_status,
+      'active',
+      case when upper(v_po.currency) <> upper(v_base_currency) then upper(v_po.currency) else null end,
+      case when upper(v_po.currency) <> upper(v_base_currency) then v_unit_cost_foreign else null end,
+      case when upper(v_po.currency) <> upper(v_base_currency) then v_po_fx_rate else null end,
+      case when upper(v_po.currency) <> upper(v_base_currency) then current_date else null end,
+      jsonb_build_object(
+        'purchaseOrderId', p_order_id,
+        'purchaseReceiptId', v_receipt_id,
+        'expiryDate', v_expiry_iso,
+        'harvestDate', v_harvest_iso,
+        'warehouseId', v_wh,
+        'transportCost', v_used_transport_cost,
+        'supplyTaxCost', v_used_supply_tax_cost,
+        'importShipmentId', case when v_import_shipment_id is null then null else v_import_shipment_id::text end,
+        'trxQty', v_qty,
+        'trxUomId', case when v_uom_id is null then null else v_uom_id::text end
+      )
+    )
+    returning id into v_batch_id;
+
+    if v_qc_status = 'pending' then
+      update public.stock_management
+      set qc_hold_quantity = coalesce(qc_hold_quantity, 0) + v_apply_qty,
+          avg_cost = v_new_avg,
+          last_batch_id = v_batch_id,
+          last_updated = now(),
+          updated_at = now()
+      where item_id::text = v_item_id
+        and warehouse_id = v_wh;
+    else
+      update public.stock_management
+      set available_quantity = coalesce(available_quantity, 0) + v_apply_qty,
+          avg_cost = v_new_avg,
+          last_batch_id = v_batch_id,
+          last_updated = now(),
+          updated_at = now()
+      where item_id::text = v_item_id
+        and warehouse_id = v_wh;
+    end if;
+
+    insert into public.purchase_receipt_items(receipt_id, item_id, quantity, unit_cost, total_cost, transport_cost, supply_tax_cost)
+    values (v_receipt_id, v_item_id, v_apply_qty, v_effective_unit_cost, (v_apply_qty * v_effective_unit_cost), coalesce(v_used_transport_cost, 0), coalesce(v_used_supply_tax_cost, 0));
+
+    v_receipt_total := v_receipt_total + (v_apply_qty * v_effective_unit_cost);
+
+    insert into public.inventory_movements(
+      item_id, movement_type, quantity, unit_cost, total_cost,
+      reference_table, reference_id, occurred_at, created_by, data, batch_id, warehouse_id
+    )
+    values (
+      v_item_id, 'purchase_in', v_apply_qty, v_effective_unit_cost, (v_apply_qty * v_effective_unit_cost),
+      'purchase_receipts', v_receipt_id::text, coalesce(p_occurred_at, now()), auth.uid(),
+      jsonb_build_object(
+        'purchaseOrderId', p_order_id,
+        'purchaseReceiptId', v_receipt_id,
+        'batchId', v_batch_id,
+        'expiryDate', v_expiry_iso,
+        'harvestDate', v_harvest_iso,
+        'warehouseId', v_wh,
+        'importShipmentId', case when v_import_shipment_id is null then null else v_import_shipment_id::text end
+      ),
+      v_batch_id, v_wh
+    )
+    returning id into v_movement_id;
+
+    begin
+      perform public.post_inventory_movement(v_movement_id);
+      v_mark_posted := true;
+    exception when others then
+      v_post_failed := true;
+      v_post_error := coalesce(v_post_error, sqlerrm);
+    end;
+  end loop;
+
+  if v_post_failed then
+    if v_post_error ~* 'not allowed|not authorized|permission|_require_staff|accounting\\.post' then
+      v_post_status := 'pending';
+    else
+      v_post_status := 'failed';
+    end if;
+    update public.purchase_receipts
+    set posting_status = v_post_status,
+        posting_error = left(coalesce(v_post_error, ''), 2000),
+        posted_at = null
+    where id = v_receipt_id;
+  elsif v_mark_posted then
+    update public.purchase_receipts
+    set posting_status = 'posted',
+        posting_error = null,
+        posted_at = now()
+    where id = v_receipt_id;
+  end if;
+
+  for v_item_id, v_ordered, v_received in
+    select
+      pi.item_id,
+      coalesce(
+        pi.qty_base,
+        case
+          when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+          else pi.quantity
+        end,
+        0
+      ),
+      coalesce(pi.received_quantity, 0)
+    from public.purchase_items pi
+    where pi.purchase_order_id = p_order_id
+  loop
+    if (v_received + 1e-9) < v_ordered then
+      v_all_received := false;
+      exit;
+    end if;
+  end loop;
+
+  v_required_po := false;
+  v_po_req_id := null;
+  v_po_approved := true;
+
+  if v_all_received then
+    update public.purchase_orders
+    set status = 'completed',
+        updated_at = now(),
+        approval_status = case when v_po_approved then 'approved' else approval_status end,
+        approval_request_id = coalesce(approval_request_id, v_po_req_id)
+    where id = p_order_id;
+  else
+    update public.purchase_orders
+    set status = 'partial',
+        updated_at = now()
+    where id = p_order_id;
+  end if;
+
+  return v_receipt_id;
+end;
+$$;
+
+do $$
+declare
+  v_base text;
+  v_has_trigger boolean;
+begin
+  v_base := public.get_base_currency();
+  select exists(
+    select 1
+    from pg_trigger t
+    where t.tgname = 'trg_lock_batch_foreign_snapshot'
+      and t.tgrelid = 'public.batches'::regclass
+      and not t.tgisinternal
+  ) into v_has_trigger;
+
+  if v_has_trigger then
+    execute 'alter table public.batches disable trigger trg_lock_batch_foreign_snapshot';
+  end if;
+
+  begin
+    with calc as (
+      select
+        b.id,
+        greatest(
+          0,
+          coalesce(b.unit_cost, 0)
+          - (coalesce(pri.transport_cost, 0) / nullif(pri.quantity, 0))
+          - (coalesce(pri.supply_tax_cost, 0) / nullif(pri.quantity, 0))
+        ) as base_goods_unit_cost
+      from public.batches b
+      join public.purchase_receipt_items pri
+        on pri.receipt_id = b.receipt_id
+       and pri.item_id = b.item_id
+      where b.foreign_currency is not null
+        and upper(b.foreign_currency) <> upper(v_base)
+        and b.fx_rate_at_receipt is not null
+        and b.fx_rate_at_receipt > 0
+    )
+    update public.batches b
+    set
+      foreign_unit_cost = round(
+        c.base_goods_unit_cost / nullif(b.fx_rate_at_receipt, 0),
+        6
+      ),
+      updated_at = now()
+    from calc c
+    where b.id = c.id
+      and c.base_goods_unit_cost is not null
+      and (
+        b.foreign_unit_cost is null
+        or abs((b.foreign_unit_cost * b.fx_rate_at_receipt) - c.base_goods_unit_cost)
+            > greatest(0.01, c.base_goods_unit_cost * 0.05)
+      );
+  exception when others then
+    if v_has_trigger then
+      execute 'alter table public.batches enable trigger trg_lock_batch_foreign_snapshot';
+    end if;
+    raise;
+  end;
+
+  if v_has_trigger then
+    execute 'alter table public.batches enable trigger trg_lock_batch_foreign_snapshot';
+  end if;
+end $$;
+
+do $$
+begin
+  if to_regclass('public.inventory_movements') is not null and to_regclass('public.batches') is not null then
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_purchase_in_immutable') then
+      alter table public.inventory_movements disable trigger trg_inventory_movements_purchase_in_immutable;
+    end if;
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_forbid_modify_posted') then
+      alter table public.inventory_movements disable trigger trg_inventory_movements_forbid_modify_posted;
+    end if;
+
+    update public.inventory_movements im
+    set unit_cost = round(coalesce(b.unit_cost, 0), 6),
+        total_cost = round(coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6), 6)
+    from public.batches b
+    where b.id = im.batch_id
+      and im.movement_type = 'purchase_in'
+      and nullif(btrim(coalesce(b.foreign_currency,'')), '') is not null
+      and upper(btrim(coalesce(b.foreign_currency,''))) <> upper(public.get_base_currency())
+      and abs(
+        coalesce(im.total_cost, 0)
+        - (coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6))
+      ) > greatest(0.01, abs(coalesce(im.total_cost, 0)) * 0.05);
+
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_purchase_in_immutable') then
+      alter table public.inventory_movements enable trigger trg_inventory_movements_purchase_in_immutable;
+    end if;
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_forbid_modify_posted') then
+      alter table public.inventory_movements enable trigger trg_inventory_movements_forbid_modify_posted;
+    end if;
+  end if;
+end $$;
+
+do $$
+declare
+  v_base text;
+  v_entries_updated int := 0;
+begin
+  v_base := public.get_base_currency();
+
+  perform set_config('app.allow_ledger_ddl', '1', true);
+  alter table public.journal_entries disable trigger user;
+  alter table public.journal_lines disable trigger user;
+
+  with candidates as (
+    select
+      je.id as entry_id,
+      upper(coalesce(nullif(btrim(je.currency_code), ''), v_base)) as current_currency_code,
+      je.fx_rate as current_fx_rate,
+      je.foreign_amount as current_foreign_amount,
+      upper(b.foreign_currency) as currency_code,
+      b.fx_rate_at_receipt as fx_rate,
+      round(coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6), 6) as expected_base,
+      round((coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6)) / nullif(b.fx_rate_at_receipt, 0), 6) as expected_foreign
+    from public.inventory_movements im
+    join public.batches b
+      on b.id = im.batch_id
+    join public.journal_entries je
+      on je.source_table = 'inventory_movements'
+     and je.source_id = im.id::text
+     and je.status = 'posted'
+    where im.movement_type = 'purchase_in'
+      and nullif(btrim(coalesce(b.foreign_currency,'')), '') is not null
+      and upper(btrim(coalesce(b.foreign_currency,''))) <> upper(v_base)
+      and b.fx_rate_at_receipt is not null
+      and b.fx_rate_at_receipt > 0
+  ),
+  line_stats as (
+    select
+      jl.journal_entry_id as entry_id,
+      count(*) as line_count,
+      sum(case when coalesce(jl.debit, 0) > 0 then 1 else 0 end) as debit_lines,
+      sum(case when coalesce(jl.credit, 0) > 0 then 1 else 0 end) as credit_lines,
+      sum(coalesce(jl.debit, 0)) as total_debit,
+      sum(coalesce(jl.credit, 0)) as total_credit
+    from public.journal_lines jl
+    join candidates c
+      on c.entry_id = jl.journal_entry_id
+    group by jl.journal_entry_id
+  ),
+  fixable as (
+    select
+      c.entry_id,
+      c.currency_code,
+      c.fx_rate,
+      c.expected_base,
+      c.expected_foreign
+    from candidates c
+    join line_stats ls
+      on ls.entry_id = c.entry_id
+    where ls.line_count = 2
+      and ls.debit_lines = 1
+      and ls.credit_lines = 1
+      and abs(coalesce(ls.total_debit, 0) - coalesce(c.expected_base, 0))
+          > greatest(0.01, abs(coalesce(ls.total_debit, 0)) * 0.05)
+  )
+  update public.journal_lines jl
+  set
+    debit = case when coalesce(jl.debit, 0) > 0 then f.expected_base else 0 end,
+    credit = case when coalesce(jl.credit, 0) > 0 then f.expected_base else 0 end,
+    currency_code = f.currency_code,
+    fx_rate = f.fx_rate,
+    foreign_amount = f.expected_foreign
+  from fixable f
+  where jl.journal_entry_id = f.entry_id;
+
+  with candidates as (
+    select
+      je.id as entry_id,
+      upper(coalesce(nullif(btrim(je.currency_code), ''), v_base)) as current_currency_code,
+      je.fx_rate as current_fx_rate,
+      je.foreign_amount as current_foreign_amount,
+      upper(b.foreign_currency) as currency_code,
+      b.fx_rate_at_receipt as fx_rate,
+      round(coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6), 6) as expected_base,
+      round((coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6)) / nullif(b.fx_rate_at_receipt, 0), 6) as expected_foreign
+    from public.inventory_movements im
+    join public.batches b
+      on b.id = im.batch_id
+    join public.journal_entries je
+      on je.source_table = 'inventory_movements'
+     and je.source_id = im.id::text
+     and je.status = 'posted'
+    where im.movement_type = 'purchase_in'
+      and nullif(btrim(coalesce(b.foreign_currency,'')), '') is not null
+      and upper(btrim(coalesce(b.foreign_currency,''))) <> upper(v_base)
+      and b.fx_rate_at_receipt is not null
+      and b.fx_rate_at_receipt > 0
+  ),
+  line_stats as (
+    select
+      jl.journal_entry_id as entry_id,
+      count(*) as line_count,
+      sum(case when coalesce(jl.debit, 0) > 0 then 1 else 0 end) as debit_lines,
+      sum(case when coalesce(jl.credit, 0) > 0 then 1 else 0 end) as credit_lines,
+      sum(coalesce(jl.debit, 0)) as total_debit
+    from public.journal_lines jl
+    join candidates c
+      on c.entry_id = jl.journal_entry_id
+    group by jl.journal_entry_id
+  ),
+  fixable as (
+    select
+      c.entry_id,
+      c.currency_code,
+      c.fx_rate,
+      c.expected_foreign
+    from candidates c
+    join line_stats ls
+      on ls.entry_id = c.entry_id
+    where ls.line_count = 2
+      and ls.debit_lines = 1
+      and ls.credit_lines = 1
+      and (
+        c.current_currency_code is distinct from c.currency_code
+        or c.current_fx_rate is distinct from c.fx_rate
+        or abs(coalesce(c.current_foreign_amount, 0) - coalesce(c.expected_foreign, 0))
+            > greatest(0.01, abs(coalesce(c.current_foreign_amount, 0)) * 0.05)
+      )
+  )
+  update public.journal_entries je
+  set
+    currency_code = f.currency_code,
+    fx_rate = f.fx_rate,
+    foreign_amount = f.expected_foreign
+  from fixable f
+  where je.id = f.entry_id;
+
+  get diagnostics v_entries_updated = row_count;
+
+  alter table public.journal_lines enable trigger user;
+  alter table public.journal_entries enable trigger user;
+end $$;
+
+notify pgrst, 'reload schema';
