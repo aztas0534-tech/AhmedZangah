@@ -16,7 +16,7 @@ const SalesReports: React.FC = () => {
     const { showNotification } = useToast();
     const { deliveryZones } = useDeliveryZones();
     const sessionScope = useSessionScope();
-    
+
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [rangePreset, setRangePreset] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
@@ -29,7 +29,7 @@ const SalesReports: React.FC = () => {
     const [recallRows, setRecallRows] = useState<any[]>([]);
 
     // --- New State for Server-Side Data ---
-    const [driverStats, setDriverStats] = useState<{name: string, count: number, avgTime: number}[]>([]);
+    const [driverStats, setDriverStats] = useState<{ name: string, count: number, avgTime: number }[]>([]);
     const [serverOrders, setServerOrders] = useState<any[]>([]);
     const [ordersLoading, setOrdersLoading] = useState(false);
 
@@ -45,7 +45,11 @@ const SalesReports: React.FC = () => {
 
     const effectiveRange = useMemo(() => {
         if (range) return range;
-        if (rangePreset === 'all') return { start: new Date(0), end: new Date() };
+        if (rangePreset === 'all') {
+            const end = new Date();
+            end.setDate(end.getDate() + 1); // Add 1 day buffer for clock skew
+            return { start: new Date(0), end };
+        }
         return undefined;
     }, [range, rangePreset]);
 
@@ -678,44 +682,44 @@ const SalesReports: React.FC = () => {
                         </div>
                     </div>
                     <h2 className="text-2xl font-bold text-black">تقرير المبيعات</h2>
-                {startDate && endDate && (
-                    <p className="text-base text-black mt-1">التقرير للفترة من {startDate} إلى {endDate}</p>
-                )}
-                <div className="flex gap-4 mt-2 text-sm border-t pt-2">
-                    <span>الإيراد: {reportData.netRevenue.toFixed(2)} {currency}</span>
-                    <span>|</span>
-                    <span>تكلفة البضاعة (COGS): {reportData.cogs.toFixed(2)} {currency}</span>
-                    <span>|</span>
-                    <span>صافي الربح: {reportData.netProfit.toFixed(2)} {currency}</span>
+                    {startDate && endDate && (
+                        <p className="text-base text-black mt-1">التقرير للفترة من {startDate} إلى {endDate}</p>
+                    )}
+                    <div className="flex gap-4 mt-2 text-sm border-t pt-2">
+                        <span>الإيراد: {reportData.netRevenue.toFixed(2)} {currency}</span>
+                        <span>|</span>
+                        <span>تكلفة البضاعة (COGS): {reportData.cogs.toFixed(2)} {currency}</span>
+                        <span>|</span>
+                        <span>صافي الربح: {reportData.netProfit.toFixed(2)} {currency}</span>
+                    </div>
                 </div>
-            </div>
 
-            {/* Key Metrics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
-                    <h3 className="text-gray-500 dark:text-gray-400">إجمالي الإيرادات</h3>
-                    <p className="text-2xl font-bold text-green-500">{reportData.netRevenue.toFixed(2)} {currency}</p>
+                {/* Key Metrics Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
+                        <h3 className="text-gray-500 dark:text-gray-400">إجمالي الإيرادات</h3>
+                        <p className="text-2xl font-bold text-green-500">{reportData.netRevenue.toFixed(2)} {currency}</p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
+                        <h3 className="text-gray-500 dark:text-gray-400">عدد الطلبات</h3>
+                        <p className="text-2xl font-bold dark:text-white">{displayTotalOrders}</p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
+                        <h3 className="text-gray-500 dark:text-gray-400">متوسط قيمة الطلب</h3>
+                        <p className="text-2xl font-bold text-blue-500">{reportData.averageOrderValue.toFixed(2)} {currency}</p>
+                    </div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
-                    <h3 className="text-gray-500 dark:text-gray-400">عدد الطلبات</h3>
-                    <p className="text-2xl font-bold dark:text-white">{displayTotalOrders}</p>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
-                    <h3 className="text-gray-500 dark:text-gray-400">متوسط قيمة الطلب</h3>
-                    <p className="text-2xl font-bold text-blue-500">{reportData.averageOrderValue.toFixed(2)} {currency}</p>
-                </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
-                    <h3 className="text-gray-500 dark:text-gray-400">المردودات</h3>
-                    <p className="text-2xl font-bold text-red-600">{reportData.returns.toFixed(2)} {currency}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
+                        <h3 className="text-gray-500 dark:text-gray-400">المردودات</h3>
+                        <p className="text-2xl font-bold text-red-600">{reportData.returns.toFixed(2)} {currency}</p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
+                        <h3 className="text-gray-500 dark:text-gray-400">صافي التحصيل</h3>
+                        <p className="text-2xl font-bold text-green-600">{reportData.netCollected.toFixed(2)} {currency}</p>
+                    </div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md text-center">
-                    <h3 className="text-gray-500 dark:text-gray-400">صافي التحصيل</h3>
-                    <p className="text-2xl font-bold text-green-600">{reportData.netCollected.toFixed(2)} {currency}</p>
-                </div>
-            </div>
 
                 {/* Profitability Section */}
                 <h3 className="text-xl font-bold dark:text-gray-200 mb-4 px-1">الملخص المالي والربحية</h3>
@@ -787,7 +791,7 @@ const SalesReports: React.FC = () => {
                         </div>
                     </div>
                 </>
-                
+
                 {/* Integration Consistency Check (Debug Toggle) */}
                 {serverSummary && showAllOrders && !orderSearch.trim() && !ordersLoading && serverOrders.length > 0 && (
                     <div className="mb-6">
@@ -859,7 +863,7 @@ const SalesReports: React.FC = () => {
 
                 {/* Recent Orders Table (Legacy - kept for detail view) */}
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden mt-6">
-                     <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white">تفاصيل الطلبات ({visibleOrders.length} طلب{ordersLoading ? ' • جاري التحميل' : ''})</h3>
                         <div className="mt-3 flex flex-col md:flex-row gap-3 md:items-center">
                             <input
