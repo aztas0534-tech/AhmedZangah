@@ -1,134 +1,133 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useOrders } from '../../contexts/OrderContext';
 import { useToast } from '../../contexts/ToastContext';
-import type { Order, OrderStatus, CartItem } from '../../types';
-import { adminStatusColors } from '../../utils/orderUtils';
-import BasicFinancialSummary from '../../components/dashboard/BasicFinancialSummary';
 import {
-    TodaySalesWidget,
-    ProfitabilityWidget,
-    OrderStatusWidget,
-    InventoryAlertsWidget,
-    TopDebtorsWidget,
-} from '../../components/dashboard/DashboardWidgets';
+    DashboardProvider,
+    DashboardHeader,
+    KPIBar,
+    InventorySection,
+    SalesSection,
+    PurchasingSection
+} from '../../components/dashboard/WorldClassWidgets';
+import type { Order, OrderStatus } from '../../types';
+import { adminStatusColors } from '../../utils/orderUtils';
 
-const statusTranslations: Record<OrderStatus, string> = {
-    pending: 'قيد الانتظار',
-    preparing: 'جاري التحضير',
-    out_for_delivery: 'خرج للتوصيل',
-    delivered: 'تم التوصيل',
-    scheduled: 'مجدول',
-    cancelled: 'ملغي',
-};
+// ─── RECENT ORDERS (Simple Table) ──────────────────────────────────────────
 
-const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
-    const { updateOrderStatus } = useOrders();
+const RecentOrdersTable: React.FC = () => {
+    const { orders, updateOrderStatus } = useOrders();
     const { showNotification } = useToast();
+    const [recentOrders, setRecentOrders] = useState<Order[]>([]);
 
-    const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const newStatus = e.target.value as OrderStatus;
+    useEffect(() => {
+        // Take last 5 orders
+        setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
+    }, [orders]);
+
+    const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
         try {
-            await updateOrderStatus(order.id, newStatus);
-            showNotification(`تم تحديث حالة الطلب #${order.id.split('-')[0].slice(-4)} إلى "${statusTranslations[newStatus]}"`, 'success');
+            await updateOrderStatus(orderId, newStatus);
+            showNotification('تم تحديث حالة الطلب بنجاح', 'success');
         } catch (error) {
-            const raw = error instanceof Error ? error.message : '';
-            const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تحديث حالة الطلب.';
-            showNotification(message, 'error');
+            showNotification('فشل تحديث حالة الطلب', 'error');
         }
     };
 
-    const createdAtDate = new Date(order.createdAt as any);
+    const statusTranslations: Record<string, string> = {
+        pending: 'قيد الانتظار',
+        preparing: 'جاري التحضير',
+        out_for_delivery: 'خرج للتوصيل',
+        delivered: 'تم التوصيل',
+        scheduled: 'مجدول',
+        cancelled: 'ملغي',
+    };
+
+    if (recentOrders.length === 0) {
+        return <div className="text-center p-8 text-gray-500 font-bold dark:text-gray-400">لا توجد طلبات حديثة.</div>;
+    }
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 space-y-4">
-            <div className="flex justify-between items-start">
-                <div>
-                    <p className="font-bold text-lg text-gray-800 dark:text-white">طلب #{order.id.split('-')[0].slice(-4)}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400" dir="ltr">{createdAtDate.toLocaleString('ar-EG-u-nu-latn')}</p>
-                </div>
-                <div className={`px-3 py-1 text-sm font-semibold rounded-full ${adminStatusColors[order.status]}`}>
-                    {statusTranslations[order.status]}
-                </div>
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <h4 className="font-semibold dark:text-gray-200 mb-2">تفاصيل الطلب:</h4>
-                <ul className="space-y-1 text-sm">
-                    {(order.items || []).map((item: CartItem, idx: number) => (
-                        <li key={item.cartItemId || `${order.id}:${String(item.id)}:${idx}`} className="flex justify-between">
-                            <span className="text-gray-700 dark:text-gray-300">
-                                {String((item as any)?.name?.ar || (item as any)?.name?.en || (item as any)?.name || (item as any)?.itemName || (item as any)?.id || (item as any)?.itemId || 'منتج')}{' '}
-                                x{Number((item as any)?.quantity || 0)}
-                            </span>
-                            <span className="text-gray-600 dark:text-gray-400 font-mono" dir="ltr">{Number(item.price * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span>
-                        </li>
+        <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <table className="w-full text-sm text-right">
+                <thead className="bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium border-b border-gray-100 dark:border-gray-600">
+                    <tr>
+                        <th className="px-6 py-4">رقم الطلب</th>
+                        <th className="px-6 py-4">العميل</th>
+                        <th className="px-6 py-4">التاريخ</th>
+                        <th className="px-6 py-4">الإجمالي</th>
+                        <th className="px-6 py-4">الحالة</th>
+                        <th className="px-6 py-4">إجراء</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-gray-800 dark:text-gray-200">
+                    {recentOrders.map(order => (
+                        <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                            <td className="px-6 py-4 font-mono">#{order.id.split('-')[0].slice(-4)}</td>
+                            <td className="px-6 py-4">{order.customerName || 'عميل محلي'}</td>
+                            <td className="px-6 py-4 text-gray-500" dir="ltr">{new Date(order.createdAt).toLocaleDateString('en-GB')}</td>
+                            <td className="px-6 py-4 font-bold text-indigo-600 font-mono" dir="ltr">
+                                {Number(order.total || 0).toLocaleString()} {String((order as any).currency || '').toUpperCase()}
+                            </td>
+                            <td className="px-6 py-4">
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${adminStatusColors[order.status]}`}>
+                                    {statusTranslations[order.status]}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4">
+                                <select
+                                    value={order.status}
+                                    onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
+                                    className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    {Object.keys(statusTranslations).map(s => (
+                                        <option key={s} value={s}>{statusTranslations[s]}</option>
+                                    ))}
+                                </select>
+                            </td>
+                        </tr>
                     ))}
-                </ul>
-                <div className="flex justify-between font-bold mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <span className="dark:text-white">الإجمالي:</span>
-                    <span className="text-orange-500" dir="ltr">{Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span>
-                </div>
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <h4 className="font-semibold dark:text-gray-200 mb-1">العنوان:</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{order.address}</p>
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <label htmlFor={`status-${order.id}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">تغيير حالة الطلب:</label>
-                <select
-                    id={`status-${order.id}`}
-                    value={order.status}
-                    onChange={handleStatusChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition"
-                >
-                    {Object.keys(adminStatusColors).map(status => (
-                        <option key={status} value={status}>{statusTranslations[status as OrderStatus]}</option>
-                    ))}
-                </select>
-            </div>
+                </tbody>
+            </table>
         </div>
     );
 };
 
+// ─── MAIN SCREEN ───────────────────────────────────────────────────────────
 
 const AdminDashboardScreen: React.FC = () => {
-    const { orders } = useOrders();
-
     return (
-        <div className="animate-fade-in space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold dark:text-white">لوحة التحكم</h1>
-            </div>
+        <DashboardProvider>
+            <div className="animate-fade-in space-y-8">
+                <DashboardHeader title="لوحة التحكم" />
 
-            {/* ── Section 1: Financial Snapshot (Cash, AR, AP, Net) ── */}
-            <BasicFinancialSummary />
+                {/* 1. KPIs */}
+                <KPIBar />
 
-            {/* ── Section 2: Sales + Profitability + Orders ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <TodaySalesWidget />
-                <ProfitabilityWidget />
-                <OrderStatusWidget />
-            </div>
-
-            {/* ── Section 3: Inventory + Top Debtors ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <InventoryAlertsWidget />
-                <TopDebtorsWidget />
-            </div>
-
-            {/* ── Section 4: Recent Orders ── */}
-            <div>
-                <h2 className="text-xl font-bold dark:text-white mb-4">آخر الطلبات</h2>
-                {orders.length === 0 ? (
-                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">لا توجد طلبات حالية.</p>
-                ) : (
-                    <div className="space-y-6">
-                        {(orders || []).map(order => (
-                            <OrderCard key={order.id} order={order} />
-                        ))}
+                {/* 2. Main Grid */}
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+                    {/* Inventory (Left) - 1 col */}
+                    <div className="xl:col-span-1 space-y-6 min-h-[400px]">
+                        <InventorySection />
                     </div>
-                )}
+
+                    {/* Sales (Center) - 2 cols */}
+                    <div className="xl:col-span-2 space-y-6 min-h-[400px]">
+                        <SalesSection />
+                    </div>
+
+                    {/* Purchasing (Right) - 1 col */}
+                    <div className="xl:col-span-1 space-y-6 min-h-[400px]">
+                        <PurchasingSection />
+                    </div>
+                </div>
+
+                {/* 3. Recent Orders Table */}
+                <div>
+                    <h3 className="text-xl font-bold dark:text-white mb-4 px-2">أحدث الطلبات</h3>
+                    <RecentOrdersTable />
+                </div>
             </div>
-        </div>
+        </DashboardProvider>
     );
 };
 
