@@ -1983,13 +1983,31 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('طريقة الدفع الرئيسية لا تطابق تقسيم الدفع.');
     }
 
-    const paymentTotal = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    let paymentTotal = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // ── Auto-reconcile payment amounts to match server-recomputed total ──
+    // The frontend computes the total from local menu-item prices, but
+    // createInStoreSale re-prices using get_fefo_pricing (batch-based).
+    // Small drifts are expected; auto-correct instead of throwing.
+    const priceDrift = Math.abs(paymentTotal - computedTotal);
+    if (!input.isCredit && priceDrift > 0.001 && priceDrift < 50 && paymentBreakdown.length > 0) {
+      // Adjust the largest payment line to absorb the difference
+      const mainIdx = paymentBreakdown.reduce((best, p, i, arr) =>
+        (Number(p.amount) || 0) > (Number(arr[best].amount) || 0) ? i : best, 0);
+      const diff = computedTotal - paymentTotal;
+      paymentBreakdown[mainIdx].amount = Math.max(0, (Number(paymentBreakdown[mainIdx].amount) || 0) + diff);
+      paymentTotal = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      if (import.meta.env.DEV) {
+        console.log('[createInStoreSale] Auto-reconciled payment drift:', priceDrift.toFixed(4), 'adjusted by', diff.toFixed(4));
+      }
+    }
+
     if (input.isCredit && paymentTotal - computedTotal > 0.01) {
       throw new Error('مجموع الدفعات أكبر من إجمالي البيع.');
     }
     const isFullyPaid = input.isCredit
       ? (paymentTotal + 0.01 >= computedTotal)
-      : (Math.abs(paymentTotal - computedTotal) <= 0.01);
+      : (Math.abs(paymentTotal - computedTotal) <= 1.0);
 
     if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');

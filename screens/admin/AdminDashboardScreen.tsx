@@ -2,8 +2,15 @@ import React from 'react';
 import { useOrders } from '../../contexts/OrderContext';
 import { useToast } from '../../contexts/ToastContext';
 import type { Order, OrderStatus, CartItem } from '../../types';
-// import { useSettings } from '../../contexts/SettingsContext';
 import { adminStatusColors } from '../../utils/orderUtils';
+import BasicFinancialSummary from '../../components/dashboard/BasicFinancialSummary';
+import {
+    TodaySalesWidget,
+    ProfitabilityWidget,
+    OrderStatusWidget,
+    InventoryAlertsWidget,
+    TopDebtorsWidget,
+} from '../../components/dashboard/DashboardWidgets';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -30,9 +37,7 @@ const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
         }
     };
 
-    // Ensure createdAt is a Date-compatible object
     const createdAtDate = new Date(order.createdAt as any);
-
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 space-y-4">
@@ -89,20 +94,40 @@ const AdminDashboardScreen: React.FC = () => {
     const { orders } = useOrders();
 
     return (
-        <div className="animate-fade-in">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold dark:text-white">{'لوحة التحكم'}</h1>
+        <div className="animate-fade-in space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold dark:text-white">لوحة التحكم</h1>
             </div>
 
-            {orders.length === 0 ? (
-                <p className="text-center text-gray-500 dark:text-gray-400 py-8">لا توجد طلبات حالية.</p>
-            ) : (
-                <div className="space-y-6">
-                    {(orders || []).map(order => (
-                        <OrderCard key={order.id} order={order} />
-                    ))}
-                </div>
-            )}
+            {/* ── Section 1: Financial Snapshot (Cash, AR, AP, Net) ── */}
+            <BasicFinancialSummary />
+
+            {/* ── Section 2: Sales + Profitability + Orders ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <TodaySalesWidget />
+                <ProfitabilityWidget />
+                <OrderStatusWidget />
+            </div>
+
+            {/* ── Section 3: Inventory + Top Debtors ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <InventoryAlertsWidget />
+                <TopDebtorsWidget />
+            </div>
+
+            {/* ── Section 4: Recent Orders ── */}
+            <div>
+                <h2 className="text-xl font-bold dark:text-white mb-4">آخر الطلبات</h2>
+                {orders.length === 0 ? (
+                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">لا توجد طلبات حالية.</p>
+                ) : (
+                    <div className="space-y-6">
+                        {(orders || []).map(order => (
+                            <OrderCard key={order.id} order={order} />
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
