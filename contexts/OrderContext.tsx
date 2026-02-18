@@ -1629,6 +1629,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         weight: typeof l.weight === 'number' ? l.weight : undefined,
         batchId: typeof l.batchId === 'string' && l.batchId.trim() ? String(l.batchId) : undefined,
         selectedAddons: l.selectedAddons || {},
+        uomCode: typeof l.uomCode === 'string' && l.uomCode.trim() ? l.uomCode.trim() : undefined,
+        uomQtyInBase: typeof l.uomQtyInBase === 'number' && l.uomQtyInBase > 0 ? l.uomQtyInBase : 1,
       }));
     const normalizedPromoLines = rawLines
       .filter((l: any) => typeof l?.promotionId === 'string' && Boolean(l.promotionId))
@@ -1692,6 +1694,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         selectedAddons: resolvedAddons,
         forcedBatchId: line.batchId,
         cartItemId: crypto.randomUUID(),
+        uomCode: line.uomCode,
+        uomQtyInBase: line.uomQtyInBase || 1,
       };
     });
 
@@ -1776,9 +1780,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       } else {
         pricedItems = await Promise.all(items.map(async (item: any) => {
           if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
+          const uomFactor = Number((item as any).uomQtyInBase) || 1;
           const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
             ? (item.weight || item.quantity)
-            : item.quantity;
+            : item.quantity * uomFactor;
           const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
           const call = async (customerId: string | null) => {
             return await supabaseForPricing!.rpc('get_fefo_pricing', {
@@ -1891,7 +1896,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       );
 
       let itemPrice = item.price;
-      let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any).uomQtyInBase) || 1;
+      let itemQuantity = (item.unitType === 'kg' || item.unitType === 'gram')
+        ? item.quantity
+        : item.quantity * uomFactor;
 
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
