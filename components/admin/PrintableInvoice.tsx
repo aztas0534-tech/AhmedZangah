@@ -194,7 +194,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 .border-y { border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
                 .flex { display: flex; justify-content: space-between; align-items: baseline; }
                 .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; letter-spacing: -0.5px; }
-                .logo-img { height: 40px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
+                .logo-img { height: 100px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
                 table { width: 100%; border-collapse: collapse; }
                 th { text-align: right; font-size: 10px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
                 td { padding: 4px 0; vertical-align: top; }

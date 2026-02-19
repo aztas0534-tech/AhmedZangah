@@ -1,5 +1,6 @@
 import { formatDateOnly } from '../../../utils/printUtils';
 import { localizeDocStatusAr, shortId } from '../../../utils/displayLabels';
+import { AZTA_IDENTITY } from '../../../config/identity';
 
 type Brand = {
   name?: string;
@@ -34,18 +35,7 @@ export type PrintableGrnData = {
 
 export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Brand; language?: 'ar' | 'en' }) {
   const { data, brand, language = 'ar' } = props;
-  const currency = String(data.currency || '').toUpperCase() || '—';
 
-  const fmt = (n: number) => {
-    const v = Number(n || 0);
-    try {
-      return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    } catch {
-      return v.toFixed(2);
-    }
-  };
-
-  const total = data.items.reduce((sum, it) => sum + Number(it.totalCost ?? (Number(it.quantity || 0) * Number(it.unitCost || 0))), 0);
 
   return (
     <div className="grn-container" dir={language === 'ar' ? 'rtl' : 'ltr'}>
@@ -165,9 +155,13 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
 
       <div className="header-section">
         <div className="company-info">
-          {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 60, marginBottom: 10 }} />}
-          <h1>{(brand?.name || '').trim()}</h1>
-          {brand?.branchName && <p>{brand.branchName}</p>}
+          {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 120, marginBottom: 15 }} />}
+          <h1>{language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn}</h1>
+          {(brand?.name || brand?.branchName) && (
+             <p style={{ fontSize: 16, fontWeight: 'bold', color: '#334155', marginBottom: 5 }}>
+               {brand?.name !== (language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn) ? brand?.name : brand?.branchName}
+             </p>
+          )}
           {brand?.address && <p>{brand.address}</p>}
           {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
           {brand?.vatNumber && <p>{language === 'en' ? 'VAT No:' : 'الرقم الضريبي:'} <span dir="ltr" className="tabular">{brand.vatNumber}</span></p>}
