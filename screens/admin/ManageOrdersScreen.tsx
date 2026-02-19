@@ -1666,13 +1666,17 @@ const ManageOrdersScreen: React.FC = () => {
                     return sum + (addonPrice * addonQty);
                 }, 0);
 
-                const lineGross = isWeightBased ? (unitPrice * totalQty) + addonsCost : (unitPrice + addonsCost) * totalQty;
+                const uomQtyInBase = Number((orderItem as any).uomQtyInBase || 1) || 1;
+                const lineGross = isWeightBased
+                    ? (unitPrice * totalQty) + addonsCost
+                    : ((unitPrice * uomQtyInBase) + addonsCost) * totalQty;
+
                 const proportion = Math.max(0, Math.min(1, (Number(qty) || 0) / totalQty));
                 const returnedGross = lineGross * proportion;
                 const returnedNet = returnedGross * discountFactor;
 
                 // Convert to base units for inventory accuracy
-                const uomQtyInBase = Number((orderItem as any).uomQtyInBase || 1) || 1;
+                // uomQtyInBase already defined above
                 const baseQty = isWeightBased ? qty : (qty * uomQtyInBase);
                 const baseUnitPrice = Number((returnedNet / (Number(baseQty) || 1)).toFixed(4));
 
@@ -4136,7 +4140,10 @@ const ManageOrdersScreen: React.FC = () => {
                                                 const addonQty = Number(entry?.quantity) || 0;
                                                 return s + (addonPrice * addonQty);
                                             }, 0);
-                                            const lineGross = isWeightBased ? (unitPrice * totalQty) + addonsCost : (unitPrice + addonsCost) * totalQty;
+                                            const uomQtyInBase = Number((item as any).uomQtyInBase || 1) || 1;
+                                            const lineGross = isWeightBased
+                                                ? (unitPrice * totalQty) + addonsCost
+                                                : ((unitPrice * uomQtyInBase) + addonsCost) * totalQty;
                                             const proportion = Math.max(0, Math.min(1, (Number(qty) || 0) / totalQty));
                                             return sum + (lineGross * proportion * discountFactor);
                                         }, 0);
