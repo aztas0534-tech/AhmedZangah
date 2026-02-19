@@ -1677,7 +1677,7 @@ const ManageOrdersScreen: React.FC = () => {
 
                 // Convert to base units for inventory accuracy
                 // uomQtyInBase already defined above
-                const baseQty = isWeightBased ? qty : (qty * uomQtyInBase);
+                const baseQty = qty;
                 const baseUnitPrice = Number((returnedNet / (Number(baseQty) || 1)).toFixed(4));
 
                 return {
