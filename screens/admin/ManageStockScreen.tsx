@@ -71,16 +71,15 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                     occurredAt: r.occurred_at,
                     unitCost: Number(r.unit_cost) || 0,
                     unitCostOriginal: ((): number | undefined => {
-                        const c = Number((r as any)?.unit_cost_original ?? (r as any)?.unit_cost_currency ?? (r as any)?.supplier_unit_cost);
+                        const c = Number((r as any)?.unit_cost_original);
                         return Number.isFinite(c) && c > 0 ? c : undefined;
                     })(),
                     unitCostCurrency: ((): string | undefined => {
-                        const curVal = (r as any)?.currency ?? (r as any)?.cost_currency ?? (r as any)?.unit_cost_currency_code;
-                        const cur = String(curVal || '').trim().toUpperCase();
+                        const cur = String(((r as any)?.currency) || '').trim().toUpperCase();
                         return cur || undefined;
                     })(),
                     fxAtReceipt: ((): number | undefined => {
-                        const fx = Number((r as any)?.fx_rate_at_receipt ?? (r as any)?.fx_rate);
+                        const fx = Number((r as any)?.fx_rate_at_receipt);
                         return Number.isFinite(fx) && fx > 0 ? fx : undefined;
                     })(),
                     receivedQuantity: Number(r.received_quantity) || 0,
