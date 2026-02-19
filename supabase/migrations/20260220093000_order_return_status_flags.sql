@@ -1,5 +1,86 @@
 set app.allow_ledger_ddl = '1';
 
+create or replace function public._strip_order_return_fields(p jsonb)
+returns jsonb
+language sql
+immutable
+as $$
+  select coalesce(p, '{}'::jsonb) - 'returnStatus' - 'returnedAt' - 'returnUpdatedAt'
+$$;
+
+create or replace function public.trg_set_order_fx()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_base text;
+  v_currency text;
+  v_rate numeric;
+  v_total numeric;
+  v_is_posted boolean := false;
+begin
+  v_base := public.get_base_currency();
+  if tg_op = 'UPDATE' then
+    v_is_posted := exists (select 1 from public.journal_entries je where je.source_table = 'orders' and je.source_id = old.id::text and je.source_event in ('invoiced','delivered') limit 1);
+    if v_is_posted then
+      if public._strip_order_return_fields(new.data) is distinct from public._strip_order_return_fields(old.data)
+         or new.currency is distinct from old.currency
+         or new.fx_rate is distinct from old.fx_rate
+         or new.base_total is distinct from old.base_total
+      then
+        raise exception 'posted_order_immutable';
+      end if;
+      return new;
+    end if;
+    if coalesce(old.fx_locked, true) then
+      if new.currency is distinct from old.currency or new.fx_rate is distinct from old.fx_rate then
+        raise exception 'fx_locked';
+      end if;
+    end if;
+  end if;
+  v_currency := upper(nullif(btrim(coalesce(new.currency, new.data->>'currency', '')), ''));
+  if v_currency is null then v_currency := v_base; end if;
+  new.currency := v_currency;
+  v_rate := public.get_fx_rate(new.currency, current_date, 'operational');
+  if v_rate is null then raise exception 'fx rate missing for currency %', new.currency; end if;
+  new.fx_rate := v_rate;
+  v_total := 0;
+  begin v_total := nullif((new.data->>'total')::numeric, null); exception when others then v_total := 0; end;
+  new.base_total := coalesce(v_total, 0) * coalesce(new.fx_rate, 1);
+  return new;
+end;
+$$;
+drop trigger if exists trg_set_order_fx on public.orders;
+create trigger trg_set_order_fx before insert or update on public.orders for each row execute function public.trg_set_order_fx();
+
+create or replace function public.trg_orders_forbid_posted_updates()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_is_posted boolean := false;
+begin
+  v_is_posted := exists (select 1 from public.journal_entries je where je.source_table = 'orders' and je.source_id = old.id::text and je.source_event in ('invoiced','delivered') limit 1);
+  if v_is_posted then
+    if public._strip_order_return_fields(new.data) is distinct from public._strip_order_return_fields(old.data)
+       or new.currency is distinct from old.currency
+       or new.fx_rate is distinct from old.fx_rate
+       or new.base_total is distinct from old.base_total
+       or new.warehouse_id is distinct from old.warehouse_id
+    then
+      raise exception 'posted_order_immutable';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_orders_forbid_posted_updates on public.orders;
+create trigger trg_orders_forbid_posted_updates before update on public.orders for each row execute function public.trg_orders_forbid_posted_updates();
+
 create or replace function public.recompute_order_return_status(p_order_id uuid)
 returns void
 language plpgsql
