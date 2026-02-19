@@ -302,6 +302,19 @@ export const KPIBar: React.FC = () => {
                     .select('*', { count: 'exact', head: true })
                     .in('status', ['shipped', 'processing', 'ordered']);
 
+                // Order Status Counts (Today/Active)
+                const { data: statusCounts } = await supabase
+                    .from('orders')
+                    .select('status')
+                    .in('status', ['pending', 'preparing', 'out_for_delivery', 'delivered']);
+
+                // Financial Position (AR/AP)
+                const { data: arData } = await supabase.from('party_ar_aging_summary').select('total_outstanding');
+                const { data: apData } = await supabase.from('party_ap_aging_summary').select('total_outstanding');
+
+                const totalAR = arData?.reduce((sum, row) => sum + (Number(row.total_outstanding) || 0), 0) || 0;
+                const totalAP = apData?.reduce((sum, row) => sum + (Number(row.total_outstanding) || 0), 0) || 0;
+
                 if (active) {
                     const netSales = Number(salesData?.total_sales_accrual) || 0;
                     const cogs = Number(salesData?.cogs) || 0;
@@ -320,7 +333,12 @@ export const KPIBar: React.FC = () => {
                         sales: netSales,
                         orders: Number(salesData?.total_orders_accrual) || 0,
                         margin: netSales > 0 ? ((netSales - adjustedCogs) / netSales * 100) : 0,
+                        grossProfit: netSales - adjustedCogs, // Added Gross Profit
                         netProfit,
+                        collected: Number(salesData?.total_collected) || 0, // Added Collected
+                        ar: totalAR,
+                        ap: totalAP,
+                        statusCounts: statusCounts || [],
                         avgOrderValue: (Number(salesData?.total_orders_accrual) || 0) > 0 ? netSales / (Number(salesData?.total_orders_accrual) || 1) : 0,
                         transit: transitCount || 0,
                         inventoryValue: totalInventoryValue,
@@ -336,7 +354,9 @@ export const KPIBar: React.FC = () => {
                         sales: prevNetSales,
                         orders: Number(prevSalesData?.total_orders_accrual) || 0,
                         margin: prevNetSales > 0 ? ((prevNetSales - prevCogs) / prevNetSales * 100) : 0,
+                        grossProfit: prevNetSales - prevCogs,
                         netProfit: prevNetProfit,
+                        collected: Number(prevSalesData?.total_collected) || 0,
                         avgOrderValue: (Number(prevSalesData?.total_orders_accrual) || 0) > 0 ? prevNetSales / (Number(prevSalesData?.total_orders_accrual) || 1) : 0,
                     });
                 }
@@ -375,14 +395,14 @@ export const KPIBar: React.FC = () => {
             light: 'bg-cyan-50 dark:bg-cyan-900/20',
         },
         {
-            title: 'هامش الربح',
-            value: stats?.margin ?? 0,
-            prevValue: prevStats?.margin ?? 0,
-            format: 'percent' as const,
-            sub: 'إجمالي',
+            title: 'مجمل الربح', // Gross Profit
+            value: stats?.grossProfit ?? 0,
+            prevValue: prevStats?.grossProfit ?? 0,
+            format: 'currency' as const,
+            sub: currency,
             icon: Icons.TrendingUpIcon,
-            gradient: 'from-purple-500 to-indigo-600',
-            light: 'bg-purple-50 dark:bg-purple-900/20',
+            gradient: 'from-violet-500 to-purple-600',
+            light: 'bg-violet-50 dark:bg-violet-900/20',
         },
         {
             title: 'صافي الربح',
@@ -395,12 +415,12 @@ export const KPIBar: React.FC = () => {
             light: 'bg-amber-50 dark:bg-amber-900/20',
         },
         {
-            title: 'متوسط قيمة الطلب',
-            value: stats?.avgOrderValue ?? 0,
-            prevValue: prevStats?.avgOrderValue ?? 0,
-            format: 'currency' as const,
-            sub: currency,
-            icon: Icons.TagIcon,
+            title: 'هامش الربح',
+            value: stats?.margin ?? 0,
+            prevValue: prevStats?.margin ?? 0,
+            format: 'percent' as const,
+            sub: 'نسبة',
+            icon: Icons.PercentIcon || Icons.TrendingUpIcon,
             gradient: 'from-rose-500 to-pink-600',
             light: 'bg-rose-50 dark:bg-rose-900/20',
         },
@@ -883,7 +903,79 @@ export const PurchasingSection: React.FC = () => {
 };
 
 
-// 7. TOP DEBTORS
+// 7. FINANCIAL POSITION CARD (Cash, AR, AP, Net)
+export const FinancialPositionCard: React.FC = () => {
+    const { kpiData, currency } = useDashboard();
+    if (!kpiData) return null;
+
+    const { collected, ar, ap } = kpiData;
+    const net = (collected || 0) + (ar || 0) - (ap || 0);
+
+    const items = [
+        { label: 'الكاش (مبيعات)', value: collected, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+        { label: 'لي (مدينون)', value: ar, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+        { label: 'علي (دائنون)', value: ap, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
+        { label: 'الصافي التقريبي', value: net, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-900/20', bold: true },
+    ];
+
+    return (
+        <div className="glass-card rounded-2xl p-5 animate-slide-in-up">
+            <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm mb-4 flex items-center gap-2">
+                <Icons.BankIcon className="w-4 h-4 text-emerald-500" />
+                الوضع المالي
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+                {items.map((item, i) => (
+                    <div key={i} className={`p-3 rounded-xl ${item.bg}`}>
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">{item.label}</div>
+                        <div className={`text-sm font-mono ${item.bold ? 'font-bold' : 'font-medium'} ${item.color}`}>
+                            {fmt(item.value)} <span className="text-[9px] text-gray-400">{currency}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// 8. SALES ORDER STATUS ROW
+export const SalesStatusRow: React.FC = () => {
+    const { kpiData } = useDashboard();
+    if (!kpiData?.statusCounts) return null;
+
+    const counts = kpiData.statusCounts.reduce((acc: any, curr: any) => {
+        acc[curr.status] = (acc[curr.status] || 0) + 1;
+        return acc;
+    }, {});
+
+    const statuses = [
+        { key: 'pending', label: 'انتظار', color: 'bg-yellow-100 text-yellow-700', icon: Icons.ClockIcon },
+        { key: 'preparing', label: 'تحضير', color: 'bg-blue-100 text-blue-700', icon: Icons.RotateCwIcon },
+        { key: 'out_for_delivery', label: 'توصيل', color: 'bg-orange-100 text-orange-700', icon: Icons.TruckIcon },
+        { key: 'delivered', label: 'تسليم', color: 'bg-green-100 text-green-700', icon: Icons.CheckCircleIcon },
+    ];
+
+    return (
+        <div className="mt-6 mb-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+            {statuses.map((s) => (
+                <div key={s.key} className="glass-card p-3 rounded-xl flex items-center justify-between shadow-sm border border-gray-100 dark:border-gray-700">
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${s.color} bg-opacity-50`}>
+                            <s.icon className="w-4 h-4" />
+                        </div>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{s.label}</span>
+                    </div>
+                    <span className="text-lg font-mono font-bold text-gray-900 dark:text-white">
+                        {counts[s.key] || 0}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+
+// 9. TOP DEBTORS
 export const TopDebtorsSection: React.FC = () => {
     const { hasPermission } = useAuth();
     const { currency, refreshKey } = useDashboard();

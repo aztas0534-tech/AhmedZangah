@@ -92,3 +92,5 @@ export const Star = StarIcon;
 export const ShoppingBag = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />);
 export const RotateCwIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />);
 export const TrendingUpIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />);
+export const PercentIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M19 5L5 19M6.5 6.5a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0M14.5 17.5a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0" />);
+export const BankIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10zM8 14v3m4-3v3m4-3v3" />);
