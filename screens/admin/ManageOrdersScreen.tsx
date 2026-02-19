@@ -1714,7 +1714,8 @@ const ManageOrdersScreen: React.FC = () => {
             setRefundMethod('cash');
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
-            const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تنفيذ الاسترجاع.';
+            // For debugging: Show raw error if available, otherwise default
+            const message = raw || 'فشل تنفيذ الاسترجاع.';
             showNotification(message, 'error');
         } finally {
             setIsCreatingReturn(false);
