@@ -408,20 +408,13 @@ svg {
     background-color: white;
   }
 
-  body * {
-    visibility: hidden;
-  }
-
-  #print-area,
-  #print-area * {
-    visibility: visible;
+  #root > *:not(#print-area) {
+    display: none !important;
   }
 
   #print-area {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    position: static;
+    display: block !important;
     width: auto !important;
     max-width: none !important;
     margin: 0 auto !important;
