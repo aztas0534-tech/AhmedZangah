@@ -123,7 +123,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     return (
         <div
             ref={ref}
-            className="bg-white text-gray-900 w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 md:p-12 relative flex flex-col print:w-[190mm] print:max-w-[190mm] print:mx-auto print:p-4 print:h-auto print:min-h-0 border-t-[5px] print:border-t-[2px] print:break-after-page box-border"
+            className="bg-white text-gray-900 w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 md:p-12 relative flex flex-col print:w-[190mm] print:max-w-[190mm] print:mx-auto print:p-4 print:h-auto print:min-h-0 border-t-[5px] print:border-t-[2px] box-border"
             style={{ borderColor: accentColor || '#1e293b', fontFamily: 'Tajawal, Cairo, sans-serif' }}
             id={id || "print-area"}
             dir="rtl"
@@ -435,20 +435,24 @@ export const TriplicateInvoice = forwardRef<HTMLDivElement, InvoiceProps>((props
     return (
         <div ref={ref} id="print-area">
             {/* Original / Customer Copy - Blue/Slate */}
-            <Invoice
-                {...props}
-                copyLabel="نسخة العميل (Customer)"
-                accentColor="#1e293b"
-                id="invoice-copy-1"
-            />
+            <div className="print:break-after-page">
+                <Invoice
+                    {...props}
+                    copyLabel="نسخة العميل (Customer)"
+                    accentColor="#1e293b"
+                    id="invoice-copy-1"
+                />
+            </div>
 
             {/* Warehouse Copy - Red/Orange */}
-            <Invoice
-                {...props}
-                copyLabel="نسخة المستودع (Warehouse)"
-                accentColor="#c2410c" // Orange-700
-                id="invoice-copy-2"
-            />
+            <div className="print:break-after-page">
+                <Invoice
+                    {...props}
+                    copyLabel="نسخة المستودع (Warehouse)"
+                    accentColor="#c2410c" // Orange-700
+                    id="invoice-copy-2"
+                />
+            </div>
 
             {/* Finance/Box Copy - Green/Emerald */}
             <Invoice

@@ -408,19 +408,13 @@ svg {
     background-color: white;
   }
 
-  /* Hide everything by default using visibility to preserve layout */
-  body * {
-    visibility: hidden;
-  }
-
-  /* Only show print area and its children */
-  #print-area,
-  #print-area * {
-    visibility: visible;
+  body > *:not(#print-area) {
+    display: none !important;
   }
 
   #print-area {
     position: static;
+    display: block !important;
     width: auto !important;
     max-width: none !important;
     margin: 0 auto !important;
