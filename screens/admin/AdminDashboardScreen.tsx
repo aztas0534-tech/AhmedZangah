@@ -72,14 +72,21 @@ const RecentOrdersTable: React.FC = () => {
                                 {Number(order.total || 0).toLocaleString()} {String((order as any).currency || '').toUpperCase()}
                             </td>
                             <td className="px-6 py-4">
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${adminStatusColors[order.status]}`}>
-                                    {statusTranslations[order.status]}
-                                </span>
+                                {String((order as any).returnStatus || '').toLowerCase() === 'full' ? (
+                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">
+                                        مسترجع بالكامل
+                                    </span>
+                                ) : (
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${adminStatusColors[order.status]}`}>
+                                        {statusTranslations[order.status]}
+                                    </span>
+                                )}
                             </td>
                             <td className="px-6 py-4">
                                 <select
                                     value={order.status}
                                     onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
+                                    disabled={String((order as any).returnStatus || '').toLowerCase() === 'full'}
                                     className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
                                 >
                                     {Object.keys(statusTranslations).map(s => (
