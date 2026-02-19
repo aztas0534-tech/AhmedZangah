@@ -1671,13 +1671,22 @@ const ManageOrdersScreen: React.FC = () => {
                 const returnedGross = lineGross * proportion;
                 const returnedNet = returnedGross * discountFactor;
 
+                // Convert to base units for inventory accuracy
+                const uomQtyInBase = Number((orderItem as any).uomQtyInBase || 1) || 1;
+                const baseQty = isWeightBased ? qty : (qty * uomQtyInBase);
+                const baseUnitPrice = Number((returnedNet / (Number(baseQty) || 1)).toFixed(4));
+
                 return {
                     itemId: menuItemId,
                     itemName: orderItem.name?.ar || orderItem.name?.en || 'Unknown',
-                    quantity: qty,
-                    unitPrice: Number((returnedNet / (Number(qty) || 1)).toFixed(4)),
+                    quantity: baseQty,
+                    unitPrice: baseUnitPrice,
                     total: Number(returnedNet.toFixed(2)),
-                    reason: returnReason
+                    reason: returnReason,
+                    // Metadata for UI
+                    salesUnitQty: qty,
+                    uomCode: (orderItem as any).uomCode,
+                    uomQtyInBase: uomQtyInBase
                 };
             })
             .filter(Boolean) as any[];
