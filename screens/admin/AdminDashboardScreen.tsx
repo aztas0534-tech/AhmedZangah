@@ -10,12 +10,13 @@ import {
     PurchasingSection,
     TopDebtorsSection,
     RevenueByChannelChart,
-    ProfitSummaryCard,
+    FinancialPositionCard,
+    SalesStatusRow,
 } from '../../components/dashboard/WorldClassWidgets';
 import type { Order, OrderStatus } from '../../types';
 import { adminStatusColors } from '../../utils/orderUtils';
 
-// ─── RECENT ORDERS (Table) ─────────────────────────────────────────────────
+// ─── RECENT ORDERS ─────────────────────────────────────────────────────────
 
 const RecentOrdersTable: React.FC = () => {
     const { orders, updateOrderStatus } = useOrders();
@@ -99,13 +100,16 @@ const RecentOrdersTable: React.FC = () => {
 const AdminDashboardScreen: React.FC = () => {
     return (
         <DashboardProvider>
-            <div className="animate-fade-in space-y-6 max-w-[1600px] mx-auto">
+            <div className="animate-fade-in space-y-6 max-w-[1600px] mx-auto pb-10">
                 <DashboardHeader title="لوحة التحكم" />
 
-                {/* 1. KPIs */}
+                {/* 1. KPIs (Sales, Orders, Profit, Margin) */}
                 <KPIBar />
 
-                {/* 2. Main Grid: Inventory | Chart | Purchasing */}
+                {/* 2. Order Status Summary */}
+                <SalesStatusRow />
+
+                {/* 3. Main Grid: Inventory | Sales Chart | Purchasing */}
                 <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
                     <div className="xl:col-span-1 space-y-5">
                         <InventorySection />
@@ -118,16 +122,17 @@ const AdminDashboardScreen: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 3. Secondary Insights Row: Channel + Profit + Debtors */}
+                {/* 4. Financial & Insights Row */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <FinancialPositionCard />
                     <RevenueByChannelChart />
-                    <ProfitSummaryCard />
                     <TopDebtorsSection />
                 </div>
 
-                {/* 4. Recent Orders Table */}
+                {/* 5. Recent Orders Table */}
                 <div>
                     <h3 className="text-lg font-bold dark:text-white mb-3 px-1 flex items-center gap-2">
+                        <span className="w-1 h-6 bg-indigo-500 rounded-full"></span>
                         أحدث الطلبات
                         <span className="text-xs font-normal text-gray-400">آخر 5 طلبات</span>
                     </h3>
