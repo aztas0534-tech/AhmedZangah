@@ -1922,6 +1922,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const taxableBase = Math.max(0, computedSubtotal - discountAmount);
     const computedTotal = taxableBase;
+    const currencyDecimals = desiredCurrency === 'YER' ? 0 : 2;
+    const computedTotalRounded = Number(computedTotal.toFixed(currencyDecimals));
 
     const normalizedBreakdown = (input.paymentBreakdown || [])
       .map((p) => ({
@@ -1940,7 +1942,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const fallbackBreakdown = [
       {
         method,
-        amount: computedTotal,
+        amount: computedTotalRounded,
         referenceNumber: fallbackNeedsReference ? (input.paymentReferenceNumber || '').trim() || undefined : undefined,
         senderName: fallbackNeedsReference ? (input.paymentSenderName || '').trim() || undefined : undefined,
         senderPhone: fallbackNeedsReference ? (input.paymentSenderPhone || '').trim() || undefined : undefined,
@@ -1999,27 +2001,40 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // The frontend computes the total from local menu-item prices, but
     // createInStoreSale re-prices using get_fefo_pricing (batch-based).
     // Small drifts are expected; auto-correct instead of throwing.
-    const priceDrift = Math.abs(paymentTotal - computedTotal);
-    if (!input.isCredit && priceDrift > 0.001 && priceDrift < 50 && paymentBreakdown.length > 0) {
-      // Adjust the largest payment line to absorb the difference
-      const mainIdx = paymentBreakdown.reduce((best, p, i, arr) =>
-        (Number(p.amount) || 0) > (Number(arr[best].amount) || 0) ? i : best, 0);
-      const diff = computedTotal - paymentTotal;
-      paymentBreakdown[mainIdx].amount = Math.max(0, (Number(paymentBreakdown[mainIdx].amount) || 0) + diff);
+    const payTol = Math.pow(10, -currencyDecimals);
+    const priceDrift = Math.abs(paymentTotal - computedTotalRounded);
+    if (!input.isCredit && priceDrift > payTol && paymentBreakdown.length > 0) {
+      // Prefer adjusting the cash line if present, otherwise adjust the largest line
+      const cashIdx = paymentBreakdown.findIndex(p => p.method === 'cash');
+      const mainIdx = cashIdx >= 0
+        ? cashIdx
+        : paymentBreakdown.reduce((best, p, i, arr) =>
+            (Number(p.amount) || 0) > (Number(arr[best].amount) || 0) ? i : best, 0);
+      const diff = computedTotalRounded - paymentTotal;
+      const nextAmount = Math.max(0, (Number(paymentBreakdown[mainIdx].amount) || 0) + diff);
+      paymentBreakdown[mainIdx].amount = nextAmount;
+      // Keep amounts aligned for method-specific fields
+      if (paymentBreakdown[mainIdx].method === 'kuraimi' || paymentBreakdown[mainIdx].method === 'network') {
+        (paymentBreakdown[mainIdx] as any).declaredAmount = nextAmount;
+        (paymentBreakdown[mainIdx] as any).amountConfirmed = true;
+      } else if (paymentBreakdown[mainIdx].method === 'cash') {
+        const cr = Number((paymentBreakdown[mainIdx] as any).cashReceived) || 0;
+        if (cr > 0) {
+          (paymentBreakdown[mainIdx] as any).cashReceived = nextAmount;
+        }
+      }
       paymentTotal = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       if (import.meta.env.DEV) {
         console.log('[createInStoreSale] Auto-reconciled payment drift:', priceDrift.toFixed(4), 'adjusted by', diff.toFixed(4));
       }
     }
 
-    const currencyDecimals = desiredCurrency === 'YER' ? 0 : 2;
-    const payTol = Math.pow(10, -currencyDecimals);
-    if (input.isCredit && paymentTotal - computedTotal > payTol) {
+    if (input.isCredit && paymentTotal - computedTotalRounded > payTol) {
       throw new Error('مجموع الدفعات أكبر من إجمالي البيع.');
     }
     const isFullyPaid = input.isCredit
-      ? (paymentTotal + payTol >= computedTotal)
-      : (Math.abs(paymentTotal - computedTotal) <= payTol);
+      ? (paymentTotal + payTol >= computedTotalRounded)
+      : (Math.abs(paymentTotal - computedTotalRounded) <= payTol);
 
     if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');
