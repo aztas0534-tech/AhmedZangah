@@ -32,18 +32,18 @@ type KeypadTarget =
   | { kind: 'cash_multi'; index: number }
   | { kind: 'declared_multi'; index: number };
 
-const fmt = (n: number) => {
-  const v = Number(n || 0);
-  try {
-    return v.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  } catch {
-    return v.toFixed(2);
-  }
-};
-
 const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, touchMode }) => {
   const { settings } = useSettings();
   const code = String(currencyCode || '').toUpperCase() || '—';
+  const currencyDecimals = useMemo(() => (code === 'YER' ? 0 : 2), [code]);
+  const fmtLocal = (n: number) => {
+    const v = Number(n || 0);
+    try {
+      return v.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: currencyDecimals, maximumFractionDigits: currencyDecimals });
+    } catch {
+      return v.toFixed(currencyDecimals);
+    }
+  };
   const availableMethods = useMemo(() => {
     const enabled = Object.entries(settings.paymentMethods || {})
       .filter(([, isEnabled]) => isEnabled)
@@ -65,7 +65,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
   const [keypadInitial, setKeypadInitial] = useState(0);
 
   const needsReference = method === 'kuraimi' || method === 'network';
-  const totalRounded = useMemo(() => Number((Number(total) || 0).toFixed(2)), [total]);
+  const totalRounded = useMemo(() => Number((Number(total) || 0).toFixed(currencyDecimals)), [total, currencyDecimals]);
 
   const normalizedLines = useMemo(() => {
     if (!multiEnabled) {
@@ -119,7 +119,8 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
     if (breakdown.length === 0) return { ok: false, message: 'يرجى اختيار طريقة الدفع.' };
 
     const sum = breakdown.reduce((s, l) => s + (Number(l.amount) || 0), 0);
-    if (Math.abs(sum - total) > 0.01) return { ok: false, message: 'مجموع الدفعات لا يطابق الإجمالي.' };
+    const tol = Math.pow(10, -currencyDecimals);
+    if (Math.abs(sum - total) > tol) return { ok: false, message: 'مجموع الدفعات لا يطابق الإجمالي.' };
 
     let cashCount = 0;
     for (const l of breakdown) {
@@ -150,12 +151,12 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
   }, [normalizedLines]);
 
   const breakdownSum = useMemo(() => {
-    return Number(breakdown.reduce((s, l) => s + (Number(l.amount) || 0), 0).toFixed(2));
-  }, [breakdown]);
+    return Number(breakdown.reduce((s, l) => s + (Number(l.amount) || 0), 0).toFixed(currencyDecimals));
+  }, [breakdown, currencyDecimals]);
 
   const remaining = useMemo(() => {
-    return Number((totalRounded - breakdownSum).toFixed(2));
-  }, [breakdownSum, totalRounded]);
+    return Number((totalRounded - breakdownSum).toFixed(currencyDecimals));
+  }, [breakdownSum, totalRounded, currencyDecimals]);
 
   const summaryTone = remaining === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
 
@@ -252,19 +253,19 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
         <div className="flex items-center justify-between">
           <div className="text-xs text-gray-600 dark:text-gray-300">الإجمالي</div>
           <div className="text-lg font-bold text-gray-900 dark:text-white" dir="ltr">
-            <span className="font-mono">{fmt(totalRounded)}</span> <span className="text-xs">{code}</span>
+            <span className="font-mono">{fmtLocal(totalRounded)}</span> <span className="text-xs">{code}</span>
           </div>
         </div>
         <div className="flex items-center justify-between mt-1">
           <div className="text-xs text-gray-600 dark:text-gray-300">المجموع</div>
           <div className="text-sm font-semibold text-gray-900 dark:text-white" dir="ltr">
-            <span className="font-mono">{fmt(breakdownSum)}</span> <span className="text-xs">{code}</span>
+            <span className="font-mono">{fmtLocal(breakdownSum)}</span> <span className="text-xs">{code}</span>
           </div>
         </div>
         <div className="flex items-center justify-between mt-1">
           <div className="text-xs text-gray-600 dark:text-gray-300">المتبقي</div>
           <div className={`text-sm font-bold ${summaryTone}`} dir="ltr">
-            <span className="font-mono">{fmt(remaining)}</span> <span className="text-xs">{code}</span>
+            <span className="font-mono">{fmtLocal(remaining)}</span> <span className="text-xs">{code}</span>
           </div>
         </div>
       </div>
@@ -334,7 +335,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
                   setLines(prev => {
                     if (!prev.length) return prev;
                     const sumOthers = prev.slice(1).reduce((s, l) => s + (Number(l.amount) || 0), 0);
-                    const remaining = Math.max(0, Number((totalRounded - sumOthers).toFixed(2)));
+                    const remaining = Math.max(0, Number((totalRounded - sumOthers).toFixed(currencyDecimals)));
                     const first = prev[0];
                     const needsRef = first.method === 'kuraimi' || first.method === 'network';
                     const nextFirst: PaymentLine = {
@@ -488,7 +489,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
                       <div className="text-sm font-mono text-indigo-600">
                         {received > 0 ? (
                           <span dir="ltr">
-                            {`الباقي: ${fmt(change)} `}<span className="text-xs">{code}</span>
+                            {`الباقي: ${fmtLocal(change)} `}<span className="text-xs">{code}</span>
                           </span>
                         ) : ''}
                       </div>
@@ -616,7 +617,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
             <div className="text-sm font-mono text-indigo-600">
               {cashReceived > 0 ? (
                 <span dir="ltr">
-                  {`الباقي: ${fmt(Math.max(0, cashReceived - totalRounded))} `}<span className="text-xs">{code}</span>
+                  {`الباقي: ${fmtLocal(Math.max(0, cashReceived - totalRounded))} `}<span className="text-xs">{code}</span>
                 </span>
               ) : ''}
             </div>
@@ -632,9 +633,9 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setCashReceived(totalRounded)} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>كامل</button>
-            <button type="button" onClick={() => setCashReceived(prev => Number((Number(prev || 0) + 1000).toFixed(2)))} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>+1000</button>
-            <button type="button" onClick={() => setCashReceived(prev => Number((Number(prev || 0) + 2000).toFixed(2)))} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>+2000</button>
-            <button type="button" onClick={() => setCashReceived(prev => Number((Number(prev || 0) + 5000).toFixed(2)))} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>+5000</button>
+            <button type="button" onClick={() => setCashReceived(prev => Number((Number(prev || 0) + 1000).toFixed(currencyDecimals)))} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>+1000</button>
+            <button type="button" onClick={() => setCashReceived(prev => Number((Number(prev || 0) + 2000).toFixed(currencyDecimals)))} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>+2000</button>
+            <button type="button" onClick={() => setCashReceived(prev => Number((Number(prev || 0) + 5000).toFixed(currencyDecimals)))} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>+5000</button>
             <button type="button" onClick={() => setCashReceived(0)} className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}>تصفير</button>
           </div>
         </div>

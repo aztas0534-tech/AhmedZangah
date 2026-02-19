@@ -1565,7 +1565,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const createInStoreSale = async (input: {
     lines: Array<
-      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; batchId?: string; uomCode?: string; uomQtyInBase?: number }
       | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
     >;
     currency?: string;
@@ -1674,6 +1674,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const isWeightBased = unitType === 'kg' || unitType === 'gram';
       const quantity = !isWeightBased ? (line.quantity || 0) : 1;
       const weight = isWeightBased ? (line.weight || 0) : undefined;
+      const uomQtyInBase = !isWeightBased ? (Number(line.uomQtyInBase) || 1) : 1;
+      const uomCode = !isWeightBased ? (typeof line.uomCode === 'string' ? line.uomCode : undefined) : undefined;
 
       // Resolve addons
       const resolvedAddons: CartItem['selectedAddons'] = {};
@@ -1693,9 +1695,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         weight,
         selectedAddons: resolvedAddons,
         forcedBatchId: line.batchId,
+        uomQtyInBase,
+        uomCode,
         cartItemId: crypto.randomUUID(),
-        uomCode: line.uomCode,
-        uomQtyInBase: line.uomQtyInBase || 1,
       };
     });
 
@@ -1896,16 +1898,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       );
 
       let itemPrice = item.price;
-      const uomFactor = Number((item as any).uomQtyInBase) || 1;
-      let itemQuantity = (item.unitType === 'kg' || item.unitType === 'gram')
-        ? item.quantity
-        : item.quantity * uomFactor;
+      let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
 
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
 
       return total + (itemPrice + addonsPrice) * itemQuantity;
@@ -2010,12 +2012,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
-    if (input.isCredit && paymentTotal - computedTotal > 0.01) {
+    const currencyDecimals = desiredCurrency === 'YER' ? 0 : 2;
+    const payTol = Math.pow(10, -currencyDecimals);
+    if (input.isCredit && paymentTotal - computedTotal > payTol) {
       throw new Error('مجموع الدفعات أكبر من إجمالي البيع.');
     }
     const isFullyPaid = input.isCredit
-      ? (paymentTotal + 0.01 >= computedTotal)
-      : (Math.abs(paymentTotal - computedTotal) <= 1.0);
+      ? (paymentTotal + payTol >= computedTotal)
+      : (Math.abs(paymentTotal - computedTotal) <= payTol);
 
     if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');

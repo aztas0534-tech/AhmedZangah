@@ -262,10 +262,16 @@ const ManageOrdersScreen: React.FC = () => {
         if (next) setInStoreTransactionCurrency(next);
     }, [inStoreTransactionCurrency, operationalCurrencies]);
 
+    const getCurrencyDecimals = (code: string) => {
+        const c = String(code || '').toUpperCase();
+        return c === 'YER' ? 0 : 2;
+    };
     const roundMoney = (v: number) => {
         const n = Number(v);
         if (!Number.isFinite(n)) return 0;
-        return Math.round(n * 100) / 100;
+        const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+        const pow = Math.pow(10, dp);
+        return Math.round(n * pow) / pow;
     };
 
     const fetchInStoreCustomerMatches = useCallback(async (query: string, opts?: { silent?: boolean }) => {
@@ -1141,7 +1147,8 @@ const ManageOrdersScreen: React.FC = () => {
         setInStorePaymentLines(prev => {
             if (prev.length !== 1) return prev;
             const current = prev[0];
-            const nextAmount = Number(total.toFixed(2));
+            const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+            const nextAmount = Number(total.toFixed(dp));
             if (Math.abs((Number(current.amount) || 0) - nextAmount) < 0.0001) return prev;
             return [{ ...current, amount: nextAmount }];
         });
@@ -1154,7 +1161,8 @@ const ManageOrdersScreen: React.FC = () => {
         if (inStorePaymentMethod !== 'kuraimi' && inStorePaymentMethod !== 'network') return;
         if ((Number(inStorePaymentDeclaredAmount) || 0) > 0) return;
         if (!(total > 0)) return;
-        setInStorePaymentDeclaredAmount(Number(total.toFixed(2)));
+        const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+        setInStorePaymentDeclaredAmount(Number(total.toFixed(dp)));
     }, [inStoreIsCredit, inStorePaymentDeclaredAmount, inStorePaymentMethod, inStoreTotals.total, isInStoreSaleOpen]);
 
     const confirmInStoreSale = async () => {
@@ -1194,11 +1202,13 @@ const ManageOrdersScreen: React.FC = () => {
         }
 
         const sum = normalizedPaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        if (!inStoreIsCredit && Math.abs(sum - total) > 0.01) {
+        const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+        const tol = Math.pow(10, -dp);
+        if (!inStoreIsCredit && Math.abs(sum - total) > tol) {
             showNotification('مجموع الدفعات لا يطابق إجمالي البيع.', 'error');
             return;
         }
-        if (inStoreIsCredit && sum - total > 0.01) {
+        if (inStoreIsCredit && sum - total > tol) {
             showNotification('مجموع الدفعات أكبر من إجمالي البيع.', 'error');
             return;
         }

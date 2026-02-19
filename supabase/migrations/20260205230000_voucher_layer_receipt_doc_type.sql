@@ -1,4 +1,4 @@
-select set_config('app.allow_ledger_ddl', '1', true);
+set app.allow_ledger_ddl = '1';
 
 do $$
 declare
@@ -21,6 +21,8 @@ exception when others then
   null;
 end $$;
 
+alter table public.accounting_documents
+  drop constraint if exists accounting_documents_document_type_check;
 alter table public.accounting_documents
   add constraint accounting_documents_document_type_check
   check (document_type in ('po','grn','invoice','payment','receipt','writeoff','manual','movement'));
