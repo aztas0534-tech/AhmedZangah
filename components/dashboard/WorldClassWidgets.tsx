@@ -27,27 +27,18 @@ export const useDashboard = () => {
 };
 
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    // Default to "Last 30 Days" for better trend visualization
     const defaultEnd = new Date();
     defaultEnd.setHours(23, 59, 59, 999);
     const defaultStart = new Date();
     defaultStart.setDate(defaultStart.getDate() - 30);
     defaultStart.setHours(0, 0, 0, 0);
 
-    const [dateRange, setDateRange] = useState<DateRange>({
-        start: defaultStart,
-        end: defaultEnd,
-        label: 'آخر 30 يوم'
-    });
-
+    const [dateRange, setDateRange] = useState<DateRange>({ start: defaultStart, end: defaultEnd, label: 'آخر 30 يوم' });
     const [currency, setCurrency] = useState('ر.ي');
     const [refreshKey, setRefreshKey] = useState(0);
-    const [kpiData, setKpiData] = useState<any>(null); // Shared for export
+    const [kpiData, setKpiData] = useState<any>(null);
 
-    useEffect(() => {
-        getBaseCurrencyCode().then(c => { if (c) setCurrency(c); });
-    }, []);
-
+    useEffect(() => { getBaseCurrencyCode().then(c => { if (c) setCurrency(c); }); }, []);
     const triggerRefresh = () => setRefreshKey(p => p + 1);
 
     return (
@@ -61,46 +52,125 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n: number) => n.toLocaleString('en-US');
+const fmtCompact = (n: number) => {
+    if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return n.toFixed(0);
+};
 
-// Skeleton
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-    <div className={`bg-gray-200 dark:bg-gray-700 animate-pulse rounded ${className}`} />
+    <div className={`bg-gray-200 dark:bg-gray-700 animate-pulse rounded-lg ${className}`} />
 );
+
+const ErrorBanner: React.FC<{ message?: string }> = ({ message }) => (
+    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl border border-red-100 dark:border-red-800 text-sm">
+        <Icons.InfoIcon className="w-4 h-4 flex-shrink-0" />
+        <span>{message || 'تعذر تحميل البيانات.'}</span>
+    </div>
+);
+
+/** Animated number counter */
+const AnimatedCounter: React.FC<{ value: number; format?: 'currency' | 'int' | 'percent'; duration?: number }> = ({ value, format = 'currency', duration = 800 }) => {
+    const [display, setDisplay] = useState(0);
+    const ref = useRef<number>(0);
+    const rafRef = useRef<number | undefined>(undefined);
+
+    useEffect(() => {
+        const startVal = ref.current;
+        const startTime = performance.now();
+        const animate = (now: number) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+            const current = startVal + (value - startVal) * eased;
+            setDisplay(current);
+            if (progress < 1) {
+                rafRef.current = requestAnimationFrame(animate);
+            } else {
+                ref.current = value;
+            }
+        };
+        rafRef.current = requestAnimationFrame(animate);
+        return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    }, [value, duration]);
+
+    let text: string;
+    if (format === 'percent') text = display.toFixed(1) + '%';
+    else if (format === 'int') text = fmtInt(Math.round(display));
+    else text = fmt(display);
+
+    return <span className="animate-count-up">{text}</span>;
+};
+
+/** Change indicator with arrow */
+const ChangeIndicator: React.FC<{ current: number; previous: number; invertColor?: boolean }> = ({ current, previous, invertColor }) => {
+    if (previous === 0 && current === 0) return <span className="text-[10px] text-gray-400">—</span>;
+    const pct = previous > 0 ? ((current - previous) / previous) * 100 : (current > 0 ? 100 : 0);
+    const isPositive = pct > 0;
+    const isNeutral = Math.abs(pct) < 0.5;
+    const color = isNeutral ? 'text-gray-400' : (isPositive !== !!invertColor ? 'text-emerald-500' : 'text-red-500');
+    const arrow = isNeutral ? '—' : isPositive ? '↑' : '↓';
+
+    return (
+        <span className={`text-[10px] font-bold flex items-center gap-0.5 ${color}`} title="مقارنة بالفترة السابقة">
+            {arrow} {Math.abs(pct).toFixed(1)}%
+        </span>
+    );
+};
+
+/** Get previous period range (same duration, shifted back) */
+const getPreviousPeriod = (dateRange: DateRange) => {
+    const duration = dateRange.end.getTime() - dateRange.start.getTime();
+    const prevEnd = new Date(dateRange.start.getTime() - 1);
+    prevEnd.setHours(23, 59, 59, 999);
+    const prevStart = new Date(prevEnd.getTime() - duration);
+    prevStart.setHours(0, 0, 0, 0);
+    return { start: prevStart, end: prevEnd };
+};
 
 // ─── COMPONENTS ────────────────────────────────────────────────────────────
 
-// 1. GLOBAL DATE PICKER & EXPORT
+// 1. DASHBOARD HEADER
 export const DashboardHeader: React.FC<{ title: string }> = ({ title }) => {
     const { dateRange, setDateRange, triggerRefresh, kpiData, currency } = useDashboard();
     const [isOpen, setIsOpen] = useState(false);
     const [exporting, setExporting] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [isOpen]);
 
     const presets = [
         { label: 'اليوم', days: 0 },
         { label: 'أمس', days: 1, offset: 1 },
         { label: 'آخر 7 أيام', days: 7 },
         { label: 'آخر 30 يوم', days: 30 },
-        { label: 'هذا الشهر', mode: 'month' },
+        { label: 'هذا الشهر', mode: 'month' as const },
+        { label: 'آخر 90 يوم', days: 90 },
     ];
 
     const handleSelect = (p: any) => {
-        const end = new Date();
-        end.setHours(23, 59, 59, 999);
-        const start = new Date();
-        start.setHours(0, 0, 0, 0);
-
-        if (p.mode === 'month') {
-            start.setDate(1);
-        } else if (p.offset) {
-            start.setDate(start.getDate() - p.offset);
-            end.setDate(end.getDate() - p.offset);
-        } else {
-            start.setDate(start.getDate() - (p.days || 0));
-        }
-
+        const end = new Date(); end.setHours(23, 59, 59, 999);
+        const start = new Date(); start.setHours(0, 0, 0, 0);
+        if (p.mode === 'month') { start.setDate(1); }
+        else if (p.offset) { start.setDate(start.getDate() - p.offset); end.setDate(end.getDate() - p.offset); }
+        else { start.setDate(start.getDate() - (p.days || 0)); }
         setDateRange({ start, end, label: p.label });
         setIsOpen(false);
         triggerRefresh();
+    };
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        triggerRefresh();
+        setTimeout(() => setRefreshing(false), 1000);
     };
 
     const handleExport = async () => {
@@ -112,61 +182,66 @@ export const DashboardHeader: React.FC<{ title: string }> = ({ title }) => {
                 ['Sales', kpiData.sales || 0, currency],
                 ['Orders', kpiData.orders || 0, 'Orders'],
                 ['Margin', kpiData.margin || 0, '%'],
+                ['Net Profit', kpiData.netProfit || 0, currency],
                 ['Inventory Value', kpiData.inventoryValue || 0, currency],
                 ['POs In Transit', kpiData.transit || 0, 'Orders'],
                 ['Export Date', new Date().toLocaleString(), '']
             ];
-
             await exportToXlsx(headers, rows, `dashboard_report_${new Date().toISOString().split('T')[0]}`);
-        } finally {
-            setExporting(false);
-        }
+        } finally { setExporting(false); }
     };
 
     return (
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Icons.AdminIcon className="w-8 h-8 text-indigo-600" />
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg">
+                        <Icons.AdminIcon className="w-6 h-6 text-white" />
+                    </div>
                     {title}
                 </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mr-12">
                     نظرة عامة على أداء مشروعك ومتابعة العمليات اليومية
                 </p>
             </div>
 
-            <div className="flex items-center gap-3">
-                {/* Export Button */}
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={handleRefresh}
+                    className={`p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all shadow-sm ${refreshing ? 'animate-spin' : ''}`}
+                    title="تحديث"
+                >
+                    <Icons.RotateCwIcon className="w-4 h-4 text-gray-500" />
+                </button>
+
                 <button
                     onClick={handleExport}
                     disabled={exporting || !kpiData}
-                    className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 px-4 py-2 rounded-lg shadow-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition disabled:opacity-50"
-                    title="تصدير التقرير"
+                    className="flex items-center gap-2 bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border border-gray-200 dark:border-gray-700 px-4 py-2.5 rounded-xl shadow-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all disabled:opacity-40"
                 >
-                    <Icons.DownloadIcon className="w-5 h-5" />
+                    <Icons.DownloadIcon className="w-4 h-4" />
                     <span className="hidden sm:inline text-sm font-medium">تصدير</span>
                 </button>
 
-                {/* Date Picker */}
-                <div className="relative">
+                <div className="relative" ref={dropdownRef}>
                     <button
                         onClick={() => setIsOpen(!isOpen)}
-                        className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition lg:min-w-[200px] justify-between"
+                        className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all lg:min-w-[180px] justify-between"
                     >
                         <div className="flex items-center gap-2">
-                            <Icons.Calendar className="w-5 h-5 text-gray-500" />
-                            <span className="text-sm font-medium dark:text-gray-200">{dateRange.label}</span>
+                            <Icons.Calendar className="w-4 h-4" />
+                            <span className="text-sm font-medium">{dateRange.label}</span>
                         </div>
-                        <Icons.ArrowRight className={`w-4 h-4 text-gray-400 transform transition ${isOpen ? '-rotate-90' : 'rotate-90'}`} />
+                        <Icons.ArrowRight className={`w-3 h-3 transform transition ${isOpen ? '-rotate-90' : 'rotate-90'}`} />
                     </button>
 
                     {isOpen && (
-                        <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden">
+                        <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-scale-in origin-top">
                             {presets.map((p) => (
                                 <button
                                     key={p.label}
                                     onClick={() => handleSelect(p)}
-                                    className={`w-full text-right px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition border-b border-gray-50 dark:border-gray-700 last:border-0 ${dateRange.label === p.label ? 'text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-700 dark:text-gray-300'}`}
+                                    className={`w-full text-right px-4 py-3 text-sm hover:bg-indigo-50 dark:hover:bg-gray-700 transition border-b border-gray-50 dark:border-gray-700/50 last:border-0 ${dateRange.label === p.label ? 'text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-700 dark:text-gray-300'}`}
                                 >
                                     {p.label}
                                 </button>
@@ -180,21 +255,24 @@ export const DashboardHeader: React.FC<{ title: string }> = ({ title }) => {
 };
 
 
-// 2. KPI BAR (NOW WITH INVENTORY VALUE)
+// 2. KPI BAR — Period-over-Period with Animated Counters
 export const KPIBar: React.FC = () => {
     const { dateRange, currency, refreshKey, setKpiData } = useDashboard();
     const [stats, setStats] = useState<any>(null);
+    const [prevStats, setPrevStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
 
     useEffect(() => {
         let active = true;
         const load = async () => {
             setLoading(true);
+            setError(false);
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
 
-                // 1. Sales Report
+                // Current period
                 const { data: salesData }: any = await supabase.rpc('get_sales_report_summary', {
                     p_start_date: dateRange.start.toISOString(),
                     p_end_date: dateRange.end.toISOString(),
@@ -202,55 +280,69 @@ export const KPIBar: React.FC = () => {
                     p_invoice_only: false
                 });
 
-                // 2. Inventory Value (Try RPC, fallback to client-side limit)
+                // Previous period (for comparison)
+                const prev = getPreviousPeriod(dateRange);
+                const { data: prevSalesData }: any = await supabase.rpc('get_sales_report_summary', {
+                    p_start_date: prev.start.toISOString(),
+                    p_end_date: prev.end.toISOString(),
+                    p_zone_id: null,
+                    p_invoice_only: false
+                });
+
+                // Inventory Value
                 let totalInventoryValue = 0;
                 try {
-                    const { data: val, error } = await supabase.rpc('get_inventory_valuation');
-                    if (!error && typeof val === 'number') {
-                        totalInventoryValue = val;
-                    } else {
-                        // Fallback logic if RPC missing
-                        const { data: stockData } = await supabase.rpc('get_inventory_stock_report', {
-                            p_warehouse_id: null,
-                            p_search: null,
-                            p_limit: 1000
-                        });
+                    const { data: val, error: ivErr } = await supabase.rpc('get_inventory_valuation');
+                    if (!ivErr && typeof val === 'number') totalInventoryValue = val;
+                } catch (_) { /* ignore */ }
 
-                        // Note: get_inventory_stock_report currently does NOT return cost. 
-                        // So this will likely be 0 unless we join separately. 
-                        // For 100% accuracy, the NEW RPC is required.
-                        if (stockData && Array.isArray(stockData)) {
-                            // Attempt to use 'current_cost_price' if it existed, but it doesn't.
-                            // So we accept 0 as better than a random guess.
-                            totalInventoryValue = 0;
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Inventory Valuation Error:', e);
-                }
-
-                // 3. POs In Transit
+                // POs In Transit
                 const { count: transitCount } = await supabase
                     .from('purchase_orders')
                     .select('*', { count: 'exact', head: true })
-                    .in('status', ['shipped', 'processing']);
+                    .in('status', ['shipped', 'processing', 'ordered']);
 
                 if (active) {
+                    const netSales = Number(salesData?.total_sales_accrual) || 0;
+                    const cogs = Number(salesData?.cogs) || 0;
+                    const returnsCogs = Number(salesData?.returns_cogs) || 0;
+                    const adjustedCogs = Math.max(0, cogs - returnsCogs);
+                    const expenses = Number(salesData?.expenses) || 0;
+                    const wastage = Number(salesData?.wastage) || 0;
+                    const deliveryCost = Number(salesData?.delivery_cost) || 0;
+                    const netProfit = netSales - adjustedCogs - expenses - wastage - deliveryCost;
+
+                    const prevNetSales = Number(prevSalesData?.total_sales_accrual) || 0;
+                    const prevCogs = Math.max(0, (Number(prevSalesData?.cogs) || 0) - (Number(prevSalesData?.returns_cogs) || 0));
+                    const prevNetProfit = prevNetSales - prevCogs - (Number(prevSalesData?.expenses) || 0) - (Number(prevSalesData?.wastage) || 0) - (Number(prevSalesData?.delivery_cost) || 0);
+
                     const newStats = {
-                        sales: salesData?.total_sales_accrual || 0,
-                        orders: salesData?.total_orders_accrual || 0,
-                        margin: salesData?.total_sales_accrual > 0
-                            ? ((salesData?.gross_subtotal - salesData?.cogs) / salesData?.total_sales_accrual * 100)
-                            : 0,
+                        sales: netSales,
+                        orders: Number(salesData?.total_orders_accrual) || 0,
+                        margin: netSales > 0 ? ((netSales - adjustedCogs) / netSales * 100) : 0,
+                        netProfit,
+                        avgOrderValue: (Number(salesData?.total_orders_accrual) || 0) > 0 ? netSales / (Number(salesData?.total_orders_accrual) || 1) : 0,
                         transit: transitCount || 0,
-                        inventoryValue: totalInventoryValue
+                        inventoryValue: totalInventoryValue,
+                        // Channel breakdown
+                        inStoreCount: Number(salesData?.in_store_count) || 0,
+                        onlineCount: Number(salesData?.online_count) || 0,
+                        deliveryCount: Number(salesData?.out_for_delivery_count) || 0,
                     };
                     setStats(newStats);
                     setKpiData(newStats);
-                }
 
+                    setPrevStats({
+                        sales: prevNetSales,
+                        orders: Number(prevSalesData?.total_orders_accrual) || 0,
+                        margin: prevNetSales > 0 ? ((prevNetSales - prevCogs) / prevNetSales * 100) : 0,
+                        netProfit: prevNetProfit,
+                        avgOrderValue: (Number(prevSalesData?.total_orders_accrual) || 0) > 0 ? prevNetSales / (Number(prevSalesData?.total_orders_accrual) || 1) : 0,
+                    });
+                }
             } catch (err) {
                 console.error(err);
+                if (active) setError(true);
             } finally {
                 if (active) setLoading(false);
             }
@@ -259,166 +351,265 @@ export const KPIBar: React.FC = () => {
         return () => { active = false; };
     }, [dateRange, refreshKey]);
 
+    if (error) return <ErrorBanner message="تعذر تحميل مؤشرات الأداء." />;
+
     const cards = [
         {
-            title: 'المبيعات',
-            value: stats ? fmt(stats.sales) : '—',
+            title: 'إجمالي المبيعات',
+            value: stats?.sales ?? 0,
+            prevValue: prevStats?.sales ?? 0,
+            format: 'currency' as const,
             sub: currency,
             icon: Icons.CartIcon,
-            color: 'text-emerald-600',
-            bg: 'bg-emerald-50 dark:bg-emerald-900/20'
+            gradient: 'from-emerald-500 to-teal-600',
+            light: 'bg-emerald-50 dark:bg-emerald-900/20',
         },
         {
-            title: 'قيمة المخزون',
-            value: stats ? fmt(stats.inventoryValue) : '—',
-            sub: currency,
-            icon: Icons.DollarSign,
-            color: 'text-blue-600',
-            bg: 'bg-blue-50 dark:bg-blue-900/20'
+            title: 'عدد الطلبات',
+            value: stats?.orders ?? 0,
+            prevValue: prevStats?.orders ?? 0,
+            format: 'int' as const,
+            sub: 'طلب',
+            icon: Icons.ShoppingBag,
+            gradient: 'from-cyan-500 to-blue-600',
+            light: 'bg-cyan-50 dark:bg-cyan-900/20',
         },
         {
             title: 'هامش الربح',
-            value: stats ? stats.margin.toFixed(1) + '%' : '—',
+            value: stats?.margin ?? 0,
+            prevValue: prevStats?.margin ?? 0,
+            format: 'percent' as const,
             sub: 'إجمالي',
             icon: Icons.TrendingUpIcon,
-            color: 'text-purple-600',
-            bg: 'bg-purple-50 dark:bg-purple-900/20'
+            gradient: 'from-purple-500 to-indigo-600',
+            light: 'bg-purple-50 dark:bg-purple-900/20',
         },
         {
-            title: 'طلبات الشراء',
-            value: stats ? fmtInt(stats.transit) : '—',
-            sub: 'قيد التنفيذ',
-            icon: Icons.TruckIcon,
-            color: 'text-orange-600',
-            bg: 'bg-orange-50 dark:bg-orange-900/20'
-        }
+            title: 'صافي الربح',
+            value: stats?.netProfit ?? 0,
+            prevValue: prevStats?.netProfit ?? 0,
+            format: 'currency' as const,
+            sub: currency,
+            icon: Icons.DollarSign,
+            gradient: 'from-amber-500 to-orange-600',
+            light: 'bg-amber-50 dark:bg-amber-900/20',
+        },
+        {
+            title: 'متوسط قيمة الطلب',
+            value: stats?.avgOrderValue ?? 0,
+            prevValue: prevStats?.avgOrderValue ?? 0,
+            format: 'currency' as const,
+            sub: currency,
+            icon: Icons.TagIcon,
+            gradient: 'from-rose-500 to-pink-600',
+            light: 'bg-rose-50 dark:bg-rose-900/20',
+        },
     ];
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             {cards.map((c, i) => (
-                <div key={i} className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between hover:shadow-md transition-shadow group">
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors">{c.title}</p>
-                        {loading ? (
-                            <Skeleton className="h-8 w-24" />
-                        ) : (
-                            <div className="flex items-baseline gap-1">
-                                <h3 className={`text-2xl font-bold font-mono tracking-tight ${c.color}`}>{c.value}</h3>
-                                <span className="text-xs text-gray-400 font-medium">{c.sub}</span>
+                <div key={i} className={`glass-card rounded-2xl p-4 hover:shadow-lg transition-all duration-300 group opacity-0 animate-slide-in-up stagger-${i + 1}`}>
+                    <div className="flex items-center justify-between mb-3">
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">{c.title}</p>
+                        <div className={`p-2 bg-gradient-to-br ${c.gradient} rounded-lg shadow-md group-hover:scale-110 group-hover:shadow-lg transition-all duration-300`}>
+                            <c.icon className="w-4 h-4 text-white" />
+                        </div>
+                    </div>
+                    {loading ? (
+                        <Skeleton className="h-8 w-24 mb-2" />
+                    ) : (
+                        <>
+                            <div className="flex items-baseline gap-1.5 mb-1">
+                                <h3 className="text-xl font-bold font-mono tracking-tight text-gray-900 dark:text-white">
+                                    <AnimatedCounter value={c.value} format={c.format} />
+                                </h3>
+                                <span className="text-[10px] text-gray-400 font-medium">{c.sub}</span>
                             </div>
-                        )}
-                    </div>
-                    <div className={`p-4 rounded-xl ${c.bg} group-hover:scale-110 transition-transform`}>
-                        <c.icon className={`w-6 h-6 ${c.color}`} />
-                    </div>
+                            <ChangeIndicator current={c.value} previous={c.prevValue} />
+                        </>
+                    )}
                 </div>
             ))}
         </div>
     );
 };
 
-// 3. INVENTORY SECTION (Alerts & Top Products)
+
+// 3. REVENUE BY CHANNEL (Donut Chart)
+export const RevenueByChannelChart: React.FC = () => {
+    const { kpiData } = useDashboard();
+    if (!kpiData) return null;
+
+    const { inStoreCount, onlineCount, deliveryCount } = kpiData;
+    const total = (inStoreCount || 0) + (onlineCount || 0) + (deliveryCount || 0);
+    if (total === 0) return null;
+
+    const segments = [
+        { label: 'بيع محلي', count: inStoreCount || 0, color: '#6366f1' },
+        { label: 'أونلاين', count: onlineCount || 0, color: '#06b6d4' },
+        { label: 'توصيل', count: deliveryCount || 0, color: '#f59e0b' },
+    ].filter(s => s.count > 0);
+
+    const radius = 40;
+    const circumference = 2 * Math.PI * radius;
+    let cumulativeOffset = 0;
+
+    return (
+        <div className="glass-card rounded-2xl p-5 animate-slide-in-up">
+            <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm mb-4 flex items-center gap-2">
+                <Icons.ReportIcon className="w-4 h-4 text-indigo-500" />
+                توزيع القنوات
+            </h3>
+            <div className="flex items-center gap-6">
+                {/* Donut */}
+                <div className="relative w-28 h-28 flex-shrink-0">
+                    <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                        {segments.map((seg, i) => {
+                            const pct = seg.count / total;
+                            const dashLength = pct * circumference;
+                            const offset = cumulativeOffset;
+                            cumulativeOffset += dashLength;
+                            return (
+                                <circle
+                                    key={i}
+                                    cx="50" cy="50" r={radius}
+                                    fill="none"
+                                    stroke={seg.color}
+                                    strokeWidth="12"
+                                    strokeDasharray={`${dashLength} ${circumference - dashLength}`}
+                                    strokeDashoffset={-offset}
+                                    strokeLinecap="round"
+                                    className="transition-all duration-1000"
+                                />
+                            );
+                        })}
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="text-center">
+                            <span className="text-lg font-bold text-gray-800 dark:text-white">{fmtInt(total)}</span>
+                            <br />
+                            <span className="text-[9px] text-gray-400">طلب</span>
+                        </div>
+                    </div>
+                </div>
+                {/* Legend */}
+                <div className="flex flex-col gap-2 flex-1">
+                    {segments.map((seg, i) => (
+                        <div key={i} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: seg.color }} />
+                                <span className="text-xs text-gray-600 dark:text-gray-400">{seg.label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold font-mono text-gray-800 dark:text-gray-200">{fmtInt(seg.count)}</span>
+                                <span className="text-[10px] text-gray-400">({((seg.count / total) * 100).toFixed(0)}%)</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// 4. INVENTORY SECTION (Top Products + Low Stock Alerts)
 export const InventorySection: React.FC = () => {
-    const { currency, refreshKey } = useDashboard();
+    const { dateRange, refreshKey } = useDashboard();
     const [topProducts, setTopProducts] = useState<any[]>([]);
     const [alerts, setAlerts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
 
     useEffect(() => {
         let active = true;
         const load = async () => {
             setLoading(true);
+            setError(false);
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
 
-                // 1. Top Products (By Revenue)
-                const start = new Date(); start.setDate(1); start.setHours(0, 0, 0, 0);
-                const end = new Date(); end.setHours(23, 59, 59, 999);
-
                 const { data: products }: any = await supabase.rpc('get_product_sales_report_v9', {
-                    p_start_date: start.toISOString(),
-                    p_end_date: end.toISOString(),
+                    p_start_date: dateRange.start.toISOString(),
+                    p_end_date: dateRange.end.toISOString(),
                     p_zone_id: null
                 });
 
-                // 2. Alerts (Low Stock)
                 const { data: stock }: any = await supabase.rpc('get_inventory_stock_report', {
-                    p_warehouse_id: null,
-                    p_search: null,
-                    p_limit: 1000
+                    p_warehouse_id: null, p_search: null, p_limit: 1000
                 });
 
                 if (active) {
-                    const sortedProducts = (products || [])
-                        .sort((a: any, b: any) => b.total_sales - a.total_sales)
-                        .slice(0, 5);
-                    setTopProducts(sortedProducts);
-
-                    const lowStock = (stock || [])
-                        .filter((item: any) => item.current_stock <= (item.min_stock || 5) && item.current_stock > 0)
-                        .slice(0, 5);
-                    setAlerts(lowStock);
+                    setTopProducts((products || []).sort((a: any, b: any) => (Number(b.total_sales) || 0) - (Number(a.total_sales) || 0)).slice(0, 5));
+                    setAlerts((stock || []).filter((item: any) => item.current_stock <= (item.min_stock || 5) && item.current_stock > 0).slice(0, 5));
                 }
             } catch (err) {
                 console.error(err);
+                if (active) setError(true);
             } finally {
                 if (active) setLoading(false);
             }
         };
         load();
         return () => { active = false; };
-    }, [refreshKey]);
+    }, [dateRange, refreshKey]);
+
+    if (error) return <ErrorBanner message="تعذر تحميل بيانات المخزون." />;
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-full flex flex-col gap-6">
+        <div className="glass-card rounded-2xl p-5 h-full flex flex-col gap-5 animate-slide-in-up stagger-2">
             {/* Top Products */}
             <div>
-                <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2 text-sm">
                     <Icons.Star className="w-4 h-4 text-amber-500" />
-                    المنتجات الأكثر مبيعاً (هذا الشهر)
+                    الأكثر مبيعاً
                 </h3>
-                {loading ? <Skeleton className="h-40 w-full" /> : (
-                    <div className="space-y-4">
-                        {topProducts.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">لا توجد بيانات</p> :
-                            topProducts.map((p, i) => (
-                                <div key={i} className="group">
-                                    <div className="flex justify-between text-xs mb-1 font-medium">
-                                        <span className="text-gray-700 dark:text-gray-300 truncate w-3/4">{(p.item_name as any)?.ar || (p.item_name as any)?.en || 'منتج'}</span>
-                                        <span className="text-gray-900 dark:text-white font-mono">{fmt(p.total_sale || p.total_sales)} {currency}</span>
+                {loading ? <Skeleton className="h-36 w-full" /> : (
+                    <div className="space-y-3">
+                        {topProducts.length === 0 ? <p className="text-xs text-gray-400 text-center py-4">لا توجد بيانات</p> :
+                            topProducts.map((p, i) => {
+                                const pctWidth = Math.min(((Number(p.total_sales) || 0) / (Number(topProducts[0]?.total_sales) || 1)) * 100, 100);
+                                return (
+                                    <div key={i}>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-gray-700 dark:text-gray-300 truncate w-2/3 font-medium">{(p.item_name as any)?.ar || (p.item_name as any)?.en || 'منتج'}</span>
+                                            <span className="text-gray-900 dark:text-white font-mono font-bold">{fmtCompact(Number(p.total_sales) || 0)}</span>
+                                        </div>
+                                        <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                                            <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all duration-1000" style={{ width: `${pctWidth}%` }} />
+                                        </div>
                                     </div>
-                                    <div className="h-2 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all duration-1000"
-                                            style={{ width: `${Math.min((p.total_sales / (topProducts[0]?.total_sales || 1)) * 100, 100)}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                     </div>
                 )}
             </div>
 
-            <div className="border-t border-gray-100 dark:border-gray-700 my-2"></div>
+            <div className="border-t border-gray-100 dark:border-gray-700/50" />
 
-            {/* Alerts */}
+            {/* Low Stock */}
             <div>
-                <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2 text-sm">
                     <Icons.InfoIcon className="w-4 h-4 text-red-500" />
-                    تنبيهات المخزون المنخفض
+                    مخزون منخفض
                 </h3>
                 {loading ? <Skeleton className="h-20 w-full" /> : (
-                    <div className="space-y-3">
-                        {alerts.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">المخزون في حالة جيدة</p> :
-                            alerts.map((item, i) => (
-                                <div key={i} className="flex justify-between items-center text-sm p-2 bg-red-50 dark:bg-red-900/10 rounded-lg border border-red-100 dark:border-red-900/20">
-                                    <span className="font-medium text-gray-700 dark:text-gray-300">{(item.item_name as any)?.ar || item.item_name}</span>
-                                    <span className="font-bold text-red-600 bg-white dark:bg-gray-800 px-2 py-0.5 rounded shadow-sm text-xs">
-                                        {item.current_stock} {item.unit_type || 'قطعة'}
-                                    </span>
-                                </div>
-                            ))}
+                    <div className="space-y-2">
+                        {alerts.length === 0 ? (
+                            <div className="text-center py-3">
+                                <span className="text-emerald-500 text-lg">✓</span>
+                                <p className="text-xs text-gray-400 mt-1">المخزون في حالة جيدة</p>
+                            </div>
+                        ) : alerts.map((item, i) => (
+                            <div key={i} className="flex justify-between items-center text-xs p-2 bg-red-50 dark:bg-red-900/10 rounded-lg border border-red-100 dark:border-red-900/20">
+                                <span className="font-medium text-gray-700 dark:text-gray-300 truncate">{(item.item_name as any)?.ar || item.item_name}</span>
+                                <span className="font-bold text-red-600 bg-white dark:bg-gray-800 px-2 py-0.5 rounded text-[11px] shadow-sm">
+                                    {item.current_stock} {item.unit_type || 'قطعة'}
+                                </span>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>
@@ -426,175 +617,175 @@ export const InventorySection: React.FC = () => {
     );
 };
 
-// 4. SALES SECTION (Detailed SVG Chart + Toggle)
+
+// 5. SALES CHART (Premium SVG with smooth curve)
 export const SalesSection: React.FC = () => {
     const { dateRange, refreshKey, currency } = useDashboard();
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
     const [hoverIndex, setHoverIndex] = useState<number | null>(null);
     const [viewMode, setViewMode] = useState<'all' | 'wholesale'>('all');
 
     useEffect(() => {
         let active = true;
         const load = async () => {
-            setLoading(true);
+            setLoading(true); setError(false);
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
-
                 const { data: stats }: any = await supabase.rpc('get_daily_sales_stats', {
                     p_start_date: dateRange.start.toISOString(),
                     p_end_date: dateRange.end.toISOString(),
                     p_zone_id: null,
-                    p_invoice_only: viewMode === 'wholesale' // Simple filter logic
+                    p_invoice_only: viewMode === 'wholesale'
                 });
-
-                if (active) {
-                    setData(stats || []);
-                }
-            } catch (err) {
-                console.error(err);
-            } finally {
-                if (active) setLoading(false);
-            }
+                if (active) setData(stats || []);
+            } catch (err) { console.error(err); if (active) setError(true); }
+            finally { if (active) setLoading(false); }
         };
         load();
         return () => { active = false; };
     }, [dateRange, refreshKey, viewMode]);
 
-    // Chart Calculations
     const maxSales = useMemo(() => Math.max(...data.map(d => Number(d.total_sales)), 100), [data]);
-    const points = useMemo(() => {
+
+    // Smooth cubic bezier path
+    const linePath = useMemo(() => {
         if (data.length < 2) return '';
-        return data.map((d, i) => {
-            const x = (i / (data.length - 1)) * 100;
-            const y = 100 - (Number(d.total_sales) / maxSales) * 100;
-            return `${x},${y}`;
-        }).join(' ');
+        const pts = data.map((d, i) => ({
+            x: (i / (data.length - 1)) * 100,
+            y: 100 - (Number(d.total_sales) / maxSales) * 100
+        }));
+        let path = `M ${pts[0].x},${pts[0].y}`;
+        for (let i = 1; i < pts.length; i++) {
+            const prev = pts[i - 1];
+            const curr = pts[i];
+            const cpx = (prev.x + curr.x) / 2;
+            path += ` C ${cpx},${prev.y} ${cpx},${curr.y} ${curr.x},${curr.y}`;
+        }
+        return path;
     }, [data, maxSales]);
 
-    const areaPoints = useMemo(() => {
-        if (!points) return '';
-        return `0,100 ${points} 100,100`;
-    }, [points]);
+    const areaPath = useMemo(() => {
+        if (!linePath) return '';
+        const lastPt = data.length > 0 ? (data.length - 1) / (data.length - 1) * 100 : 100;
+        return `${linePath} L ${lastPt},100 L 0,100 Z`;
+    }, [linePath, data.length]);
+
+    const totalSales = useMemo(() => data.reduce((sum, d) => sum + Number(d.total_sales), 0), [data]);
+    const totalOrders = useMemo(() => data.reduce((sum, d) => sum + Number(d.order_count), 0), [data]);
+
+    const dateLabels = useMemo(() => {
+        if (data.length < 3) return [];
+        const step = Math.max(1, Math.floor(data.length / 5));
+        const labels: { index: number; label: string }[] = [];
+        for (let i = 0; i < data.length; i += step) {
+            labels.push({ index: i, label: new Date(data[i].day_date).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }) });
+        }
+        if (labels.length > 0 && labels[labels.length - 1].index !== data.length - 1) {
+            labels.push({ index: data.length - 1, label: new Date(data[data.length - 1].day_date).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }) });
+        }
+        return labels;
+    }, [data]);
+
+    if (error) return <ErrorBanner message="تعذر تحميل بيانات المبيعات." />;
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-full min-h-[400px] flex flex-col">
-            <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-4">
+        <div className="glass-card rounded-2xl p-5 h-full min-h-[420px] flex flex-col animate-slide-in-up stagger-1">
+            {/* Header */}
+            <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
+                <div className="flex items-center gap-3">
                     <h3 className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
                         <Icons.TrendingUpIcon className="w-5 h-5 text-indigo-500" />
                         اتجاه المبيعات
                     </h3>
-
-                    {/* Channel Toggle */}
-                    <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-                        <button
-                            onClick={() => setViewMode('all')}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition ${viewMode === 'all' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}
-                        >
-                            الكل
-                        </button>
-                        <button
-                            onClick={() => setViewMode('wholesale')}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition ${viewMode === 'wholesale' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}
-                        >
-                            جملة (فواتير)
-                        </button>
+                    <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+                        {(['all', 'wholesale'] as const).map(m => (
+                            <button key={m} onClick={() => setViewMode(m)}
+                                className={`px-3 py-1 text-[11px] font-medium rounded-md transition-all ${viewMode === m ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500'}`}>
+                                {m === 'all' ? 'الكل' : 'جملة'}
+                            </button>
+                        ))}
                     </div>
                 </div>
-
-                <div className="text-sm text-gray-500 dark:text-gray-400 font-mono hidden sm:block">
-                    Max: {fmtInt(maxSales)} {currency}
-                </div>
+                {/* Quick Stats */}
+                {!loading && data.length > 0 && (
+                    <div className="flex items-center gap-4 text-xs">
+                        <div className="text-center">
+                            <div className="font-bold font-mono text-gray-800 dark:text-white">{fmtCompact(totalSales)}</div>
+                            <div className="text-gray-400">{currency} إجمالي</div>
+                        </div>
+                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
+                        <div className="text-center">
+                            <div className="font-bold font-mono text-gray-800 dark:text-white">{fmtInt(totalOrders)}</div>
+                            <div className="text-gray-400">طلب</div>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 flex-1 relative overflow-hidden group">
+            {/* Chart */}
+            <div className="bg-gradient-to-b from-gray-50 to-gray-50/50 dark:from-gray-900 dark:to-gray-900/50 rounded-xl p-4 flex-1 relative overflow-hidden">
                 {loading ? (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <Skeleton className="w-full h-full opacity-50" />
-                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center"><Skeleton className="w-full h-full opacity-30 rounded-xl" /></div>
                 ) : data.length < 2 ? (
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                        لا توجد بيانات كافية للرسم البياني
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-2">
+                        <Icons.ReportIcon className="w-8 h-8 opacity-30" />
+                        <span className="text-sm">لا توجد بيانات كافية</span>
                     </div>
                 ) : (
                     <div className="relative w-full h-full min-h-[250px]">
-                        {/* Tooltip Overlay */}
+                        {/* Tooltip */}
                         {hoverIndex !== null && data[hoverIndex] && (
-                            <div
-                                className="absolute bg-white dark:bg-gray-800 shadow-xl rounded-lg p-3 text-xs border border-gray-200 dark:border-gray-600 z-10 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-2 transition-all duration-75"
+                            <div className="absolute bg-white dark:bg-gray-800 shadow-2xl rounded-xl p-3 text-xs border border-gray-100 dark:border-gray-600 z-10 pointer-events-none transform -translate-x-1/2 -translate-y-full"
                                 style={{
                                     left: `${(hoverIndex / (data.length - 1)) * 100}%`,
-                                    top: `${100 - (Number(data[hoverIndex].total_sales) / maxSales) * 100}%`
-                                }}
-                            >
-                                <div className="font-bold text-indigo-600 font-mono mb-1">{fmt(data[hoverIndex].total_sales)} {currency}</div>
-                                <div className="text-gray-500">{new Date(data[hoverIndex].day_date).toLocaleDateString('ar-EG')}</div>
-                                <div className="text-gray-400 mt-1">{data[hoverIndex].order_count} طلب</div>
+                                    top: `${Math.max(10, 100 - (Number(data[hoverIndex].total_sales) / maxSales) * 100 - 5)}%`
+                                }}>
+                                <div className="font-bold text-indigo-600 font-mono text-sm">{fmt(data[hoverIndex].total_sales)} {currency}</div>
+                                <div className="text-gray-500 mt-1">{new Date(data[hoverIndex].day_date).toLocaleDateString('ar-EG', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                                <div className="text-gray-400 mt-0.5">{data[hoverIndex].order_count} طلب</div>
                             </div>
                         )}
 
-                        <svg
-                            viewBox={`0 0 100 100`}
-                            preserveAspectRatio="none"
-                            className="w-full h-full overflow-visible"
+                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible"
                             onMouseLeave={() => setHoverIndex(null)}
                             onMouseMove={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 const x = e.clientX - rect.left;
-                                const percent = x / rect.width;
-                                const index = Math.round(percent * (data.length - 1));
+                                const index = Math.round((x / rect.width) * (data.length - 1));
                                 setHoverIndex(Math.max(0, Math.min(index, data.length - 1)));
-                            }}
-                        >
+                            }}>
                             <defs>
-                                <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
-                                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                                <linearGradient id="chartGrad" x1="0" x2="0" y1="0" y2="1">
+                                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+                                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02" />
                                 </linearGradient>
                             </defs>
 
-                            <line x1="0" y1="25" x2="100" y2="25" stroke="currentColor" strokeOpacity="0.05" vectorEffect="non-scaling-stroke" />
-                            <line x1="0" y1="50" x2="100" y2="50" stroke="currentColor" strokeOpacity="0.05" vectorEffect="non-scaling-stroke" />
-                            <line x1="0" y1="75" x2="100" y2="75" stroke="currentColor" strokeOpacity="0.05" vectorEffect="non-scaling-stroke" />
+                            {/* Grid */}
+                            {[25, 50, 75].map(y => (
+                                <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="currentColor" strokeOpacity="0.04" vectorEffect="non-scaling-stroke" />
+                            ))}
 
-                            <polygon points={areaPoints} fill="url(#gradient)" />
+                            {/* Area */}
+                            <path d={areaPath} fill="url(#chartGrad)" />
 
-                            <polyline points={points} fill="none" stroke="#6366f1" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+                            {/* Line */}
+                            <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" className="animate-draw-line" />
 
+                            {/* Hover */}
                             {hoverIndex !== null && (
                                 <>
                                     <line
-                                        x1={(hoverIndex / (data.length - 1)) * 100}
-                                        y1="0"
-                                        x2={(hoverIndex / (data.length - 1)) * 100}
-                                        y2="100"
-                                        stroke="#6366f1"
-                                        strokeDasharray="2 2"
-                                        strokeWidth="1"
-                                        vectorEffect="non-scaling-stroke"
-                                        opacity="0.5"
-                                    />
+                                        x1={(hoverIndex / (data.length - 1)) * 100} y1="0"
+                                        x2={(hoverIndex / (data.length - 1)) * 100} y2="100"
+                                        stroke="#6366f1" strokeDasharray="2 3" strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.4" />
                                     <circle
                                         cx={(hoverIndex / (data.length - 1)) * 100}
                                         cy={100 - (Number(data[hoverIndex].total_sales) / maxSales) * 100}
-                                        r="6"
-                                        fill="#fff"
-                                        stroke="#6366f1"
-                                        strokeWidth="2"
-                                        vectorEffect="non-scaling-stroke"
-                                        className="animate-ping absolute opacity-20"
-                                    />
-                                    <circle
-                                        cx={(hoverIndex / (data.length - 1)) * 100}
-                                        cy={100 - (Number(data[hoverIndex].total_sales) / maxSales) * 100}
-                                        r="4"
-                                        fill="#fff"
-                                        stroke="#6366f1"
-                                        strokeWidth="2"
-                                        vectorEffect="non-scaling-stroke"
-                                    />
+                                        r="5" fill="#6366f1" stroke="#fff" strokeWidth="2" vectorEffect="non-scaling-stroke" />
                                 </>
                             )}
                         </svg>
@@ -602,94 +793,229 @@ export const SalesSection: React.FC = () => {
                 )}
             </div>
 
-            <div className="mt-4 flex justify-between items-center text-xs text-gray-400">
-                <span>{data[0]?.day_date ? new Date(data[0].day_date).toLocaleDateString('ar-EG') : ''}</span>
-                <span>{data[data.length - 1]?.day_date ? new Date(data[data.length - 1].day_date).toLocaleDateString('ar-EG') : ''}</span>
+            {/* Date Labels */}
+            <div className="mt-2 flex justify-between text-[9px] text-gray-400 px-1">
+                {dateLabels.map((dl, i) => <span key={i}>{dl.label}</span>)}
             </div>
         </div>
     );
 };
 
-// 5. PURCHASING SECTION (Simple Status Stack)
+
+// 6. PURCHASING SECTION
 export const PurchasingSection: React.FC = () => {
     const { refreshKey } = useDashboard();
     const [poStats, setPoStats] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
 
     useEffect(() => {
         let active = true;
         const load = async () => {
-            setLoading(true);
+            setLoading(true); setError(false);
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
-
-                const { data }: any = await supabase
-                    .from('purchase_orders')
-                    .select('status');
-
+                const { data }: any = await supabase.from('purchase_orders').select('status');
                 if (active && data) {
                     const counts: Record<string, number> = {};
-                    data.forEach((po: any) => {
-                        counts[po.status] = (counts[po.status] || 0) + 1;
-                    });
+                    data.forEach((po: any) => { counts[po.status] = (counts[po.status] || 0) + 1; });
                     setPoStats(counts);
                 }
-            } catch (err) {
-                console.error(err);
-            } finally {
-                if (active) setLoading(false);
-            }
+            } catch (err) { console.error(err); if (active) setError(true); }
+            finally { if (active) setLoading(false); }
         };
         load();
         return () => { active = false; };
     }, [refreshKey]);
 
     const statuses = [
-        { key: 'pending', label: 'قيد الانتظار', color: 'bg-yellow-500' },
-        { key: 'ordered', label: 'تم الطلب', color: 'bg-blue-500' },
-        { key: 'shipped', label: 'تم الشحن', color: 'bg-orange-500' },
-        { key: 'delivered', label: 'وصلت', color: 'bg-green-500' },
-        { key: 'cancelled', label: 'ملغي', color: 'bg-gray-400' },
+        { key: 'pending', label: 'قيد الانتظار', color: '#eab308' },
+        { key: 'ordered', label: 'تم الطلب', color: '#3b82f6' },
+        { key: 'processing', label: 'قيد المعالجة', color: '#8b5cf6' },
+        { key: 'shipped', label: 'تم الشحن', color: '#f97316' },
+        { key: 'delivered', label: 'وصلت', color: '#22c55e' },
+        { key: 'cancelled', label: 'ملغي', color: '#9ca3af' },
     ];
 
-    const total = Object.values(poStats).reduce((a, b) => a + b, 0) || 1;
+    const total = Object.values(poStats).reduce((a, b) => a + b, 0);
+
+    if (error) return <ErrorBanner message="تعذر تحميل بيانات المشتريات." />;
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-full flex flex-col">
-            <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-6 flex items-center gap-2">
-                <Icons.TruckIcon className="w-5 h-5 text-indigo-500" />
-                توزيع حالة المشتريات
+        <div className="glass-card rounded-2xl p-5 h-full flex flex-col animate-slide-in-up stagger-3">
+            <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 text-sm">
+                <Icons.TruckIcon className="w-4 h-4 text-indigo-500" />
+                المشتريات
+                {total > 0 && <span className="text-xs font-mono text-gray-400 mr-1">({total})</span>}
             </h3>
 
-            {loading ? <Skeleton className="h-64 w-full" /> : (
-                <div className="flex-1 flex flex-col justify-center gap-4">
+            {loading ? <Skeleton className="h-48 w-full" /> : (
+                <div className="flex-1 flex flex-col justify-center gap-3">
                     {/* Stacked Bar */}
-                    <div className="h-4 w-full flex rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700">
+                    <div className="h-3 w-full flex rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700">
                         {statuses.map(s => {
                             const count = poStats[s.key] || 0;
-                            if (count === 0) return null;
-                            const pct = (count / total) * 100;
-                            return (
-                                <div key={s.key} className={`h-full ${s.color}`} style={{ width: `${pct}%` }} title={`${s.label}: ${count}`} />
-                            );
+                            if (count === 0 || total === 0) return null;
+                            return <div key={s.key} className="h-full transition-all duration-700" style={{ width: `${(count / total) * 100}%`, backgroundColor: s.color }} title={`${s.label}: ${count}`} />;
                         })}
                     </div>
 
                     {/* Legend */}
-                    <div className="space-y-3 mt-4">
-                        {statuses.map(s => (
-                            <div key={s.key} className="flex justify-between items-center text-sm">
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-3 h-3 rounded-full ${s.color}`} />
-                                    <span className="text-gray-600 dark:text-gray-400">{s.label}</span>
+                    <div className="space-y-2 mt-2">
+                        {statuses.map(s => {
+                            const count = poStats[s.key] || 0;
+                            return (
+                                <div key={s.key} className={`flex justify-between items-center text-xs ${count === 0 ? 'opacity-30' : ''}`}>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                                        <span className="text-gray-600 dark:text-gray-400">{s.label}</span>
+                                    </div>
+                                    <span className="font-bold font-mono text-gray-900 dark:text-gray-200">{count}</span>
                                 </div>
-                                <span className="font-bold font-mono text-gray-900 dark:text-gray-200">{poStats[s.key] || 0}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+
+// 7. TOP DEBTORS
+export const TopDebtorsSection: React.FC = () => {
+    const { hasPermission } = useAuth();
+    const { currency, refreshKey } = useDashboard();
+    const [debtors, setDebtors] = useState<{ name: string; amount: number; overdueDays: number }[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    const canView = hasPermission('accounting.view');
+
+    useEffect(() => {
+        if (!canView) { setLoading(false); return; }
+        let active = true;
+        const load = async () => {
+            setLoading(true); setError(false);
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data: arData } = await supabase
+                    .from('party_ar_aging_summary')
+                    .select('party_id,total_outstanding,days_91_plus,days_61_90,days_31_60,days_1_30')
+                    .gt('total_outstanding', 0)
+                    .order('total_outstanding', { ascending: false })
+                    .limit(5);
+
+                const arRows = Array.isArray(arData) ? arData : [];
+                if (arRows.length === 0) { if (active) { setDebtors([]); setLoading(false); } return; }
+
+                const ids = arRows.map((r: any) => r.party_id);
+                const { data: pData } = await supabase.from('financial_parties').select('id,name').in('id', ids);
+                const nameMap: Record<string, string> = {};
+                (Array.isArray(pData) ? pData : []).forEach((r: any) => { nameMap[String(r.id)] = String(r.name || '—'); });
+
+                if (active) {
+                    setDebtors(arRows.map((r: any) => {
+                        let overdueDays = 0;
+                        if (Number(r.days_91_plus || 0) > 0) overdueDays = 91;
+                        else if (Number(r.days_61_90 || 0) > 0) overdueDays = 61;
+                        else if (Number(r.days_31_60 || 0) > 0) overdueDays = 31;
+                        else if (Number(r.days_1_30 || 0) > 0) overdueDays = 1;
+                        return { name: nameMap[String(r.party_id)] || String(r.party_id).slice(-6), amount: Number(r.total_outstanding || 0), overdueDays };
+                    }));
+                }
+            } catch (err) { console.error(err); if (active) setError(true); }
+            finally { if (active) setLoading(false); }
+        };
+        void load();
+        return () => { active = false; };
+    }, [canView, refreshKey]);
+
+    if (!canView) return null;
+    if (!loading && debtors.length === 0 && !error) return null;
+    if (error) return <ErrorBanner message="تعذر تحميل بيانات المدينين." />;
+
+    const overdueColor = (d: number) => d >= 91 ? 'text-red-500' : d >= 31 ? 'text-orange-500' : d >= 1 ? 'text-yellow-600' : 'text-emerald-500';
+    const overdueBg = (d: number) => d >= 91 ? 'bg-red-50 dark:bg-red-900/20' : d >= 31 ? 'bg-orange-50 dark:bg-orange-900/20' : d >= 1 ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20';
+    const overdueLabel = (d: number) => d >= 91 ? 'متأخر جداً' : d >= 61 ? '61-90 يوم' : d >= 31 ? '31-60 يوم' : d >= 1 ? '1-30 يوم' : 'حالي';
+
+    return (
+        <div className="glass-card rounded-2xl p-5 animate-slide-in-up">
+            <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2 text-sm">
+                <Icons.CustomersIcon className="w-4 h-4 text-blue-500" />
+                أكبر المدينين
+                <span className="text-[10px] text-gray-400 font-normal">(لي عند الناس)</span>
+            </h3>
+            {loading ? <Skeleton className="h-32 w-full" /> : (
+                <div className="space-y-1.5">
+                    {debtors.map((d, i) => (
+                        <div key={i} className="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/30 transition group">
+                            <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                                <span className="text-sm font-medium dark:text-white truncate max-w-[180px]">{d.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${overdueColor(d.overdueDays)} ${overdueBg(d.overdueDays)}`}>
+                                    {overdueLabel(d.overdueDays)}
+                                </span>
+                                <span className="text-sm font-bold font-mono text-blue-600 dark:text-blue-400" dir="ltr">
+                                    {fmtCompact(d.amount)} <span className="text-[10px] font-normal text-gray-400">{currency}</span>
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+// 8. PROFIT WATERFALL (Quick Breakdown)
+export const ProfitSummaryCard: React.FC = () => {
+    const { kpiData, currency } = useDashboard();
+    if (!kpiData || !kpiData.sales) return null;
+
+    const items = [
+        { label: 'المبيعات', value: kpiData.sales, color: 'bg-emerald-500', isTotal: true },
+        { label: 'صافي الربح', value: kpiData.netProfit, color: kpiData.netProfit >= 0 ? 'bg-emerald-500' : 'bg-red-500', isTotal: true },
+    ];
+
+    const profitPct = kpiData.sales > 0 ? ((kpiData.netProfit / kpiData.sales) * 100).toFixed(1) : '0.0';
+
+    return (
+        <div className="glass-card rounded-2xl p-5 animate-slide-in-up stagger-4">
+            <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2 text-sm">
+                <Icons.DollarSign className="w-4 h-4 text-amber-500" />
+                ملخص الربحية
+            </h3>
+            <div className="flex items-end gap-4 mb-3">
+                <div>
+                    <span className="text-3xl font-bold font-mono text-gray-900 dark:text-white">{profitPct}%</span>
+                    <span className="text-xs text-gray-400 mr-1">هامش صافي</span>
+                </div>
+            </div>
+            <div className="space-y-2">
+                {items.map((item, i) => (
+                    <div key={i} className="flex justify-between items-center text-xs">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${item.color}`} />
+                            <span className={`text-gray-600 dark:text-gray-400 ${item.isTotal ? 'font-bold' : ''}`}>{item.label}</span>
+                        </div>
+                        <span className={`font-mono ${item.isTotal ? 'font-bold text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'}`} dir="ltr">
+                            {fmt(Math.abs(item.value))} {currency}
+                        </span>
+                    </div>
+                ))}
+            </div>
+            {/* Mini Profit Bar */}
+            <div className="mt-3 h-2 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                    className={`h-full rounded-full transition-all duration-1000 ${kpiData.netProfit >= 0 ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 'bg-gradient-to-r from-red-400 to-red-600'}`}
+                    style={{ width: `${Math.min(Math.max(Number(profitPct), 0), 100)}%` }}
+                />
+            </div>
         </div>
     );
 };
