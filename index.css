@@ -408,19 +408,25 @@ svg {
     background-color: white;
   }
 
-  body > *:not(#print-area) {
-    display: none !important;
+  body * {
+    visibility: hidden;
+  }
+
+  #print-area,
+  #print-area * {
+    visibility: visible;
   }
 
   #print-area {
-    position: static;
-    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     width: auto !important;
     max-width: none !important;
     margin: 0 auto !important;
     padding: 0 !important;
     overflow: visible;
-    /* CRITICAL: Allow paginated content to flow */
     font-size: 11pt;
     box-sizing: border-box !important;
   }
