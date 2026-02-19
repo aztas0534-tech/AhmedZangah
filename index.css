@@ -408,20 +408,26 @@ svg {
     background-color: white;
   }
 
-  #root > *:not(#print-area) {
-    display: none !important;
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
   }
 
+  /* Show only the print area and its children */
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+
+  /* Position print area at top-left */
   #print-area {
-    position: static;
-    display: block !important;
-    width: auto !important;
-    max-width: none !important;
-    margin: 0 auto !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
     padding: 0 !important;
-    overflow: visible;
-    font-size: 11pt;
-    box-sizing: border-box !important;
+    background-color: white;
   }
 
   /* Reset some styles for print */

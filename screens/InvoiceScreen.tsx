@@ -611,11 +611,13 @@ const InvoiceScreen: React.FC = () => {
                 )}
             </ConfirmationModal>
 
-            {isAdminInvoice && selectedTemplate === 'a4' ? (
-                <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
-            ) : (
-                <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
-            )}
+            <div id="print-area">
+                {isAdminInvoice && selectedTemplate === 'a4' ? (
+                    <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                ) : (
+                    <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                )}
+            </div>
         </div>
     );
 };
