@@ -34,18 +34,6 @@ export type PrintableGrnData = {
 
 export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Brand; language?: 'ar' | 'en' }) {
   const { data, brand, language = 'ar' } = props;
-  const currency = String(data.currency || '').toUpperCase() || '—';
-
-  const fmt = (n: number) => {
-    const v = Number(n || 0);
-    try {
-      return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    } catch {
-      return v.toFixed(2);
-    }
-  };
-
-  const total = data.items.reduce((sum, it) => sum + Number(it.totalCost ?? (Number(it.quantity || 0) * Number(it.unitCost || 0))), 0);
 
   return (
     <div className="grn-container" dir={language === 'ar' ? 'rtl' : 'ltr'}>
