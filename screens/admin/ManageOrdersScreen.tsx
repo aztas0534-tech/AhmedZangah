@@ -86,6 +86,7 @@ const ManageOrdersScreen: React.FC = () => {
     // Return Logic State
     const [returnOrderId, setReturnOrderId] = useState<string | null>(null);
     const [returnItems, setReturnItems] = useState<Record<string, number>>({});
+    const [returnUnits, setReturnUnits] = useState<Record<string, string>>({});
     const [isCreatingReturn, setIsCreatingReturn] = useState(false);
     const [returnReason, setReturnReason] = useState('');
     const [refundMethod, setRefundMethod] = useState<'cash' | 'network' | 'kuraimi'>('cash');
@@ -237,6 +238,65 @@ const ManageOrdersScreen: React.FC = () => {
             })();
         }
     }, [getSupabaseClient, inStoreLines, isInStoreSaleOpen]);
+    useEffect(() => {
+        if (!returnOrderId) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const order = orders.find(o => o.id === returnOrderId);
+        if (!order) return;
+        const ids = Array.from(new Set((order.items || []).map((r: any) => String(r.id || r.menuItemId || '').trim()).filter(Boolean)));
+        if (!ids.length) return;
+        for (const id of ids) {
+            if (itemUomRowsByItemId[id]) continue;
+            if (itemUomLoadingRef.current.has(id)) continue;
+            itemUomLoadingRef.current.add(id);
+            (async () => {
+                try {
+                    const { data, error } = await supabase.rpc('list_item_uom_units', { p_item_id: id } as any);
+                    if (error) throw error;
+                    const rows = Array.isArray(data) ? data : [];
+                    const normalized: Array<{ code: string; name?: string; qtyInBase: number }> = rows
+                        .filter((r: any) => Boolean(r?.is_active))
+                        .map((r: any) => ({
+                            code: String(r?.uom_code || '').trim(),
+                            name: String(r?.uom_name || '').trim() || undefined,
+                            qtyInBase: Number(r?.qty_in_base || 0) || 0,
+                        }))
+                        .filter((r) => r.code && r.qtyInBase > 0);
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: normalized }));
+                } catch {
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: [] }));
+                } finally {
+                    itemUomLoadingRef.current.delete(id);
+                }
+            })();
+        }
+    }, [getSupabaseClient, orders, returnOrderId, itemUomRowsByItemId]);
+
+    const getReturnUomOptions = (orderItem: any, itemId: string) => {
+        const unitType = String(orderItem?.unitType || orderItem?.unit || 'piece').trim();
+        const baseCode = unitType.toLowerCase();
+        const baseOption = { code: baseCode, name: unitType, qtyInBase: 1 };
+        const fromMap = itemUomRowsByItemId[itemId] || [];
+        const fromItem = Array.isArray(orderItem?.uomUnits)
+            ? (orderItem.uomUnits as Array<{ code?: string; name?: string; qtyInBase?: number }>)
+            : [];
+        const orderUomCode = String(orderItem?.uomCode || '').trim().toLowerCase();
+        const orderUomQty = Number(orderItem?.uomQtyInBase || 0) || 0;
+        const merged = [
+            baseOption,
+            ...fromMap.map(r => ({ code: String(r.code || '').trim().toLowerCase(), name: r.name, qtyInBase: Number(r.qtyInBase || 0) || 0 })),
+            ...fromItem.map(r => ({ code: String(r.code || '').trim().toLowerCase(), name: r.name, qtyInBase: Number(r.qtyInBase || 0) || 0 })),
+        ].filter(r => r.code && r.qtyInBase > 0);
+        if (orderUomCode && orderUomQty > 0) {
+            merged.push({ code: orderUomCode, name: orderUomCode, qtyInBase: orderUomQty });
+        }
+        const uniq = new Map<string, { code: string; name?: string; qtyInBase: number }>();
+        for (const opt of merged) {
+            if (!uniq.has(opt.code)) uniq.set(opt.code, opt);
+        }
+        return Array.from(uniq.values()).sort((a, b) => a.qtyInBase - b.qtyInBase);
+    };
     const operationalCurrencies = useMemo(() => {
         const fromSettings = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
             ? settings.operationalCurrencies
@@ -1681,13 +1741,22 @@ const ManageOrdersScreen: React.FC = () => {
                     ? (unitPrice * totalQty) + addonsCost
                     : ((unitPrice * uomQtyInBase) + addonsCost) * totalQty;
 
-                const proportion = Math.max(0, Math.min(1, (Number(qty) || 0) / totalQty));
+                const menuItemKey = String(menuItemId || cartItemId || '').trim();
+                const options = !isWeightBased ? getReturnUomOptions(orderItem, menuItemKey) : [];
+                const defaultCode = String(returnUnits[cartItemId] || (orderItem as any).uomCode || unitType || 'piece').trim().toLowerCase();
+                const selectedOption = !isWeightBased
+                    ? (options.find(o => o.code === defaultCode) || options[0] || { code: String(unitType || 'piece').toLowerCase(), name: unitType, qtyInBase: 1 })
+                    : null;
+                const selectedQtyInBase = isWeightBased ? 1 : (Number(selectedOption?.qtyInBase || 1) || 1);
+                const totalBaseQty = isWeightBased ? totalQty : (totalQty * uomQtyInBase);
+                const qtyBase = isWeightBased
+                    ? Number(qty) || 0
+                    : (Number(qty) || 0) * selectedQtyInBase;
+                const proportion = totalBaseQty > 0 ? Math.max(0, Math.min(1, qtyBase / totalBaseQty)) : 0;
                 const returnedGross = lineGross * proportion;
                 const returnedNet = returnedGross * discountFactor;
 
-                // Convert to base units for inventory accuracy
-                // uomQtyInBase already defined above
-                const baseQty = qty;
+                const baseQty = qtyBase;
                 const baseUnitPrice = Number((returnedNet / (Number(baseQty) || 1)).toFixed(4));
 
                 return {
@@ -1698,9 +1767,9 @@ const ManageOrdersScreen: React.FC = () => {
                     total: Number(returnedNet.toFixed(2)),
                     reason: returnReason,
                     // Metadata for UI
-                    salesUnitQty: qty,
-                    uomCode: (orderItem as any).uomCode,
-                    uomQtyInBase: uomQtyInBase
+                    salesUnitQty: Number(qty) || 0,
+                    uomCode: selectedOption?.code || String((orderItem as any).uomCode || unitType || 'piece').trim().toLowerCase(),
+                    uomQtyInBase: selectedQtyInBase
                 };
             })
             .filter(Boolean) as any[];
@@ -4064,6 +4133,7 @@ const ManageOrdersScreen: React.FC = () => {
                     if (isCreatingReturn) return;
                     setReturnOrderId(null);
                     setReturnItems({});
+                    setReturnUnits({});
                     setReturnReason('');
                 }}
                 onConfirm={handleConfirmReturn}
@@ -4091,9 +4161,21 @@ const ManageOrdersScreen: React.FC = () => {
                                     const itemId = item.cartItemId || item.id;
                                     const unitType = (item as any).unitType;
                                     const isWeightBased = isWeightBasedUnit(unitType as any);
-                                    const maxQty = isWeightBased ? (Number((item as any).weight) || 0) : item.quantity;
-                                    const currentReturnQty = returnItems[itemId] || 0;
+                                    const salesQty = isWeightBased ? (Number((item as any).weight) || 0) : (Number(item.quantity) || 0);
+                                    const orderUomQtyInBase = Number((item as any).uomQtyInBase || 1) || 1;
+                                    const totalBaseQty = isWeightBased ? salesQty : (salesQty * orderUomQtyInBase);
                                     const itemName = item.name?.ar || item.name?.en || 'Item';
+                                    const menuItemId = String(item.id || item.menuItemId || itemId || '').trim();
+                                    const options = !isWeightBased ? getReturnUomOptions(item, menuItemId || String(itemId)) : [];
+                                    const defaultCode = String(returnUnits[itemId] || (item as any).uomCode || unitType || 'piece').trim().toLowerCase();
+                                    const selectedOption = !isWeightBased
+                                        ? (options.find(o => o.code === defaultCode) || options[0] || { code: String(unitType || 'piece').toLowerCase(), name: unitType, qtyInBase: 1 })
+                                        : null;
+                                    const selectedQtyInBase = isWeightBased ? 1 : (Number(selectedOption?.qtyInBase || 1) || 1);
+                                    const maxQty = isWeightBased
+                                        ? salesQty
+                                        : (selectedQtyInBase > 0 ? (totalBaseQty / selectedQtyInBase) : salesQty);
+                                    const currentReturnQty = returnItems[itemId] || 0;
 
                                     return (
                                         <div key={itemId} className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800">
@@ -4101,10 +4183,35 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <div className="font-semibold text-sm">{itemName}</div>
                                                 <div className="text-xs text-gray-500">
                                                     {isWeightBased ? 'الوزن في الطلب: ' : 'الكمية في الطلب: '}
-                                                    {maxQty}
+                                                    {salesQty}
+                                                    {!isWeightBased && totalBaseQty > 0 && (
+                                                        <span className="ms-2 text-[11px] text-gray-400">
+                                                            (بالأساس: {totalBaseQty})
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
+                                                {!isWeightBased && options.length > 0 && (
+                                                    <select
+                                                        value={selectedOption?.code || ''}
+                                                        onChange={(e) => {
+                                                            const nextCode = String(e.target.value || '').trim().toLowerCase();
+                                                            const nextOpt = options.find(o => o.code === nextCode);
+                                                            const nextQtyInBase = Number(nextOpt?.qtyInBase || 1) || 1;
+                                                            const nextMax = nextQtyInBase > 0 ? (totalBaseQty / nextQtyInBase) : maxQty;
+                                                            setReturnUnits(prev => ({ ...prev, [itemId]: nextCode }));
+                                                            setReturnItems(prev => ({ ...prev, [itemId]: Math.min(prev[itemId] || 0, nextMax) }));
+                                                        }}
+                                                        className="h-8 px-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs"
+                                                    >
+                                                        {options.map((opt) => (
+                                                            <option key={opt.code} value={opt.code}>
+                                                                {opt.name || opt.code} ({opt.qtyInBase})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
                                                 <label className="text-xs text-gray-600 dark:text-gray-400">للاسترجاع:</label>
                                                 <NumberInput
                                                     id={`return-qty-${itemId}`}
@@ -4175,7 +4282,18 @@ const ManageOrdersScreen: React.FC = () => {
                                             const lineGross = isWeightBased
                                                 ? (unitPrice * totalQty) + addonsCost
                                                 : ((unitPrice * uomQtyInBase) + addonsCost) * totalQty;
-                                            const proportion = Math.max(0, Math.min(1, (Number(qty) || 0) / totalQty));
+                                            const menuItemId = String(item.id || (item as any).menuItemId || cartItemId || '').trim();
+                                            const options = !isWeightBased ? getReturnUomOptions(item, menuItemId || String(cartItemId)) : [];
+                                            const defaultCode = String(returnUnits[cartItemId] || (item as any).uomCode || unitType || 'piece').trim().toLowerCase();
+                                            const selectedOption = !isWeightBased
+                                                ? (options.find(o => o.code === defaultCode) || options[0] || { code: String(unitType || 'piece').toLowerCase(), name: unitType, qtyInBase: 1 })
+                                                : null;
+                                            const selectedQtyInBase = isWeightBased ? 1 : (Number(selectedOption?.qtyInBase || 1) || 1);
+                                            const totalBaseQty = isWeightBased ? totalQty : (totalQty * uomQtyInBase);
+                                            const qtyBase = isWeightBased
+                                                ? Number(qty) || 0
+                                                : (Number(qty) || 0) * selectedQtyInBase;
+                                            const proportion = totalBaseQty > 0 ? Math.max(0, Math.min(1, qtyBase / totalBaseQty)) : 0;
                                             return sum + (lineGross * proportion * discountFactor);
                                         }, 0);
 
