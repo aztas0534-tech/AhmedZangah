@@ -421,17 +421,13 @@ svg {
 
   /* Position print area at top-left */
   #print-area {
-    position: fixed !important; /* Use fixed to be relative to the page box */
-    top: 0 !important;
-    right: 0 !important; /* Anchor to the RIGHT edge for RTL */
-    left: auto !important; /* Ignore left */
-    width: 210mm !important; /* Force A4 width */
-    height: 100% !important;
+    position: relative !important;
+    width: 210mm !important;
     margin: 0 !important;
+    margin-right: -15mm !important; /* Pull right to cover whitespace */
     padding: 0 !important;
     background-color: white;
     box-sizing: border-box;
-    z-index: 9999 !important;
     direction: rtl !important;
   }
 
