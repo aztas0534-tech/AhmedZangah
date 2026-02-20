@@ -324,7 +324,10 @@ export const getSupabaseClient = (): SupabaseClient | null => {
 
   client = createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-    global: { fetch: withSupabaseHeaders(baseFetch, anonKey) },
+    global: { 
+      fetch: withSupabaseHeaders(baseFetch, anonKey),
+      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
+    },
   });
 
   return client;
