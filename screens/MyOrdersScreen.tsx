@@ -25,7 +25,10 @@ const OrderHistoryCard: React.FC<{
         cancelled: 'ملغي'
     };
 
-    const colorClasses = statusColors[order.status as OrderStatus] || 'border-gray-300 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50';
+    const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+    const colorClasses = isFullyReturned
+        ? 'border-red-500 text-red-700 dark:text-red-200 bg-red-50 dark:bg-red-900/30'
+        : (statusColors[order.status as OrderStatus] || 'border-gray-300 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50');
     return (
         <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-5 border-l-4 dark:border-gray-700 transition-all duration-300 ${colorClasses}`}>
             <div className="flex justify-between items-center">
@@ -38,7 +41,7 @@ const OrderHistoryCard: React.FC<{
                     </p>
                 </div>
                 <div className={`text-sm font-semibold px-3 py-1 rounded-full ${colorClasses}`}>
-                    {statusText[order.status] || order.status || 'قيد الانتظار'}
+                    {isFullyReturned ? 'مسترجع بالكامل' : (statusText[order.status] || order.status || 'قيد الانتظار')}
                 </div>
             </div>
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap justify-between items-center gap-4">

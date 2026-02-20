@@ -83,6 +83,13 @@ export const localizeError = (message: string): string => {
   if (raw.includes('invalid input syntax for type uuid')) {
     return 'تعذر تنفيذ العملية بسبب معرف غير صالح (UUID). غالباً يوجد عدم تطابق في نسخة قاعدة البيانات (الهجرات) في الإنتاج. حدّث قاعدة البيانات ثم أعد المحاولة.';
   }
+  if (
+    raw.includes('column o.zone_id does not exist') ||
+    raw.includes('column \"o\".\"zone_id\" does not exist') ||
+    (raw.includes('column') && raw.includes('zone_id') && raw.includes('does not exist'))
+  ) {
+    return 'تعذر عرض التقرير بسبب عدم تطابق نسخة قاعدة البيانات (حقل المنطقة للطلبات غير موجود). طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
+  }
   if (raw.includes('there is no unique or exclusion constraint matching the on conflict specification')) {
     return 'حدث خطأ داخلي أثناء تسجيل العملية المالية. يرجى تحديث إعدادات قاعدة البيانات (المايجريشن) ثم إعادة المحاولة.';
   }

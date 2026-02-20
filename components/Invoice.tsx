@@ -2,11 +2,11 @@ import { forwardRef, useEffect, useMemo, useState } from 'react';
 import { Order, AppSettings, CartItem } from '../types';
 import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
 import { computeCartItemPricing } from '../utils/orderUtils';
-import CurrencyDualAmount from './common/CurrencyDualAmount';
 import QRCode from 'qrcode';
 import { generateZatcaTLV } from './admin/PrintableInvoice';
 import { AZTA_IDENTITY } from '../config/identity';
 import { useItemMeta } from '../contexts/ItemMetaContext';
+import { localizeUomCodeAr } from '../utils/displayLabels';
 
 interface InvoiceProps {
     order: Order;
@@ -73,10 +73,75 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     const invoiceTermsLabel = invoiceTerms === 'credit' ? 'أجل' : 'نقد';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase() || '—';
+    const baseCurrencyCode = String(settings.baseCurrency || '').trim().toUpperCase() || currencyCode || '—';
+    const fxRateRaw = Number((invoiceOrder as any).fxRate ?? 1) || 1;
+    const useFx = Boolean(baseCurrencyCode && currencyCode && baseCurrencyCode !== currencyCode && fxRateRaw > 0);
     const vatNumber = (settings.taxSettings?.taxNumber || '').trim();
     const taxAmount = Number((invoiceOrder as any).taxAmount) || 0;
     const issueIso = String(invoiceDate || new Date().toISOString());
     const { getUnitLabel } = useItemMeta();
+
+    const formatMoney = (v: number) => {
+        const n = Number(v || 0);
+        if (!Number.isFinite(n)) return '0.00';
+        return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const currencyLabelAr = (codeRaw: string) => {
+        const c = String(codeRaw || '').trim().toUpperCase();
+        if (!c || c === '—') return 'عملة';
+        if (c === 'SAR') return 'ريال سعودي';
+        if (c === 'YER') return 'ريال يمني';
+        if (c === 'USD') return 'دولار أمريكي';
+        if (c === 'EUR') return 'يورو';
+        if (c === 'GBP') return 'جنيه إسترليني';
+        if (c === 'AED') return 'درهم إماراتي';
+        if (c === 'KWD') return 'دينار كويتي';
+        if (c === 'BHD') return 'دينار بحريني';
+        if (c === 'OMR') return 'ريال عُماني';
+        if (c === 'QAR') return 'ريال قطري';
+        return 'عملة';
+    };
+
+    const baseCurrencyLabel = currencyLabelAr(baseCurrencyCode);
+    const txCurrencyLabel = currencyLabelAr(currencyCode);
+
+    const getItemNumber = (item: CartItem) => {
+        const rawBarcode = String((item as any)?.barcode || '').trim();
+        if (rawBarcode) return rawBarcode;
+        const rawId = String(item?.id || '').trim();
+        if (!rawId) return '—';
+        return rawId.replace(/-/g, '').slice(-6).toUpperCase();
+    };
+
+    const safeUomLabelAr = (codeOrName: string) => {
+        const raw = String(codeOrName || '').trim();
+        if (!raw) return 'وحدة';
+        const mapped = localizeUomCodeAr(raw);
+        if (!mapped || mapped === '—') return 'وحدة';
+        if (String(mapped).trim() === raw) {
+            const lower = raw.toLowerCase();
+            if (lower === 'piece' || lower === 'pack' || lower === 'carton' || lower === 'box' || lower === 'bottle' || lower === 'kg' || lower === 'gram' || lower === 'g') {
+                return mapped;
+            }
+            return 'وحدة';
+        }
+        return mapped;
+    };
+
+    const getSoldUnitLabelAr = (item: CartItem, pricing: ReturnType<typeof computeCartItemPricing>) => {
+        if (pricing.isWeightBased) return safeUomLabelAr(String(pricing.unitType || 'kg'));
+        const uomCode = String((item as any)?.uomCode || '').trim();
+        if (uomCode) return safeUomLabelAr(uomCode);
+        if (pricing.unitType) return safeUomLabelAr(String(pricing.unitType));
+        const unitTypeLabel = getUnitLabel((item as any)?.unitType, 'ar');
+        return unitTypeLabel ? safeUomLabelAr(unitTypeLabel) : 'وحدة';
+    };
+
+    const getSoldQuantityTextAr = (item: CartItem, pricing: ReturnType<typeof computeCartItemPricing>) => {
+        if (pricing.isWeightBased) return String(pricing.quantity);
+        return String(item.quantity);
+    };
 
     const qrValue = useMemo(() => {
         if (!vatNumber) return '';
@@ -117,11 +182,25 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             'online': 'حوالات',
             'ar': 'آجل'
         };
-        return methods[method] || method;
+        return methods[method] || 'غير معروف';
     };
 
     return (
-        <div ref={ref} className="bg-white text-gray-900 w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 md:p-12 relative flex flex-col print:p-4 print:m-0 print:mx-0 print:w-full print:max-w-none print:h-auto print:min-h-0 border-t-[5px] print:border-t-[2px] print:break-after-page box-border" style={{ borderColor: accentColor || '#1e293b', fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id || "print-area"} dir="rtl">
+        <div ref={ref} className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
+            <style>{`
+                @media print {
+                    @page { size: A4; margin: 0; }
+                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
+                    .invoice-container { 
+                        width: 100% !important; 
+                        max-width: none !important; 
+                        margin: 0 !important; 
+                        padding: 5mm !important; /* Reduced padding to maximize space */
+                        box-sizing: border-box;
+                    }
+                }
+            `}</style>
+            <div className="invoice-container w-full mx-auto p-12 print:p-2 flex flex-col gap-8 print:gap-4 h-full" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
             {/* Watermark for Copy */}
             {(isCopy || copyLabel) && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
@@ -139,8 +218,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             )}
 
             {/* Header Section */}
-            <div className="relative z-10 border-b-2 border-slate-200 pb-6 mb-8">
-                <div className="flex items-start justify-between gap-8">
+            <div className="relative z-10 border-b-2 border-slate-200 pb-6 mb-8 print:pb-2 print:mb-4">
+                <div className="flex items-start justify-between gap-8 print:gap-4">
                     {/* Brand Info */}
                     <div className="flex-1">
                         <div className="flex items-start gap-5">
@@ -187,15 +266,15 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     {/* Invoice Title & Meta */}
                     <div className="text-left rtl:text-left">
                         <h2 className="text-5xl font-black text-slate-900 uppercase tracking-tighter">فاتورة</h2>
-                        <div className="text-slate-400 text-sm font-bold tracking-[0.4em] mt-1 uppercase">Tax Invoice</div>
+                        <div className="text-slate-400 text-sm font-bold tracking-[0.4em] mt-1 uppercase">فاتورة ضريبية</div>
 
                         <div className="mt-8 flex flex-col gap-3 items-end">
                             <div className="inline-flex flex-col items-end border-r-4 border-slate-800 pr-4">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">رقم الفاتورة / Invoice No</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">رقم الفاتورة</span>
                                 <span className="text-2xl font-black font-mono text-slate-800" dir="ltr">{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
                             </div>
                             <div className="inline-flex flex-col items-end border-r-4 border-slate-300 pr-4 mt-1">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">التاريخ / Date</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">التاريخ</span>
                                 <span className="text-lg font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('en-GB')}</span>
                             </div>
                         </div>
@@ -204,12 +283,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Info Grid */}
-            <div className="grid grid-cols-2 gap-12 print:gap-6 mb-10 print:mb-6 relative z-10">
+            <div className="grid grid-cols-2 gap-12 print:gap-4 mb-10 print:mb-4 relative z-10">
                 {/* Bill To */}
-                <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group">
+                <div className="bg-slate-50 rounded-xl p-6 print:p-3 border border-slate-200 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-1 h-full bg-slate-800"></div>
                     <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
-                        <span className="text-sm font-black text-slate-800 uppercase tracking-wider">العميل (Bill To)</span>
+                        <span className="text-sm font-black text-slate-800 uppercase tracking-wider">بيانات العميل</span>
                     </div>
                     <div className="space-y-1.5 relative z-10">
                         <div className="text-xl font-bold text-slate-900">{invoiceOrder.customerName}</div>
@@ -229,9 +308,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* Details */}
-                <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
-                    <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-2">
-                        <span className="text-sm font-black text-slate-800 uppercase tracking-wider">تفاصيل (Details)</span>
+                <div className="bg-white rounded-xl p-6 print:p-3 border border-slate-200 shadow-sm relative">
+                    <div className="flex items-center gap-2 mb-4 print:mb-2 border-b border-slate-100 pb-2">
+                        <span className="text-sm font-black text-slate-800 tracking-wider">تفاصيل الفاتورة</span>
                     </div>
                     <div className="grid grid-cols-2 gap-y-5 gap-x-8 text-sm">
                         <div>
@@ -265,44 +344,73 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Items Table */}
-            <div className="mb-10 relative z-10 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+            <div className="mb-10 print:mb-4 relative z-10 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
                 <table className="w-full text-right border-collapse">
                     <thead>
                         <tr className="bg-slate-900 text-white">
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 w-16 text-center">#</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest w-1/2">الصنف / Item</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-center">الكمية / Qty</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-left pl-8">الإجمالي / Total</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-slate-400 w-16 text-center">#</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest w-32">رقم الصنف</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest">اسم الصنف</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-center w-28">الوحدة</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-center w-28">الكمية</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-left pl-6 w-40">{`سعر الوحدة الأساسية (${baseCurrencyLabel})`}</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-left pl-8 w-44">{`الإجمالي (${baseCurrencyLabel})`}</th>
                         </tr>
                     </thead>
                     <tbody className="text-slate-800 text-sm bg-white">
                         {invoiceOrder.items.map((item: CartItem, idx: number) => {
                             const pricing = computeCartItemPricing(item);
-                            const displayQty = pricing.isWeightBased ? `${pricing.quantity} ${getUnitLabel(pricing.unitType as any, 'ar')}` : String(item.quantity);
+                            const itemNo = getItemNumber(item);
+                            const soldUnitLabel = getSoldUnitLabelAr(item, pricing);
+                            const soldQtyText = getSoldQuantityTextAr(item, pricing);
+                            const baseUnitPrice = pricing.unitPrice * (useFx ? fxRateRaw : 1);
+                            const baseLineTotal = pricing.lineTotal * (useFx ? fxRateRaw : 1);
+                            const baseUnitLabel = (() => {
+                                if (pricing.isWeightBased) return soldUnitLabel;
+                                const unitTypeLabel = getUnitLabel((item as any)?.unitType, 'ar');
+                                return unitTypeLabel ? safeUomLabelAr(unitTypeLabel) : 'قطعة';
+                            })();
 
                             return (
                                 <tr key={item.cartItemId} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors`}>
-                                    <td className="py-4 px-6 font-mono text-slate-400 text-center text-xs">{idx + 1}</td>
-                                    <td className="py-4 px-6">
+                                    <td className="py-4 px-6 print:py-2 print:px-2 font-mono text-slate-400 text-center text-xs">{idx + 1}</td>
+                                    <td className="py-4 px-6 print:py-2 print:px-2 font-mono text-slate-700 text-xs" dir="ltr">{itemNo}</td>
+                                    <td className="py-4 px-6 print:py-2 print:px-2">
                                         <div className="font-bold text-slate-900 text-base">{item.name?.[lang] || item.name?.ar || item.name?.en || item.id}</div>
-                                        <div className="flex flex-wrap gap-2 text-xs text-slate-500 mt-1.5">
-                                            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{pricing.unitPrice.toFixed(2)} {currencyCode}</span>
-                                            {pricing.addonsArray.length > 0 && (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {pricing.addonsArray.map(({ addon, quantity }) => (
-                                                        <span key={addon.id} className="bg-slate-50 px-1.5 py-0.5 rounded text-slate-700 border border-slate-200">
-                                                            + {addon.name?.[lang] || addon.name?.ar} {quantity > 1 ? `(${quantity})` : ''}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
+                                        {pricing.addonsArray.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 text-xs text-slate-500 mt-1.5">
+                                                {pricing.addonsArray.map(({ addon, quantity }) => (
+                                                    <span key={addon.id} className="bg-slate-50 px-1.5 py-0.5 rounded text-slate-700 border border-slate-200">
+                                                        + {addon.name?.[lang] || addon.name?.ar} {quantity > 1 ? `(${quantity})` : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="py-4 px-6 print:py-2 print:px-2 text-center">
+                                        <span className="font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800">{soldUnitLabel}</span>
+                                    </td>
+                                    <td className="py-4 px-6 print:py-2 print:px-2 text-center">
+                                        <span className="font-mono font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800" dir="ltr">{soldQtyText}</span>
+                                    </td>
+                                    <td className="py-4 px-6 print:py-2 print:px-2 text-left pl-6" dir="ltr">
+                                        <div className="font-mono font-bold text-slate-900">{formatMoney(baseUnitPrice)} {baseCurrencyLabel}</div>
+                                        <div className="text-[11px] text-slate-500">
+                                            {`(${baseUnitLabel})`}
                                         </div>
+                                        {useFx && (
+                                            <div className="text-[11px] text-slate-500 font-mono">
+                                                <span dir="ltr">{formatMoney(pricing.unitPrice)} {txCurrencyLabel}</span>
+                                            </div>
+                                        )}
                                     </td>
-                                    <td className="py-4 px-6 text-center">
-                                        <span className="font-mono font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800">{displayQty}</span>
-                                    </td>
-                                    <td className="py-4 px-6 text-left font-mono font-bold text-slate-900 pl-8 text-base" dir="ltr">
-                                        <CurrencyDualAmount amount={pricing.lineTotal} currencyCode={currencyCode} compact />
+                                    <td className="py-4 px-6 print:py-2 print:px-2 text-left font-mono font-bold text-slate-900 pl-8 text-base" dir="ltr">
+                                        <div>{formatMoney(baseLineTotal)} {baseCurrencyLabel}</div>
+                                        {useFx && (
+                                            <div className="text-[11px] text-slate-500 font-mono font-normal">
+                                                <span dir="ltr">{formatMoney(pricing.lineTotal)} {txCurrencyLabel}</span>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             );
@@ -353,42 +461,47 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <div className="bg-slate-900 text-white rounded-2xl p-8 shadow-lg space-y-4 relative overflow-hidden">
 
                         <div className="flex justify-between items-center text-slate-300 relative z-10">
-                            <span className="font-medium text-sm">المجموع الفرعي (Subtotal)</span>
+                            <span className="font-medium text-sm">المجموع الفرعي</span>
                             <span className="font-mono font-bold text-white" dir="ltr">
-                                <CurrencyDualAmount amount={Number(invoiceOrder.subtotal) || 0} currencyCode={currencyCode} compact />
+                                {formatMoney((Number(invoiceOrder.subtotal) || 0) * (useFx ? fxRateRaw : 1))} {baseCurrencyLabel}
                             </span>
                         </div>
 
                         {(invoiceOrder.discountAmount || 0) > 0 && (
                             <div className="flex justify-between items-center text-emerald-400 relative z-10">
-                                <span className="font-medium text-sm">الخصم (Discount)</span>
+                                <span className="font-medium text-sm">الخصم</span>
                                 <span className="font-mono font-bold" dir="ltr">
-                                    - <CurrencyDualAmount amount={Number(invoiceOrder.discountAmount) || 0} currencyCode={currencyCode} compact />
+                                    - {formatMoney((Number(invoiceOrder.discountAmount) || 0) * (useFx ? fxRateRaw : 1))} {baseCurrencyLabel}
                                 </span>
                             </div>
                         )}
 
                         <div className="flex justify-between items-center text-slate-300 relative z-10">
-                            <span className="font-medium text-sm">الضريبة (VAT {Number((invoiceOrder as any).taxRate || 0)}%)</span>
+                            <span className="font-medium text-sm">ضريبة القيمة المضافة ({Number((invoiceOrder as any).taxRate || 0)}%)</span>
                             <span className="font-mono font-bold text-white" dir="ltr">
-                                <CurrencyDualAmount amount={taxAmount} currencyCode={currencyCode} compact />
+                                {formatMoney(taxAmount * (useFx ? fxRateRaw : 1))} {baseCurrencyLabel}
                             </span>
                         </div>
 
                         <div className="h-px bg-slate-700 my-2 relative z-10"></div>
 
                         <div className="flex justify-between items-center relative z-10">
-                            <span className="font-black text-xl">الإجمالي (Total)</span>
+                            <span className="font-black text-xl">الإجمالي</span>
                             <span className="font-black font-mono text-3xl tracking-tight text-white" dir="ltr">
-                                <CurrencyDualAmount
-                                    amount={Number(invoiceOrder.total) || 0}
-                                    currencyCode={currencyCode}
-                                    baseAmount={(invoiceOrder as any).baseTotal}
-                                    fxRate={(invoiceOrder as any).fxRate}
-                                    compact
-                                />
+                                {formatMoney((typeof (invoiceOrder as any).baseTotal === 'number' && Number.isFinite((invoiceOrder as any).baseTotal))
+                                    ? Number((invoiceOrder as any).baseTotal)
+                                    : (Number(invoiceOrder.total) || 0) * (useFx ? fxRateRaw : 1)
+                                )} {baseCurrencyLabel}
                             </span>
                         </div>
+                        {useFx && (
+                            <div className="pt-3 border-t border-slate-700 text-slate-300 text-sm flex justify-between items-center relative z-10">
+                                <span className="font-medium">إجمالي المعاملة</span>
+                                <span className="font-mono font-bold text-white" dir="ltr">
+                                    {formatMoney(Number(invoiceOrder.total) || 0)} {txCurrencyLabel}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -397,57 +510,62 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             <div className="mt-auto pt-16 print:pt-4">
                 <div className="grid grid-cols-3 gap-12 print:gap-4 text-center text-sm text-slate-500 border-t border-slate-200 pt-8 print:pt-2">
                     <div className="space-y-3">
-                        <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">المستلم (Receiver)</div>
+                        <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">المستلم</div>
                         <div className="h-20 print:h-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
-                            <span className="text-[10px] text-slate-400">التوقيع / Signature</span>
+                            <span className="text-[10px] text-slate-400">التوقيع</span>
                         </div>
                     </div>
                     <div className="space-y-2 pt-6 flex flex-col items-center justify-center">
                         <div className="w-8 h-1 bg-slate-800 rounded-full mb-2"></div>
                         <div className="font-black text-slate-900 text-lg">{systemName}</div>
-                        <div className="text-[10px] font-medium tracking-wide text-slate-400">شكراً لتعاملكم معنا | Thank you for your business</div>
+                        <div className="text-[10px] font-medium tracking-wide text-slate-400">شكراً لتعاملكم معنا</div>
                     </div>
                     <div className="space-y-3">
-                        <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">البائع (Seller)</div>
+                        <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">البائع</div>
                         <div className="h-20 print:h-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
-                            <span className="text-[10px] text-slate-400">الختم / Stamp</span>
+                            <span className="text-[10px] text-slate-400">الختم</span>
                         </div>
                     </div>
                 </div>
                 {/* Print Meta */}
                 <div className="flex justify-between items-center mt-10 print:mt-4 pt-4 print:pt-2 border-t border-slate-100 text-[9px] text-slate-400 font-mono">
-                    <span>System Ref: {invoiceOrder.id}</span>
-                    <span>Printed: {new Date().toISOString()}</span>
-                    <span>Page 1 of 1</span>
+                    <span dir="ltr">{`مرجع النظام: ${invoiceOrder.id}`}</span>
+                    <span dir="ltr">{`تاريخ الطباعة: ${new Date().toISOString()}`}</span>
+                    <span>صفحة 1 من 1</span>
                 </div>
             </div>
+        </div>
         </div>
     );
 });
 
 export const TriplicateInvoice = forwardRef<HTMLDivElement, InvoiceProps>((props, ref) => {
     return (
-        <div ref={ref} id="print-area">
+        <div ref={ref}>
             {/* Original / Customer Copy - Blue/Slate */}
-            <Invoice
-                {...props}
-                copyLabel="نسخة العميل (Customer)"
-                accentColor="#1e293b"
-                id="invoice-copy-1"
-            />
+            <div className="print:break-after-page">
+                <Invoice
+                    {...props}
+                    copyLabel="نسخة العميل"
+                    accentColor="#1e293b"
+                    id="invoice-copy-1"
+                />
+            </div>
 
             {/* Warehouse Copy - Red/Orange */}
-            <Invoice
-                {...props}
-                copyLabel="نسخة المستودع (Warehouse)"
-                accentColor="#c2410c" // Orange-700
-                id="invoice-copy-2"
-            />
+            <div className="print:break-after-page">
+                <Invoice
+                    {...props}
+                    copyLabel="نسخة المستودع"
+                    accentColor="#c2410c" // Orange-700
+                    id="invoice-copy-2"
+                />
+            </div>
 
             {/* Finance/Box Copy - Green/Emerald */}
             <Invoice
                 {...props}
-                copyLabel="نسخة الصندوق (Finance)"
+                copyLabel="نسخة الصندوق"
                 accentColor="#047857" // Emerald-700
                 id="invoice-copy-3"
             />

@@ -140,6 +140,7 @@ end $$;
 do $$
 declare
   v_base text;
+  v_has_batch_lock_trigger boolean;
 begin
   if to_regclass('public.purchase_orders') is null
      or to_regclass('public.purchase_receipts') is null
@@ -151,6 +152,20 @@ begin
   end if;
 
   v_base := upper(coalesce(public.get_base_currency(), 'SAR'));
+
+  select exists(
+    select 1
+    from pg_trigger t
+    where t.tgname = 'trg_lock_batch_foreign_snapshot'
+      and t.tgrelid = 'public.batches'::regclass
+      and not t.tgisinternal
+  ) into v_has_batch_lock_trigger;
+
+  if v_has_batch_lock_trigger then
+    execute 'alter table public.batches disable trigger trg_lock_batch_foreign_snapshot';
+  end if;
+
+  begin
 
   -- Compute expected goods costs (foreign/base) per PO+item in base UOM
   with pi_avg as (
@@ -290,6 +305,22 @@ begin
   if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_forbid_modify_posted') then
     alter table public.inventory_movements enable trigger trg_inventory_movements_forbid_modify_posted;
   end if;
+  exception when others then
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_purchase_in_immutable') then
+      alter table public.inventory_movements enable trigger trg_inventory_movements_purchase_in_immutable;
+    end if;
+    if exists (select 1 from pg_trigger where tgname = 'trg_inventory_movements_forbid_modify_posted') then
+      alter table public.inventory_movements enable trigger trg_inventory_movements_forbid_modify_posted;
+    end if;
+    if v_has_batch_lock_trigger then
+      execute 'alter table public.batches enable trigger trg_lock_batch_foreign_snapshot';
+    end if;
+    raise;
+  end;
+
+  if v_has_batch_lock_trigger then
+    execute 'alter table public.batches enable trigger trg_lock_batch_foreign_snapshot';
+  end if;
 end $$;
 
 -- 4) Repair posted journal lines/entries for foreign purchase_in movements based on corrected batch costs
@@ -309,73 +340,96 @@ begin
   alter table public.journal_entries disable trigger user;
   alter table public.journal_lines disable trigger user;
 
-  with candidates as (
-    select
-      je.id as entry_id,
-      upper(b.foreign_currency) as currency_code,
-      b.fx_rate_at_receipt as fx_rate,
-      round(coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6), 6) as expected_base,
-      round((coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6)) / nullif(b.fx_rate_at_receipt, 0), 6) as expected_foreign
-    from public.inventory_movements im
-    join public.batches b on b.id = im.batch_id
-    join public.journal_entries je
-      on je.source_table = 'inventory_movements'
-     and je.source_id = im.id::text
-     and je.status = 'posted'
-    where im.movement_type = 'purchase_in'
-      and nullif(btrim(coalesce(b.foreign_currency,'')), '') is not null
-      and upper(btrim(coalesce(b.foreign_currency,''))) <> upper(v_base)
-      and b.fx_rate_at_receipt is not null
-      and b.fx_rate_at_receipt > 0
-  ),
-  line_stats as (
-    select
-      jl.journal_entry_id as entry_id,
-      count(*) as line_count,
-      sum(case when coalesce(jl.debit, 0) > 0 then 1 else 0 end) as debit_lines,
-      sum(case when coalesce(jl.credit, 0) > 0 then 1 else 0 end) as credit_lines
-    from public.journal_lines jl
-    join candidates c on c.entry_id = jl.journal_entry_id
-    group by jl.journal_entry_id
-  ),
-  fixable as (
-    select c.*
-    from candidates c
-    join line_stats ls on ls.entry_id = c.entry_id
-    where ls.line_count = 2 and ls.debit_lines = 1 and ls.credit_lines = 1
-  )
-  update public.journal_lines jl
-  set
-    debit = case when coalesce(jl.debit, 0) > 0 then f.expected_base else 0 end,
-    credit = case when coalesce(jl.credit, 0) > 0 then f.expected_base else 0 end,
-    currency_code = f.currency_code,
-    fx_rate = f.fx_rate,
-    foreign_amount = f.expected_foreign
-  from fixable f
-  where jl.journal_entry_id = f.entry_id
-    and (
-      abs(coalesce(jl.debit, 0) - case when coalesce(jl.debit, 0) > 0 then f.expected_base else 0 end) > greatest(0.01, abs(coalesce(f.expected_base,0)) * 0.01)
-      or abs(coalesce(jl.credit, 0) - case when coalesce(jl.credit, 0) > 0 then f.expected_base else 0 end) > greatest(0.01, abs(coalesce(f.expected_base,0)) * 0.01)
-      or upper(coalesce(nullif(btrim(jl.currency_code), ''), '')) is distinct from f.currency_code
-      or coalesce(jl.fx_rate, 0) is distinct from f.fx_rate
-    );
+  begin
+    with candidates as (
+      select
+        je.id as entry_id,
+        upper(b.foreign_currency) as currency_code,
+        b.fx_rate_at_receipt as fx_rate,
+        round(coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6), 6) as expected_base,
+        round((coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6)) / nullif(b.fx_rate_at_receipt, 0), 6) as expected_foreign
+      from public.inventory_movements im
+      join public.batches b on b.id = im.batch_id
+      join public.journal_entries je
+        on je.source_table = 'inventory_movements'
+       and je.source_id = im.id::text
+       and je.status = 'posted'
+      where im.movement_type = 'purchase_in'
+        and nullif(btrim(coalesce(b.foreign_currency,'')), '') is not null
+        and upper(btrim(coalesce(b.foreign_currency,''))) <> upper(v_base)
+        and b.fx_rate_at_receipt is not null
+        and b.fx_rate_at_receipt > 0
+    ),
+    line_stats as (
+      select
+        jl.journal_entry_id as entry_id,
+        count(*) as line_count,
+        sum(case when coalesce(jl.debit, 0) > 0 then 1 else 0 end) as debit_lines,
+        sum(case when coalesce(jl.credit, 0) > 0 then 1 else 0 end) as credit_lines
+      from public.journal_lines jl
+      join candidates c on c.entry_id = jl.journal_entry_id
+      group by jl.journal_entry_id
+    ),
+    fixable as (
+      select c.*
+      from candidates c
+      join line_stats ls on ls.entry_id = c.entry_id
+      where ls.line_count = 2 and ls.debit_lines = 1 and ls.credit_lines = 1
+    )
+    update public.journal_lines jl
+    set
+      debit = case when coalesce(jl.debit, 0) > 0 then f.expected_base else 0 end,
+      credit = case when coalesce(jl.credit, 0) > 0 then f.expected_base else 0 end,
+      currency_code = f.currency_code,
+      fx_rate = f.fx_rate,
+      foreign_amount = f.expected_foreign
+    from fixable f
+    where jl.journal_entry_id = f.entry_id
+      and (
+        abs(coalesce(jl.debit, 0) - case when coalesce(jl.debit, 0) > 0 then f.expected_base else 0 end) > greatest(0.01, abs(coalesce(f.expected_base,0)) * 0.01)
+        or abs(coalesce(jl.credit, 0) - case when coalesce(jl.credit, 0) > 0 then f.expected_base else 0 end) > greatest(0.01, abs(coalesce(f.expected_base,0)) * 0.01)
+        or upper(coalesce(nullif(btrim(jl.currency_code), ''), '')) is distinct from f.currency_code
+        or coalesce(jl.fx_rate, 0) is distinct from f.fx_rate
+      );
 
-  update public.journal_entries je
-  set
-    currency_code = f.currency_code,
-    fx_rate = f.fx_rate,
-    foreign_amount = f.expected_foreign
-  from candidates f
-  where je.id = f.entry_id
-    and (
-      upper(coalesce(nullif(btrim(je.currency_code), ''), '')) is distinct from f.currency_code
-      or coalesce(je.fx_rate, 0) is distinct from f.fx_rate
-      or abs(coalesce(je.foreign_amount, 0) - coalesce(f.expected_foreign, 0)) > greatest(0.01, abs(coalesce(f.expected_foreign,0)) * 0.01)
-    );
+    with candidates as (
+      select
+        je.id as entry_id,
+        upper(b.foreign_currency) as currency_code,
+        b.fx_rate_at_receipt as fx_rate,
+        round((coalesce(im.quantity, 0) * round(coalesce(b.unit_cost, 0), 6)) / nullif(b.fx_rate_at_receipt, 0), 6) as expected_foreign
+      from public.inventory_movements im
+      join public.batches b on b.id = im.batch_id
+      join public.journal_entries je
+        on je.source_table = 'inventory_movements'
+       and je.source_id = im.id::text
+       and je.status = 'posted'
+      where im.movement_type = 'purchase_in'
+        and nullif(btrim(coalesce(b.foreign_currency,'')), '') is not null
+        and upper(btrim(coalesce(b.foreign_currency,''))) <> upper(v_base)
+        and b.fx_rate_at_receipt is not null
+        and b.fx_rate_at_receipt > 0
+    )
+    update public.journal_entries je
+    set
+      currency_code = f.currency_code,
+      fx_rate = f.fx_rate,
+      foreign_amount = f.expected_foreign
+    from candidates f
+    where je.id = f.entry_id
+      and (
+        upper(coalesce(nullif(btrim(je.currency_code), ''), '')) is distinct from f.currency_code
+        or coalesce(je.fx_rate, 0) is distinct from f.fx_rate
+        or abs(coalesce(je.foreign_amount, 0) - coalesce(f.expected_foreign, 0)) > greatest(0.01, abs(coalesce(f.expected_foreign,0)) * 0.01)
+      );
+  exception when others then
+    alter table public.journal_lines enable trigger user;
+    alter table public.journal_entries enable trigger user;
+    raise;
+  end;
 
   alter table public.journal_lines enable trigger user;
   alter table public.journal_entries enable trigger user;
 end $$;
 
 notify pgrst, 'reload schema';
-

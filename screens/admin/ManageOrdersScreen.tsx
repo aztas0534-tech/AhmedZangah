@@ -59,7 +59,7 @@ const unitTranslations: Record<string, string> = {
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow } = useOrders();
+    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders } = useOrders();
     const { createReturn, processReturn, getReturnsByOrder } = useSalesReturn();
     const { showNotification } = useToast();
     const language = 'ar';
@@ -1718,6 +1718,7 @@ const ManageOrdersScreen: React.FC = () => {
             const created = await createReturn(order, itemsToReturn, returnReason, refundMethod);
             await processReturn(created.id);
             showNotification('تم الاسترجاع وردّ المبلغ بنجاح.', 'success');
+            try { await fetchOrders(); } catch { }
             setReturnOrderId(null);
             setReturnItems({});
             setReturnReason('');
@@ -1952,7 +1953,7 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
-                    {order.status === 'delivered' && remaining > 1e-9 && (
+                    {order.status === 'delivered' && remaining > 1e-9 && String((order as any).returnStatus || '').toLowerCase() !== 'full' && (
                         <div className="col-span-2 flex gap-2">
                             <button
                                 onClick={() => openPartialPaymentModal(order.id)}
@@ -2007,14 +2008,15 @@ const ManageOrdersScreen: React.FC = () => {
                                     setReturnReason('');
                                     setRefundMethod('cash');
                                 }}
-                                className="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition text-sm font-semibold"
+                                disabled={String((order as any).returnStatus || '').toLowerCase() === 'full'}
+                                className="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 ↩️ استرجاع
                             </button>
                         </div>
                     )}
 
-                    {order.status === 'delivered' && canVoidDelivered && !isVoided && (
+                    {order.status === 'delivered' && canVoidDelivered && !isVoided && String((order as any).returnStatus || '').toLowerCase() !== 'full' && (
                         <button
                             type="button"
                             onClick={() => {
@@ -2294,7 +2296,8 @@ const ManageOrdersScreen: React.FC = () => {
                                             {(() => {
                                                 const paid = Number(paidSumByOrderId[order.id]) || 0;
                                                 const remaining = Math.max(0, (Number(order.total) || 0) - paid);
-                                                const showPaymentActions = order.status === 'delivered' && remaining > 1e-9;
+                                                const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+                                                const showPaymentActions = order.status === 'delivered' && remaining > 1e-9 && !isFullyReturned;
 
                                                 const paymentActions = showPaymentActions ? (
                                                     <div className="flex flex-col gap-2">
@@ -2411,6 +2414,17 @@ const ManageOrdersScreen: React.FC = () => {
                                             })()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
+                                            {(() => {
+                                                const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+                                                if (!isFullyReturned) return null;
+                                                return (
+                                                    <div className="mb-2">
+                                                        <span className="inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">
+                                                            مسترجع بالكامل
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                             <select
                                                 value={order.status}
                                                 onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
@@ -2418,7 +2432,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                     order.status === 'delivered' ||
                                                     order.status === 'cancelled' ||
                                                     getEditableStatusesForOrder(order).length === 0 ||
-                                                    (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt)
+                                                    (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
+                                                    String((order as any).returnStatus || '').toLowerCase() === 'full'
                                                 }
                                                 className={`w-full p-2 border-none rounded-md text-sm focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                                             >
@@ -2448,7 +2463,8 @@ const ManageOrdersScreen: React.FC = () => {
                                             )}
                                             {(() => {
                                                 const paid = Number(paidSumByOrderId[order.id]) || 0;
-                                                const canReturn = order.status === 'delivered' && paid > 0.01;
+                                                const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+                                                const canReturn = order.status === 'delivered' && paid > 0.01 && !isFullyReturned;
                                                 if (!canReturn) return null;
                                                 return (
                                                     <div className="mt-2 flex flex-col gap-2">
@@ -2474,7 +2490,11 @@ const ManageOrdersScreen: React.FC = () => {
                                                     </div>
                                                 );
                                             })()}
-                                            {order.status === 'delivered' && canVoidDelivered && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt) && (
+                                            {order.status === 'delivered'
+                                                && canVoidDelivered
+                                                && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt)
+                                                && String((order as any).returnStatus || '').toLowerCase() !== 'full'
+                                                && (
                                                 <button
                                                     type="button"
                                                     onClick={() => {

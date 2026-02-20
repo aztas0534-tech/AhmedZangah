@@ -169,6 +169,12 @@ const OrderConfirmationScreen: React.FC = () => {
                 <p className="text-gray-500 dark:text-gray-400 mt-2">
                     رقم الطلب: <span className="font-mono font-semibold text-gold-500">#{order.id.slice(-6).toUpperCase()}</span>
                 </p>
+                {String((order as any).returnStatus || '').toLowerCase() === 'full' && (
+                    <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 rounded-lg text-start border border-red-200 dark:border-red-800">
+                        <div className="text-sm font-bold text-red-800 dark:text-red-200">تم استرجاع هذا الطلب بالكامل</div>
+                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">يمكنك الرجوع لإدارة الطلبات/الفاتورة للاطلاع على سجل المرتجعات.</div>
+                    </div>
+                )}
                 {order.deliveryPin && order.status !== 'cancelled' && (
                     <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg text-start">
                         <div className="text-sm font-bold text-yellow-800 dark:text-yellow-300">رمز التسليم</div>

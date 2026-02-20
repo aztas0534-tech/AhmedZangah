@@ -1,4 +1,5 @@
 import { PurchaseOrder } from '../../../types';
+import { AZTA_IDENTITY } from '../../../config/identity';
 
 type Brand = {
   name?: string;
@@ -144,9 +145,13 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
 
       <div className="header-section">
         <div className="company-info">
-            {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 60, marginBottom: 10 }} />}
-            <h1>{(brand?.name || '').trim()}</h1>
-            {brand?.branchName && <p>{brand.branchName}</p>}
+            {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 120, marginBottom: 15 }} />}
+            <h1>{language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn}</h1>
+            {(brand?.name || brand?.branchName) && (
+                <p style={{ fontSize: 16, fontWeight: 'bold', color: '#334155', marginBottom: 5 }}>
+                    {brand?.name !== (language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn) ? brand?.name : brand?.branchName}
+                </p>
+            )}
             {brand?.address && <p>{brand.address}</p>}
             {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
             {brand?.vatNumber && <p>{language === 'en' ? 'VAT No:' : 'الرقم الضريبي:'} <span dir="ltr" className="tabular">{brand.vatNumber}</span></p>}

@@ -1,6 +1,8 @@
 
 
 
+import { AZTA_IDENTITY } from '../../../config/identity';
+
 type Brand = {
   name?: string;
   address?: string;
@@ -181,10 +183,14 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
       <div className="header-section">
         <div className="company-info">
-            {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 60, marginBottom: 10 }} />}
-            <h1>{(brand?.name || '').trim()}</h1>
-            {brand?.branchName && <p>{brand.branchName}</p>}
-            {brand?.address && <p>{brand.address}</p>}
+          {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 120, marginBottom: 15 }} />}
+          <h1>{AZTA_IDENTITY.tradeNameAr}</h1>
+          {(brand?.name || brand?.branchName) && (
+             <p style={{ fontSize: 16, fontWeight: 'bold', color: '#334155', marginBottom: 5 }}>
+               {brand?.name !== AZTA_IDENTITY.tradeNameAr ? brand?.name : brand?.branchName}
+             </p>
+          )}
+          {brand?.address && <p>{brand.address}</p>}
             {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
         </div>
         <div className="doc-title">
