@@ -392,7 +392,7 @@ svg {
 @media print {
   @page {
     size: A4;
-    margin: 10mm;
+    margin: 0;
   }
 
   html,
@@ -421,10 +421,11 @@ svg {
 
   /* Position print area at top-left */
   #print-area {
-    position: absolute !important;
+    position: fixed !important;
     left: 0 !important;
-    top: 0 !important;
     right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
