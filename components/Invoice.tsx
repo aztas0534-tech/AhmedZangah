@@ -135,7 +135,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     }
                 }
             `}</style>
-            <div className="invoice-container w-full mx-auto p-12 print:p-8 flex flex-col gap-8 h-full" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
+            <div className="invoice-container w-full mx-auto p-12 print:p-2 flex flex-col gap-8 print:gap-4 h-full" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
             {/* Watermark for Copy */}
             {(isCopy || copyLabel) && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
@@ -153,8 +153,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             )}
 
             {/* Header Section */}
-            <div className="relative z-10 border-b-2 border-slate-200 pb-6 mb-8">
-                <div className="flex items-start justify-between gap-8">
+            <div className="relative z-10 border-b-2 border-slate-200 pb-6 mb-8 print:pb-2 print:mb-4">
+                <div className="flex items-start justify-between gap-8 print:gap-4">
                     {/* Brand Info */}
                     <div className="flex-1">
                         <div className="flex items-start gap-5">
@@ -218,9 +218,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Info Grid */}
-            <div className="grid grid-cols-2 gap-12 print:gap-6 mb-10 print:mb-6 relative z-10">
+            <div className="grid grid-cols-2 gap-12 print:gap-4 mb-10 print:mb-4 relative z-10">
                 {/* Bill To */}
-                <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group">
+                <div className="bg-slate-50 rounded-xl p-6 print:p-3 border border-slate-200 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-1 h-full bg-slate-800"></div>
                     <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
                         <span className="text-sm font-black text-slate-800 uppercase tracking-wider">العميل (Bill To)</span>
@@ -243,8 +243,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* Details */}
-                <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
-                    <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-2">
+                <div className="bg-white rounded-xl p-6 print:p-3 border border-slate-200 shadow-sm relative">
+                    <div className="flex items-center gap-2 mb-4 print:mb-2 border-b border-slate-100 pb-2">
                         <span className="text-sm font-black text-slate-800 uppercase tracking-wider">تفاصيل (Details)</span>
                     </div>
                     <div className="grid grid-cols-2 gap-y-5 gap-x-8 text-sm">
@@ -279,14 +279,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Items Table */}
-            <div className="mb-10 relative z-10 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+            <div className="mb-10 print:mb-4 relative z-10 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
                 <table className="w-full text-right border-collapse">
                     <thead>
                         <tr className="bg-slate-900 text-white">
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 w-16 text-center">#</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest w-1/2">الصنف / Item</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-center">الكمية / Qty</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-left pl-8">الإجمالي / Total</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-slate-400 w-16 text-center">#</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest w-1/2">الصنف / Item</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-center">الكمية / Qty</th>
+                            <th className="py-4 px-6 print:py-2 print:px-2 text-[10px] font-black uppercase tracking-widest text-left pl-8">الإجمالي / Total</th>
                         </tr>
                     </thead>
                     <tbody className="text-slate-800 text-sm bg-white">
@@ -296,8 +296,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                             return (
                                 <tr key={item.cartItemId} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors`}>
-                                    <td className="py-4 px-6 font-mono text-slate-400 text-center text-xs">{idx + 1}</td>
-                                    <td className="py-4 px-6">
+                                    <td className="py-4 px-6 print:py-2 print:px-2 font-mono text-slate-400 text-center text-xs">{idx + 1}</td>
+                                    <td className="py-4 px-6 print:py-2 print:px-2">
                                         <div className="font-bold text-slate-900 text-base">{item.name?.[lang] || item.name?.ar || item.name?.en || item.id}</div>
                                         <div className="flex flex-wrap gap-2 text-xs text-slate-500 mt-1.5">
                                             <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{pricing.unitPrice.toFixed(2)} {currencyCode}</span>

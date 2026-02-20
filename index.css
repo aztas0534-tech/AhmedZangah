@@ -430,9 +430,7 @@ svg {
     background-color: white;
     box-sizing: border-box;
     direction: rtl !important;
-    /* Scale down slightly to fit within hardware margins and center it */
-    transform: scale(0.96) !important;
-    transform-origin: top center !important;
+    /* Scale removed to allow full width flow */
   }
 
   /* Ensure content fits A4 width */
