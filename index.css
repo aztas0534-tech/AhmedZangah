@@ -430,6 +430,8 @@ svg {
     background-color: white;
     box-sizing: border-box;
     direction: rtl !important;
+    transform-origin: top right !important;
+    transform: scale(1.05) translateX(2mm) !important;
   }
 
   /* Ensure content fits A4 width with a safe margin */
