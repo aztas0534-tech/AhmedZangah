@@ -121,7 +121,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     };
 
     return (
-        <div ref={ref} className="bg-white min-h-screen relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
+        <div ref={ref} className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
                 @media print {
                     @page { size: A4; margin: 0; }
@@ -130,12 +130,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         width: 100% !important; 
                         max-width: none !important; 
                         margin: 0 !important; 
-                        padding: 5mm !important; 
+                        padding: 0 !important; 
                         box-sizing: border-box;
                     }
                 }
             `}</style>
-            <div className="invoice-container max-w-4xl mx-auto p-12 print:p-8 flex flex-col gap-8 h-full" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
+            <div className="invoice-container max-w-[210mm] mx-auto p-12 print:p-4 flex flex-col gap-8 h-full" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
             {/* Watermark for Copy */}
             {(isCopy || copyLabel) && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
