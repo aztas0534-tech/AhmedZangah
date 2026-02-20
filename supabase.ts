@@ -233,7 +233,6 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
     const headers = toHeaders(init?.headers);
     if (key) {
       if (!headers.has('apikey')) headers.set('apikey', key);
-      // لا نضبط Authorization هنا؛ supabase-js يضيف JWT للمستخدم تلقائياً عند توفر جلسة
     }
 
     const res = await baseFetch(input, { ...init, headers });
@@ -324,7 +323,10 @@ export const getSupabaseClient = (): SupabaseClient | null => {
 
   client = createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-    global: { fetch: withSupabaseHeaders(baseFetch, anonKey) },
+    global: { 
+      fetch: withSupabaseHeaders(baseFetch, anonKey),
+      headers: { apikey: anonKey }
+    },
   });
 
   return client;
