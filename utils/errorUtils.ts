@@ -90,6 +90,13 @@ export const localizeError = (message: string): string => {
   ) {
     return 'تعذر عرض التقرير بسبب عدم تطابق نسخة قاعدة البيانات (حقل المنطقة للطلبات غير موجود). طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
   }
+  if (
+    raw.includes('relation public.wastage_records does not exist') ||
+    raw.includes('relation \"public.wastage_records\" does not exist') ||
+    (raw.includes('relation') && raw.includes('wastage_records') && raw.includes('does not exist'))
+  ) {
+    return 'تعذر عرض التقرير بسبب عدم تطابق نسخة قاعدة البيانات (جدول الهدر غير موجود). طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
+  }
   if (raw.includes('there is no unique or exclusion constraint matching the on conflict specification')) {
     return 'حدث خطأ داخلي أثناء تسجيل العملية المالية. يرجى تحديث إعدادات قاعدة البيانات (المايجريشن) ثم إعادة المحاولة.';
   }

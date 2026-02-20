@@ -202,19 +202,35 @@ begin
     and sr.status = 'completed'
     and im.occurred_at between p_start_date and p_end_date;
 
-  select coalesce(sum(w.cost_amount), 0)
-  into v_total_wastage
-  from public.wastage_records w
-  where w.status = 'approved'
-    and w.created_at between p_start_date and p_end_date
-    and (p_zone_id is null or w.zone_id = p_zone_id);
+  begin
+    if to_regclass('public.wastage_records') is not null then
+      select coalesce(sum(w.cost_amount), 0)
+      into v_total_wastage
+      from public.wastage_records w
+      where w.status = 'approved'
+        and w.created_at between p_start_date and p_end_date
+        and (p_zone_id is null or w.zone_id = p_zone_id);
+    else
+      v_total_wastage := 0;
+    end if;
+  exception when others then
+    v_total_wastage := 0;
+  end;
 
-  select coalesce(sum(e.amount), 0)
-  into v_total_expenses
-  from public.expenses e
-  where e.status = 'approved'
-    and e.created_at between p_start_date and p_end_date
-    and (p_zone_id is null or e.zone_id = p_zone_id);
+  begin
+    if to_regclass('public.expenses') is not null then
+      select coalesce(sum(e.amount), 0)
+      into v_total_expenses
+      from public.expenses e
+      where e.status = 'approved'
+        and e.created_at between p_start_date and p_end_date
+        and (p_zone_id is null or e.zone_id = p_zone_id);
+    else
+      v_total_expenses := 0;
+    end if;
+  exception when others then
+    v_total_expenses := 0;
+  end;
 
   begin
     select coalesce(sum(dc.cost_amount), 0)
