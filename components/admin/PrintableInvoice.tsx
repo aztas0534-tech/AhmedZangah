@@ -175,6 +175,22 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     max-width: ${resolvedThermalPaperWidth};
                     margin: 0 auto;
                     padding: 0 2px;
+                    background: white;
+                }
+                @media print {
+                    @page {
+                        margin: 0;
+                        size: auto;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                    }
+                    .thermal-invoice {
+                        width: 100%;
+                        max-width: none;
+                        padding: 5px;
+                    }
                 }
                 .text-center { text-align: center; }
                 .text-right { text-align: right; }
