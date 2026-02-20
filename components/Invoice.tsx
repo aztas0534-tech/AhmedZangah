@@ -128,9 +128,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
                     .invoice-container { 
                         width: 100% !important; 
-                        max-width: 210mm !important; 
-                        margin: 0 auto !important; 
-                        padding: 8mm !important; 
+                        max-width: none !important; 
+                        margin: 0 !important; 
+                        padding: 5mm !important; 
                         box-sizing: border-box;
                     }
                 }
@@ -442,7 +442,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
 export const TriplicateInvoice = forwardRef<HTMLDivElement, InvoiceProps>((props, ref) => {
     return (
-        <div ref={ref} id="print-area">
+        <div ref={ref}>
             {/* Original / Customer Copy - Blue/Slate */}
             <div className="print:break-after-page">
                 <Invoice
