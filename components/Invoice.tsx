@@ -130,7 +130,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         width: 100% !important; 
                         max-width: none !important; 
                         margin: 0 !important; 
-                        padding: 10mm !important; 
+                        padding: 10mm !important; /* Safe padding for content */
                         box-sizing: border-box;
                     }
                 }
