@@ -1191,10 +1191,14 @@ export interface Expense {
   id: string;
   title: string;
   amount: number;
+  currency?: string;
+  fx_rate?: number;
+  base_amount?: number;
   category: 'rent' | 'salary' | 'utilities' | 'marketing' | 'maintenance' | 'other';
   date: string; // ISO date string YYYY-MM-DD
   notes?: string;
   cost_center_id?: string;
+  data?: Record<string, unknown>;
   createdAt: string;
 }
 

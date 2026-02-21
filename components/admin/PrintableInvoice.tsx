@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Order } from '../../types';
 import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
-import CurrencyDualAmount from '../common/CurrencyDualAmount';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -79,6 +78,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     isCopy = false,
     qrCodeDataUrl,
 }) => {
+    const effectiveLanguage: 'ar' = language === 'ar' ? 'ar' : 'ar';
     const invoiceSnapshot = order.invoiceSnapshot;
     const invoiceOrder = invoiceSnapshot
         ? {
@@ -113,12 +113,27 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const resolvedLogoUrl = logoUrl || '';
     const resolvedVatNumber = vatNumber || '';
     const resolvedThermalPaperWidth: '58mm' | '80mm' = thermalPaperWidth === '80mm' ? '80mm' : '58mm';
-    const systemName = language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn;
+    const systemName = AZTA_IDENTITY.tradeNameAr;
     const branchName = resolvedCompanyName.trim();
     const showBranchName = Boolean(branchName) && branchName !== systemName.trim();
 
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase();
     const currencyLabel = currencyCode || '—';
+    const currencyLabelAr = (codeRaw: string) => {
+        const c = String(codeRaw || '').trim().toUpperCase();
+        if (!c || c === '—') return 'عملة';
+        if (c === 'SAR') return 'ريال سعودي';
+        if (c === 'YER') return 'ريال يمني';
+        if (c === 'USD') return 'دولار أمريكي';
+        if (c === 'EUR') return 'يورو';
+        if (c === 'GBP') return 'جنيه إسترليني';
+        if (c === 'AED') return 'درهم إماراتي';
+        if (c === 'KWD') return 'دينار كويتي';
+        if (c === 'BHD') return 'دينار بحريني';
+        if (c === 'OMR') return 'ريال عُماني';
+        if (c === 'QAR') return 'ريال قطري';
+        return 'عملة';
+    };
     const formatAmount = (value: number) => {
         const n = Number(value) || 0;
         try {
@@ -146,30 +161,21 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             bank: 'حسابات بنكية',
             bank_transfer: 'حسابات بنكية',
             ar: 'آجل',
-            mixed: language === 'ar' ? 'متعدد' : 'Mixed',
+            mixed: 'متعدد',
         };
-        return methodMap[method] || (language === 'ar' ? 'غير معروف' : method);
+        return methodMap[method] || 'غير معروف';
     };
 
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
-
-    const fxMeta = useMemo(() => {
-        const snap: any = (order as any)?.invoiceSnapshot || {};
-        const baseC = String(snap.baseCurrency || '').toUpperCase();
-        const fx = Number(snap.fxRate ?? (order as any)?.fxRate ?? 1) || 1;
-        const txC = String((invoiceOrder as any)?.currency || '').toUpperCase();
-        const show = Boolean(baseC && txC && baseC !== txC && fx > 0);
-        return { baseCurrency: baseC, fxRate: fx, show };
-    }, [order, invoiceOrder]);
 
     return (
         <div className="thermal-invoice" dir="rtl">
             <style>{`
                 .thermal-invoice {
                     font-family: 'Tahoma', 'Arial', sans-serif;
-                    font-size: 12px;
-                    line-height: 1.4;
+                    font-size: 11px;
+                    line-height: 1.35;
                     color: #000;
                     width: ${resolvedThermalPaperWidth};
                     max-width: ${resolvedThermalPaperWidth};
@@ -213,9 +219,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 .logo-img { height: 100px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
                 table { width: 100%; border-collapse: collapse; }
                 th { text-align: right; font-size: 10px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
-                td { padding: 4px 0; vertical-align: top; }
+                td { padding: 3px 0; vertical-align: top; }
                 .item-name { font-weight: bold; margin-bottom: 2px; }
-                .item-meta { font-size: 10px; color: #444; }
+                .item-meta { font-size: 9px; color: #444; }
                 .total-box { border: 2px solid #000; padding: 8px; margin-top: 10px; border-radius: 4px; }
                 .watermark { 
                     position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
@@ -238,7 +244,6 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
             <div className="text-center border-y py-1 mb-2">
                 <div className="font-bold text-lg">فاتورة ضريبية</div>
-                {language === 'ar' ? null : <div className="text-xs uppercase tracking-wider">Tax Invoice</div>}
             </div>
 
             <div className="mb-2 text-sm">
@@ -265,36 +270,82 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <table className="mb-2">
                 <thead>
                     <tr>
-                        <th style={{ width: '45%' }}>الصنف</th>
-                        <th style={{ width: '15%', textAlign: 'center' }}>الكمية</th>
-                        <th style={{ width: '20%', textAlign: 'center' }}>السعر</th>
-                        <th style={{ width: '20%', textAlign: 'left' }}>المجموع</th>
+                        {resolvedThermalPaperWidth === '58mm' ? (
+                          <th style={{ width: '100%' }}>تفاصيل الأصناف</th>
+                        ) : (
+                          <>
+                            <th style={{ width: '14%' }}>رقم الصنف</th>
+                            <th style={{ width: '30%' }}>الصنف</th>
+                            <th style={{ width: '12%', textAlign: 'center' }}>الوحدة</th>
+                            <th style={{ width: '12%', textAlign: 'center' }}>الكمية</th>
+                            <th style={{ width: '16%', textAlign: 'center' }}>سعر الحبة</th>
+                            <th style={{ width: '16%', textAlign: 'left' }}>الإجمالي</th>
+                          </>
+                        )}
                     </tr>
                 </thead>
                 <tbody>
                     {invoiceOrder.items.map((item, index) => {
                         const pricing = computeCartItemPricing(item);
-                        const displayQty = (() => {
-                            if (pricing.isWeightBased) return `${pricing.quantity} ${pricing.unitType === 'gram' ? 'غ' : 'كغ'}`;
-                            const uom = localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
-                            return `${String(item.quantity)} ${uom}`;
+                        const itemNo = (() => {
+                            const rawBarcode = String((item as any)?.barcode || '').trim();
+                            if (rawBarcode) return rawBarcode;
+                            const rawId = String(item?.id || '').trim();
+                            if (!rawId) return '—';
+                            return rawId.replace(/-/g, '').slice(-6).toUpperCase();
                         })();
+                        const soldUnit = pricing.isWeightBased
+                            ? localizeUomCodeAr(String(pricing.unitType || 'kg'))
+                            : localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
+                        const soldQty = pricing.isWeightBased ? String(pricing.quantity) : String(item.quantity);
+                        const invoiceCurrencyLabel = currencyLabelAr(currencyLabel);
+                        const unitPrice = pricing.unitPrice;
+                        const lineTotal = pricing.lineTotal;
 
                         return (
                             <tr key={item.cartItemId || index}>
-                                <td>
-                                    <div className="item-name">{item.name?.[language] || item.name?.ar || item.name?.en}</div>
+                                {resolvedThermalPaperWidth === '58mm' ? (
+                                  <td>
+                                    <div className="item-name">
+                                      <span className="tabular" dir="ltr">{itemNo}</span>
+                                      <span> - </span>
+                                      <span>{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</span>
+                                    </div>
                                     {Object.values(item.selectedAddons).length > 0 && (
-                                        <div className="item-meta">
-                                            {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
-                                                <span key={i}>+ {addon.name[language]} {quantity > 1 ? `(${quantity})` : ''} </span>
-                                            ))}
-                                        </div>
+                                      <div className="item-meta">
+                                        {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
+                                          <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
+                                        ))}
+                                      </div>
                                     )}
-                                </td>
-                                <td className="text-center tabular">{displayQty}</td>
-                                <td className="text-center tabular">{formatAmount(pricing.unitPrice)}</td>
-                                <td className="text-left font-bold tabular">{formatAmount(pricing.lineTotal)}</td>
+                                    <div className="item-meta">
+                                      <span>الوحدة: {soldUnit}</span>
+                                      <span> | </span>
+                                      <span className="tabular" dir="ltr">الكمية: {soldQty}</span>
+                                      <span> | </span>
+                                      <span className="tabular" dir="ltr">سعر الحبة: {formatAmount(unitPrice)} {invoiceCurrencyLabel}</span>
+                                    </div>
+                                    <div className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</div>
+                                  </td>
+                                ) : (
+                                  <>
+                                    <td className="tabular" dir="ltr">{itemNo}</td>
+                                    <td>
+                                      <div className="item-name">{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</div>
+                                      {Object.values(item.selectedAddons).length > 0 && (
+                                        <div className="item-meta">
+                                          {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
+                                            <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="text-center">{soldUnit}</td>
+                                    <td className="text-center tabular" dir="ltr">{soldQty}</td>
+                                    <td className="text-center tabular" dir="ltr">{formatAmount(unitPrice)} {invoiceCurrencyLabel}</td>
+                                    <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</td>
+                                  </>
+                                )}
                             </tr>
                         );
                     })}
@@ -304,41 +355,39 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div className="border-t pt-2 mb-2">
                 <div className="flex mb-1">
                     <span>المجموع الفرعي:</span>
-                    <span className="tabular">{formatAmount(invoiceOrder.subtotal)}</span>
+                    <span className="tabular" dir="ltr">
+                      {formatAmount(Number(invoiceOrder.subtotal) || 0)} {currencyLabelAr(currencyLabel)}
+                    </span>
                 </div>
                 {(invoiceOrder.discountAmount || 0) > 0 && (
                     <div className="flex mb-1">
                         <span>الخصم:</span>
-                        <span className="tabular">- {formatAmount(invoiceOrder.discountAmount || 0)}</span>
+                        <span className="tabular" dir="ltr">
+                          - {formatAmount(Number(invoiceOrder.discountAmount) || 0)} {currencyLabelAr(currencyLabel)}
+                        </span>
                     </div>
                 )}
                 <div className="flex mb-1">
                     <span>الضريبة (15%):</span>
-                    <span className="tabular">{formatAmount(invoiceOrder.taxAmount || 0)}</span>
+                    <span className="tabular" dir="ltr">
+                      {formatAmount(Number(invoiceOrder.taxAmount) || 0)} {currencyLabelAr(currencyLabel)}
+                    </span>
                 </div>
                 {Number(invoiceOrder.deliveryFee) > 0 && (
                     <div className="flex mb-1">
                         <span>التوصيل:</span>
-                        <span className="tabular">{formatAmount(Number(invoiceOrder.deliveryFee))}</span>
+                        <span className="tabular" dir="ltr">
+                          {formatAmount(Number(invoiceOrder.deliveryFee) || 0)} {currencyLabelAr(currencyLabel)}
+                        </span>
                     </div>
                 )}
             </div>
 
             <div className="total-box text-center mb-4">
                 <div className="text-sm font-bold mb-1">الإجمالي النهائي</div>
-                <div className="text-xl font-bold tabular" dir="ltr">{formatAmount(invoiceOrder.total)} {currencyLabel}</div>
-                {fxMeta.show ? (
-                    <div className="mt-1 text-xs">
-                        <CurrencyDualAmount
-                          amount={Number(invoiceOrder.total) || 0}
-                          currencyCode={String((invoiceOrder as any)?.currency || '').toUpperCase()}
-                          baseAmount={Number(invoiceOrder.total) * Number(fxMeta.fxRate)}
-                          fxRate={fxMeta.fxRate}
-                          baseCurrencyCode={fxMeta.baseCurrency}
-                          compact
-                        />
-                    </div>
-                ) : null}
+                <div className="text-xl font-bold tabular" dir="ltr">
+                  {formatAmount(Number(invoiceOrder.total) || 0)} {currencyLabelAr(currencyLabel)}
+                </div>
             </div>
 
             <div className="mb-4 text-sm border-b pb-2">

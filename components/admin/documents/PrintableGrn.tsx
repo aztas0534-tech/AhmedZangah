@@ -36,7 +36,6 @@ export type PrintableGrnData = {
 export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Brand; language?: 'ar' | 'en' }) {
   const { data, brand, language = 'ar' } = props;
 
-
   return (
     <div className="grn-container" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       <style>{`

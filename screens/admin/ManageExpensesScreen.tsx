@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 // import { useSettings } from '../../contexts/SettingsContext';
 import NumberInput from '../../components/NumberInput';
+import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { nextMonthStartYmd, toDateInputValue, toDateTimeLocalInputValue, toMonthInputValue, toUtcIsoAtMiddayFromYmd } from '../../utils/dateUtils';
 
 const ManageExpensesScreen: React.FC = () => {
@@ -15,6 +16,7 @@ const ManageExpensesScreen: React.FC = () => {
     const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
     const [loading, setLoading] = useState(true);
     const [baseCode, setBaseCode] = useState('—');
+    const [currencyCodes, setCurrencyCodes] = useState<string[]>(['YER']);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [filterDate, setFilterDate] = useState<string>(toMonthInputValue());
@@ -29,6 +31,8 @@ const ManageExpensesScreen: React.FC = () => {
     const [formData, setFormData] = useState<Partial<Expense>>({
         title: '',
         amount: 0,
+        currency: '',
+        fx_rate: 1,
         category: 'other',
         date: toDateInputValue(),
         notes: '',
@@ -44,6 +48,11 @@ const ManageExpensesScreen: React.FC = () => {
 
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
+
+    const normalizeCurrencyCode = (value: string) => {
+        const code = String(value || '').trim().toUpperCase();
+        return code === '—' ? '' : code;
+    };
 
     const normalizePaymentMethod = (value: string) => {
         const raw = (value || '').trim();
@@ -72,6 +81,44 @@ const ManageExpensesScreen: React.FC = () => {
             setBaseCode(c);
         });
     }, []);
+
+    useEffect(() => {
+        const run = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const base = normalizeCurrencyCode(baseCode) || 'YER';
+            try {
+                const { data, error } = await supabase.from('currencies').select('code').order('code', { ascending: true });
+                if (error) throw error;
+                const codes = (Array.isArray(data) ? data : [])
+                    .map((r: any) => normalizeCurrencyCode(r?.code))
+                    .filter(Boolean);
+                const unique = Array.from(new Set(codes));
+                if (unique.length > 0) {
+                    setCurrencyCodes(unique);
+                    return;
+                }
+                if (base) setCurrencyCodes([base]);
+            } catch {
+                if (base) setCurrencyCodes([base]);
+            }
+        };
+        if (normalizeCurrencyCode(baseCode)) {
+            void run();
+        }
+    }, [baseCode]);
+
+    useEffect(() => {
+        if (!isModalOpen) return;
+        const base = normalizeCurrencyCode(baseCode) || 'YER';
+        if (!base) return;
+        setFormData((prev) => {
+            const current = normalizeCurrencyCode(String((prev as any)?.currency || ''));
+            const currency = current || base;
+            const fxRate = currency === base ? 1 : Number((prev as any)?.fx_rate ?? 0) || 0;
+            return { ...prev, currency, fx_rate: fxRate || (currency === base ? 1 : prev.fx_rate) };
+        });
+    }, [isModalOpen, baseCode]);
 
     useEffect(() => {
         if (!canViewAccounting) return;
@@ -116,6 +163,21 @@ const ManageExpensesScreen: React.FC = () => {
         fetchExpenses();
         fetchCostCenters();
     }, [filterDate]);
+
+    const fetchFxRate = async (currency: string, dateYmd: string) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return null;
+        const code = normalizeCurrencyCode(currency);
+        if (!code) return null;
+        const { data, error } = await supabase.rpc('get_fx_rate', {
+            p_currency: code,
+            p_date: dateYmd,
+            p_rate_type: 'operational',
+        });
+        if (error) return null;
+        const n = Number(data);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    };
 
     const fetchCostCenters = async () => {
         const supabase = getSupabaseClient();
@@ -162,9 +224,30 @@ const ManageExpensesScreen: React.FC = () => {
                 return;
             }
 
+            const base = normalizeCurrencyCode(baseCode) || 'YER';
+            const selectedCurrency = normalizeCurrencyCode(String((formData as any)?.currency || base));
+            if (!selectedCurrency) {
+                showNotification('يرجى اختيار العملة', 'error');
+                return;
+            }
+
+            let fxRate = Number((formData as any)?.fx_rate ?? 0);
+            if (selectedCurrency === base) {
+                fxRate = 1;
+            } else if (!Number.isFinite(fxRate) || fxRate <= 0) {
+                const lookedUp = await fetchFxRate(selectedCurrency, String(formData.date));
+                if (!lookedUp) {
+                    showNotification('لا يوجد سعر صرف لهذه العملة في هذا التاريخ', 'error');
+                    return;
+                }
+                fxRate = lookedUp;
+            }
+
             const { data: inserted, error } = await supabase.from('expenses').insert({
                 title: formData.title,
                 amount: formData.amount,
+                currency: selectedCurrency,
+                fx_rate: fxRate,
                 category: formData.category,
                 date: formData.date,
                 notes: formData.notes,
@@ -201,6 +284,8 @@ const ManageExpensesScreen: React.FC = () => {
             setFormData({
                 title: '',
                 amount: 0,
+                currency: '',
+                fx_rate: 1,
                 category: 'other',
                 date: toDateInputValue(),
                 notes: '',
@@ -277,7 +362,17 @@ const ManageExpensesScreen: React.FC = () => {
         }
     };
 
-    const totalExpenses = useMemo(() => expenses.reduce((sum, exp) => sum + exp.amount, 0), [expenses]);
+    const totalExpensesBase = useMemo(() => {
+        const base = normalizeCurrencyCode(baseCode) || 'YER';
+        return expenses.reduce((sum, exp) => {
+            const anyExp = exp as any;
+            const expCurrency = normalizeCurrencyCode(String(anyExp?.currency || base));
+            const fx = Number(anyExp?.fx_rate ?? 1);
+            const baseAmount = typeof anyExp?.base_amount === 'number' ? Number(anyExp.base_amount) : Number(anyExp?.amount || 0) * (Number.isFinite(fx) && fx > 0 ? fx : 1);
+            if (expCurrency && base && expCurrency !== base) return sum + (Number.isFinite(baseAmount) ? baseAmount : 0);
+            return sum + Number(anyExp?.amount || 0);
+        }, 0);
+    }, [expenses, baseCode]);
 
     const categoryLabels: Record<string, string> = {
         rent: 'إيجار',
@@ -310,7 +405,7 @@ const ManageExpensesScreen: React.FC = () => {
                     className="p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                 />
                 <div className="mr-auto font-bold text-lg dark:text-white">
-                    الإجمالي: <span className="text-red-500" dir="ltr">{Number(totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCode || '—'}</span>
+                    الإجمالي: <span className="text-red-500" dir="ltr">{Number(totalExpensesBase || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {normalizeCurrencyCode(baseCode) || '—'}</span>
                 </div>
             </div>
 
@@ -341,7 +436,21 @@ const ManageExpensesScreen: React.FC = () => {
                                         {exp.notes && <div className="text-xs text-gray-500">{exp.notes}</div>}
                                     </td>
                                     <td className="p-2 sm:p-3 border-r dark:border-gray-700"><span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{categoryLabels[exp.category] || exp.category}</span></td>
-                                    <td className="p-2 sm:p-3 font-bold text-red-600 border-r dark:border-gray-700" dir="ltr">{Number(exp.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCode || '—'}</td>
+                                    <td className="p-2 sm:p-3 font-bold text-red-600 border-r dark:border-gray-700">
+                                        <CurrencyDualAmount
+                                            amount={Number((exp as any)?.amount || 0)}
+                                            currencyCode={normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER'}
+                                            baseAmount={(normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
+                                                ? (typeof (exp as any)?.base_amount === 'number'
+                                                    ? Number((exp as any).base_amount)
+                                                    : Number((exp as any)?.amount || 0) * Number((exp as any)?.fx_rate || 1))
+                                                : undefined}
+                                            fxRate={(normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
+                                                ? Number((exp as any)?.fx_rate || 1)
+                                                : undefined}
+                                            baseCurrencyCode={normalizeCurrencyCode(baseCode) || 'YER'}
+                                        />
+                                    </td>
                                     <td className="p-2 sm:p-3">
                                         <button onClick={() => openPaymentModal(exp)} className="text-primary-600 hover:text-primary-700 text_sm ml-3">دفع</button>
                                         <button onClick={() => handleDelete(exp.id)} className="text-red-500 hover:text-red-700 text_sm">حذف</button>
@@ -384,12 +493,61 @@ const ManageExpensesScreen: React.FC = () => {
                                     />
                                 </div>
                                 <div>
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">العملة</label>
+                                    <select
+                                        value={normalizeCurrencyCode(String((formData as any)?.currency || normalizeCurrencyCode(baseCode))) || (currencyCodes[0] || normalizeCurrencyCode(baseCode) || 'YER')}
+                                        onChange={async (e) => {
+                                            const nextCurrency = normalizeCurrencyCode(e.target.value);
+                                            const base = normalizeCurrencyCode(baseCode) || 'YER';
+                                            if (!nextCurrency) return;
+                                            if (nextCurrency === base) {
+                                                setFormData({ ...formData, currency: nextCurrency, fx_rate: 1 });
+                                                return;
+                                            }
+                                            setFormData({ ...formData, currency: nextCurrency });
+                                            const lookedUp = await fetchFxRate(nextCurrency, String(formData.date));
+                                            if (lookedUp) {
+                                                setFormData((prev) => ({ ...prev, currency: nextCurrency, fx_rate: lookedUp }));
+                                            }
+                                        }}
+                                        className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                                    >
+                                        {(currencyCodes.length > 0 ? currencyCodes : [normalizeCurrencyCode(baseCode) || 'YER']).map((c) => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">سعر الصرف (إلى {normalizeCurrencyCode(baseCode) || '—'})</label>
+                                    <NumberInput
+                                        id="fxRate"
+                                        name="fxRate"
+                                        value={Number((formData as any)?.fx_rate ?? 1)}
+                                        onChange={e => setFormData({ ...formData, fx_rate: parseFloat(e.target.value) })}
+                                        min={0}
+                                        step={0.000001}
+                                    />
+                                </div>
+                                <div>
                                     <label className="block text-sm font-medium mb-1 dark:text-gray-300">التاريخ</label>
                                     <input
                                         type="date"
                                         required
                                         value={formData.date}
-                                        onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                        onChange={async (e) => {
+                                            const nextDate = e.target.value;
+                                            setFormData({ ...formData, date: nextDate });
+                                            const base = normalizeCurrencyCode(baseCode) || 'YER';
+                                            const cur = normalizeCurrencyCode(String((formData as any)?.currency || base));
+                                            if (cur && base && cur !== base) {
+                                                const lookedUp = await fetchFxRate(cur, nextDate);
+                                                if (lookedUp) setFormData((prev) => ({ ...prev, fx_rate: lookedUp }));
+                                            } else if (cur === base) {
+                                                setFormData((prev) => ({ ...prev, fx_rate: 1 }));
+                                            }
+                                        }}
                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
                                     />
                                 </div>
@@ -499,6 +657,21 @@ const ManageExpensesScreen: React.FC = () => {
                         <form onSubmit={handleRecordPayment} className="space-y-4">
                             <div className="text-sm dark:text-gray-300">
                                 {paymentExpense.title} ({paymentExpense.date})
+                            </div>
+                            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                                <CurrencyDualAmount
+                                    amount={Number((paymentExpense as any)?.amount || 0)}
+                                    currencyCode={normalizeCurrencyCode(String((paymentExpense as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER'}
+                                    baseAmount={(normalizeCurrencyCode(String((paymentExpense as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
+                                        ? (typeof (paymentExpense as any)?.base_amount === 'number'
+                                            ? Number((paymentExpense as any).base_amount)
+                                            : Number((paymentExpense as any)?.amount || 0) * Number((paymentExpense as any)?.fx_rate || 1))
+                                        : undefined}
+                                    fxRate={(normalizeCurrencyCode(String((paymentExpense as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
+                                        ? Number((paymentExpense as any)?.fx_rate || 1)
+                                        : undefined}
+                                    baseCurrencyCode={normalizeCurrencyCode(baseCode) || 'YER'}
+                                />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
