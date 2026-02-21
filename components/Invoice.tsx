@@ -73,9 +73,6 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     const invoiceTermsLabel = invoiceTerms === 'credit' ? 'أجل' : 'نقد';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase() || '—';
-    const baseCurrencyCode = String(settings.baseCurrency || '').trim().toUpperCase() || currencyCode || '—';
-    const fxRateRaw = Number((invoiceOrder as any).fxRate ?? 1) || 1;
-    const useFx = Boolean(baseCurrencyCode && currencyCode && baseCurrencyCode !== currencyCode && fxRateRaw > 0);
     const vatNumber = (settings.taxSettings?.taxNumber || '').trim();
     const taxAmount = Number((invoiceOrder as any).taxAmount) || 0;
     const issueIso = String(invoiceDate || new Date().toISOString());
@@ -104,8 +101,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         return 'عملة';
     };
 
-    const baseCurrencyLabel = currencyLabelAr(baseCurrencyCode);
-    const txCurrencyLabel = currencyLabelAr(currencyCode);
+    const invoiceCurrencyLabel = currencyLabelAr(currencyCode);
 
     const getItemNumber = (item: CartItem) => {
         const rawBarcode = String((item as any)?.barcode || '').trim();
@@ -118,11 +114,21 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     const safeUomLabelAr = (codeOrName: string) => {
         const raw = String(codeOrName || '').trim();
         if (!raw) return 'وحدة';
+        const hasArabic = /[\u0600-\u06FF]/.test(raw);
+        if (hasArabic) return raw;
         const mapped = localizeUomCodeAr(raw);
         if (!mapped || mapped === '—') return 'وحدة';
         if (String(mapped).trim() === raw) {
             const lower = raw.toLowerCase();
-            if (lower === 'piece' || lower === 'pack' || lower === 'carton' || lower === 'box' || lower === 'bottle' || lower === 'kg' || lower === 'gram' || lower === 'g') {
+            if (
+                lower === 'piece' || lower === 'pcs' || lower === 'pc' ||
+                lower === 'pack' || lower === 'pkt' ||
+                lower === 'carton' || lower === 'ctn' ||
+                lower === 'box' ||
+                lower === 'bottle' ||
+                lower === 'kg' ||
+                lower === 'gram' || lower === 'g'
+            ) {
                 return mapped;
             }
             return 'وحدة';
@@ -389,8 +395,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest">اسم الصنف</th>
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-center w-28">الوحدة</th>
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-center w-28">الكمية</th>
-                            <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-left pl-6 w-40">{`سعر الوحدة الأساسية (${baseCurrencyLabel})`}</th>
-                            <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-left pl-8 w-44">{`الإجمالي (${baseCurrencyLabel})`}</th>
+                            <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-left pl-6 w-40">{`سعر الحبة (${invoiceCurrencyLabel})`}</th>
+                            <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-left pl-8 w-44">{`الإجمالي (${invoiceCurrencyLabel})`}</th>
                         </tr>
                     </thead>
                     <tbody className="text-slate-800 text-sm print:text-[10px] bg-white">
@@ -399,8 +405,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             const itemNo = getItemNumber(item);
                             const soldUnitLabel = getSoldUnitLabelAr(item, pricing);
                             const soldQtyText = getSoldQuantityTextAr(item, pricing);
-                            const baseUnitPrice = pricing.unitPrice * (useFx ? fxRateRaw : 1);
-                            const baseLineTotal = pricing.lineTotal * (useFx ? fxRateRaw : 1);
+                            const unitPrice = pricing.unitPrice;
+                            const lineTotal = pricing.lineTotal;
                             const baseUnitLabel = (() => {
                                 if (pricing.isWeightBased) return soldUnitLabel;
                                 const unitTypeLabel = getUnitLabel((item as any)?.unitType, 'ar');
@@ -430,23 +436,13 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                         <span className="font-mono font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800 print:bg-transparent print:px-0 print:py-0 print:rounded-none" dir="ltr">{soldQtyText}</span>
                                     </td>
                                     <td className="py-4 px-6 print:py-1 print:px-1 text-left pl-6" dir="ltr">
-                                        <div className="font-mono font-bold text-slate-900 print:text-[10px]">{formatMoney(baseUnitPrice)} {baseCurrencyLabel}</div>
+                                        <div className="font-mono font-bold text-slate-900 print:text-[10px]">{formatMoney(unitPrice)} {invoiceCurrencyLabel}</div>
                                         <div className="text-[11px] print:text-[9px] text-slate-500">
                                             {`(${baseUnitLabel})`}
                                         </div>
-                                        {useFx && (
-                                            <div className="text-[11px] print:text-[9px] text-slate-500 font-mono">
-                                                <span dir="ltr">{formatMoney(pricing.unitPrice)} {txCurrencyLabel}</span>
-                                            </div>
-                                        )}
                                     </td>
                                     <td className="py-4 px-6 print:py-1 print:px-1 text-left font-mono font-bold text-slate-900 pl-8 text-base print:text-[11px]" dir="ltr">
-                                        <div>{formatMoney(baseLineTotal)} {baseCurrencyLabel}</div>
-                                        {useFx && (
-                                            <div className="text-[11px] print:text-[9px] text-slate-500 font-mono font-normal">
-                                                <span dir="ltr">{formatMoney(pricing.lineTotal)} {txCurrencyLabel}</span>
-                                            </div>
-                                        )}
+                                        <div>{formatMoney(lineTotal)} {invoiceCurrencyLabel}</div>
                                     </td>
                                 </tr>
                             );
@@ -499,7 +495,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         <div className="flex justify-between items-center text-slate-300 relative z-10">
                             <span className="font-medium text-sm print:text-xs">المجموع الفرعي</span>
                             <span className="font-mono font-bold text-white" dir="ltr">
-                                {formatMoney((Number(invoiceOrder.subtotal) || 0) * (useFx ? fxRateRaw : 1))} {baseCurrencyLabel}
+                                {formatMoney(Number(invoiceOrder.subtotal) || 0)} {invoiceCurrencyLabel}
                             </span>
                         </div>
 
@@ -507,7 +503,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             <div className="flex justify-between items-center text-emerald-400 relative z-10">
                                 <span className="font-medium text-sm print:text-xs">الخصم</span>
                                 <span className="font-mono font-bold" dir="ltr">
-                                    - {formatMoney((Number(invoiceOrder.discountAmount) || 0) * (useFx ? fxRateRaw : 1))} {baseCurrencyLabel}
+                                    - {formatMoney(Number(invoiceOrder.discountAmount) || 0)} {invoiceCurrencyLabel}
                                 </span>
                             </div>
                         )}
@@ -515,7 +511,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         <div className="flex justify-between items-center text-slate-300 relative z-10">
                             <span className="font-medium text-sm print:text-xs">ضريبة القيمة المضافة ({Number((invoiceOrder as any).taxRate || 0)}%)</span>
                             <span className="font-mono font-bold text-white" dir="ltr">
-                                {formatMoney(taxAmount * (useFx ? fxRateRaw : 1))} {baseCurrencyLabel}
+                                {formatMoney(taxAmount)} {invoiceCurrencyLabel}
                             </span>
                         </div>
 
@@ -524,20 +520,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         <div className="flex justify-between items-center relative z-10">
                             <span className="font-black text-xl print:text-base">الإجمالي</span>
                             <span className="font-black font-mono text-3xl print:text-xl tracking-tight text-white" dir="ltr">
-                                {formatMoney((typeof (invoiceOrder as any).baseTotal === 'number' && Number.isFinite((invoiceOrder as any).baseTotal))
-                                    ? Number((invoiceOrder as any).baseTotal)
-                                    : (Number(invoiceOrder.total) || 0) * (useFx ? fxRateRaw : 1)
-                                )} {baseCurrencyLabel}
+                                {formatMoney(Number(invoiceOrder.total) || 0)} {invoiceCurrencyLabel}
                             </span>
                         </div>
-                        {useFx && (
-                            <div className="pt-3 print:pt-2 border-t border-slate-700 text-slate-300 text-sm print:text-xs flex justify-between items-center relative z-10">
-                                <span className="font-medium">إجمالي المعاملة</span>
-                                <span className="font-mono font-bold text-white" dir="ltr">
-                                    {formatMoney(Number(invoiceOrder.total) || 0)} {txCurrencyLabel}
-                                </span>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>

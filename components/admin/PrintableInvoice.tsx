@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Order } from '../../types';
 import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
-import CurrencyDualAmount from '../common/CurrencyDualAmount';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -170,15 +169,6 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
 
-    const fxMeta = useMemo(() => {
-        const snap: any = (order as any)?.invoiceSnapshot || {};
-        const baseC = String(snap.baseCurrency || '').toUpperCase();
-        const fx = Number(snap.fxRate ?? (order as any)?.fxRate ?? 1) || 1;
-        const txC = String((invoiceOrder as any)?.currency || '').toUpperCase();
-        const show = Boolean(baseC && txC && baseC !== txC && fx > 0);
-        return { baseCurrency: baseC, fxRate: fx, show };
-    }, [order, invoiceOrder]);
-
     return (
         <div className="thermal-invoice" dir="rtl">
             <style>{`
@@ -308,10 +298,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                             ? localizeUomCodeAr(String(pricing.unitType || 'kg'))
                             : localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
                         const soldQty = pricing.isWeightBased ? String(pricing.quantity) : String(item.quantity);
-                        const baseCurrencyLabel = currencyLabelAr(fxMeta.baseCurrency || currencyLabel);
-                        const txCurrencyLabel = currencyLabelAr(currencyLabel);
-                        const unitPriceBase = pricing.unitPrice * (fxMeta.show ? Number(fxMeta.fxRate) : 1);
-                        const lineTotalBase = pricing.lineTotal * (fxMeta.show ? Number(fxMeta.fxRate) : 1);
+                        const invoiceCurrencyLabel = currencyLabelAr(currencyLabel);
+                        const unitPrice = pricing.unitPrice;
+                        const lineTotal = pricing.lineTotal;
 
                         return (
                             <tr key={item.cartItemId || index}>
@@ -334,12 +323,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                                       <span> | </span>
                                       <span className="tabular" dir="ltr">الكمية: {soldQty}</span>
                                       <span> | </span>
-                                      <span className="tabular" dir="ltr">سعر الحبة: {formatAmount(unitPriceBase)} {baseCurrencyLabel}</span>
+                                      <span className="tabular" dir="ltr">سعر الحبة: {formatAmount(unitPrice)} {invoiceCurrencyLabel}</span>
                                     </div>
-                                    <div className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotalBase)} {baseCurrencyLabel}</div>
-                                    {fxMeta.show ? (
-                                      <div className="item-meta tabular" dir="ltr">{formatAmount(pricing.lineTotal)} {txCurrencyLabel}</div>
-                                    ) : null}
+                                    <div className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</div>
                                   </td>
                                 ) : (
                                   <>
@@ -356,8 +342,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                                     </td>
                                     <td className="text-center">{soldUnit}</td>
                                     <td className="text-center tabular" dir="ltr">{soldQty}</td>
-                                    <td className="text-center tabular" dir="ltr">{formatAmount(unitPriceBase)} {baseCurrencyLabel}</td>
-                                    <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotalBase)} {baseCurrencyLabel}</td>
+                                    <td className="text-center tabular" dir="ltr">{formatAmount(unitPrice)} {invoiceCurrencyLabel}</td>
+                                    <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</td>
                                   </>
                                 )}
                             </tr>
@@ -370,28 +356,28 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 <div className="flex mb-1">
                     <span>المجموع الفرعي:</span>
                     <span className="tabular" dir="ltr">
-                      {formatAmount((Number(invoiceOrder.subtotal) || 0) * (fxMeta.show ? Number(fxMeta.fxRate) : 1))} {currencyLabelAr(fxMeta.baseCurrency || currencyLabel)}
+                      {formatAmount(Number(invoiceOrder.subtotal) || 0)} {currencyLabelAr(currencyLabel)}
                     </span>
                 </div>
                 {(invoiceOrder.discountAmount || 0) > 0 && (
                     <div className="flex mb-1">
                         <span>الخصم:</span>
                         <span className="tabular" dir="ltr">
-                          - {formatAmount((Number(invoiceOrder.discountAmount) || 0) * (fxMeta.show ? Number(fxMeta.fxRate) : 1))} {currencyLabelAr(fxMeta.baseCurrency || currencyLabel)}
+                          - {formatAmount(Number(invoiceOrder.discountAmount) || 0)} {currencyLabelAr(currencyLabel)}
                         </span>
                     </div>
                 )}
                 <div className="flex mb-1">
                     <span>الضريبة (15%):</span>
                     <span className="tabular" dir="ltr">
-                      {formatAmount((Number(invoiceOrder.taxAmount) || 0) * (fxMeta.show ? Number(fxMeta.fxRate) : 1))} {currencyLabelAr(fxMeta.baseCurrency || currencyLabel)}
+                      {formatAmount(Number(invoiceOrder.taxAmount) || 0)} {currencyLabelAr(currencyLabel)}
                     </span>
                 </div>
                 {Number(invoiceOrder.deliveryFee) > 0 && (
                     <div className="flex mb-1">
                         <span>التوصيل:</span>
                         <span className="tabular" dir="ltr">
-                          {formatAmount((Number(invoiceOrder.deliveryFee) || 0) * (fxMeta.show ? Number(fxMeta.fxRate) : 1))} {currencyLabelAr(fxMeta.baseCurrency || currencyLabel)}
+                          {formatAmount(Number(invoiceOrder.deliveryFee) || 0)} {currencyLabelAr(currencyLabel)}
                         </span>
                     </div>
                 )}
@@ -400,25 +386,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div className="total-box text-center mb-4">
                 <div className="text-sm font-bold mb-1">الإجمالي النهائي</div>
                 <div className="text-xl font-bold tabular" dir="ltr">
-                  {formatAmount((Number(invoiceOrder.total) || 0) * (fxMeta.show ? Number(fxMeta.fxRate) : 1))} {currencyLabelAr(fxMeta.baseCurrency || currencyLabel)}
+                  {formatAmount(Number(invoiceOrder.total) || 0)} {currencyLabelAr(currencyLabel)}
                 </div>
-                {fxMeta.show ? (
-                  <div className="mt-1 text-xs tabular" dir="ltr">
-                    {formatAmount(Number(invoiceOrder.total) || 0)} {currencyLabelAr(currencyLabel)}
-                  </div>
-                ) : null}
-                {fxMeta.show ? (
-                    <div className="mt-1 text-xs">
-                        <CurrencyDualAmount
-                          amount={Number(invoiceOrder.total) || 0}
-                          currencyCode={String((invoiceOrder as any)?.currency || '').toUpperCase()}
-                          baseAmount={Number(invoiceOrder.total) * Number(fxMeta.fxRate)}
-                          fxRate={fxMeta.fxRate}
-                          baseCurrencyCode={fxMeta.baseCurrency}
-                          compact
-                        />
-                    </div>
-                ) : null}
             </div>
 
             <div className="mb-4 text-sm border-b pb-2">
