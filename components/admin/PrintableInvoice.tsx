@@ -184,8 +184,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <style>{`
                 .thermal-invoice {
                     font-family: 'Tahoma', 'Arial', sans-serif;
-                    font-size: 12px;
-                    line-height: 1.4;
+                    font-size: 11px;
+                    line-height: 1.35;
                     color: #000;
                     width: ${resolvedThermalPaperWidth};
                     max-width: ${resolvedThermalPaperWidth};
@@ -229,9 +229,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 .logo-img { height: 100px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
                 table { width: 100%; border-collapse: collapse; }
                 th { text-align: right; font-size: 10px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
-                td { padding: 4px 0; vertical-align: top; }
+                td { padding: 3px 0; vertical-align: top; }
                 .item-name { font-weight: bold; margin-bottom: 2px; }
-                .item-meta { font-size: 10px; color: #444; }
+                .item-meta { font-size: 9px; color: #444; }
                 .total-box { border: 2px solid #000; padding: 8px; margin-top: 10px; border-radius: 4px; }
                 .watermark { 
                     position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
