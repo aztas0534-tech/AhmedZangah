@@ -699,3 +699,187 @@ revoke all on function public.create_purchase_return(uuid, jsonb, text, timestam
 grant execute on function public.create_purchase_return(uuid, jsonb, text, timestamptz) to authenticated;
 
 notify pgrst, 'reload schema';
+
+create or replace function public.repair_purchase_return_batches(
+  p_purchase_order_id uuid default null,
+  p_start timestamptz default null,
+  p_end timestamptz default null,
+  p_limit int default 500,
+  p_dry_run boolean default true
+)
+returns table(
+  purchase_return_id uuid,
+  purchase_order_id uuid,
+  item_id text,
+  qty_returned numeric,
+  qty_backfilled numeric,
+  action text,
+  message text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r_ret record;
+  r_item record;
+  v_wh uuid;
+  v_need numeric;
+  v_take numeric;
+  v_batch record;
+  v_backfilled numeric;
+  v_has_bb boolean := false;
+  v_has_bb_wh boolean := false;
+  v_has_batches boolean := false;
+  v_has_recompute boolean := false;
+  v_qr numeric;
+  v_qc numeric;
+begin
+  perform public._require_staff('repair_purchase_return_batches');
+
+  p_limit := greatest(1, least(coalesce(p_limit, 500), 20000));
+
+  v_has_bb := to_regclass('public.batch_balances') is not null;
+  v_has_batches := to_regclass('public.batches') is not null;
+  v_has_bb_wh := exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'batch_balances'
+      and column_name = 'warehouse_id'
+  );
+  v_has_recompute := (to_regprocedure('public.recompute_stock_for_item(text,uuid)') is not null);
+
+  if not v_has_bb or not v_has_batches then
+    return;
+  end if;
+
+  for r_ret in
+    select pr.id, pr.purchase_order_id, pr.returned_at, po.warehouse_id
+    from public.purchase_returns pr
+    join public.purchase_orders po on po.id = pr.purchase_order_id
+    where (p_purchase_order_id is null or pr.purchase_order_id = p_purchase_order_id)
+      and (p_start is null or pr.returned_at >= p_start)
+      and (p_end is null or pr.returned_at <= p_end)
+    order by pr.returned_at asc, pr.id asc
+    limit p_limit
+  loop
+    if exists (
+      select 1
+      from public.system_audit_logs l
+      where l.action = 'repair'
+        and l.module = 'purchases'
+        and l.metadata->>'repair' = 'purchase_return_batches'
+        and l.metadata->>'purchaseReturnId' = r_ret.id::text
+    ) then
+      continue;
+    end if;
+
+    v_wh := coalesce(r_ret.warehouse_id, public._resolve_default_warehouse_id());
+    if v_wh is null then
+      continue;
+    end if;
+
+    for r_item in
+      select pri.item_id::text as item_id, coalesce(pri.quantity, 0) as qty
+      from public.purchase_return_items pri
+      where pri.return_id = r_ret.id
+        and coalesce(pri.quantity, 0) > 0
+      order by pri.created_at asc, pri.id asc
+    loop
+      v_need := coalesce(r_item.qty, 0);
+      v_backfilled := 0;
+
+      if v_need <= 0 then
+        continue;
+      end if;
+
+      if not v_has_bb_wh then
+        return query
+        select r_ret.id, r_ret.purchase_order_id, r_item.item_id, r_item.qty, 0::numeric, 'skipped', 'batch_balances missing warehouse_id';
+        continue;
+      end if;
+
+      for v_batch in
+        select bb.batch_id, coalesce(bb.quantity, 0) as qty, bb.expiry_date
+        from public.batch_balances bb
+        join public.batches b on b.id = bb.batch_id
+        join public.purchase_receipts prc on prc.id = b.receipt_id
+        where bb.item_id::text = r_item.item_id
+          and bb.warehouse_id = v_wh
+          and coalesce(bb.quantity, 0) > 0
+          and b.item_id::text = r_item.item_id
+          and b.warehouse_id = v_wh
+          and coalesce(b.status,'active') = 'active'
+          and prc.purchase_order_id = r_ret.purchase_order_id
+        order by (bb.expiry_date is null) asc, bb.expiry_date asc, bb.batch_id asc
+        for update
+      loop
+        exit when v_need <= 0;
+        v_take := least(v_need, coalesce(v_batch.qty, 0));
+        if v_take <= 0 then
+          continue;
+        end if;
+
+        if not p_dry_run then
+          update public.batch_balances
+          set quantity = quantity - v_take,
+              updated_at = now()
+          where item_id::text = r_item.item_id
+            and batch_id = v_batch.batch_id
+            and warehouse_id = v_wh;
+
+          update public.batches
+          set quantity_consumed = coalesce(quantity_consumed, 0) + v_take,
+              updated_at = now()
+          where id = v_batch.batch_id
+            and item_id::text = r_item.item_id
+            and warehouse_id = v_wh
+          returning quantity_received, quantity_consumed into v_qr, v_qc;
+
+          if coalesce(v_qc, 0) > (coalesce(v_qr, 0) + 1e-9) then
+            raise exception 'Over-consumption detected for batch %', v_batch.batch_id;
+          end if;
+        end if;
+
+        v_backfilled := v_backfilled + v_take;
+        v_need := v_need - v_take;
+      end loop;
+
+      if v_need > 0.000000001 then
+        return query
+        select r_ret.id, r_ret.purchase_order_id, r_item.item_id, r_item.qty, v_backfilled,
+               case when p_dry_run then 'dry_run_needs_manual' else 'needs_manual' end,
+               'insufficient remaining batch stock for this PO';
+        continue;
+      end if;
+
+      if not p_dry_run and v_has_recompute then
+        perform public.recompute_stock_for_item(r_item.item_id, v_wh);
+      end if;
+
+      return query
+      select r_ret.id, r_ret.purchase_order_id, r_item.item_id, r_item.qty, v_backfilled,
+             case when p_dry_run then 'dry_run' else 'fixed' end,
+             null::text;
+    end loop;
+
+    if not p_dry_run then
+      insert into public.system_audit_logs(action, module, details, performed_by, performed_at, metadata)
+      values (
+        'repair',
+        'purchases',
+        concat('Backfilled purchase return batches ', r_ret.id::text),
+        auth.uid(),
+        now(),
+        jsonb_build_object('repair', 'purchase_return_batches', 'purchaseReturnId', r_ret.id::text, 'purchaseOrderId', r_ret.purchase_order_id::text)
+      );
+    end if;
+  end loop;
+end;
+$$;
+
+revoke all on function public.repair_purchase_return_batches(uuid, timestamptz, timestamptz, int, boolean) from public;
+grant execute on function public.repair_purchase_return_batches(uuid, timestamptz, timestamptz, int, boolean) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
