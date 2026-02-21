@@ -149,7 +149,9 @@ const NumberInput: React.FC<NumberInputProps> = ({
                     const normalized = normalizeDraft(draft);
                     const fixed = normalized.endsWith('.') ? normalized.slice(0, -1) : normalized;
                     const parsed = Number(fixed);
-                    const nextNum = Number.isFinite(parsed) ? parsed : 0;
+                    let nextNum = Number.isFinite(parsed) ? parsed : 0;
+                    if (min !== undefined && nextNum < min) nextNum = min;
+                    if (max !== undefined && nextNum > max) nextNum = max;
                     const nextStr = Number.isInteger(step) ? String(Math.round(nextNum)) : String(nextNum);
                     setDraft(nextStr);
                     const evt = {
