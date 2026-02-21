@@ -13,7 +13,9 @@ declare
   v_start timestamptz := p_start_date;
   v_end timestamptz := p_end_date;
 begin
-  if to_regclass('public.orders') is null or to_regclass('public.inventory_movements') is null or to_regclass('public.order_item_cogs') is null then
+  if to_regclass('public.orders') is null
+     or to_regclass('public.inventory_movements') is null
+     or to_regclass('public.order_item_cogs') is null then
     return;
   end if;
 
@@ -88,43 +90,58 @@ begin
       and im.movement_type = 'sale_out'
     group by im.reference_id, im.item_id
   ),
-  fallback_cost as (
+  item_keys as (
     select
       eb.order_id,
+      eb.warehouse_id,
       eb.item_id_text,
-      coalesce(sm.avg_cost, mi.cost_price, 0) as fallback_unit_cost
+      eb.expected_base_qty
     from expected_base eb
+    union
+    select
+      ms.order_id,
+      to2.warehouse_id,
+      ms.item_id_text,
+      null::numeric as expected_base_qty
+    from movement_sum ms
+    join target_orders to2 on to2.id = ms.order_id
+  ),
+  fallback_cost as (
+    select
+      k.order_id,
+      k.item_id_text,
+      coalesce(sm.avg_cost, mi.cost_price, 0) as fallback_unit_cost
+    from item_keys k
     left join public.stock_management sm
-      on sm.item_id::text = eb.item_id_text
-      and (eb.warehouse_id is null or sm.warehouse_id = eb.warehouse_id)
+      on sm.item_id::text = k.item_id_text
+      and (k.warehouse_id is null or sm.warehouse_id = k.warehouse_id)
     left join public.menu_items mi
-      on mi.id::text = eb.item_id_text
+      on mi.id::text = k.item_id_text
   ),
   rebuilt as (
     select
-      eb.order_id,
-      eb.item_id_text,
-      eb.expected_base_qty as quantity,
+      k.order_id,
+      k.item_id_text,
       case
-        when coalesce(ms.movement_qty,0) > 0 and eb.expected_base_qty > 0
-          then (ms.movement_total_cost * (eb.expected_base_qty / ms.movement_qty)) / eb.expected_base_qty
-        when eb.expected_base_qty > 0
-          then coalesce(fc.fallback_unit_cost, 0)
+        when coalesce(ms.movement_qty, 0) > 0 then ms.movement_qty
+        else coalesce(k.expected_base_qty, 0)
+      end as quantity,
+      case
+        when coalesce(ms.movement_qty, 0) > 0 then (ms.movement_total_cost / nullif(ms.movement_qty, 0))
+        when coalesce(k.expected_base_qty, 0) > 0 then coalesce(fc.fallback_unit_cost, 0)
         else 0
       end as unit_cost,
       case
-        when coalesce(ms.movement_qty,0) > 0 and eb.expected_base_qty > 0
-          then ms.movement_total_cost * (eb.expected_base_qty / ms.movement_qty)
-        when eb.expected_base_qty > 0
-          then eb.expected_base_qty * coalesce(fc.fallback_unit_cost, 0)
+        when coalesce(ms.movement_qty, 0) > 0 then ms.movement_total_cost
+        when coalesce(k.expected_base_qty, 0) > 0 then (k.expected_base_qty * coalesce(fc.fallback_unit_cost, 0))
         else 0
       end as total_cost
-    from expected_base eb
+    from item_keys k
     left join movement_sum ms
-      on ms.order_id = eb.order_id and ms.item_id_text = eb.item_id_text
+      on ms.order_id = k.order_id and ms.item_id_text = k.item_id_text
     left join fallback_cost fc
-      on fc.order_id = eb.order_id and fc.item_id_text = eb.item_id_text
-    where eb.expected_base_qty > 0
+      on fc.order_id = k.order_id and fc.item_id_text = k.item_id_text
+    where coalesce(ms.movement_qty, 0) > 0 or coalesce(k.expected_base_qty, 0) > 0
   ),
   deleted as (
     delete from public.order_item_cogs oic

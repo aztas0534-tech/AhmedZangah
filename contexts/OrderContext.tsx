@@ -2535,9 +2535,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
         ? (item.weight || item.quantity)
-        : item.quantity;
+        : item.quantity * uomFactor;
       const { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
         p_warehouse_id: warehouseId,
@@ -2607,11 +2608,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       );
       let itemPrice = item.price;
       let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
       return total + (itemPrice + addonsPrice) * itemQuantity;
     }, 0);
@@ -2741,7 +2745,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
-      const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram') ? (item.weight || item.quantity) : item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
+      const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
+        ? (item.weight || item.quantity)
+        : item.quantity * uomFactor;
       let { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
         p_warehouse_id: warehouseId,
@@ -2761,11 +2768,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce((sum, { addon, quantity }) => sum + addon.price * quantity, 0);
       let itemPrice = item.price;
       let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
       return total + (itemPrice + addonsPrice) * itemQuantity;
     }, 0);

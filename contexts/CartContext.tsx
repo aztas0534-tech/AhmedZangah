@@ -139,6 +139,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Calculate item price based on unit type
       let itemPrice = item.price;
       let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
 
       // If item is weight-based (kg or gram), use weight instead of quantity
       if (item.unitType === 'kg' || item.unitType === 'gram') {
@@ -147,6 +148,8 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000; // Convert to price per gram
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
 
       return total + (itemPrice + addonsPrice) * itemQuantity;

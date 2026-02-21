@@ -19,8 +19,9 @@ const CartItemCard: React.FC<{ item: CartItem; currencyCode: string }> = ({ item
     const isWeightBased = isWeightBasedUnit(item.unitType);
     let itemPrice = item.price;
 
-    const itemQuantity = isWeightBased ? (item.weight || 1) : item.quantity;
-    const itemSubtotal = (itemPrice * itemQuantity) + (addonsPrice * (isWeightBased ? 1 : item.quantity));
+    const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
+    const itemQuantity = isWeightBased ? (item.weight || 1) : ((Number(item.quantity) || 0) * uomFactor);
+    const itemSubtotal = (itemPrice + addonsPrice) * itemQuantity;
 
     const unitLabel = getUnitLabel(item.unitType, 'ar');
 
