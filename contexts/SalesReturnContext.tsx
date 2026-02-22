@@ -20,6 +20,19 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const { user } = useAuth();
   const supabase = getSupabaseClient();
 
+  const getCurrencyDecimalsByCode = (code: string) => {
+    const c = String(code || '').toUpperCase();
+    return c === 'YER' ? 0 : 2;
+  };
+
+  const roundMoneyByCode = (value: number, code: string) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    const dp = getCurrencyDecimalsByCode(code);
+    const pow = Math.pow(10, dp);
+    return Math.round(n * pow) / pow;
+  };
+
   const mapRowToSalesReturn = (row: any): SalesReturn => {
     return {
       id: String(row?.id || ''),
@@ -108,10 +121,19 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const createReturn = async (order: Order, items: SalesReturnItem[], reason?: string, refundMethod: 'cash' | 'network' | 'kuraimi' = 'cash') => {
     try {
       setLoading(true);
-      
-      const itemsTotal = items.reduce((sum, item) => sum + item.total, 0);
+      const currency = String((order as any)?.currency || '').trim().toUpperCase() || 'YER';
+      const itemsTotal = items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
       const deliveryFee = Number((order as any)?.deliveryFee ?? (order as any)?.delivery_fee ?? 0) || 0;
-      const totalRefundAmount = Math.max(0, itemsTotal - Math.max(0, deliveryFee));
+      const itemsTotalRounded = roundMoneyByCode(itemsTotal, currency);
+      const deliveryFeeRounded = roundMoneyByCode(Math.max(0, deliveryFee), currency);
+      const grossSubtotal = Number((order as any)?.subtotal ?? 0) || 0;
+      const discountAmount = Number((order as any)?.discountAmount ?? (order as any)?.discount_amount ?? 0) || 0;
+      const netSubtotal = Math.max(0, grossSubtotal - discountAmount);
+      const netSubtotalRounded = roundMoneyByCode(netSubtotal, currency);
+      const totalRefundAmount = Math.min(
+        netSubtotalRounded,
+        Math.max(0, itemsTotalRounded - deliveryFeeRounded)
+      );
 
       const returnData = {
         order_id: order.id,
@@ -176,12 +198,51 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       setLoading(true);
       
-      // Call the RPC function we defined in the migration
-      const { error } = await supabase!.rpc('process_sales_return', {
-        p_return_id: returnId
-      });
+      const attemptProcess = async () => {
+        const { error } = await supabase!.rpc('process_sales_return', { p_return_id: returnId });
+        if (error) throw error;
+      };
 
-      if (error) throw error;
+      try {
+        await attemptProcess();
+      } catch (err: any) {
+        const raw = String(err?.message || '');
+        if (!/return amount exceeds order net subtotal/i.test(raw)) throw err;
+
+        const { data: retRow, error: retErr } = await supabase!
+          .from('sales_returns')
+          .select('id,order_id,total_refund_amount,status')
+          .eq('id', returnId)
+          .maybeSingle();
+        if (retErr) throw err;
+        if (!retRow || String((retRow as any).status || '') !== 'draft') throw err;
+
+        const orderId = String((retRow as any).order_id || '').trim();
+        if (!orderId) throw err;
+
+        const { data: orderRow, error: orderErr } = await supabase!
+          .from('orders')
+          .select('id,subtotal,discount,tax_amount,currency,data')
+          .eq('id', orderId)
+          .maybeSingle();
+        if (orderErr || !orderRow) throw err;
+
+        const currency = String((orderRow as any)?.currency || (orderRow as any)?.data?.currency || '').trim().toUpperCase() || 'YER';
+        const grossSubtotal = Number((orderRow as any)?.data?.subtotal ?? (orderRow as any)?.subtotal ?? 0) || 0;
+        const discountAmount = Number((orderRow as any)?.data?.discountAmount ?? (orderRow as any)?.discount ?? 0) || 0;
+        const netSubtotalRounded = roundMoneyByCode(Math.max(0, grossSubtotal - discountAmount), currency);
+        const existing = roundMoneyByCode(Number((retRow as any)?.total_refund_amount ?? 0) || 0, currency);
+        const corrected = Math.min(existing, netSubtotalRounded);
+
+        const { error: updErr } = await supabase!
+          .from('sales_returns')
+          .update({ total_refund_amount: corrected, updated_at: new Date().toISOString() } as any)
+          .eq('id', returnId)
+          .eq('status', 'draft');
+        if (updErr) throw err;
+
+        await attemptProcess();
+      }
 
       // Update local state
       setReturns(prev => 
