@@ -169,13 +169,16 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
     const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number }>>([]);
-    const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing'>('walk_in');
+    const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing' | 'party'>('walk_in');
     const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
     const [inStoreCustomerMatches, setInStoreCustomerMatches] = useState<Array<{ id: string; fullName?: string; phoneNumber?: string }>>([]);
     const [inStoreCustomerSearching, setInStoreCustomerSearching] = useState(false);
     const [inStoreCustomerDropdownOpen, setInStoreCustomerDropdownOpen] = useState(false);
     const [inStoreCustomerSearchResult, setInStoreCustomerSearchResult] = useState<{ id: string; fullName?: string; phoneNumber?: string } | null>(null);
     const [inStoreSelectedCustomerId, setInStoreSelectedCustomerId] = useState<string>('');
+    const [inStoreSelectedPartyId, setInStoreSelectedPartyId] = useState<string>('');
+    const [inStorePartyOptions, setInStorePartyOptions] = useState<Array<{ id: string; name: string; type?: string }>>([]);
+    const [inStorePartyLoading, setInStorePartyLoading] = useState(false);
     const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
     const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number }>>({});
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
@@ -322,10 +325,34 @@ const ManageOrdersScreen: React.FC = () => {
         if (next) setInStoreTransactionCurrency(next);
     }, [inStoreTransactionCurrency, operationalCurrencies]);
 
-    const getCurrencyDecimals = (code: string) => {
+    const getCurrencyDecimalsByCode = (code: string) => {
         const c = String(code || '').toUpperCase();
         return c === 'YER' ? 0 : 2;
     };
+    const formatMoneyByCode = (v: number, code: string) => {
+        const n = Number(v);
+        const dp = getCurrencyDecimalsByCode(code);
+        if (!Number.isFinite(n)) {
+            try {
+                return (0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+            } catch {
+                return (0).toFixed(dp);
+            }
+        }
+        try {
+            return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+        } catch {
+            return n.toFixed(dp);
+        }
+    };
+    const roundMoneyByCode = (v: number, code: string) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 0;
+        const dp = getCurrencyDecimalsByCode(code);
+        const pow = Math.pow(10, dp);
+        return Math.round(n * pow) / pow;
+    };
+    const getCurrencyDecimals = (code: string) => getCurrencyDecimalsByCode(code);
     const roundMoney = (v: number) => {
         const n = Number(v);
         if (!Number.isFinite(n)) return 0;
@@ -405,6 +432,39 @@ const ManageOrdersScreen: React.FC = () => {
             window.clearTimeout(t);
         };
     }, [fetchInStoreCustomerMatches, inStoreCustomerMode, inStoreCustomerPhoneSearch, isInStoreSaleOpen]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        if (inStoreCustomerMode !== 'party') return;
+        let active = true;
+        (async () => {
+            try {
+                setInStorePartyLoading(true);
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data, error } = await supabase
+                    .from('financial_parties')
+                    .select('id, name, party_type')
+                    .eq('is_active', true)
+                    .order('name', { ascending: true })
+                    .limit(500);
+                if (error) throw error;
+                const list = (Array.isArray(data) ? data : [])
+                    .map((r: any) => ({
+                        id: String(r?.id || ''),
+                        name: String(r?.name || '').trim(),
+                        type: String(r?.party_type || '').trim(),
+                    }))
+                    .filter((r) => r.id && r.name);
+                if (active) setInStorePartyOptions(list);
+            } catch {
+                if (active) setInStorePartyOptions([]);
+            } finally {
+                if (active) setInStorePartyLoading(false);
+            }
+        })();
+        return () => { active = false; };
+    }, [inStoreCustomerMode, isInStoreSaleOpen]);
 
     const convertBaseToInStoreTxn = (baseAmount: number, rate: number) => {
         const r = Number(rate) || 0;
@@ -1331,6 +1391,7 @@ const ManageOrdersScreen: React.FC = () => {
                 currency: inStoreTransactionCurrency,
                 paymentMethod: primaryPaymentMethod,
                 customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
+                partyId: inStoreCustomerMode === 'party' && inStoreSelectedPartyId ? inStoreSelectedPartyId : undefined,
                 customerName: inStoreCustomerName,
                 phoneNumber: inStorePhoneNumber,
                 notes: inStoreNotes,
@@ -1387,6 +1448,11 @@ const ManageOrdersScreen: React.FC = () => {
             setInStorePaymentLines([]);
             setInStoreLines([]);
             setInStoreIsCredit(false);
+            setInStoreCustomerMode('walk_in');
+            setInStoreSelectedCustomerId('');
+            setInStoreCustomerSearchResult(null);
+            setInStoreCustomerPhoneSearch('');
+            setInStoreSelectedPartyId('');
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
             const message = language === 'ar'
@@ -1407,6 +1473,7 @@ const ManageOrdersScreen: React.FC = () => {
             const order = await createInStoreDraftQuotation({
                 lines: inStoreLines,
                 customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
+                partyId: inStoreCustomerMode === 'party' && inStoreSelectedPartyId ? inStoreSelectedPartyId : undefined,
                 customerName: inStoreCustomerName,
                 phoneNumber: inStorePhoneNumber,
                 notes: inStoreNotes,
@@ -1427,6 +1494,7 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreSelectedCustomerId('');
             setInStoreCustomerSearchResult(null);
             setInStoreCustomerPhoneSearch('');
+            setInStoreSelectedPartyId('');
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
             showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل حفظ المسودة.', 'error');
@@ -1518,10 +1586,13 @@ const ManageOrdersScreen: React.FC = () => {
     const openPartialPaymentModal = (orderId: string) => {
         const order = filteredAndSortedOrders.find(o => o.id === orderId) || orders.find(o => o.id === orderId);
         if (!order) return;
-        const paid = Number(paidSumByOrderId[orderId]) || 0;
-        const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+        const paid = roundMoneyByCode(Number(paidSumByOrderId[orderId]) || 0, currency);
+        const total = roundMoneyByCode(Number(order.total) || 0, currency);
+        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
         setPartialPaymentOrderId(orderId);
-        setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(2)) : 0);
+        const dp = getCurrencyDecimalsByCode(currency);
+        setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(dp)) : 0);
         setPartialPaymentMethod(isInStoreOrder(order) ? 'cash' : ((order.paymentMethod || 'cash').trim() || 'cash'));
         setPartialPaymentOccurredAt(toDateTimeLocalInputValue());
         setPartialPaymentAdvancedAccounting(false);
@@ -1536,14 +1607,17 @@ const ManageOrdersScreen: React.FC = () => {
         }
         const order = filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId);
         if (!order) return;
-        const paid = Number(paidSumByOrderId[partialPaymentOrderId]) || 0;
-        const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+        const paid = roundMoneyByCode(Number(paidSumByOrderId[partialPaymentOrderId]) || 0, currency);
+        const total = roundMoneyByCode(Number(order.total) || 0, currency);
+        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
         const amount = Number(partialPaymentAmount);
         if (!Number.isFinite(amount) || amount <= 0) {
             showNotification('أدخل مبلغًا صحيحًا.', 'error');
             return;
         }
-        if (remaining > 0 && amount > remaining + 1e-9) {
+        const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+        if (remaining > 0 && amount > remaining + tol) {
             showNotification('المبلغ أكبر من المتبقي على الطلب.', 'error');
             return;
         }
@@ -1712,6 +1786,9 @@ const ManageOrdersScreen: React.FC = () => {
         const order = orders.find(o => o.id === returnOrderId);
         if (!order) return;
 
+        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+        const dp = getCurrencyDecimalsByCode(currency);
+
         const grossSubtotal = Number(order.subtotal) || 0;
         const discountAmount = Number((order as any).discountAmount) || 0;
         const netSubtotal = Math.max(0, grossSubtotal - discountAmount);
@@ -1764,7 +1841,7 @@ const ManageOrdersScreen: React.FC = () => {
                     itemName: orderItem.name?.ar || orderItem.name?.en || 'Unknown',
                     quantity: baseQty,
                     unitPrice: baseUnitPrice,
-                    total: Number(returnedNet.toFixed(2)),
+                    total: Number(returnedNet.toFixed(dp)),
                     reason: returnReason,
                     // Metadata for UI
                     salesUnitQty: Number(qty) || 0,
@@ -1833,9 +1910,11 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const renderMobileCard = (order: Order) => {
-        const paid = Number(paidSumByOrderId[order.id]) || 0;
-        const remaining = Math.max(0, (Number(order.total) || 0) - paid);
-        const canReturn = order.status === 'delivered' && paid > 0.01;
+        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+        const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+        const total = roundMoneyByCode(Number(order.total) || 0, currency);
+        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+        const canReturn = order.status === 'delivered' && paid > Math.pow(10, -getCurrencyDecimalsByCode(currency));
         const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
         const items = Array.isArray((order as any)?.items) ? (order as any).items : [];
 
@@ -2343,13 +2422,15 @@ const ManageOrdersScreen: React.FC = () => {
                                             />
                                             {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
                                             {(() => {
-                                                const paid = Number(paidSumByOrderId[order.id]) || 0;
-                                                const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+                                                const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                                                const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+                                                const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                                                const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
                                                 return (
                                                     <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
-                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{Number(paid || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span></div>
-                                                        <div>متبقي: <span className="font-mono" dir="ltr">{Number(remaining || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span></div>
-                                                        {remaining > 1e-9 && order.status !== 'delivered' && (
+                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{formatMoneyByCode(paid || 0, currency)} {currency || '—'}</span></div>
+                                                        <div>متبقي: <span className="font-mono" dir="ltr">{formatMoneyByCode(remaining || 0, currency)} {currency || '—'}</span></div>
+                                                        {remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && order.status !== 'delivered' && (
                                                             <div>
                                                                 <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
                                                                     بانتظار التحصيل
@@ -2363,10 +2444,12 @@ const ManageOrdersScreen: React.FC = () => {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 border-r dark:border-gray-700">{paymentTranslations[order.paymentMethod] || order.paymentMethod}</td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                             {(() => {
-                                                const paid = Number(paidSumByOrderId[order.id]) || 0;
-                                                const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+                                                const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                                                const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+                                                const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                                                const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
                                                 const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
-                                                const showPaymentActions = order.status === 'delivered' && remaining > 1e-9 && !isFullyReturned;
+                                                const showPaymentActions = order.status === 'delivered' && remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned;
 
                                                 const paymentActions = showPaymentActions ? (
                                                     <div className="flex flex-col gap-2">
@@ -2431,7 +2514,12 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                 if (order.status === 'delivered') {
                                                     const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
-                                                    const canIssueInvoice = !isCod && (Boolean(order.paidAt) || order.paymentMethod === 'ar') && canManageAccounting;
+                                                    const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                                                    const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+                                                    const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                                                    const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+                                                    const isPaid = total > 0 && (paid + tol) >= total;
+                                                    const canIssueInvoice = !isCod && (isPaid || order.paymentMethod === 'ar') && canManageAccounting;
                                                     return (
                                                         <div className="flex flex-col gap-2">
                                                             {canIssueInvoice && (
@@ -2843,7 +2931,7 @@ const ManageOrdersScreen: React.FC = () => {
                                 <input
                                     type="radio"
                                     checked={inStoreCustomerMode === 'walk_in'}
-                                    onChange={() => { setInStoreCustomerMode('walk_in'); setInStoreSelectedCustomerId(''); setInStoreCustomerSearchResult(null); }}
+                                    onChange={() => { setInStoreCustomerMode('walk_in'); setInStoreSelectedCustomerId(''); setInStoreCustomerSearchResult(null); setInStoreCustomerPhoneSearch(''); setInStoreSelectedPartyId(''); }}
                                 />
                                 زبون حضوري (Walk‑In)
                             </label>
@@ -2851,9 +2939,17 @@ const ManageOrdersScreen: React.FC = () => {
                                 <input
                                     type="radio"
                                     checked={inStoreCustomerMode === 'existing'}
-                                    onChange={() => setInStoreCustomerMode('existing')}
+                                    onChange={() => { setInStoreCustomerMode('existing'); setInStoreSelectedPartyId(''); }}
                                 />
                                 عميل موجود (customers)
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                                <input
+                                    type="radio"
+                                    checked={inStoreCustomerMode === 'party'}
+                                    onChange={() => { setInStoreCustomerMode('party'); setInStoreSelectedCustomerId(''); setInStoreCustomerSearchResult(null); setInStoreCustomerPhoneSearch(''); }}
+                                />
+                                طرف مالي (financial_parties)
                             </label>
                         </div>
                         {inStoreCustomerMode === 'existing' && (
@@ -2942,6 +3038,42 @@ const ManageOrdersScreen: React.FC = () => {
                             <div className="text-xs text-gray-700 dark:text-gray-300">
                                 عميل مختار: <span className="font-mono">{inStoreCustomerSearchResult.fullName || '—'}</span> • <span className="font-mono">{inStoreCustomerSearchResult.phoneNumber || '—'}</span>
                                 <div className="mt-1 text-[11px] text-gray-500">ID: <span className="font-mono">{inStoreSelectedCustomerId}</span></div>
+                            </div>
+                        )}
+                        {inStoreCustomerMode === 'party' && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                                <div className="md:col-span-2">
+                                    <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">اختيار طرف مالي</label>
+                                    <select
+                                        value={inStoreSelectedPartyId}
+                                        onChange={(e) => {
+                                            const next = String(e.target.value || '').trim();
+                                            setInStoreSelectedPartyId(next);
+                                            const selected = inStorePartyOptions.find(p => p.id === next);
+                                            if (selected?.name) {
+                                                setInStoreCustomerName(selected.name);
+                                                setInStorePhoneNumber('');
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    >
+                                        <option value="">{inStorePartyLoading ? 'جاري التحميل...' : 'اختر طرفاً'}</option>
+                                        {inStorePartyOptions.map((p) => (
+                                            <option key={p.id} value={p.id}>{p.name}{p.type ? ` — ${p.type}` : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setInStoreSelectedPartyId('');
+                                        setInStoreCustomerName('');
+                                        setInStorePhoneNumber('');
+                                    }}
+                                    className="px-3 py-2 rounded-md bg-gray-700 text-white hover:bg-gray-800 transition text-xs font-semibold"
+                                >
+                                    مسح
+                                </button>
                             </div>
                         )}
                     </div>
@@ -3071,7 +3203,7 @@ const ManageOrdersScreen: React.FC = () => {
                                             {Math.max(
                                                 0,
                                                 Number(inStoreCreditSummary.available_credit || 0) - Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
-                                            ).toFixed(2)} {baseCode || '—'}
+                                            ).toFixed(getCurrencyDecimalsByCode(baseCode || ''))} {baseCode || '—'}
                                         </span>
                                     </div>
                                 </div>
@@ -3096,7 +3228,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                 : (inStoreVisiblePaymentMethods[0] || '');
                                             setInStorePaymentLines([{
                                                 method: initialMethod,
-                                                amount: inStoreIsCredit ? 0 : Number(total.toFixed(2)),
+                                                amount: inStoreIsCredit ? 0 : roundMoney(total),
                                                 declaredAmount: 0,
                                                 amountConfirmed: initialMethod === 'cash',
                                                 cashReceived: 0,
@@ -4017,8 +4149,10 @@ const ManageOrdersScreen: React.FC = () => {
                 {partialPaymentOrderId && (() => {
                     const order = filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId);
                     if (!order) return null;
-                    const paid = Number(paidSumByOrderId[partialPaymentOrderId]) || 0;
-                    const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+                    const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                    const paid = roundMoneyByCode(Number(paidSumByOrderId[partialPaymentOrderId]) || 0, currency);
+                    const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                    const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
                     return (
                         <div className="space-y-4">
                             <div className="grid grid-cols-3 gap-3 text-xs">

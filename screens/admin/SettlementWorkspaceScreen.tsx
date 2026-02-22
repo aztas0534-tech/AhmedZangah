@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { localizeSourceTableAr, shortId } from '../../utils/displayLabels';
 
 type PartyRow = { id: string; name: string; currency_preference?: string | null };
@@ -60,6 +61,9 @@ const formatTime = (iso: string) => {
 export default function SettlementWorkspaceScreen() {
   const location = useLocation();
   const { showNotification } = useToast();
+  const { hasPermission } = useAuth();
+  const canManage = Boolean(hasPermission?.('accounting.manage'));
+  const canView = Boolean(hasPermission?.('accounting.view') || canManage);
   const [loading, setLoading] = useState(true);
   const loadingRef = useRef(false);
   const [parties, setParties] = useState<PartyRow[]>([]);
@@ -139,7 +143,7 @@ export default function SettlementWorkspaceScreen() {
           setCurrency(currencies[0]);
         }
       }
-      if (rows.length === 0 && !didAutoBackfill) {
+      if (rows.length === 0 && !didAutoBackfill && canManage) {
         setDidAutoBackfill(true);
         void backfillOpenItems();
       }
@@ -178,20 +182,30 @@ export default function SettlementWorkspaceScreen() {
     void (async () => {
       setLoading(true);
       try {
+        if (!canView) {
+          setParties([]);
+          setItems([]);
+          return;
+        }
         await loadParties();
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [canView]);
 
   useEffect(() => {
+    if (!canView) return;
     void loadOpenItems();
     void loadRecentSettlements();
-  }, [partyId]);
+  }, [partyId, canView]);
 
   const backfillOpenItems = async () => {
     if (!partyId) return;
+    if (!canManage) {
+      showNotification('ليس لديك صلاحية تحديث العناصر المفتوحة.', 'error');
+      return;
+    }
     const supabase = getSupabaseClient();
     if (!supabase) return;
     setBackfilling(true);
@@ -305,6 +319,10 @@ export default function SettlementWorkspaceScreen() {
 
   const createSettlement = async () => {
     if (!partyId) return;
+    if (!canManage) {
+      showNotification('ليس لديك صلاحية إنشاء التسويات.', 'error');
+      return;
+    }
     if (allocations.length === 0) {
       showNotification('لا توجد تخصيصات.', 'info');
       return;
@@ -340,6 +358,10 @@ export default function SettlementWorkspaceScreen() {
 
   const autoSettle = async () => {
     if (!partyId) return;
+    if (!canManage) {
+      showNotification('ليس لديك صلاحية تنفيذ التسوية التلقائية.', 'error');
+      return;
+    }
     const supabase = getSupabaseClient();
     if (!supabase) return;
     setRunning(true);
@@ -357,6 +379,10 @@ export default function SettlementWorkspaceScreen() {
   };
 
   const reverseSettlement = async (id: string) => {
+    if (!canManage) {
+      showNotification('ليس لديك صلاحية عكس التسويات.', 'error');
+      return;
+    }
     const reason = window.prompt('سبب عكس التسوية؟');
     if (!reason) return;
     const supabase = getSupabaseClient();
@@ -403,13 +429,14 @@ export default function SettlementWorkspaceScreen() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => void loadOpenItems()}
+            disabled={!canView}
             className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
           >
             تحديث
           </button>
           <button
             onClick={() => void backfillOpenItems()}
-            disabled={backfilling}
+            disabled={backfilling || !canManage}
             className="px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-sm text-emerald-700 dark:text-emerald-200 disabled:opacity-60"
           >
             {backfilling ? 'جاري التحديث...' : 'تحديث العناصر المفتوحة'}
@@ -421,6 +448,15 @@ export default function SettlementWorkspaceScreen() {
           ) : null}
         </div>
       </div>
+      {!canView ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-6 text-center text-gray-500 dark:text-gray-400 font-semibold">
+          لا تملك صلاحية عرض التسويات.
+        </div>
+      ) : !canManage ? (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-900 dark:text-amber-200">
+          وضع عرض فقط: لا يمكنك إنشاء/عكس التسويات أو تحديث العناصر المفتوحة.
+        </div>
+      ) : null}
       {loading ? (
         <div className="text-xs text-gray-500 dark:text-gray-400">جاري التحميل...</div>
       ) : null}
@@ -431,6 +467,7 @@ export default function SettlementWorkspaceScreen() {
           <select
             value={partyId}
             onChange={(e) => setPartyId(e.target.value)}
+            disabled={!canView}
             className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
           >
             {parties.map((p) => (
@@ -443,6 +480,7 @@ export default function SettlementWorkspaceScreen() {
           <select
             value={currencyFilter}
             onChange={(e) => setCurrency(e.target.value)}
+            disabled={!canView}
             className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
           >
             <option value="">كل العملات</option>
@@ -453,7 +491,7 @@ export default function SettlementWorkspaceScreen() {
         </div>
         <div className="flex items-end gap-2">
           <button
-            disabled={running}
+            disabled={running || !canManage}
             onClick={() => void autoSettle()}
             className="w-full px-3 py-2 rounded-lg bg-primary-600 text-white text-sm disabled:opacity-60"
           >
@@ -624,7 +662,7 @@ export default function SettlementWorkspaceScreen() {
           />
           <div className="flex gap-2">
             <button
-              disabled={running}
+              disabled={running || !canManage}
               onClick={() => void createSettlement()}
               className="flex-1 px-3 py-2 rounded-lg bg-primary-600 text-white text-sm disabled:opacity-60"
             >
@@ -699,7 +737,7 @@ export default function SettlementWorkspaceScreen() {
                   <td className="p-3">
                     {String(s.settlement_type) === 'normal' ? (
                       <button
-                        disabled={running}
+                        disabled={running || !canManage}
                         onClick={() => void reverseSettlement(String(s.id))}
                         className="px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-200 disabled:opacity-60"
                         title="عكس"

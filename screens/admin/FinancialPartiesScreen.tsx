@@ -113,12 +113,12 @@ const FinancialPartiesScreen: React.FC = () => {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManage) {
-      alert('ليس لديك صلاحية لإضافة/تعديل الأطراف.');
+      showNotification('ليس لديك صلاحية لإضافة/تعديل الأطراف.', 'error');
       return;
     }
     const v = validate();
     if (v) {
-      alert(v);
+      showNotification(v, 'error');
       return;
     }
     const supabase = getSupabaseClient();
@@ -141,6 +141,7 @@ const FinancialPartiesScreen: React.FC = () => {
     }
     setIsModalOpen(false);
     await load();
+    showNotification('تم حفظ الطرف المالي.', 'success');
   };
 
   const handleBackfillParty = async (partyId: string) => {

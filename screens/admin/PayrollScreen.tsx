@@ -60,6 +60,7 @@ type PayrollSettingsRow = {
   salary_expense_account_id: string | null;
   salary_payable_account_id: string | null;
   default_cost_center_id: string | null;
+  enable_party_settlements: boolean;
 };
 
 const toMonthValue = () => {
@@ -96,6 +97,7 @@ export default function PayrollScreen() {
 
   const canViewAccounting = hasPermission('accounting.view');
   const canManageAccounting = hasPermission('accounting.manage');
+  const canApproveAccounting = hasPermission('accounting.approve');
 
   const [tab, setTab] = useState<'runs' | 'employees' | 'settings'>('runs');
   const [loading, setLoading] = useState(true);
@@ -138,13 +140,22 @@ export default function PayrollScreen() {
     salary_expense_account_id: null,
     salary_payable_account_id: null,
     default_cost_center_id: null,
+    enable_party_settlements: false,
   });
   const [payrollSettingsDraft, setPayrollSettingsDraft] = useState<PayrollSettingsRow>({
     salary_expense_account_id: null,
     salary_payable_account_id: null,
     default_cost_center_id: null,
+    enable_party_settlements: false,
   });
   const [savingPayrollSettings, setSavingPayrollSettings] = useState(false);
+
+  const [partySettleModalOpen, setPartySettleModalOpen] = useState(false);
+  const [partySettleMethod, setPartySettleMethod] = useState('cash');
+  const [partySettleOccurredAt, setPartySettleOccurredAt] = useState(toDateTimeLocalInputValue());
+  const [partySettleApplyAdvances, setPartySettleApplyAdvances] = useState(true);
+  const [partySettlePayRemaining, setPartySettlePayRemaining] = useState(true);
+  const [partySettleRunning, setPartySettleRunning] = useState(false);
 
   const buildBrand = useCallback(async () => {
     const supabase = getSupabaseClient();
@@ -228,16 +239,16 @@ export default function PayrollScreen() {
     const supabase = getSupabaseClient();
     if (!supabase) {
       setAccounts([]);
-      setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
-      setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
+      setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false });
+      setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false });
       return;
     }
     setPayrollSettingsLoading(true);
     try {
       if (!canViewAccounting) {
         setAccounts([]);
-        setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
-        setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
+        setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false });
+        setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false });
         return;
       }
 
@@ -245,7 +256,7 @@ export default function PayrollScreen() {
         supabase.rpc('list_active_accounts'),
         supabase
           .from('payroll_settings')
-          .select('salary_expense_account_id,salary_payable_account_id,default_cost_center_id')
+          .select('salary_expense_account_id,salary_payable_account_id,default_cost_center_id,enable_party_settlements')
           .eq('id', 'app')
           .maybeSingle(),
       ]);
@@ -263,18 +274,23 @@ export default function PayrollScreen() {
         salary_expense_account_id: row?.salary_expense_account_id ? String((row as any).salary_expense_account_id) : null,
         salary_payable_account_id: row?.salary_payable_account_id ? String((row as any).salary_payable_account_id) : null,
         default_cost_center_id: row?.default_cost_center_id ? String((row as any).default_cost_center_id) : null,
+        enable_party_settlements: Boolean((row as any)?.enable_party_settlements),
       };
       setPayrollSettings(next);
       setPayrollSettingsDraft(next);
     } catch (e: any) {
       setAccounts([]);
-      setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
-      setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
+      setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false });
+      setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false });
       showNotification(String(e?.message || 'تعذر تحميل إعدادات الرواتب'), 'error');
     } finally {
       setPayrollSettingsLoading(false);
     }
   }, [canViewAccounting, showNotification]);
+
+  useEffect(() => {
+    void loadPayrollSettings();
+  }, [loadPayrollSettings]);
 
   useEffect(() => {
     if (tab === 'settings') {
@@ -296,6 +312,7 @@ export default function PayrollScreen() {
         salary_expense_account_id: payrollSettingsDraft.salary_expense_account_id,
         salary_payable_account_id: payrollSettingsDraft.salary_payable_account_id,
         default_cost_center_id: payrollSettingsDraft.default_cost_center_id,
+        enable_party_settlements: Boolean(payrollSettingsDraft.enable_party_settlements),
         updated_at: new Date().toISOString(),
       } as any;
       const { error } = await supabase.from('payroll_settings').upsert(payload, { onConflict: 'id' });
@@ -587,6 +604,43 @@ export default function PayrollScreen() {
     }
   };
 
+  const confirmPartySettle = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !selectedRun) return;
+    if (!canManageAccounting) {
+      showNotification('لا تملك صلاحية تنفيذ تسويات الأطراف.', 'error');
+      return;
+    }
+    setPartySettleRunning(true);
+    try {
+      const occurredAtIso = partySettleOccurredAt ? new Date(partySettleOccurredAt).toISOString() : new Date().toISOString();
+      const { data, error } = await supabase.rpc('payroll_settle_run_employees_v1', {
+        p_run_id: selectedRun.id,
+        p_occurred_at: occurredAtIso,
+        p_method: partySettleMethod,
+        p_apply_advances: Boolean(partySettleApplyAdvances),
+        p_pay_remaining: Boolean(partySettlePayRemaining),
+      } as any);
+      if (error) throw error;
+      const summary = data && typeof data === 'object' ? data : null;
+      const needsApproval = Boolean((summary as any)?.needsApproval);
+      const msg = summary
+        ? `تمت العملية: مستحقات ${Number((summary as any).payablesCreated || 0)} · سلف ${Number((summary as any).advanceSettlementsCreated || 0)} · صرف ${Number((summary as any).payoutDocsCreated || 0)}`
+        : 'تمت العملية.';
+      setPartySettleModalOpen(false);
+      await loadAll();
+      await openRun(selectedRun);
+      showNotification(msg, 'success');
+      if (needsApproval) {
+        showNotification('تم إنشاء مستحقات كمسودات وتحتاج اعتماداً (accounting.approve) لاستكمال تطبيق السلف/الصرف.', 'info');
+      }
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر تنفيذ تسويات الأطراف'), 'error');
+    } finally {
+      setPartySettleRunning(false);
+    }
+  };
+
   const filteredRuns = useMemo(() => runs, [runs]);
 
   if (loading) return <PageLoader />;
@@ -826,6 +880,21 @@ export default function PayrollScreen() {
                     </select>
                   </div>
 
+                  <div className="md:col-span-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(payrollSettingsDraft.enable_party_settlements)}
+                        onChange={(e) => setPayrollSettingsDraft(prev => ({ ...prev, enable_party_settlements: e.target.checked }))}
+                        disabled={!canManageAccounting}
+                      />
+                      تفعيل تسويات الرواتب على دفاتر الأطراف (موظفين/سلف/صرف المتبقي)
+                    </label>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      عند التفعيل تظهر أزرار توليد مستحقات الموظفين وتطبيق السلف وصرف المتبقي داخل شاشة المسير.
+                    </div>
+                  </div>
+
                   {!canManageAccounting ? (
                     <div className="md:col-span-2 text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2 rounded-lg">
                       وضع القراءة فقط: تحتاج صلاحية accounting.manage لتعديل الإعدادات.
@@ -895,6 +964,15 @@ export default function PayrollScreen() {
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => void computeSelectedRun()} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-semibold">احتساب الرواتب</button>
                   <button type="button" onClick={() => void accrueSelectedRun()} className="px-3 py-2 rounded-lg bg-blue-600 text-white font-semibold">ترحيل الاستحقاق</button>
+                  {Boolean(payrollSettings.enable_party_settlements) && canManageAccounting && (selectedRun.status === 'accrued' || selectedRun.status === 'paid') ? (
+                    <button
+                      type="button"
+                      onClick={() => { setPartySettleOccurredAt(toDateTimeLocalInputValue()); setPartySettleMethod('cash'); setPartySettleApplyAdvances(true); setPartySettlePayRemaining(true); setPartySettleModalOpen(true); }}
+                      className="px-3 py-2 rounded-lg bg-purple-600 text-white font-semibold"
+                    >
+                      تسوية الأطراف
+                    </button>
+                  ) : null}
                   <button type="button" onClick={openPayModal} className="px-3 py-2 rounded-lg bg-emerald-600 text-white font-semibold">دفع</button>
                   <button type="button" onClick={() => setRunModalOpen(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">إغلاق</button>
                 </div>
@@ -1011,6 +1089,56 @@ export default function PayrollScreen() {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {partySettleModalOpen && selectedRun && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !partySettleRunning && setPartySettleModalOpen(false)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                <div className="text-lg font-bold dark:text-white">تسوية الأطراف للرواتب</div>
+                <button type="button" disabled={partySettleRunning} onClick={() => setPartySettleModalOpen(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-60">إغلاق</button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  يولّد مستحقات لكل موظف على حساب ذمم الرواتب، يطبق السلف تلقائياً، ثم يصرف المتبقي حسب طريقة الدفع.
+                </div>
+                {!canApproveAccounting ? (
+                  <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2 rounded-lg">
+                    لا توجد صلاحية اعتماد (accounting.approve): سيتم إنشاء مستحقات كمسودات فقط، ويمكن تشغيل التطبيق/الصرف بعد اعتمادها.
+                  </div>
+                ) : null}
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">طريقة الدفع</div>
+                  <select value={partySettleMethod} onChange={(e) => setPartySettleMethod(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                    <option value="cash">نقدًا</option>
+                    <option value="network">حوالات</option>
+                    <option value="kuraimi">حسابات بنكية</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">وقت العملية</div>
+                  <input type="datetime-local" value={partySettleOccurredAt} onChange={(e) => setPartySettleOccurredAt(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                  <input type="checkbox" checked={partySettleApplyAdvances} onChange={(e) => setPartySettleApplyAdvances(e.target.checked)} disabled={!canApproveAccounting} />
+                  تطبيق السلف على المستحقات
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                  <input type="checkbox" checked={partySettlePayRemaining} onChange={(e) => setPartySettlePayRemaining(e.target.checked)} disabled={!canApproveAccounting} />
+                  صرف المتبقي
+                </label>
+              </div>
+              <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex items-center justify-end gap-2">
+                <button type="button" disabled={partySettleRunning} onClick={() => setPartySettleModalOpen(false)} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-60">إلغاء</button>
+                <button type="button" disabled={partySettleRunning} onClick={() => void confirmPartySettle()} className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold disabled:opacity-60">
+                  {partySettleRunning ? 'جارٍ التنفيذ...' : 'تنفيذ'}
+                </button>
               </div>
             </div>
           </div>

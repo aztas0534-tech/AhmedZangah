@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 
 type PartyRow = { id: string; name: string };
 
@@ -16,13 +17,22 @@ type DocRow = {
   journal_entry_id: string | null;
 };
 
-type DocType = 'ar_invoice' | 'ap_bill' | 'ar_receipt' | 'ap_payment' | 'advance' | 'custodian';
+type DocType =
+  | 'ar_invoice' | 'ap_bill'
+  | 'ar_receipt' | 'ap_payment'
+  | 'ar_credit_note' | 'ap_credit_note'
+  | 'ar_debit_note' | 'ap_debit_note'
+  | 'advance' | 'custodian';
 
 const docTypeLabel: Record<DocType, string> = {
   ar_invoice: 'فاتورة عميل (AR)',
   ap_bill: 'فاتورة مورد (AP)',
   ar_receipt: 'سند قبض (AR)',
   ap_payment: 'سند صرف (AP)',
+  ar_credit_note: 'إشعار دائن عميل (AR CN)',
+  ap_credit_note: 'إشعار دائن مورد (AP CN)',
+  ar_debit_note: 'إشعار مدين عميل (AR DN)',
+  ap_debit_note: 'إشعار مدين مورد (AP DN)',
   advance: 'دفعة مقدمة',
   custodian: 'عهدة',
 };
@@ -32,13 +42,20 @@ const defaultAccounts: Record<DocType, { partyAccount: string; counterAccount: s
   ap_bill: { partyAccount: '2010', counterAccount: '6100' },
   ar_receipt: { partyAccount: '1200', counterAccount: '1010', cashAccount: '1010' },
   ap_payment: { partyAccount: '2010', counterAccount: '1010', cashAccount: '1010' },
-  advance: { partyAccount: '1210', counterAccount: '1010', cashAccount: '1010' },
+  ar_credit_note: { partyAccount: '1200', counterAccount: '4010' },
+  ap_credit_note: { partyAccount: '2010', counterAccount: '6100' },
+  ar_debit_note: { partyAccount: '1200', counterAccount: '4010' },
+  ap_debit_note: { partyAccount: '2010', counterAccount: '6100' },
+  advance: { partyAccount: '1350', counterAccount: '1010', cashAccount: '1010' },
   custodian: { partyAccount: '1035', counterAccount: '1010', cashAccount: '1010' },
 };
 
 export default function PartyDocumentsScreen() {
-  const { user } = useAuth();
-  const canManage = user?.role === 'owner' || user?.role === 'manager';
+  const { showNotification } = useToast();
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('accounting.manage');
+  const canApprove = hasPermission('accounting.approve');
+  const canView = hasPermission('accounting.view');
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [partyMap, setPartyMap] = useState<Record<string, string>>({});
@@ -170,6 +187,18 @@ export default function PartyDocumentsScreen() {
     } else if (docType === 'ap_payment') {
       partyLine.debit = amt;
       counterLine.credit = amt;
+    } else if (docType === 'ar_credit_note') {
+      partyLine.credit = amt;
+      counterLine.debit = amt;
+    } else if (docType === 'ap_credit_note') {
+      counterLine.credit = amt;
+      partyLine.debit = amt;
+    } else if (docType === 'ar_debit_note') {
+      partyLine.debit = amt;
+      counterLine.credit = amt;
+    } else if (docType === 'ap_debit_note') {
+      counterLine.debit = amt;
+      partyLine.credit = amt;
     } else if (docType === 'advance') {
       partyLine.debit = amt;
       counterLine.credit = amt;
@@ -190,7 +219,7 @@ export default function PartyDocumentsScreen() {
   const createDoc = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManage) {
-      alert('ليس لديك صلاحية لإنشاء المستندات.');
+      showNotification('ليس لديك صلاحية لإنشاء المستندات.', 'error');
       return;
     }
     try {
@@ -209,12 +238,17 @@ export default function PartyDocumentsScreen() {
       if (!data) throw new Error('تعذر إنشاء المستند');
       setIsModalOpen(false);
       await load();
+      showNotification('تم إنشاء المستند.', 'success');
     } catch (err: any) {
-      alert(String(err?.message || 'فشل إنشاء المستند'));
+      showNotification(String(err?.message || 'فشل إنشاء المستند'), 'error');
     }
   };
 
   const approveDoc = async (id: string) => {
+    if (!canApprove) {
+      showNotification('ليس لديك صلاحية لاعتماد المستندات.', 'error');
+      return;
+    }
     if (!window.confirm('هل تريد اعتماد هذا المستند؟')) return;
     try {
       const supabase = getSupabaseClient();
@@ -222,12 +256,17 @@ export default function PartyDocumentsScreen() {
       const { error } = await supabase.rpc('approve_party_document', { p_document_id: id } as any);
       if (error) throw error;
       await load();
+      showNotification('تم اعتماد المستند.', 'success');
     } catch (err: any) {
-      alert(String(err?.message || 'فشل الاعتماد'));
+      showNotification(String(err?.message || 'فشل الاعتماد'), 'error');
     }
   };
 
   const voidDoc = async (id: string) => {
+    if (!canManage) {
+      showNotification('ليس لديك صلاحية لإبطال المستندات.', 'error');
+      return;
+    }
     const reason = window.prompt('سبب الإلغاء/الإبطال؟');
     if (!reason) return;
     try {
@@ -236,11 +275,13 @@ export default function PartyDocumentsScreen() {
       const { error } = await supabase.rpc('void_party_document', { p_document_id: id, p_reason: reason } as any);
       if (error) throw error;
       await load();
+      showNotification('تم إبطال المستند.', 'success');
     } catch (err: any) {
-      alert(String(err?.message || 'فشل الإبطال'));
+      showNotification(String(err?.message || 'فشل الإبطال'), 'error');
     }
   };
 
+  if (!canView) return <div className="p-8 text-center text-gray-500">لا تملك صلاحية عرض مستندات الأطراف.</div>;
   if (loading) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
 
   return (
@@ -332,7 +373,7 @@ export default function PartyDocumentsScreen() {
                       {d.journal_entry_id ? String(d.journal_entry_id).slice(-8) : '—'}
                     </td>
                     <td className="p-4 flex gap-2">
-                      {d.status === 'draft' && (
+                      {d.status === 'draft' && canApprove && (
                         <button
                           onClick={() => void approveDoc(d.id)}
                           className="p-2 text-green-700 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors"
@@ -341,7 +382,7 @@ export default function PartyDocumentsScreen() {
                           <Icons.CheckIcon className="w-4 h-4" />
                         </button>
                       )}
-                      {d.status !== 'voided' && (
+                      {d.status !== 'voided' && canManage && (
                         <button
                           onClick={() => void voidDoc(d.id)}
                           className="p-2 text-red-700 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"

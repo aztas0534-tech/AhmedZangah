@@ -7,6 +7,29 @@ begin
 end;
 $$;
 
+create or replace function public._money_round(p_value numeric, p_currency text)
+returns numeric
+language plpgsql
+stable
+as $$
+declare
+  v_scale int;
+begin
+  v_scale := null;
+  begin
+    select c.decimal_places
+    into v_scale
+    from public.currencies c
+    where upper(c.code) = upper(p_currency)
+    limit 1;
+  exception when undefined_table then
+    v_scale := null;
+  end;
+
+  return public._money_round(p_value, coalesce(v_scale, 2));
+end;
+$$;
+
 create or replace function public.post_inventory_movement(p_movement_id uuid)
 returns void
 language plpgsql

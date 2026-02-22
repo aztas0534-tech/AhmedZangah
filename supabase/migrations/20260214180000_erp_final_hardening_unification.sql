@@ -347,9 +347,9 @@ begin
             'promotionLineId', v_promo_line_id::text,
             'name', v_promo_snapshot->>'name',
             'bundleQty', coalesce(nullif((v_promo_snapshot->>'bundleQty')::numeric, null), v_bundle_qty),
-            'originalTotal', public._money_round(coalesce(nullif((v_promo_snapshot->>'computedOriginalTotal')::numeric, null), 0) / v_fx_rate),
-            'finalTotal', public._money_round(coalesce(nullif((v_promo_snapshot->>'finalTotal')::numeric, null), 0) / v_fx_rate),
-            'promotionExpense', public._money_round(coalesce(nullif((v_promo_snapshot->>'promotionExpense')::numeric, null), 0) / v_fx_rate),
+            'originalTotal', public._money_round(coalesce(nullif((v_promo_snapshot->>'computedOriginalTotal')::numeric, null), 0) / v_fx_rate, v_currency),
+            'finalTotal', public._money_round(coalesce(nullif((v_promo_snapshot->>'finalTotal')::numeric, null), 0) / v_fx_rate, v_currency),
+            'promotionExpense', public._money_round(coalesce(nullif((v_promo_snapshot->>'promotionExpense')::numeric, null), 0) / v_fx_rate, v_currency),
             'cartItemId', coalesce(nullif(v_item_input->>'cartItemId',''), gen_random_uuid()::text)
           );
           v_final_items := v_final_items || v_cart_item;
@@ -412,7 +412,7 @@ begin
                 select value into v_addon_def from jsonb_array_elements(v_available_addons) where value->>'id' = v_addon_key;
                 if v_addon_def is not null then
                     v_addons_price := v_addons_price + ((v_addon_def->>'price')::numeric * v_addon_qty);
-                    v_addon_def_tx := jsonb_set(v_addon_def, '{price}', to_jsonb(public._money_round(((v_addon_def->>'price')::numeric) / v_fx_rate)), true);
+                    v_addon_def_tx := jsonb_set(v_addon_def, '{price}', to_jsonb(public._money_round(((v_addon_def->>'price')::numeric) / v_fx_rate, v_currency)), true);
                     v_final_selected_addons := jsonb_set(v_final_selected_addons, array[v_addon_key], jsonb_build_object('addon', v_addon_def_tx, 'quantity', v_addon_qty));
                 end if;
             end if;
@@ -434,10 +434,10 @@ begin
             'selectedAddons', v_final_selected_addons,
             'selectedGrade', v_grade_def,
             'cartItemId', gen_random_uuid()::text,
-            'price', public._money_round(v_priced_unit / v_fx_rate)
+            'price', public._money_round(v_priced_unit / v_fx_rate, v_currency)
         );
         if v_unit_type = 'gram' then
-          v_cart_item := v_cart_item || jsonb_build_object('pricePerUnit', public._money_round((v_priced_unit / v_fx_rate) * 1000));
+          v_cart_item := v_cart_item || jsonb_build_object('pricePerUnit', public._money_round((v_priced_unit / v_fx_rate) * 1000, v_currency));
         end if;
 
         v_final_items := v_final_items || v_cart_item;
@@ -524,12 +524,12 @@ begin
 
     v_stock_items := public._merge_stock_items(v_stock_items);
 
-    v_subtotal_tx := public._money_round(v_subtotal / v_fx_rate);
-    v_delivery_fee_tx := public._money_round(v_delivery_fee / v_fx_rate);
-    v_discount_amount_tx := public._money_round(v_discount_amount / v_fx_rate);
-    v_tax_amount_tx := public._money_round(v_tax_amount / v_fx_rate);
-    v_total_tx := public._money_round(v_total / v_fx_rate);
-    v_points_redeemed_value_tx := public._money_round(coalesce(p_points_redeemed_value, 0) / v_fx_rate);
+    v_subtotal_tx := public._money_round(v_subtotal / v_fx_rate, v_currency);
+    v_delivery_fee_tx := public._money_round(v_delivery_fee / v_fx_rate, v_currency);
+    v_discount_amount_tx := public._money_round(v_discount_amount / v_fx_rate, v_currency);
+    v_tax_amount_tx := public._money_round(v_tax_amount / v_fx_rate, v_currency);
+    v_total_tx := public._money_round(v_total / v_fx_rate, v_currency);
+    v_points_redeemed_value_tx := public._money_round(coalesce(p_points_redeemed_value, 0) / v_fx_rate, v_currency);
 
     insert into public.orders (customer_auth_user_id, status, invoice_number, data)
     values (
@@ -826,10 +826,13 @@ declare
   v_q numeric;
   v_price numeric;
   v_line_total numeric;
+  v_currency text;
 begin
   if p_snapshot is null then
     return '{}'::jsonb;
   end if;
+
+  v_currency := upper(coalesce(nullif(btrim(coalesce(p_snapshot->>'currency','')), ''), public.get_base_currency()));
   v_arr := coalesce(p_snapshot->'items','[]'::jsonb);
   v_len := jsonb_array_length(v_arr);
   while v_idx < v_len loop
@@ -847,7 +850,7 @@ begin
       v_price := coalesce(nullif((v_item->>'price')::numeric, null), 0);
     end if;
     v_line_total := coalesce(v_price,0) * coalesce(v_q,0);
-    v_item := jsonb_set(v_item, '{line_total}', to_jsonb(public._money_round(v_line_total)), true);
+    v_item := jsonb_set(v_item, '{line_total}', to_jsonb(public._money_round(v_line_total, v_currency)), true);
     v_items := v_items || jsonb_build_array(v_item);
     v_idx := v_idx + 1;
   end loop;
