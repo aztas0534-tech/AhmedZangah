@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../../supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -49,6 +49,7 @@ export default function VoucherEntryScreen() {
   const [currencyCode, setCurrencyCode] = useState<string>('');
   const [fxRate, setFxRate] = useState<string>('');
   const [foreignAmount, setForeignAmount] = useState<string>('');
+  const [fxSource, setFxSource] = useState<'system' | 'manual' | 'unknown'>('unknown');
 
   const [busy, setBusy] = useState(false);
   const [lastEntryId, setLastEntryId] = useState<string>('');
@@ -86,6 +87,59 @@ export default function VoucherEntryScreen() {
 
   const normalizedCurrency = useMemo(() => String(currencyCode || '').trim().toUpperCase(), [currencyCode]);
   const usingForeign = normalizedCurrency && normalizedCurrency !== baseCurrencyCode;
+  const occurredAtYmd = useMemo(() => {
+    const raw = String(occurredAt || '');
+    if (raw.length >= 10) return raw.slice(0, 10);
+    try {
+      return new Date().toISOString().slice(0, 10);
+    } catch {
+      return '';
+    }
+  }, [occurredAt]);
+
+  const applySystemFxRate = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const code = String(normalizedCurrency || '').trim().toUpperCase();
+    if (!code || !occurredAtYmd) return;
+    if (code === baseCurrencyCode) {
+      setFxRate('1');
+      setFxSource('system');
+      return;
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_fx_rate', {
+        p_currency: code,
+        p_date: occurredAtYmd,
+        p_rate_type: 'operational',
+      } as any);
+      if (error) throw error;
+      const n = Number(data);
+      if (!Number.isFinite(n) || n <= 0) {
+        setFxSource('unknown');
+        showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة في هذا التاريخ. أضف السعر من شاشة أسعار الصرف.', 'error');
+        return;
+      }
+      setFxRate(String(n));
+      setFxSource('system');
+    } catch {
+      setFxSource('unknown');
+      showNotification('تعذر جلب سعر الصرف من النظام. يمكنك إدخاله يدويًا.', 'error');
+    }
+  }, [baseCurrencyCode, normalizedCurrency, occurredAtYmd, showNotification]);
+
+  useEffect(() => {
+    if (!canView) return;
+    if (!normalizedCurrency || normalizedCurrency === baseCurrencyCode) {
+      if (fxRate) setFxRate('');
+      if (foreignAmount) setForeignAmount('');
+      if (fxSource !== 'unknown') setFxSource('unknown');
+      return;
+    }
+    if (fxSource === 'manual') return;
+    if (fxRate && Number(fxRate) > 0) return;
+    void applySystemFxRate();
+  }, [applySystemFxRate, baseCurrencyCode, canView, foreignAmount, fxRate, fxSource, normalizedCurrency]);
 
   const amountBase = useMemo(() => {
     const n = Number(amount || '');
@@ -293,6 +347,11 @@ export default function VoucherEntryScreen() {
     if (voucherType === 'payment') return 'سند صرف';
     return 'سند قيد يومية';
   }, [voucherType]);
+  const fxSourceLabel = useMemo(() => {
+    if (fxSource === 'system') return 'سعر النظام';
+    if (fxSource === 'manual') return 'يدوي';
+    return 'غير محدد';
+  }, [fxSource]);
   const screenTitle = useMemo(() => 'سندات (قبض / صرف / قيد يومية)', []);
   const screenSubtitle = useMemo(
     () => 'إنشاء سند يدوي من أي حساب إلى أي حساب كمسودة ثم اعتماد.',
@@ -366,12 +425,42 @@ export default function VoucherEntryScreen() {
           </div>
           <div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">العملة (اختياري)</div>
-            <input value={currencyCode} onChange={(e) => setCurrencyCode(e.target.value)} placeholder={baseCurrencyCode} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" />
+            <input
+              value={currencyCode}
+              onChange={(e) => {
+                setCurrencyCode(e.target.value);
+                setFxRate('');
+                setForeignAmount('');
+                setFxSource('unknown');
+              }}
+              placeholder={baseCurrencyCode}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono"
+            />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">سعر الصرف</div>
-              <input type="number" value={fxRate} onChange={(e) => setFxRate(e.target.value)} disabled={!usingForeign} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono disabled:opacity-60" />
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="text-xs text-gray-500 dark:text-gray-400">سعر الصرف{usingForeign ? ` (${fxSourceLabel})` : ''}</div>
+                {usingForeign ? (
+                  <button
+                    type="button"
+                    onClick={() => void applySystemFxRate()}
+                    className="text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                  >
+                    سعر النظام
+                  </button>
+                ) : null}
+              </div>
+              <input
+                type="number"
+                value={fxRate}
+                onChange={(e) => {
+                  setFxRate(e.target.value);
+                  if (usingForeign) setFxSource('manual');
+                }}
+                disabled={!usingForeign}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono disabled:opacity-60"
+              />
             </div>
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مبلغ أجنبي</div>
