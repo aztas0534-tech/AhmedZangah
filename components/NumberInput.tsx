@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 
 interface NumberInputProps {
     id: string;
@@ -27,6 +27,40 @@ const NumberInput: React.FC<NumberInputProps> = ({
     className = '',
 }) => {
     const inputRef = useRef<HTMLInputElement>(null);
+    const [isFocused, setIsFocused] = useState(false);
+    const [draft, setDraft] = useState<string>(() => {
+        const n = Number(value);
+        return Number.isFinite(n) ? String(n) : '0';
+    });
+
+    const normalizeDraft = useMemo(() => {
+        const arabicIndic: Record<string, string> = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+        const easternArabicIndic: Record<string, string> = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+        return (raw: string) => {
+            let s = String(raw ?? '');
+            s = s.replace(/[٠-٩]/g, (d) => arabicIndic[d] || d);
+            s = s.replace(/[۰-۹]/g, (d) => easternArabicIndic[d] || d);
+            s = s.replace(/٫/g, '.').replace(/,/g, '.');
+
+            const keepTrailingDot = s.trim().endsWith('.');
+            const isNeg = s.trim().startsWith('-');
+
+            s = s.replace(/[^\d.]/g, '');
+            const parts = s.split('.');
+            const intPart = parts[0] || '';
+            const fracPart = parts.slice(1).join('');
+            if (!intPart && !fracPart) return keepTrailingDot ? (isNeg ? '-.' : '.') : (isNeg ? '-' : '');
+            const core = fracPart ? `${intPart}.${fracPart}` : intPart;
+            const withDot = keepTrailingDot && !core.includes('.') ? `${core}.` : core;
+            return isNeg ? (withDot.startsWith('-') ? withDot : `-${withDot}`) : withDot;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (isFocused) return;
+        const n = Number(value);
+        setDraft(Number.isFinite(n) ? String(n) : '0');
+    }, [isFocused, value]);
 
     // Prevent scroll wheel from changing number
     useEffect(() => {
@@ -62,6 +96,9 @@ const NumberInput: React.FC<NumberInputProps> = ({
         } as unknown as React.ChangeEvent<HTMLInputElement>;
 
         onChange(event);
+        if (isFocused) {
+            setDraft(Number.isInteger(step) ? newValue.toString() : newValue.toFixed(4));
+        }
     };
 
     const handleDecrement = () => {
@@ -80,6 +117,9 @@ const NumberInput: React.FC<NumberInputProps> = ({
         } as unknown as React.ChangeEvent<HTMLInputElement>;
 
         onChange(event);
+        if (isFocused) {
+            setDraft(Number.isInteger(step) ? newValue.toString() : newValue.toFixed(4));
+        }
     };
 
     return (
@@ -100,13 +140,41 @@ const NumberInput: React.FC<NumberInputProps> = ({
                 ref={inputRef}
                 id={id}
                 name={name}
-                type="number"
+                type="text"
                 inputMode="decimal"
-                value={value}
-                onChange={onChange}
-                min={min}
-                max={max}
-                step={step}
+                value={draft}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => {
+                    setIsFocused(false);
+                    const normalized = normalizeDraft(draft);
+                    const fixed = normalized.endsWith('.') ? normalized.slice(0, -1) : normalized;
+                    const parsed = Number(fixed);
+                    let nextNum = Number.isFinite(parsed) ? parsed : 0;
+                    if (min !== undefined && nextNum < min) nextNum = min;
+                    if (max !== undefined && nextNum > max) nextNum = max;
+                    const nextStr = Number.isInteger(step) ? String(Math.round(nextNum)) : String(nextNum);
+                    setDraft(nextStr);
+                    const evt = {
+                        target: {
+                            name,
+                            value: nextStr,
+                            type: 'text',
+                        },
+                    } as unknown as React.ChangeEvent<HTMLInputElement>;
+                    onChange(evt);
+                }}
+                onChange={(e) => {
+                    const normalized = normalizeDraft(e.target.value);
+                    setDraft(normalized);
+                    const evt = {
+                        target: {
+                            name,
+                            value: normalized,
+                            type: 'text',
+                        },
+                    } as unknown as React.ChangeEvent<HTMLInputElement>;
+                    onChange(evt);
+                }}
                 placeholder={placeholder}
                 disabled={disabled}
                 className="w-full h-12 p-2 text-center bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white font-bold text-lg appearance-none"

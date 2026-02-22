@@ -26,6 +26,7 @@ interface OrderContextType {
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
@@ -58,6 +59,7 @@ interface OrderContextType {
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     customerName?: string;
@@ -69,6 +71,7 @@ interface OrderContextType {
       | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
     >;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
@@ -727,6 +730,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         warehouse_id: warehouseId,
         data: order,
       };
+      const partyId = (order as any)?.partyId;
+      payload.party_id = isUuid(partyId) ? partyId : null;
       if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
         payload.currency = String((order as any).currency).trim().toUpperCase();
       }
@@ -737,7 +742,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .from('orders')
         .insert(payload));
 
-      if (error && (isSchemaCacheMissingColumnError(error, 'delivery_zone_id') || isSchemaCacheMissingColumnError(error, 'warehouse_id'))) {
+      if (error && (
+        isSchemaCacheMissingColumnError(error, 'delivery_zone_id')
+        || isSchemaCacheMissingColumnError(error, 'warehouse_id')
+        || isSchemaCacheMissingColumnError(error, 'party_id')
+      )) {
         const fallback: Record<string, any> = {
           id: order.id,
           status: order.status,
@@ -1570,6 +1579,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
@@ -1656,16 +1666,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
       const rawId = String(input.customerId || '').trim();
-      if (!isUuid(rawId)) {
-        throw new Error('لا يمكن البيع الآجل بدون عميل تجاري صالح.');
+      const rawPartyId = String((input as any).partyId || '').trim();
+      if (!isUuid(rawId) && !isUuid(rawPartyId)) {
+        throw new Error('لا يمكن البيع الآجل بدون عميل أو طرف مالي صالح.');
       }
-      const { data: cRow } = await supabase
-        .from('customers')
-        .select('auth_user_id, customer_type, payment_terms, credit_limit')
-        .eq('auth_user_id', rawId)
-        .maybeSingle();
-      if (!cRow?.auth_user_id) {
-        throw new Error('البيع الآجل متاح فقط لعميل مسجل في قسم إدارة العملاء بنوع wholesale.');
+      if (isUuid(rawId)) {
+        const { data: cRow } = await supabase
+          .from('customers')
+          .select('auth_user_id, customer_type, payment_terms, credit_limit')
+          .eq('auth_user_id', rawId)
+          .maybeSingle();
+        if (!cRow?.auth_user_id) {
+          throw new Error('البيع الآجل متاح فقط لعميل مسجل في قسم إدارة العملاء بنوع wholesale.');
+        }
       }
     }
     let items: CartItem[] = normalizedMenuLines.map((line, idx) => {
@@ -2144,6 +2157,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
+    const partyId = String((input as any).partyId || '').trim();
+    if (isUuid(partyId)) (newOrder as any).partyId = partyId;
 
     const payloadItems = newOrder.items
       .filter((item: any) => !(item?.lineType === 'promotion' || item?.promotionId))
@@ -2473,6 +2488,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     customerName?: string;
@@ -2535,9 +2551,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
         ? (item.weight || item.quantity)
-        : item.quantity;
+        : item.quantity * uomFactor;
       const { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
         p_warehouse_id: warehouseId,
@@ -2607,11 +2624,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       );
       let itemPrice = item.price;
       let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
       return total + (itemPrice + addonsPrice) * itemQuantity;
     }, 0);
@@ -2648,6 +2668,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     (newOrder as any).baseCurrency = baseCurrency;
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
+    const partyId = String((input as any).partyId || '').trim();
+    if (isUuid(partyId)) (newOrder as any).partyId = partyId;
     await createRemoteOrder(newOrder);
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -2690,6 +2712,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const createInStoreDraftQuotation = async (input: {
     lines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
@@ -2741,7 +2764,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
-      const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram') ? (item.weight || item.quantity) : item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
+      const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
+        ? (item.weight || item.quantity)
+        : item.quantity * uomFactor;
       let { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
         p_warehouse_id: warehouseId,
@@ -2761,11 +2787,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce((sum, { addon, quantity }) => sum + addon.price * quantity, 0);
       let itemPrice = item.price;
       let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
       return total + (itemPrice + addonsPrice) * itemQuantity;
     }, 0);
@@ -2799,6 +2828,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: nowIso,
       isDraft: true,
     };
+    const partyId = String((input as any).partyId || '').trim();
+    if (isUuid(partyId)) (newOrder as any).partyId = partyId;
     await createRemoteOrder(newOrder);
     await addOrderEvent({
       orderId: newOrder.id,
@@ -3627,14 +3658,28 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         const paidAlready = await fetchOrderPaidAmount(existing.id);
-        const remaining = Math.max(0, (Number(existing.total) || 0) - paidAlready);
+        const currencyCodeRaw = String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+        const currencyCode = currencyCodeRaw || 'YER';
+        const dp = currencyCode === 'YER' ? 0 : 2;
+        const roundMoney = (v: number) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return 0;
+          const pow = Math.pow(10, dp);
+          return Math.round(n * pow) / pow;
+        };
+        const total = roundMoney(Number(existing.total) || 0);
+        const paidRounded = roundMoney(paidAlready);
+        const tol = Math.pow(10, -dp);
+        let remaining = roundMoney(Math.max(0, total - paidRounded));
+        if (!(remaining > tol)) remaining = 0;
+
         if (remaining > 0) {
           const error = await rpcRecordOrderPayment(supabase, {
             orderId: existing.id,
             amount: remaining,
             method: existing.paymentMethod,
             occurredAt: nowIso,
-            currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
+            currency: currencyCode,
             idempotencyKey: `markPaid:${existing.id}:${nowIso}:${Number(remaining) || 0}`,
           });
           if (error) {
@@ -3659,7 +3704,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           payload: { paymentMethod: existing.paymentMethod },
         });
 
-        await updateRemoteOrder(updated, { includeStatus: false });
+        try {
+          await updateRemoteOrder(updated, { includeStatus: false });
+        } catch (patchErr: any) {
+          const errMsg = String(patchErr?.message || patchErr || '');
+          if (!/posted_order_immutable/i.test(errMsg)) throw patchErr;
+        }
         finalOrder = await ensureInvoiceIssued(updated, paidAtIso);
       }
     } catch (err) {

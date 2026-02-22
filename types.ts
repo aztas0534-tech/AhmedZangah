@@ -785,6 +785,9 @@ export interface ItemBatch {
   batchId: string;
   occurredAt: string;
   unitCost: number;
+  unitCostOriginal?: number;
+  unitCostCurrency?: string;
+  fxAtReceipt?: number;
   receivedQuantity: number;
   consumedQuantity: number;
   remainingQuantity: number;

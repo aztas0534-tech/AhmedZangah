@@ -105,6 +105,7 @@ const PartyAgingReportsScreen = lazy(() => import('./screens/admin/reports/Party
 const PartyDocumentsScreen = lazy(() => import('./screens/admin/PartyDocumentsScreen'));
 const SettlementWorkspaceScreen = lazy(() => import('./screens/admin/SettlementWorkspaceScreen'));
 const AdvanceManagementScreen = lazy(() => import('./screens/admin/AdvanceManagementScreen'));
+const VoucherEntryScreen = lazy(() => import('./screens/admin/VoucherEntryScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -398,6 +399,7 @@ const App: React.FC = () => {
                     <Route path="financial-parties" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialPartiesScreen /></AdminProtectedRoute>} />
                     <Route path="financial-parties/:partyId" element={<AdminProtectedRoute permissions={['accounting.view']}><PartyLedgerStatementScreen /></AdminProtectedRoute>} />
                     <Route path="party-documents" element={<AdminProtectedRoute permissions={['accounting.manage']}><PartyDocumentsScreen /></AdminProtectedRoute>} />
+                    <Route path="vouchers" element={<AdminProtectedRoute permissions={['accounting.manage']}><VoucherEntryScreen /></AdminProtectedRoute>} />
                     <Route path="settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><SettlementWorkspaceScreen /></AdminProtectedRoute>} />
                     <Route path="advances" element={<AdminProtectedRoute permissions={['accounting.manage']}><AdvanceManagementScreen /></AdminProtectedRoute>} />
                     <Route

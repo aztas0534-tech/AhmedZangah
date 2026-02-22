@@ -246,6 +246,7 @@ declare
   v_return_subtotal numeric;
   v_tax_refund numeric;
   v_total_refund numeric;
+  v_currency text;
   v_refund_method text;
   v_shift_id uuid;
   v_item jsonb;
@@ -309,12 +310,21 @@ begin
   v_sales_returns := public.get_account_id_by_code('4026');
   v_vat_payable := public.get_account_id_by_code('2020');
 
+  v_currency := upper(coalesce(
+    nullif(btrim(coalesce(v_order.currency, '')), ''),
+    nullif(btrim(coalesce(v_order.data->>'currency', '')), ''),
+    public.get_base_currency()
+  ));
+
   v_order_subtotal := coalesce(nullif((v_order.data->>'subtotal')::numeric, null), coalesce(v_order.subtotal, 0), 0);
   v_order_discount := coalesce(nullif((v_order.data->>'discountAmount')::numeric, null), coalesce(v_order.discount, 0), 0);
   v_order_net_subtotal := greatest(0, v_order_subtotal - v_order_discount);
   v_order_tax := coalesce(nullif((v_order.data->>'taxAmount')::numeric, null), coalesce(v_order.tax_amount, 0), 0);
 
   v_return_subtotal := coalesce(nullif(v_ret.total_refund_amount, null), 0);
+  v_order_net_subtotal := public._money_round(v_order_net_subtotal, v_currency);
+  v_order_tax := public._money_round(v_order_tax, v_currency);
+  v_return_subtotal := public._money_round(v_return_subtotal, v_currency);
   if v_return_subtotal <= 0 then
     raise exception 'invalid return amount';
   end if;
@@ -326,7 +336,8 @@ begin
   if v_order_net_subtotal > 0 and v_order_tax > 0 then
     v_tax_refund := least(v_order_tax, (v_return_subtotal / v_order_net_subtotal) * v_order_tax);
   end if;
-  v_total_refund := public._money_round(v_return_subtotal + v_tax_refund);
+  v_tax_refund := public._money_round(v_tax_refund, v_currency);
+  v_total_refund := public._money_round(v_return_subtotal + v_tax_refund, v_currency);
 
   v_refund_method := coalesce(nullif(trim(coalesce(v_ret.refund_method, '')), ''), 'cash');
   if v_refund_method in ('bank', 'bank_transfer') then
@@ -359,6 +370,9 @@ begin
     end;
   end if;
 
+  v_paid_total := public._money_round(v_paid_total, v_currency);
+  v_prev_refunded_total := public._money_round(v_prev_refunded_total, v_currency);
+
   if v_refund_method in ('cash','network','kuraimi') then
     if v_paid_total > 0 and (v_prev_refunded_total + v_total_refund) > (v_paid_total + 0.000000001) then
       raise exception 'refund exceeds paid amount for this order';
@@ -382,11 +396,11 @@ begin
   delete from public.journal_lines jl where jl.journal_entry_id = v_entry_id;
 
   insert into public.journal_lines(journal_entry_id, account_id, debit, credit, line_memo)
-  values (v_entry_id, v_sales_returns, public._money_round(v_return_subtotal), 0, 'Sales return');
+  values (v_entry_id, v_sales_returns, public._money_round(v_return_subtotal, v_currency), 0, 'Sales return');
 
   if v_tax_refund > 0 then
     insert into public.journal_lines(journal_entry_id, account_id, debit, credit, line_memo)
-    values (v_entry_id, v_vat_payable, public._money_round(v_tax_refund), 0, 'Reverse VAT payable');
+    values (v_entry_id, v_vat_payable, public._money_round(v_tax_refund, v_currency), 0, 'Reverse VAT payable');
   end if;
 
   if v_refund_method = 'cash' then
