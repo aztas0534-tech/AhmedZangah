@@ -2231,45 +2231,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       } catch { }
 
-      if (canMarkPaidUi) {
-        const sbPay = getSupabaseClient();
-        if (!sbPay) throw new Error('Supabase غير مهيأ.');
-        const paymentCurrency = String((newOrder as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
-        for (let i = 0; i < paymentBreakdown.length; i++) {
-          const p = paymentBreakdown[i];
-          const rpcErr = await rpcRecordOrderPayment(sbPay, {
-            orderId: newOrder.id,
-            amount: Number(p.amount) || 0,
-            method: p.method,
-            occurredAt: nowIso,
-            currency: paymentCurrency,
-            idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
-          });
-          if (rpcErr) {
-            paymentRecordOk = false;
-            if (import.meta.env.DEV) {
-              logger.warn('Failed to record payment for in-store sale:', rpcErr);
-            }
-            break;
-          }
-        }
-      }
-
-      paidAtIso = (canMarkPaidUi && paymentRecordOk && isFullyPaid) ? nowIso : undefined;
-      shouldIssueInvoice = (canMarkPaidUi && paymentRecordOk && isFullyPaid);
-
       // Note: We do NOT generate invoiceNumber or invoiceSnapshot here in the frontend.
       // We rely on the backend trigger `trg_issue_invoice_on_delivery` to generate them when status changes to 'delivered'.
       // This avoids the 22P02 (Invalid JSON) error caused by sending the complex snapshot structure from frontend.
-      finalized = {
+      const deliveryPayload: Order = {
         ...newOrder,
-        paidAt: paidAtIso,
-        // We explicitly clear invoiceNumber/invoiceIssuedAt/invoiceSnapshot so the backend sees them as missing
-        // and generates them.
+        paidAt: undefined,
         invoiceNumber: undefined,
         invoiceIssuedAt: undefined,
         invoiceSnapshot: undefined,
       };
+      finalized = deliveryPayload;
 
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -2285,7 +2257,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               cancelledAt: nowIso,
               cancelReason: reason,
             };
-            await sb2.from('orders').update({ status: 'cancelled', data: cancelled }).eq('id', newOrder.id);
+            const { error: updErr } = await sb2.from('orders').update({ status: 'cancelled', data: cancelled }).eq('id', newOrder.id);
+            if (updErr) {
+              await sb2.from('orders').update({ status: 'cancelled' }).eq('id', newOrder.id);
+            }
           } catch {
           }
         };
@@ -2351,6 +2326,43 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         } else {
           // Fallback if fetch fails (unlikely)
           console.warn('[createInStoreSale] Could not fetch fresh order after delivery.');
+        }
+
+        if (paymentBreakdown.length > 0) {
+          const paymentCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+          const sbPay = getSupabaseClient();
+          if (!sbPay) throw new Error('Supabase غير مهيأ.');
+          for (let i = 0; i < paymentBreakdown.length; i++) {
+            const p = paymentBreakdown[i];
+            const rpcErr = await rpcRecordOrderPayment(sbPay, {
+              orderId: newOrder.id,
+              amount: Number(p.amount) || 0,
+              method: p.method,
+              occurredAt: nowIso,
+              currency: paymentCurrency,
+              idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+            });
+            if (rpcErr) {
+              paymentRecordOk = false;
+              if (import.meta.env.DEV) {
+                logger.warn('Failed to record payment for in-store sale:', rpcErr);
+              }
+              break;
+            }
+          }
+        }
+
+        paidAtIso = (paymentRecordOk && isFullyPaid) ? nowIso : undefined;
+        shouldIssueInvoice = (paymentRecordOk && isFullyPaid);
+        if (paidAtIso) {
+          try {
+            const updatedPaid = { ...finalized, paidAt: paidAtIso } as Order;
+            finalized = updatedPaid;
+            await updateRemoteOrder(updatedPaid, { includeStatus: false });
+          } catch (err) {
+            paymentRecordOk = false;
+            finalized = { ...finalized, paidAt: undefined } as Order;
+          }
         }
 
       } else {
