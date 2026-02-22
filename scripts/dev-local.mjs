@@ -78,7 +78,14 @@ end $$;
   const fn = run('supabase:functions', 'npx', ['supabase', 'functions', 'serve', 'create-admin-customer', 'create-admin-user', 'reset-admin-password', 'delete-admin-user', '--no-verify-jwt']);
   children.push(fn.child);
 
-  const vite = run('vite', 'node', ['--max-old-space-size=8192', './node_modules/vite/bin/vite.js']);
+  const localSupabaseUrl = (process.env.VITE_SUPABASE_URL_LOCAL || 'http://127.0.0.1:54321').trim();
+  const localSupabaseAnonKey = (process.env.VITE_SUPABASE_ANON_KEY_LOCAL || 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH').trim();
+  const vite = run(
+    'vite',
+    'node',
+    ['--max-old-space-size=8192', './node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5174', '--strictPort'],
+    { env: { ...process.env, VITE_SUPABASE_URL: localSupabaseUrl, VITE_SUPABASE_ANON_KEY: localSupabaseAnonKey } }
+  );
   children.push(vite.child);
 
   const code = await Promise.race([fn.done, vite.done]);

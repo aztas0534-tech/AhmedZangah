@@ -910,6 +910,10 @@ const SettingsScreen: React.FC = () => {
       const isChecked = (e.target as HTMLInputElement).checked;
       setFormState(prev => ({ ...prev, ENABLE_MULTI_CURRENCY_PRICING: isChecked }));
     }
+    else if (name === 'ALLOW_BELOW_COST_SALES') {
+      const isChecked = (e.target as HTMLInputElement).checked;
+      setFormState(prev => ({ ...prev, ALLOW_BELOW_COST_SALES: isChecked }));
+    }
     else if (name === 'maintenanceMessage') {
       setFormState(prev => ({ ...prev, maintenanceMessage: value }));
     }
@@ -1604,6 +1608,21 @@ const SettingsScreen: React.FC = () => {
               </label>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 يسمح باختيار عملة الفاتورة في شاشة نقاط البيع عند توفر أسعار الصرف والعملات التشغيلية.
+              </p>
+            </div>
+            <div className="mt-4">
+              <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  name="ALLOW_BELOW_COST_SALES"
+                  checked={Boolean((formState as any)?.ALLOW_BELOW_COST_SALES)}
+                  onChange={handleChange}
+                  className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                السماح بالبيع تحت الحد الأدنى/التكلفة (يتطلب صلاحية)
+              </label>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                يسمح بتجاوز منع البيع تحت الحد الأدنى للصنف في قاعدة البيانات، فقط لمن يملك صلاحية sales.allowBelowCost.
               </p>
             </div>
             <div className="border-t pt-4">

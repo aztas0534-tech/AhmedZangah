@@ -134,6 +134,7 @@ const defaultSettings: AppSettings = {
   baseCurrency: '',
   operationalCurrencies: [],
   ENABLE_MULTI_CURRENCY_PRICING: false,
+  ALLOW_BELOW_COST_SALES: false,
   maintenanceEnabled: false,
   maintenanceMessage: 'التطبيق في وضع الصيانة مؤقتًا. الرجاء المحاولة لاحقًا.',
   brandColors: {

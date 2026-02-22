@@ -552,6 +552,7 @@ export interface AppSettings {
   baseCurrency?: string;
   operationalCurrencies?: string[];
   ENABLE_MULTI_CURRENCY_PRICING?: boolean;
+  ALLOW_BELOW_COST_SALES?: boolean;
   maintenanceEnabled?: boolean;
   maintenanceMessage?: string;
   brandColors?: {
@@ -904,6 +905,7 @@ export type AdminPermission =
   | 'orders.createInStore'
   | 'orders.updateStatus.all'
   | 'orders.updateStatus.delivery'
+  | 'sales.allowBelowCost'
   | 'shipments.view'
   | 'inventory.view'
   | 'inventory.movements.view'
@@ -949,6 +951,7 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'orders.createInStore', labelAr: 'إضافة بيع حضوري' },
   { key: 'orders.updateStatus.all', labelAr: 'تغيير حالة الطلبات (كامل)' },
   { key: 'orders.updateStatus.delivery', labelAr: 'تغيير حالة الطلبات (مندوب)' },
+  { key: 'sales.allowBelowCost', labelAr: 'السماح بالبيع تحت الحد الأدنى/التكلفة' },
   { key: 'shipments.view', labelAr: 'عرض الشحنات' },
   { key: 'inventory.view', labelAr: 'عرض المخزون' },
   { key: 'inventory.movements.view', labelAr: 'عرض حركات المخزون والتقارير' },
