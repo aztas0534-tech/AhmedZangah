@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 
 type FinancialPartyRow = {
@@ -13,6 +13,9 @@ type FinancialPartyRow = {
   linked_entity_id: string | null;
   currency_preference: string | null;
   is_active: boolean;
+  credit_limit_base?: number;
+  credit_net_days?: number;
+  credit_hold?: boolean;
   created_at: string;
 };
 
@@ -21,6 +24,7 @@ const FinancialPartiesScreen: React.FC = () => {
   const { showNotification } = useToast();
   const canManage = Boolean(hasPermission?.('accounting.manage'));
   const canViewAccounting = Boolean(hasPermission?.('accounting.view'));
+  const [baseCode, setBaseCode] = useState('—');
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<FinancialPartyRow[]>([]);
   const [query, setQuery] = useState('');
@@ -32,6 +36,13 @@ const FinancialPartiesScreen: React.FC = () => {
   const [form, setForm] = useState<Partial<FinancialPartyRow>>({});
   const [backfillBusyId, setBackfillBusyId] = useState<string>('');
 
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(String(c).toUpperCase());
+    });
+  }, []);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -39,7 +50,7 @@ const FinancialPartiesScreen: React.FC = () => {
       if (!supabase) throw new Error('supabase not available');
       const { data, error } = await supabase
         .from('financial_parties')
-        .select('id,name,party_type,linked_entity_type,linked_entity_id,currency_preference,is_active,created_at')
+        .select('id,name,party_type,linked_entity_type,linked_entity_id,currency_preference,is_active,credit_limit_base,credit_net_days,credit_hold,created_at')
         .order('created_at', { ascending: false })
         .limit(500);
       if (error) throw error;
@@ -95,7 +106,7 @@ const FinancialPartiesScreen: React.FC = () => {
       setForm(row);
     } else {
       setEditingRow(null);
-      setForm({ is_active: true, party_type: 'generic' } as any);
+      setForm({ is_active: true, party_type: 'generic', credit_limit_base: 0, credit_net_days: 30, credit_hold: false } as any);
     }
     setIsModalOpen(true);
   };
@@ -107,6 +118,10 @@ const FinancialPartiesScreen: React.FC = () => {
     if (!['customer', 'supplier', 'employee', 'staff_custodian', 'partner', 'generic'].includes(t)) return 'نوع الطرف غير صحيح';
     const cur = String(form.currency_preference || '').trim().toUpperCase();
     if (cur && currencyOptions.length > 0 && !currencyOptions.includes(cur)) return 'العملة المفضلة غير معرفة';
+    const limit = Number((form as any).credit_limit_base ?? 0);
+    if (!Number.isFinite(limit) || limit < 0) return 'سقف الائتمان غير صحيح';
+    const days = Number((form as any).credit_net_days ?? 30);
+    if (!Number.isFinite(days) || days < 0 || days > 3650) return 'أيام الأجل غير صحيحة';
     return null;
   };
 
@@ -129,6 +144,9 @@ const FinancialPartiesScreen: React.FC = () => {
       party_type: String(form.party_type || 'generic').trim(),
       currency_preference: String(form.currency_preference || '').trim().toUpperCase() || null,
       is_active: form.is_active !== false,
+      credit_limit_base: Math.max(0, Number((form as any).credit_limit_base) || 0),
+      credit_net_days: Math.max(0, Math.floor(Number((form as any).credit_net_days) || 0)) || 30,
+      credit_hold: Boolean((form as any).credit_hold),
       default_account_id: null,
     };
 
@@ -241,6 +259,7 @@ const FinancialPartiesScreen: React.FC = () => {
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الاسم</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">النوع</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العملة</th>
+                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الائتمان</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الربط</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الحالة</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجراءات</th>
@@ -249,7 +268,7 @@ const FinancialPartiesScreen: React.FC = () => {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">
                     لا توجد بيانات.
                   </td>
                 </tr>
@@ -259,6 +278,14 @@ const FinancialPartiesScreen: React.FC = () => {
                     <td className="p-4 font-medium dark:text-white border-r dark:border-gray-700">{r.name}</td>
                     <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700 font-mono">{r.party_type}</td>
                     <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700 font-mono">{r.currency_preference || '-'}</td>
+                    <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700 font-mono">
+                      <div className="flex items-center gap-2">
+                        <span>{Number(r.credit_limit_base || 0).toFixed(2)} {baseCode}</span>
+                        {Boolean(r.credit_hold) && (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-200">HOLD</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700 font-mono">
                       {r.linked_entity_type ? `${r.linked_entity_type}:${r.linked_entity_id}` : '-'}
                     </td>
@@ -347,6 +374,38 @@ const FinancialPartiesScreen: React.FC = () => {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">سقف الائتمان (بالعملة الأساسية {baseCode})</label>
+                  <input
+                    type="number"
+                    value={Number((form as any).credit_limit_base ?? 0)}
+                    onChange={(e) => setForm((p) => ({ ...p, credit_limit_base: Number(e.target.value) || 0 }))}
+                    min={0}
+                    step={0.01}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">أيام الأجل الافتراضية</label>
+                  <input
+                    type="number"
+                    value={Number((form as any).credit_net_days ?? 30)}
+                    onChange={(e) => setForm((p) => ({ ...p, credit_net_days: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                    min={0}
+                    step={1}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input
+                  type="checkbox"
+                  checked={Boolean((form as any).credit_hold)}
+                  onChange={(e) => setForm((p) => ({ ...p, credit_hold: e.target.checked }))}
+                />
+                <span>إيقاف ائتمان (Credit Hold)</span>
+              </label>
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                 <input
                   type="checkbox"

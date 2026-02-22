@@ -129,6 +129,9 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreCreditDueDate, setInStoreCreditDueDate] = useState<string>('');
     const [inStoreCreditSummary, setInStoreCreditSummary] = useState<any | null>(null);
     const [inStoreCreditSummaryLoading, setInStoreCreditSummaryLoading] = useState(false);
+    const [inStoreCreditOverrideModalOpen, setInStoreCreditOverrideModalOpen] = useState(false);
+    const [inStoreCreditOverrideReason, setInStoreCreditOverrideReason] = useState('');
+    const [inStoreCreditOverridePending, setInStoreCreditOverridePending] = useState<any | null>(null);
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
         items.sort((a, b) => {
@@ -808,26 +811,9 @@ const ManageOrdersScreen: React.FC = () => {
                         setInStoreCreditSummary(null);
                         return;
                     }
-                    const { data, error } = await supabase.rpc('list_party_open_items', {
-                        p_party_id: partyId,
-                        p_currency: null,
-                        p_status: 'open_active',
-                    });
+                    const { data, error } = await supabase.rpc('get_party_credit_summary', { p_party_id: partyId });
                     if (error) throw error;
-                    const rows = (Array.isArray(data) ? data : []) as any[];
-                    const arRows = rows.filter((r) => String(r?.account_code || '') === '1200');
-                    const net = arRows.reduce((sum, r) => {
-                        const amt = Number(r?.open_base_amount || 0);
-                        const dir = String(r?.direction || '').toLowerCase();
-                        return sum + (dir === 'credit' ? -amt : amt);
-                    }, 0);
-                    setInStoreCreditSummary({
-                        exists: true,
-                        party_mode: true,
-                        credit_limit: null,
-                        available_credit: null,
-                        current_balance: net,
-                    });
+                    setInStoreCreditSummary(data || null);
                     return;
                 }
 
@@ -1323,6 +1309,61 @@ const ManageOrdersScreen: React.FC = () => {
         setInStorePaymentDeclaredAmount(Number(total.toFixed(dp)));
     }, [inStoreIsCredit, inStorePaymentDeclaredAmount, inStorePaymentMethod, inStoreTotals.total, isInStoreSaleOpen]);
 
+    const runCreateInStoreSale = async (payload: any, creditOverrideReason?: string) => {
+        setIsInStoreCreating(true);
+        try {
+            const order = await createInStoreSale({
+                ...payload,
+                creditOverrideReason: creditOverrideReason ? String(creditOverrideReason).trim() : undefined,
+            });
+            const awaitingPayment = order.status === 'pending';
+            const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
+            if (awaitingPayment) {
+                showNotification('تم إنشاء الطلب وبانتظار التحصيل من الكاشير', 'info');
+            } else {
+                showNotification(
+                    language === 'ar'
+                        ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
+                        : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
+                    isQueued ? 'info' : 'success'
+                );
+            }
+            if (inStoreAutoOpenInvoice && !isQueued) {
+                navigate(`/admin/invoice/${order.id}`);
+            }
+            setIsInStoreSaleOpen(false);
+            setInStoreCustomerName('');
+            setInStorePhoneNumber('');
+            setInStorePaymentMethod('cash');
+            setInStoreNotes('');
+            setInStorePaymentReferenceNumber('');
+            setInStorePaymentSenderName('');
+            setInStorePaymentSenderPhone('');
+            setInStorePaymentDeclaredAmount(0);
+            setInStorePaymentAmountConfirmed(false);
+            setInStoreCashReceived(0);
+            setInStoreDiscountType('amount');
+            setInStoreDiscountValue(0);
+            setInStoreMultiPaymentEnabled(false);
+            setInStorePaymentLines([]);
+            setInStoreLines([]);
+            setInStoreIsCredit(false);
+            setInStoreCustomerMode('walk_in');
+            setInStoreSelectedCustomerId('');
+            setInStoreCustomerSearchResult(null);
+            setInStoreCustomerPhoneSearch('');
+            setInStoreSelectedPartyId('');
+        } catch (error) {
+            const raw = error instanceof Error ? error.message : '';
+            const message = language === 'ar'
+                ? (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.')
+                : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.');
+            showNotification(message, 'error');
+        } finally {
+            setIsInStoreCreating(false);
+        }
+    };
+
     const confirmInStoreSale = async () => {
         const total = Number(inStoreTotals.total) || 0;
         if (!(total > 0)) {
@@ -1422,84 +1463,58 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification('يرجى اختيار طريقة الدفع.', 'error');
             return;
         }
-        setIsInStoreCreating(true);
-        try {
-            const order = await createInStoreSale({
-                lines: inStoreLines,
-                currency: inStoreTransactionCurrency,
-                paymentMethod: primaryPaymentMethod,
-                customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
-                partyId: inStoreCustomerMode === 'party' && inStoreSelectedPartyId ? inStoreSelectedPartyId : undefined,
-                customerName: inStoreCustomerName,
-                phoneNumber: inStorePhoneNumber,
-                notes: inStoreNotes,
-                discountType: inStoreDiscountType,
-                discountValue: Number(inStoreDiscountValue) || 0,
-                paymentReferenceNumber: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentReferenceNumber.trim() : undefined,
-                paymentSenderName: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderName.trim() : undefined,
-                paymentSenderPhone: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderPhone.trim() : undefined,
-                paymentDeclaredAmount: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? (Number(inStorePaymentDeclaredAmount) || 0) : undefined,
-                paymentAmountConfirmed: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? Boolean(inStorePaymentAmountConfirmed) : undefined,
-                isCredit: inStoreIsCredit,
-                creditDays: inStoreIsCredit ? Math.max(0, Number(inStoreCreditDays) || 0) : 0,
-                dueDate: inStoreIsCredit ? (inStoreCreditDueDate || undefined) : undefined,
-                paymentBreakdown: normalizedPaymentLines.map((p) => ({
-                    method: p.method,
-                    amount: p.amount,
-                    referenceNumber: p.referenceNumber,
-                    senderName: p.senderName,
-                    senderPhone: p.senderPhone,
-                    declaredAmount: p.declaredAmount,
-                    amountConfirmed: p.amountConfirmed,
-                    cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
-                })),
-            });
-            const awaitingPayment = order.status === 'pending';
-            const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
-            if (awaitingPayment) {
-                showNotification('تم إنشاء الطلب وبانتظار التحصيل من الكاشير', 'info');
-            } else {
-                showNotification(
-                    language === 'ar'
-                        ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
-                        : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
-                    isQueued ? 'info' : 'success'
-                );
+        const payload: any = {
+            lines: inStoreLines,
+            currency: inStoreTransactionCurrency,
+            paymentMethod: primaryPaymentMethod,
+            customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
+            partyId: inStoreCustomerMode === 'party' && inStoreSelectedPartyId ? inStoreSelectedPartyId : undefined,
+            customerName: inStoreCustomerName,
+            phoneNumber: inStorePhoneNumber,
+            notes: inStoreNotes,
+            discountType: inStoreDiscountType,
+            discountValue: Number(inStoreDiscountValue) || 0,
+            paymentReferenceNumber: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentReferenceNumber.trim() : undefined,
+            paymentSenderName: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderName.trim() : undefined,
+            paymentSenderPhone: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderPhone.trim() : undefined,
+            paymentDeclaredAmount: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? (Number(inStorePaymentDeclaredAmount) || 0) : undefined,
+            paymentAmountConfirmed: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? Boolean(inStorePaymentAmountConfirmed) : undefined,
+            isCredit: inStoreIsCredit,
+            creditDays: inStoreIsCredit ? Math.max(0, Number(inStoreCreditDays) || 0) : 0,
+            dueDate: inStoreIsCredit ? (inStoreCreditDueDate || undefined) : undefined,
+            paymentBreakdown: normalizedPaymentLines.map((p) => ({
+                method: p.method,
+                amount: p.amount,
+                referenceNumber: p.referenceNumber,
+                senderName: p.senderName,
+                senderPhone: p.senderPhone,
+                declaredAmount: p.declaredAmount,
+                amountConfirmed: p.amountConfirmed,
+                cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
+            })),
+        };
+
+        if (inStoreIsCredit && inStoreCustomerMode === 'party' && inStoreSelectedPartyId) {
+            const baseTotal = Number(inStoreTotals.baseTotal) || 0;
+            const fx = Number(inStoreTotals.fxRate) || 1;
+            const paidForeign = normalizedPaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+            const paidBase = roundMoney(paidForeign * fx);
+            const netAr = Math.max(0, baseTotal - paidBase);
+            const available = Number(inStoreCreditSummary?.available_credit || 0);
+            const hold = Boolean(inStoreCreditSummary?.credit_hold);
+            if (netAr > 0 && (hold || (netAr - available > 0.0001))) {
+                if (!canManageAccounting) {
+                    showNotification('هذا البيع يتجاوز سقف ائتمان الطرف أو عليه إيقاف ائتمان ويتطلب موافقة.', 'error');
+                    return;
+                }
+                setInStoreCreditOverridePending(payload);
+                setInStoreCreditOverrideReason('');
+                setInStoreCreditOverrideModalOpen(true);
+                return;
             }
-            if (inStoreAutoOpenInvoice && !isQueued) {
-                navigate(`/admin/invoice/${order.id}`);
-            }
-            setIsInStoreSaleOpen(false);
-            setInStoreCustomerName('');
-            setInStorePhoneNumber('');
-            setInStorePaymentMethod('cash');
-            setInStoreNotes('');
-            setInStorePaymentReferenceNumber('');
-            setInStorePaymentSenderName('');
-            setInStorePaymentSenderPhone('');
-            setInStorePaymentDeclaredAmount(0);
-            setInStorePaymentAmountConfirmed(false);
-            setInStoreCashReceived(0);
-            setInStoreDiscountType('amount');
-            setInStoreDiscountValue(0);
-            setInStoreMultiPaymentEnabled(false);
-            setInStorePaymentLines([]);
-            setInStoreLines([]);
-            setInStoreIsCredit(false);
-            setInStoreCustomerMode('walk_in');
-            setInStoreSelectedCustomerId('');
-            setInStoreCustomerSearchResult(null);
-            setInStoreCustomerPhoneSearch('');
-            setInStoreSelectedPartyId('');
-        } catch (error) {
-            const raw = error instanceof Error ? error.message : '';
-            const message = language === 'ar'
-                ? (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.')
-                : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.');
-            showNotification(message, 'error');
-        } finally {
-            setIsInStoreCreating(false);
         }
+
+        await runCreateInStoreSale(payload);
     };
     const saveInStoreDraftQuotation = async () => {
         if (inStoreLines.length === 0) {
@@ -3157,9 +3172,32 @@ const ManageOrdersScreen: React.FC = () => {
                                     setInStoreIsCredit(checked);
                                     if (checked) {
                                         const base = toYmd(new Date());
-                                        const days = Math.max(0, Number(inStoreCreditDays) || 0) || 30;
-                                        setInStoreCreditDays(days);
-                                        setInStoreCreditDueDate(addDaysToYmd(base, days));
+                                        (async () => {
+                                            let days = Math.max(0, Number(inStoreCreditDays) || 0) || 30;
+                                            if (inStoreCustomerMode === 'party' && inStoreSelectedPartyId) {
+                                                const hint = Number(inStoreCreditSummary?.net_days_default);
+                                                if (Number.isFinite(hint) && hint >= 0) {
+                                                    days = Math.floor(hint);
+                                                } else {
+                                                    try {
+                                                        const supabase = getSupabaseClient();
+                                                        if (supabase) {
+                                                            const { data, error } = await supabase.rpc('get_party_credit_summary', { p_party_id: String(inStoreSelectedPartyId) });
+                                                            if (!error) {
+                                                                const d = data as any;
+                                                                const nd = Number(d?.net_days_default);
+                                                                if (Number.isFinite(nd) && nd >= 0) {
+                                                                    days = Math.floor(nd);
+                                                                }
+                                                            }
+                                                        }
+                                                    } catch {
+                                                    }
+                                                }
+                                            }
+                                            setInStoreCreditDays(days);
+                                            setInStoreCreditDueDate(addDaysToYmd(base, days));
+                                        })();
                                         setInStoreMultiPaymentEnabled(true);
                                         const initialMethod = inStorePaymentMethod && inStoreVisiblePaymentMethods.includes(inStorePaymentMethod)
                                             ? inStorePaymentMethod
@@ -3238,21 +3276,23 @@ const ManageOrdersScreen: React.FC = () => {
                             {!inStoreCreditSummaryLoading && (inStoreCreditSummary && inStoreCreditSummary.exists) && (
                                 (inStoreCreditSummary.party_mode ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان (طرف)" compact />
                                         <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي (ذمم)" compact />
-                                        <div className="text-[11px] text-gray-700 dark:text-gray-300">لا يوجد سقف ائتمان للطرف في النظام الحالي.</div>
-                                        <div className="md:col-span-2">
-                                            الرصيد بعد هذا البيع:{' '}
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
+                                        <div>
+                                            المتاح بعد هذا البيع:{' '}
                                             <span className="font-mono">
                                                 {(
-                                                    (Number(inStoreCreditSummary.current_balance || 0)) +
-                                                    Math.max(
-                                                        0,
-                                                        (Number(inStoreTotals.baseTotal) || 0) -
-                                                        roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1))
-                                                    )
+                                                    Number(inStoreCreditSummary.available_credit || 0) -
+                                                    Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
                                                 ).toFixed(getCurrencyDecimalsByCode(baseCode || ''))} {baseCode || '—'}
                                             </span>
                                         </div>
+                                        {Boolean(inStoreCreditSummary.credit_hold) && (
+                                            <div className="md:col-span-2 text-[11px] text-red-700 dark:text-red-300">
+                                                هذا الطرف عليه إيقاف ائتمان (Credit Hold) — البيع الآجل يتطلب موافقة/تجاوز.
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
@@ -3877,6 +3917,50 @@ const ManageOrdersScreen: React.FC = () => {
                     </div>
                 </div >
             </ConfirmationModal >
+            <ConfirmationModal
+                isOpen={inStoreCreditOverrideModalOpen}
+                onClose={() => {
+                    if (isInStoreCreating) return;
+                    setInStoreCreditOverrideModalOpen(false);
+                    setInStoreCreditOverridePending(null);
+                    setInStoreCreditOverrideReason('');
+                }}
+                onConfirm={async () => {
+                    const payload = inStoreCreditOverridePending;
+                    const reason = String(inStoreCreditOverrideReason || '').trim();
+                    if (!payload) {
+                        setInStoreCreditOverrideModalOpen(false);
+                        return;
+                    }
+                    if (!reason) {
+                        showNotification('يرجى إدخال سبب التجاوز.', 'error');
+                        return;
+                    }
+                    setInStoreCreditOverrideModalOpen(false);
+                    setInStoreCreditOverridePending(null);
+                    await runCreateInStoreSale(payload, reason);
+                }}
+                title="موافقة تجاوز سقف ائتمان الطرف"
+                message=""
+                isConfirming={isInStoreCreating}
+                confirmText="اعتماد التجاوز"
+                confirmingText="جاري الاعتماد..."
+                cancelText="رجوع"
+                confirmButtonClassName="bg-red-600 hover:bg-red-700 disabled:bg-red-400"
+            >
+                <div className="space-y-3">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                        هذا البيع الآجل يحتاج تجاوز سقف الائتمان أو الطرف عليه Credit Hold. سيتم تسجيل الموافقة في سجل التدقيق.
+                    </div>
+                    <textarea
+                        rows={4}
+                        value={inStoreCreditOverrideReason}
+                        onChange={(e) => setInStoreCreditOverrideReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="اكتب سبب التجاوز..."
+                    />
+                </div>
+            </ConfirmationModal>
             <ConfirmationModal
                 isOpen={Boolean(cancelOrderId)}
                 onClose={() => {

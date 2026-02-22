@@ -170,8 +170,14 @@ export const localizeError = (message: string): string => {
   if (raw.includes('delivery_driver_required')) {
     return 'لا يمكن تأكيد التسليم بدون تحديد المندوب لهذا الطلب.';
   }
+  if (raw.includes('credit_limit_exceeded_requires_reason')) {
+    return 'تجاوز سقف الائتمان يتطلب إدخال سبب.';
+  }
+  if (raw.includes('credit_limit_exceeded_requires_approval')) {
+    return 'تجاوز سقف الائتمان يتطلب موافقة من الإدارة.';
+  }
   if (raw.includes('credit_limit_exceeded')) {
-    return 'لا يمكن إتمام العملية لأن حد الائتمان للعميل تجاوز المسموح.';
+    return 'لا يمكن إتمام العملية لأن حد الائتمان تجاوز المسموح.';
   }
   if (raw.includes('invalid amount')) {
     return 'قيمة الدفعة غير صحيحة. تحقق من المبلغ وأعد المحاولة.';

@@ -41,6 +41,7 @@ interface OrderContextType {
     isCredit?: boolean;
     creditDays?: number;
     dueDate?: string;
+    creditOverrideReason?: string;
     paymentBreakdown?: Array<{
       method: string;
       amount: number;
@@ -2184,6 +2185,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       netDays: input.isCredit ? creditDays : 0,
       dueDate: dueYmd,
     };
+    const creditOverrideReason = String((input as any).creditOverrideReason || '').trim();
+    if (creditOverrideReason) (newOrder as any).creditOverrideReason = creditOverrideReason;
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
     if (isUuid(rawPartyId)) (newOrder as any).partyId = rawPartyId;
