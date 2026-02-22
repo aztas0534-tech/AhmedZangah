@@ -2104,6 +2104,35 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       } catch { }
     }
+    const rawPartyId = String((input as any).partyId || '').trim();
+    if (!offlineHint && isUuid(rawPartyId)) {
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          const { data: pRow, error: pErr } = await supabase
+            .from('financial_parties')
+            .select('id, party_type, is_active')
+            .eq('id', rawPartyId)
+            .maybeSingle();
+          if (pErr) throw pErr;
+          if (!pRow?.id) {
+            throw new Error('الطرف المالي غير موجود.');
+          }
+          if (pRow.is_active === false) {
+            throw new Error('الطرف المالي غير نشط.');
+          }
+          if (input.isCredit) {
+            const pType = String((pRow as any).party_type || '').trim().toLowerCase();
+            const allowed = pType === 'customer' || pType === 'partner' || pType === 'generic';
+            if (!allowed) {
+              throw new Error('لا يمكن إنشاء بيع آجل لهذا النوع من الأطراف المالية.');
+            }
+          }
+        }
+      } catch (err: any) {
+        throw new Error(typeof err?.message === 'string' && err.message ? err.message : 'تعذر التحقق من الطرف المالي.');
+      }
+    }
     const newOrder: Order = {
       id: crypto.randomUUID(),
       userId: effectiveCustomerAuthId,
@@ -2157,8 +2186,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
-    const partyId = String((input as any).partyId || '').trim();
-    if (isUuid(partyId)) (newOrder as any).partyId = partyId;
+    if (isUuid(rawPartyId)) (newOrder as any).partyId = rawPartyId;
 
     const payloadItems = newOrder.items
       .filter((item: any) => !(item?.lineType === 'promotion' || item?.promotionId))

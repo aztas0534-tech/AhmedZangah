@@ -446,6 +446,7 @@ const ManageOrdersScreen: React.FC = () => {
                     .from('financial_parties')
                     .select('id, name, party_type')
                     .eq('is_active', true)
+                    .in('party_type', ['customer', 'partner', 'generic'])
                     .order('name', { ascending: true })
                     .limit(500);
                 if (error) throw error;
@@ -785,15 +786,52 @@ const ManageOrdersScreen: React.FC = () => {
         const loadCreditSummary = async () => {
             if (!isInStoreSaleOpen) return;
             if (!inStoreIsCredit) return;
-            const customerId = String(inStoreSelectedCustomerId || '').trim();
-            if (!customerId) return;
             const supabase = getSupabaseClient();
             if (!supabase) return;
             setInStoreCreditSummaryLoading(true);
             try {
-                const { data, error } = await supabase.rpc('get_customer_credit_summary', { p_customer_id: customerId });
-                if (error) throw error;
-                setInStoreCreditSummary(data || null);
+                if (inStoreCustomerMode === 'existing') {
+                    const customerId = String(inStoreSelectedCustomerId || '').trim();
+                    if (!customerId) {
+                        setInStoreCreditSummary(null);
+                        return;
+                    }
+                    const { data, error } = await supabase.rpc('get_customer_credit_summary', { p_customer_id: customerId });
+                    if (error) throw error;
+                    setInStoreCreditSummary(data || null);
+                    return;
+                }
+
+                if (inStoreCustomerMode === 'party') {
+                    const partyId = String(inStoreSelectedPartyId || '').trim();
+                    if (!partyId) {
+                        setInStoreCreditSummary(null);
+                        return;
+                    }
+                    const { data, error } = await supabase.rpc('list_party_open_items', {
+                        p_party_id: partyId,
+                        p_currency: null,
+                        p_status: 'open_active',
+                    });
+                    if (error) throw error;
+                    const rows = (Array.isArray(data) ? data : []) as any[];
+                    const arRows = rows.filter((r) => String(r?.account_code || '') === '1200');
+                    const net = arRows.reduce((sum, r) => {
+                        const amt = Number(r?.open_base_amount || 0);
+                        const dir = String(r?.direction || '').toLowerCase();
+                        return sum + (dir === 'credit' ? -amt : amt);
+                    }, 0);
+                    setInStoreCreditSummary({
+                        exists: true,
+                        party_mode: true,
+                        credit_limit: null,
+                        available_credit: null,
+                        current_balance: net,
+                    });
+                    return;
+                }
+
+                setInStoreCreditSummary(null);
             } catch {
                 setInStoreCreditSummary(null);
             } finally {
@@ -801,7 +839,7 @@ const ManageOrdersScreen: React.FC = () => {
             }
         };
         loadCreditSummary();
-    }, [inStoreIsCredit, inStoreSelectedCustomerId, isInStoreSaleOpen]);
+    }, [inStoreIsCredit, inStoreCustomerMode, inStoreSelectedCustomerId, inStoreSelectedPartyId, isInStoreSaleOpen]);
 
     const openCodAudit = async (orderId: string) => {
         if (!canViewAccounting) return;
@@ -3138,10 +3176,15 @@ const ManageOrdersScreen: React.FC = () => {
                                         setInStoreCreditDueDate('');
                                     }
                                 }}
-                                disabled={inStoreCustomerMode !== 'existing' || !inStoreSelectedCustomerId}
+                                disabled={
+                                    !(
+                                        (inStoreCustomerMode === 'existing' && !!inStoreSelectedCustomerId) ||
+                                        (inStoreCustomerMode === 'party' && !!inStoreSelectedPartyId)
+                                    )
+                                }
                                 className="form-checkbox h-5 w-5 text-purple-600 rounded focus:ring-purple-600 disabled:opacity-50"
                             />
-                            بيع آجل / ذمم (يتطلب عميل مسجل)
+                            بيع آجل / ذمم (عميل مسجل أو طرف مالي)
                         </label>
                         <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 md:pt-6">
                             <input
@@ -3193,20 +3236,40 @@ const ManageOrdersScreen: React.FC = () => {
                                 <div className="text-[11px] text-gray-700 dark:text-gray-300 mt-1">تعذر تحميل بيانات الائتمان.</div>
                             )}
                             {!inStoreCreditSummaryLoading && (inStoreCreditSummary && inStoreCreditSummary.exists) && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان" compact />
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي" compact />
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
-                                    <div>
-                                        المتاح بعد هذا البيع:{' '}
-                                        <span className="font-mono">
-                                            {Math.max(
-                                                0,
-                                                Number(inStoreCreditSummary.available_credit || 0) - Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
-                                            ).toFixed(getCurrencyDecimalsByCode(baseCode || ''))} {baseCode || '—'}
-                                        </span>
+                                (inStoreCreditSummary.party_mode ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي (ذمم)" compact />
+                                        <div className="text-[11px] text-gray-700 dark:text-gray-300">لا يوجد سقف ائتمان للطرف في النظام الحالي.</div>
+                                        <div className="md:col-span-2">
+                                            الرصيد بعد هذا البيع:{' '}
+                                            <span className="font-mono">
+                                                {(
+                                                    (Number(inStoreCreditSummary.current_balance || 0)) +
+                                                    Math.max(
+                                                        0,
+                                                        (Number(inStoreTotals.baseTotal) || 0) -
+                                                        roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1))
+                                                    )
+                                                ).toFixed(getCurrencyDecimalsByCode(baseCode || ''))} {baseCode || '—'}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان" compact />
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي" compact />
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
+                                        <div>
+                                            المتاح بعد هذا البيع:{' '}
+                                            <span className="font-mono">
+                                                {Math.max(
+                                                    0,
+                                                    Number(inStoreCreditSummary.available_credit || 0) - Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
+                                                ).toFixed(getCurrencyDecimalsByCode(baseCode || ''))} {baseCode || '—'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))
                             )}
                         </div>
                     )}
