@@ -93,8 +93,8 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
         { data: rowsUnitTypes, error: rowsUnitError },
         { data: rowsFreshness, error: rowsFreshnessError },
       ] = await Promise.all([
-        supabase.from('item_categories').select('id,data'),
-        supabase.from('unit_types').select('id,data'),
+        supabase.from('item_categories').select('id,key,is_active,data'),
+        supabase.from('unit_types').select('id,key,is_active,is_weight_based,data'),
         supabase.from('freshness_levels').select('id,data'),
       ]);
       if (rowsCategoryError) throw rowsCategoryError;
@@ -123,7 +123,24 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
         rowsGroups = [];
       }
 
-      const allCategories = (rowsCategories || []).map(row => row.data as ItemCategoryDef).filter(Boolean);
+      const allCategories = (rowsCategories || [])
+        .map((row: any) => {
+          const d: any = row?.data || {};
+          const id = typeof d?.id === 'string' ? d.id : (typeof row?.id === 'string' ? row.id : crypto.randomUUID());
+          const key = typeof d?.key === 'string' ? d.key : (typeof row?.key === 'string' ? row.key : '');
+          const isActive = typeof d?.isActive === 'boolean' ? d.isActive : (typeof row?.is_active === 'boolean' ? row.is_active : true);
+          const nameObj: any = d?.name && typeof d.name === 'object' ? d.name : (d?.label && typeof d.label === 'object' ? d.label : {});
+          const fallbackAr = typeof d?.name === 'string' ? d.name : (typeof d?.label === 'string' ? d.label : '');
+          const name: LocalizedString = {
+            ar: typeof nameObj?.ar === 'string' ? nameObj.ar : fallbackAr,
+            en: typeof nameObj?.en === 'string' ? nameObj.en : '',
+          };
+          const createdAt = typeof d?.createdAt === 'string' ? d.createdAt : '';
+          const updatedAt = typeof d?.updatedAt === 'string' ? d.updatedAt : '';
+          if (!key) return null;
+          return { id, key, name, isActive, createdAt, updatedAt } as ItemCategoryDef;
+        })
+        .filter(Boolean) as ItemCategoryDef[];
       const allGroups = (rowsGroups || [])
         .map((row: any) => {
           const d: any = row?.data || {};
@@ -142,10 +159,31 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
           return { id, categoryKey, key, name: safeName, isActive, createdAt, updatedAt } as ItemGroupDef;
         })
         .filter(Boolean) as ItemGroupDef[];
-      const allUnitTypes = (rowsUnitTypes || []).map(row => row.data as UnitTypeDef).filter(Boolean);
+      const allUnitTypes = (rowsUnitTypes || [])
+        .map((row: any) => {
+          const d: any = row?.data || {};
+          const id = typeof d?.id === 'string' ? d.id : (typeof row?.id === 'string' ? row.id : crypto.randomUUID());
+          const key = (typeof d?.key === 'string' ? d.key : (typeof row?.key === 'string' ? row.key : '')) as UnitType;
+          const isActive = typeof d?.isActive === 'boolean' ? d.isActive : (typeof row?.is_active === 'boolean' ? row.is_active : true);
+          const isWeightBased =
+            typeof d?.isWeightBased === 'boolean'
+              ? d.isWeightBased
+              : (typeof row?.is_weight_based === 'boolean' ? row.is_weight_based : false);
+          const labelObj: any = d?.label && typeof d.label === 'object' ? d.label : (d?.name && typeof d.name === 'object' ? d.name : {});
+          const fallbackAr = typeof d?.label === 'string' ? d.label : (typeof d?.name === 'string' ? d.name : '');
+          const label: LocalizedString = {
+            ar: typeof labelObj?.ar === 'string' ? labelObj.ar : fallbackAr,
+            en: typeof labelObj?.en === 'string' ? labelObj.en : '',
+          };
+          const createdAt = typeof d?.createdAt === 'string' ? d.createdAt : '';
+          const updatedAt = typeof d?.updatedAt === 'string' ? d.updatedAt : '';
+          if (!key) return null;
+          return { id, key, label, isActive, isWeightBased, createdAt, updatedAt } as UnitTypeDef;
+        })
+        .filter(Boolean) as UnitTypeDef[];
       const allFreshnessLevels = (rowsFreshness || []).map(row => row.data as FreshnessLevelDef).filter(Boolean);
 
-      setCategories(allCategories.sort((a, b) => a.key.localeCompare(b.key)));
+      setCategories(allCategories.sort((a, b) => String(a.key).localeCompare(String(b.key))));
       setGroups(allGroups.sort((a, b) => `${a.categoryKey}::${a.key}`.localeCompare(`${b.categoryKey}::${b.key}`)));
       setUnitTypes(allUnitTypes.sort((a, b) => String(a.key).localeCompare(String(b.key))));
       setFreshnessLevels(allFreshnessLevels.sort((a, b) => String(a.key).localeCompare(String(b.key))));

@@ -1113,7 +1113,7 @@ const ManageItemsScreen: React.FC = () => {
 
               {metaTab === 'category' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                     <div className="col-span-2">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الاسم</label>
                       <input
@@ -1122,6 +1122,16 @@ const ManageItemsScreen: React.FC = () => {
                         className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                         disabled={!hasPermission('items.manage')}
                         placeholder="أدخل اسم الفئة"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الكود (اختياري)</label>
+                      <input
+                        value={categoryDraft.key}
+                        onChange={(e) => setCategoryDraft(prev => ({ ...prev, key: e.target.value }))}
+                        className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 font-mono"
+                        disabled={!hasPermission('items.manage') || Boolean(categoryDraft.id)}
+                        placeholder="food أو cat_..."
                       />
                     </div>
 
@@ -1149,7 +1159,10 @@ const ManageItemsScreen: React.FC = () => {
                       <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         {categoryDefs.map(def => (
                           <tr key={def.id}>
-                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getCategoryLabel(def.key, language as 'ar' | 'en')}</td>
+                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
+                              <div>{getCategoryLabel(def.key, language as 'ar' | 'en')}</div>
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">{def.key}</div>
+                            </td>
                             <td className="px-4 py-2 text-sm border-r dark:border-gray-700">
                               <button
                                 onClick={() => handleToggleMetaActive('category', def.id)}
@@ -1173,7 +1186,7 @@ const ManageItemsScreen: React.FC = () => {
 
               {metaTab === 'group' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3 items-end">
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الفئة</label>
                       <select
@@ -1196,6 +1209,16 @@ const ManageItemsScreen: React.FC = () => {
                         className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                         disabled={!hasPermission('items.manage')}
                         placeholder="أدخل اسم المجموعة"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الكود (اختياري)</label>
+                      <input
+                        value={groupDraft.key}
+                        onChange={(e) => setGroupDraft(prev => ({ ...prev, key: e.target.value }))}
+                        className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 font-mono"
+                        disabled={!hasPermission('items.manage') || Boolean(groupDraft.id)}
+                        placeholder="group_..."
                       />
                     </div>
                     <div className="flex items-center gap-2 mt-6">
@@ -1223,7 +1246,10 @@ const ManageItemsScreen: React.FC = () => {
                         {groupDefs.map(def => (
                           <tr key={def.id}>
                             <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getCategoryLabel(def.categoryKey, language as 'ar' | 'en')}</td>
-                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getGroupLabel(def.key, def.categoryKey, language as 'ar' | 'en')}</td>
+                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
+                              <div>{getGroupLabel(def.key, def.categoryKey, language as 'ar' | 'en')}</div>
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">{def.key}</div>
+                            </td>
                             <td className="px-4 py-2 text-sm border-r dark:border-gray-700">
                               <button
                                 onClick={() => handleToggleMetaActive('group', def.id)}
@@ -1247,7 +1273,7 @@ const ManageItemsScreen: React.FC = () => {
 
               {metaTab === 'unit' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                     <div className="col-span-2">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الاسم</label>
                       <input
@@ -1256,6 +1282,16 @@ const ManageItemsScreen: React.FC = () => {
                         className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                         disabled={!hasPermission('items.manage')}
                         placeholder="أدخل اسم الوحدة"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الكود (اختياري)</label>
+                      <input
+                        value={unitDraft.key}
+                        onChange={(e) => setUnitDraft(prev => ({ ...prev, key: e.target.value }))}
+                        className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 font-mono"
+                        disabled={!hasPermission('items.manage') || Boolean(unitDraft.id)}
+                        placeholder="piece / kg / unit_..."
                       />
                     </div>
 
@@ -1287,7 +1323,10 @@ const ManageItemsScreen: React.FC = () => {
                       <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         {unitTypes.map(def => (
                           <tr key={def.id}>
-                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getUnitLabel(def.key as UnitType, language as 'ar' | 'en')}</td>
+                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
+                              <div>{getUnitLabel(def.key as UnitType, language as 'ar' | 'en')}</div>
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">{String(def.key)}</div>
+                            </td>
                             <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
                               {isWeightBasedUnit(def.key as UnitType) ? 'وزني' : 'عددي'}
                             </td>
