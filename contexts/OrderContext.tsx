@@ -2334,15 +2334,76 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           warehouseId,
         });
 
-        if (rpcError) {
+        let confirmError: any = rpcError;
+        if (confirmError) {
+          const isInvoiceSnapshotError = (() => {
+            const rawMsg = String((confirmError as any)?.message || (confirmError as any)?.details || '').toLowerCase();
+            const localized = localizeSupabaseError(confirmError).toLowerCase();
+            const combined = `${rawMsg}\n${localized}`;
+            return combined.includes('invoice_snapshot_fields_missing')
+              || combined.includes('invoice_snapshot_required')
+              || combined.includes('invoice_snapshot_items_missing');
+          })();
+
+          if (isInvoiceSnapshotError) {
+            try {
+              const issuedAtIso = nowIso;
+              const baseCurrencyCode = String((await getBaseCurrencyCode()) || baseCurrency || 'YER').toUpperCase();
+              const fxRateSnapshot = Number.isFinite(Number(fxRate)) ? Number(fxRate) : 1;
+              const currencySnapshot = desiredCurrency || baseCurrencyCode;
+              const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAtIso);
+              const snapshot: any = {
+                issuedAt: issuedAtIso,
+                invoiceNumber: invNum,
+                createdAt: newOrder.createdAt || issuedAtIso,
+                orderSource: 'in_store',
+                items: typeof structuredClone === 'function' ? structuredClone(newOrder.items) : JSON.parse(JSON.stringify(newOrder.items)),
+                currency: currencySnapshot,
+                fxRate: fxRateSnapshot,
+                baseCurrency: baseCurrencyCode,
+                subtotal: newOrder.subtotal,
+                deliveryFee: newOrder.deliveryFee,
+                discountAmount: newOrder.discountAmount,
+                total: newOrder.total,
+                paymentMethod: newOrder.paymentMethod,
+                customerName: newOrder.customerName,
+                phoneNumber: newOrder.phoneNumber,
+                address: newOrder.address,
+                deliveryZoneId: newOrder.deliveryZoneId,
+              };
+
+              const retryFinalized = sanitizeForJsonb(JSON.parse(JSON.stringify({
+                ...finalized,
+                invoiceSnapshot: snapshot,
+                invoiceIssuedAt: issuedAtIso,
+                invoiceNumber: invNum,
+              })));
+
+              const { error: retryError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
+                orderId: newOrder.id,
+                items: sanitizedItems,
+                updatedData: retryFinalized,
+                warehouseId,
+              });
+              confirmError = retryError;
+              if (!confirmError) {
+                const freshOrder = await fetchRemoteOrderById(newOrder.id);
+                if (freshOrder) {
+                  finalized = freshOrder;
+                }
+              }
+            } catch {
+            }
+          }
+
           const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
-          if (offlineNow || isAbortLikeError(rpcError)) {
+          if (offlineNow || isAbortLikeError(confirmError)) {
             await rollbackCreatedOrder('offline_or_aborted');
             return await queueOfflineSale();
           }
-          await rollbackCreatedOrder(localizeSupabaseError(rpcError) || 'rpc_error');
-          console.error('In-store sale confirmation failed:', rpcError);
-          const msg = localizeSupabaseError(rpcError);
+          await rollbackCreatedOrder(localizeSupabaseError(confirmError) || 'rpc_error');
+          console.error('In-store sale confirmation failed:', confirmError);
+          const msg = localizeSupabaseError(confirmError);
           throw new Error(
             msg && msg.trim()
               ? `لم يتم تنفيذ البيع. تم التراجع عن الطلب. السبب: ${msg}`

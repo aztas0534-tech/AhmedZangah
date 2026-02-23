@@ -170,6 +170,15 @@ export const localizeError = (message: string): string => {
   if (raw.includes('delivery_driver_required')) {
     return 'لا يمكن تأكيد التسليم بدون تحديد المندوب لهذا الطلب.';
   }
+  if (raw.includes('invoice_snapshot_fields_missing')) {
+    return 'بيانات الفاتورة غير مكتملة (العملة/سعر الصرف/العملة الأساسية). حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
+  if (raw.includes('invoice_snapshot_required')) {
+    return 'لا يمكن تثبيت الطلب بدون بيانات فاتورة (Invoice Snapshot). حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
+  if (raw.includes('invoice_snapshot_items_missing')) {
+    return 'لا يمكن تثبيت الطلب بدون أصناف داخل بيانات الفاتورة. حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
   if (raw.includes('credit_limit_exceeded_requires_reason')) {
     return 'تجاوز سقف الائتمان يتطلب إدخال سبب.';
   }
