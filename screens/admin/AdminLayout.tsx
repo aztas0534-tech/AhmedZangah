@@ -14,6 +14,8 @@ import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
 import AdminCommandPalette from './AdminCommandPalette';
+import { getSupabaseClient } from '../../supabase';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 const AdminNotificationMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -229,6 +231,8 @@ const AdminLayout: React.FC = () => {
   const { settings } = useSettings();
   const sessionScope = useSessionScope();
   const { warehouses } = useWarehouses();
+  const [schemaCheck, setSchemaCheck] = useState<{ ok: boolean; appliedVersion: string; missing: string[] } | null>(null);
+  const schemaCheckedRef = useRef(false);
   const activeWarehouses = (warehouses || []).filter((w: any) => Boolean((w as any)?.isActive ?? (w as any)?.is_active ?? true));
   const currentWarehouseName = (() => {
     const wid = sessionScope.scope?.warehouseId || '';
@@ -236,6 +240,32 @@ const AdminLayout: React.FC = () => {
     const w = activeWarehouses.find((x: any) => String(x.id) === String(wid));
     return String((w as any)?.name || (w as any)?.code || '—');
   })();
+
+  useEffect(() => {
+    if (!isAuthenticated || loading) return;
+    if (schemaCheckedRef.current) return;
+    schemaCheckedRef.current = true;
+    (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { data, error } = await supabase.rpc('app_schema_healthcheck');
+        if (error) {
+          const msg = localizeSupabaseError(error);
+          if (msg && !/not allowed/i.test(String((error as any)?.message || ''))) {
+            console.warn('Schema healthcheck failed:', error);
+          }
+          return;
+        }
+        const d: any = data || {};
+        const ok = Boolean(d?.ok);
+        const appliedVersion = String(d?.appliedVersion || '');
+        const missing = Array.isArray(d?.missing) ? d.missing.map((x: any) => String(x)) : [];
+        setSchemaCheck({ ok, appliedVersion, missing });
+      } catch {
+      }
+    })();
+  }, [isAuthenticated, loading]);
 
   const canAccessLink = (link: (typeof navLinks)[number]) => {
     if (link.to === 'chart-of-accounts') {
@@ -517,6 +547,34 @@ const AdminLayout: React.FC = () => {
           </button>
         </header>
         <ConnectivityBanner />
+        {schemaCheck && !schemaCheck.ok && (
+          <div className="bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 px-4 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-red-800 dark:text-red-200 font-semibold">
+                قاعدة البيانات غير محدثة أو لا تطابق الواجهة الحالية. يلزم تطبيق الهجرات الأخيرة.
+              </div>
+              <div className="text-xs text-red-700 dark:text-red-200 font-mono" dir="ltr">
+                {schemaCheck.appliedVersion ? `db:${schemaCheck.appliedVersion}` : 'db:unknown'}
+              </div>
+            </div>
+            {schemaCheck.missing.length > 0 && (
+              <div className="mt-2 text-xs text-red-800 dark:text-red-200">
+                <div className="font-mono" dir="ltr">{schemaCheck.missing.slice(0, 12).join(' • ')}{schemaCheck.missing.length > 12 ? ' • ...' : ''}</div>
+              </div>
+            )}
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  showNotification('افتح الطرفية وشغّل: npm run db:push:remote', 'info');
+                }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700 transition"
+              >
+                طريقة الإصلاح
+              </button>
+            </div>
+          </div>
+        )}
         <Notification />
         <main className="flex-1 min-h-0 overflow-x-auto overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
           <Outlet />
