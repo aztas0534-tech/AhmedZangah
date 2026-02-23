@@ -17,17 +17,33 @@ begin
     return;
   end if;
 
+  delete from public.order_item_cogs oic
+  where exists (
+    select 1
+    from public.orders o
+    where o.id = oic.order_id
+      and o.status = 'delivered'
+      and (v_start is null or o.created_at >= v_start)
+      and (v_end is null or o.created_at <= v_end)
+      and nullif(trim(coalesce(o.data->>'voidedAt','')), '') is null
+  );
+
   with target_orders as (
     select
       o.id,
       o.data,
       o.created_at,
       coalesce(
-        o.warehouse_id,
         case
           when nullif(o.data->>'warehouseId','') is not null
-            and (o.data->>'warehouseId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-          then (o.data->>'warehouseId')::uuid
+               and (o.data->>'warehouseId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            then (o.data->>'warehouseId')::uuid
+          else null
+        end,
+        case
+          when nullif(o.data->>'warehouse_id','') is not null
+               and (o.data->>'warehouse_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            then (o.data->>'warehouse_id')::uuid
           else null
         end
       ) as warehouse_id
@@ -125,12 +141,6 @@ begin
     left join fallback_cost fc
       on fc.order_id = eb.order_id and fc.item_id_text = eb.item_id_text
     where eb.expected_base_qty > 0
-  ),
-  deleted as (
-    delete from public.order_item_cogs oic
-    using target_orders t
-    where oic.order_id = t.id
-    returning oic.order_id
   )
   insert into public.order_item_cogs(order_id, item_id, quantity, unit_cost, total_cost, created_at)
   select

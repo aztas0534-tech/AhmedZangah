@@ -65,6 +65,9 @@ const DatabaseExplorerScreen: React.FC = () => {
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [query, setQuery] = useState<string>('');
+  const [schemaHealth, setSchemaHealth] = useState<{ ok: boolean; appliedVersion: string; missing: string[] } | null>(null);
+  const [repairPreview, setRepairPreview] = useState<any | null>(null);
+  const [repairBusy, setRepairBusy] = useState<boolean>(false);
   const { showNotification } = useToast();
   const { hasPermission } = useAuth();
 
@@ -75,6 +78,38 @@ const DatabaseExplorerScreen: React.FC = () => {
   }, [hasPermission, showNotification]);
 
   const supabase = getSupabaseClient();
+
+  const runSchemaHealthcheck = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.rpc('app_schema_healthcheck');
+      if (error) throw error;
+      const d: any = data || {};
+      const ok = Boolean(d?.ok);
+      const appliedVersion = String(d?.appliedVersion || '');
+      const missing = Array.isArray(d?.missing) ? d.missing.map((x: any) => String(x)) : [];
+      setSchemaHealth({ ok, appliedVersion, missing });
+      showNotification(ok ? 'قاعدة البيانات متوافقة.' : 'قاعدة البيانات تحتاج هجرات/دوال مفقودة.', ok ? 'success' : 'error');
+    } catch (err: any) {
+      setSchemaHealth(null);
+      showNotification(localizeSupabaseError(err) || 'فشل فحص توافق قاعدة البيانات', 'error');
+    }
+  };
+
+  const runRepairMetaDefs = async (apply: boolean) => {
+    if (!supabase) return;
+    setRepairBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('repair_missing_item_meta_defs', { p_dry_run: !apply } as any);
+      if (error) throw error;
+      setRepairPreview(data || null);
+      showNotification(apply ? 'تم إنشاء تعريفات ناقصة. راجع الأسماء وعدّلها.' : 'تم إنشاء تقرير بالناقص (Dry Run).', 'success');
+    } catch (err: any) {
+      showNotification(localizeSupabaseError(err) || 'فشل إصلاح تعريفات الأصناف', 'error');
+    } finally {
+      setRepairBusy(false);
+    }
+  };
 
   const fetchData = async (table: string, currentPage: number) => {
     if (!supabase) return;
@@ -129,6 +164,68 @@ const DatabaseExplorerScreen: React.FC = () => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void runSchemaHealthcheck()}
+            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage')}
+          >
+            فحص توافق قاعدة البيانات
+          </button>
+          <button
+            type="button"
+            onClick={() => void runRepairMetaDefs(false)}
+            className="px-3 py-2 rounded-md bg-gray-700 hover:bg-gray-800 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || repairBusy}
+          >
+            فحص النواقص (فئات/وحدات/مجموعات)
+          </button>
+          <button
+            type="button"
+            onClick={() => void runRepairMetaDefs(true)}
+            className="px-3 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || repairBusy}
+          >
+            إصلاح تلقائي للنواقص
+          </button>
+        </div>
+        {repairBusy && (
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <Spinner />
+            جاري التنفيذ...
+          </div>
+        )}
+      </div>
+
+      {schemaHealth && (
+        <div className={`mb-4 p-3 rounded-md border ${schemaHealth.ok ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'}`}>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className={`text-sm font-semibold ${schemaHealth.ok ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
+              {schemaHealth.ok ? 'متوافق' : 'غير متوافق'}
+            </div>
+            <div className="text-xs font-mono text-gray-600 dark:text-gray-300" dir="ltr">
+              {schemaHealth.appliedVersion ? `db:${schemaHealth.appliedVersion}` : 'db:unknown'}
+            </div>
+          </div>
+          {!schemaHealth.ok && schemaHealth.missing.length > 0 && (
+            <div className="mt-2 text-xs font-mono text-red-800 dark:text-red-200" dir="ltr">
+              {schemaHealth.missing.slice(0, 16).join(' • ')}{schemaHealth.missing.length > 16 ? ' • ...' : ''}
+            </div>
+          )}
+        </div>
+      )}
+
+      {repairPreview && (
+        <div className="mb-4 p-3 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20">
+          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">نتيجة إصلاح التعريفات</div>
+          <div className="mt-2 text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap" dir="ltr">
+            {JSON.stringify(repairPreview, null, 2)}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="md:col-span-1">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">الجدول</label>
