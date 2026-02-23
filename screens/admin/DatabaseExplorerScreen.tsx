@@ -84,6 +84,22 @@ const DatabaseExplorerScreen: React.FC = () => {
 
   const supabase = getSupabaseClient();
 
+  const getLast30DaysRange = () => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return { start: start.toISOString(), end: end.toISOString() };
+  };
+
+  const resolveCogsRange = () => {
+    const startRaw = cogsStart.trim();
+    const endRaw = cogsEnd.trim();
+    if (!startRaw && !endRaw) {
+      const r = getLast30DaysRange();
+      return { start: r.start, end: r.end };
+    }
+    return { start: startRaw || null, end: endRaw || null };
+  };
+
   const runSchemaHealthcheck = async () => {
     if (!supabase) return;
     try {
@@ -120,9 +136,10 @@ const DatabaseExplorerScreen: React.FC = () => {
     if (!supabase) return;
     setCogsBusy(true);
     try {
+      const r = resolveCogsRange();
       const { data, error } = await supabase.rpc('audit_sales_cogs', {
-        p_start_date: cogsStart.trim() ? cogsStart.trim() : null,
-        p_end_date: cogsEnd.trim() ? cogsEnd.trim() : null,
+        p_start_date: r.start,
+        p_end_date: r.end,
       } as any);
       if (error) throw error;
       setCogsAudit(data || null);
@@ -139,9 +156,10 @@ const DatabaseExplorerScreen: React.FC = () => {
     if (!supabase) return;
     setCogsBusy(true);
     try {
+      const r = resolveCogsRange();
       const { data, error } = await supabase.rpc('repair_sales_cogs', {
-        p_start_date: cogsStart.trim() ? cogsStart.trim() : null,
-        p_end_date: cogsEnd.trim() ? cogsEnd.trim() : null,
+        p_start_date: r.start,
+        p_end_date: r.end,
         p_dry_run: !apply,
       } as any);
       if (error) throw error;
@@ -288,8 +306,33 @@ const DatabaseExplorerScreen: React.FC = () => {
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm"
           />
         </div>
-        <div className="text-xs text-gray-600 dark:text-gray-300 md:self-end">
-          اتركها فارغة لفحص كل السجل (قد يكون ثقيلًا على الإنتاج).
+        <div className="md:self-end">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const r = getLast30DaysRange();
+                setCogsStart(r.start);
+                setCogsEnd(r.end);
+              }}
+              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm hover:bg-gray-300 dark:hover:bg-gray-600"
+            >
+              آخر 30 يوم
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCogsStart('');
+                setCogsEnd('');
+              }}
+              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm hover:bg-gray-300 dark:hover:bg-gray-600"
+            >
+              تلقائي
+            </button>
+          </div>
+          <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+            عند ترك التاريخ فارغًا: يتم تطبيق الفحص/الإصلاح على آخر 30 يوم.
+          </div>
         </div>
       </div>
 
