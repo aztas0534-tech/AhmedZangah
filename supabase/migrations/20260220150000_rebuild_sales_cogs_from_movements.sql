@@ -155,6 +155,4 @@ begin
 end;
 $$;
 
-select public.rebuild_order_item_cogs_from_movements(null, null);
-
 notify pgrst, 'reload schema';

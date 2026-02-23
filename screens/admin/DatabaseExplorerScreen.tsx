@@ -68,6 +68,11 @@ const DatabaseExplorerScreen: React.FC = () => {
   const [schemaHealth, setSchemaHealth] = useState<{ ok: boolean; appliedVersion: string; missing: string[] } | null>(null);
   const [repairPreview, setRepairPreview] = useState<any | null>(null);
   const [repairBusy, setRepairBusy] = useState<boolean>(false);
+  const [cogsAudit, setCogsAudit] = useState<any | null>(null);
+  const [cogsRepair, setCogsRepair] = useState<any | null>(null);
+  const [cogsBusy, setCogsBusy] = useState<boolean>(false);
+  const [cogsStart, setCogsStart] = useState<string>('');
+  const [cogsEnd, setCogsEnd] = useState<string>('');
   const { showNotification } = useToast();
   const { hasPermission } = useAuth();
 
@@ -108,6 +113,45 @@ const DatabaseExplorerScreen: React.FC = () => {
       showNotification(localizeSupabaseError(err) || 'فشل إصلاح تعريفات الأصناف', 'error');
     } finally {
       setRepairBusy(false);
+    }
+  };
+
+  const runCogsAudit = async () => {
+    if (!supabase) return;
+    setCogsBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('audit_sales_cogs', {
+        p_start_date: cogsStart.trim() ? cogsStart.trim() : null,
+        p_end_date: cogsEnd.trim() ? cogsEnd.trim() : null,
+      } as any);
+      if (error) throw error;
+      setCogsAudit(data || null);
+      showNotification('تم فحص تكلفة البضاعة المباعة.', 'success');
+    } catch (err: any) {
+      setCogsAudit(null);
+      showNotification(localizeSupabaseError(err) || 'فشل فحص تكلفة البضاعة المباعة', 'error');
+    } finally {
+      setCogsBusy(false);
+    }
+  };
+
+  const runCogsRepair = async (apply: boolean) => {
+    if (!supabase) return;
+    setCogsBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('repair_sales_cogs', {
+        p_start_date: cogsStart.trim() ? cogsStart.trim() : null,
+        p_end_date: cogsEnd.trim() ? cogsEnd.trim() : null,
+        p_dry_run: !apply,
+      } as any);
+      if (error) throw error;
+      setCogsRepair(data || null);
+      showNotification(apply ? 'تم إعادة بناء COGS للأوامر المحددة.' : 'تم إنشاء تقرير إصلاح COGS (Dry Run).', 'success');
+    } catch (err: any) {
+      setCogsRepair(null);
+      showNotification(localizeSupabaseError(err) || 'فشل إصلاح تكلفة البضاعة المباعة', 'error');
+    } finally {
+      setCogsBusy(false);
     }
   };
 
@@ -190,13 +234,63 @@ const DatabaseExplorerScreen: React.FC = () => {
           >
             إصلاح تلقائي للنواقص
           </button>
+          <button
+            type="button"
+            onClick={() => void runCogsAudit()}
+            className="px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || cogsBusy}
+          >
+            فحص COGS
+          </button>
+          <button
+            type="button"
+            onClick={() => void runCogsRepair(false)}
+            className="px-3 py-2 rounded-md bg-indigo-700 hover:bg-indigo-800 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || cogsBusy}
+          >
+            تقرير إصلاح COGS
+          </button>
+          <button
+            type="button"
+            onClick={() => void runCogsRepair(true)}
+            className="px-3 py-2 rounded-md bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || cogsBusy}
+          >
+            إصلاح COGS
+          </button>
         </div>
-        {repairBusy && (
+        {(repairBusy || cogsBusy) && (
           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
             <Spinner />
             جاري التنفيذ...
           </div>
         )}
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">بداية الفترة (اختياري)</label>
+          <input
+            type="text"
+            value={cogsStart}
+            onChange={(e) => setCogsStart(e.target.value)}
+            placeholder="2026-01-01T00:00:00Z"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نهاية الفترة (اختياري)</label>
+          <input
+            type="text"
+            value={cogsEnd}
+            onChange={(e) => setCogsEnd(e.target.value)}
+            placeholder="2026-02-01T23:59:59Z"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm"
+          />
+        </div>
+        <div className="text-xs text-gray-600 dark:text-gray-300 md:self-end">
+          اتركها فارغة لفحص كل السجل (قد يكون ثقيلًا على الإنتاج).
+        </div>
       </div>
 
       {schemaHealth && (
@@ -214,6 +308,24 @@ const DatabaseExplorerScreen: React.FC = () => {
               {schemaHealth.missing.slice(0, 16).join(' • ')}{schemaHealth.missing.length > 16 ? ' • ...' : ''}
             </div>
           )}
+        </div>
+      )}
+
+      {cogsAudit && (
+        <div className="mb-4 p-3 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20">
+          <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">نتيجة فحص COGS</div>
+          <div className="mt-2 text-xs font-mono text-indigo-900 dark:text-indigo-200 whitespace-pre-wrap" dir="ltr">
+            {JSON.stringify(cogsAudit, null, 2)}
+          </div>
+        </div>
+      )}
+
+      {cogsRepair && (
+        <div className="mb-4 p-3 rounded-md border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50 dark:bg-fuchsia-900/20">
+          <div className="text-sm font-semibold text-fuchsia-900 dark:text-fuchsia-200">نتيجة إصلاح COGS</div>
+          <div className="mt-2 text-xs font-mono text-fuchsia-900 dark:text-fuchsia-200 whitespace-pre-wrap" dir="ltr">
+            {JSON.stringify(cogsRepair, null, 2)}
+          </div>
         </div>
       )}
 
