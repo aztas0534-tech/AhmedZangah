@@ -50,7 +50,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 // ─── UTILS ─────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const getCurrencyDecimalsByCode = (code: string) => (String(code || '').trim().toUpperCase() === 'YER' ? 0 : 2);
+const fmt = (n: number, dp = 2) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 const fmtInt = (n: number) => n.toLocaleString('en-US');
 const fmtCompact = (n: number) => {
     if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -70,7 +71,7 @@ const ErrorBanner: React.FC<{ message?: string }> = ({ message }) => (
 );
 
 /** Animated number counter */
-const AnimatedCounter: React.FC<{ value: number; format?: 'currency' | 'int' | 'percent'; duration?: number }> = ({ value, format = 'currency', duration = 800 }) => {
+const AnimatedCounter: React.FC<{ value: number; format?: 'currency' | 'int' | 'percent'; duration?: number; currencyCode?: string }> = ({ value, format = 'currency', duration = 800, currencyCode }) => {
     const [display, setDisplay] = useState(0);
     const ref = useRef<number>(0);
     const rafRef = useRef<number | undefined>(undefined);
@@ -97,7 +98,7 @@ const AnimatedCounter: React.FC<{ value: number; format?: 'currency' | 'int' | '
     let text: string;
     if (format === 'percent') text = display.toFixed(1) + '%';
     else if (format === 'int') text = fmtInt(Math.round(display));
-    else text = fmt(display);
+    else text = fmt(display, getCurrencyDecimalsByCode(currencyCode || ''));
 
     return <span className="animate-count-up">{text}</span>;
 };
@@ -272,51 +273,30 @@ export const KPIBar: React.FC = () => {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
 
-                // Current period
-                const { data: salesData }: any = await supabase.rpc('get_sales_report_summary', {
+                const prev = getPreviousPeriod(dateRange);
+                const { data: kpi }: any = await supabase.rpc('get_dashboard_kpi_v3', {
                     p_start_date: dateRange.start.toISOString(),
                     p_end_date: dateRange.end.toISOString(),
                     p_zone_id: null,
-                    p_invoice_only: false
+                    p_invoice_only: false,
+                    p_warehouse_id: null,
                 });
 
-                // Previous period (for comparison)
-                const prev = getPreviousPeriod(dateRange);
-                const { data: prevSalesData }: any = await supabase.rpc('get_sales_report_summary', {
+                const { data: prevKpi }: any = await supabase.rpc('get_dashboard_kpi_v3', {
                     p_start_date: prev.start.toISOString(),
                     p_end_date: prev.end.toISOString(),
                     p_zone_id: null,
-                    p_invoice_only: false
+                    p_invoice_only: false,
+                    p_warehouse_id: null,
                 });
 
-                // Inventory Value
-                let totalInventoryValue = 0;
-                try {
-                    const { data: val, error: ivErr } = await supabase.rpc('get_inventory_valuation');
-                    if (!ivErr && typeof val === 'number') totalInventoryValue = val;
-                } catch (_) { /* ignore */ }
-
-                // POs In Transit
-                const { count: transitCount } = await supabase
-                    .from('purchase_orders')
-                    .select('*', { count: 'exact', head: true })
-                    .in('status', ['shipped', 'processing', 'ordered']);
-
-                // Order Status Counts (Today/Active)
-                const { data: statusCounts } = await supabase
-                    .from('orders')
-                    .select('status')
-                    .in('status', ['pending', 'preparing', 'out_for_delivery', 'delivered']);
-
-                // Financial Position (AR/AP)
-                const { data: arData } = await supabase.from('party_ar_aging_summary').select('total_outstanding');
-                const { data: apData } = await supabase.from('party_ap_aging_summary').select('total_outstanding');
-
-                const totalAR = arData?.reduce((sum, row) => sum + (Number(row.total_outstanding) || 0), 0) || 0;
-                const totalAP = apData?.reduce((sum, row) => sum + (Number(row.total_outstanding) || 0), 0) || 0;
+                const salesData = (kpi && typeof kpi === 'object') ? (kpi.sales || {}) : {};
+                const prevSalesData = (prevKpi && typeof prevKpi === 'object') ? (prevKpi.sales || {}) : {};
 
                 if (active) {
-                    const netSales = Number(salesData?.total_sales_accrual) || 0;
+                    const grossSales = Number(salesData?.total_sales_accrual) || 0;
+                    const returnsAmount = Number((salesData as any)?.returns_total ?? salesData?.returns) || 0;
+                    const netSales = grossSales - returnsAmount;
                     const cogs = Number(salesData?.cogs) || 0;
                     const returnsCogs = Number(salesData?.returns_cogs) || 0;
                     const adjustedCogs = Math.max(0, cogs - returnsCogs);
@@ -325,23 +305,29 @@ export const KPIBar: React.FC = () => {
                     const deliveryCost = Number(salesData?.delivery_cost) || 0;
                     const netProfit = netSales - adjustedCogs - expenses - wastage - deliveryCost;
 
-                    const prevNetSales = Number(prevSalesData?.total_sales_accrual) || 0;
+                    const prevGrossSales = Number(prevSalesData?.total_sales_accrual) || 0;
+                    const prevReturnsAmount = Number((prevSalesData as any)?.returns_total ?? prevSalesData?.returns) || 0;
+                    const prevNetSales = prevGrossSales - prevReturnsAmount;
                     const prevCogs = Math.max(0, (Number(prevSalesData?.cogs) || 0) - (Number(prevSalesData?.returns_cogs) || 0));
                     const prevNetProfit = prevNetSales - prevCogs - (Number(prevSalesData?.expenses) || 0) - (Number(prevSalesData?.wastage) || 0) - (Number(prevSalesData?.delivery_cost) || 0);
 
                     const newStats = {
                         sales: netSales,
+                        grossSales,
+                        returns: returnsAmount,
+                        taxRefunds: Number((salesData as any)?.tax_refunds) || 0,
                         orders: Number(salesData?.total_orders_accrual) || 0,
                         margin: netSales > 0 ? ((netSales - adjustedCogs) / netSales * 100) : 0,
                         grossProfit: netSales - adjustedCogs, // Added Gross Profit
                         netProfit,
                         collected: Number(salesData?.total_collected) || 0, // Added Collected
-                        ar: totalAR,
-                        ap: totalAP,
-                        statusCounts: statusCounts || [],
+                        ar: Number((kpi as any)?.arTotal) || 0,
+                        ap: Number((kpi as any)?.apTotal) || 0,
+                        statusCounts: Object.entries(((kpi as any)?.orderStatusCounts || {}) as Record<string, number>).map(([status, cnt]) => ({ status, cnt })),
                         avgOrderValue: (Number(salesData?.total_orders_accrual) || 0) > 0 ? netSales / (Number(salesData?.total_orders_accrual) || 1) : 0,
-                        transit: transitCount || 0,
-                        inventoryValue: totalInventoryValue,
+                        transit: Number((kpi as any)?.poInTransit) || 0,
+                        poStatusCounts: (kpi as any)?.poStatusCounts || {},
+                        inventoryValue: Number((kpi as any)?.inventoryValue) || 0,
                         // Channel breakdown
                         inStoreCount: Number(salesData?.in_store_count) || 0,
                         onlineCount: Number(salesData?.online_count) || 0,
@@ -352,6 +338,9 @@ export const KPIBar: React.FC = () => {
 
                     setPrevStats({
                         sales: prevNetSales,
+                        grossSales: prevGrossSales,
+                        returns: prevReturnsAmount,
+                        taxRefunds: Number((prevSalesData as any)?.tax_refunds) || 0,
                         orders: Number(prevSalesData?.total_orders_accrual) || 0,
                         margin: prevNetSales > 0 ? ((prevNetSales - prevCogs) / prevNetSales * 100) : 0,
                         grossProfit: prevNetSales - prevCogs,
@@ -442,7 +431,7 @@ export const KPIBar: React.FC = () => {
                         <>
                             <div className="flex items-baseline gap-1.5 mb-1">
                                 <h3 className="text-xl font-bold font-mono tracking-tight text-gray-900 dark:text-white">
-                                    <AnimatedCounter value={c.value} format={c.format} />
+                                    <AnimatedCounter value={c.value} format={c.format} currencyCode={c.format === 'currency' ? currency : undefined} />
                                 </h3>
                                 <span className="text-[10px] text-gray-400 font-medium">{c.sub}</span>
                             </div>
@@ -563,7 +552,11 @@ export const InventorySection: React.FC = () => {
 
                 if (active) {
                     setTopProducts((products || []).sort((a: any, b: any) => (Number(b.total_sales) || 0) - (Number(a.total_sales) || 0)).slice(0, 5));
-                    setAlerts((stock || []).filter((item: any) => item.current_stock <= (item.min_stock || 5) && item.current_stock > 0).slice(0, 5));
+                    setAlerts((stock || []).filter((item: any) => {
+                        const cur = Number(item.current_stock) || 0;
+                        const threshold = Number(item.low_stock_threshold ?? item.min_stock ?? 5) || 5;
+                        return cur > 0 && cur <= threshold;
+                    }).slice(0, 5));
                 }
             } catch (err) {
                 console.error(err);
@@ -825,6 +818,7 @@ export const SalesSection: React.FC = () => {
 // 6. PURCHASING SECTION
 export const PurchasingSection: React.FC = () => {
     const { refreshKey } = useDashboard();
+    const { kpiData } = useDashboard();
     const [poStats, setPoStats] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -834,6 +828,19 @@ export const PurchasingSection: React.FC = () => {
         const load = async () => {
             setLoading(true); setError(false);
             try {
+                const fromKpi = (kpiData && typeof kpiData === 'object') ? ((kpiData as any).poStatusCounts || null) : null;
+                if (fromKpi && typeof fromKpi === 'object') {
+                    const counts: Record<string, number> = {};
+                    Object.entries(fromKpi as Record<string, any>).forEach(([k, v]) => {
+                        const n = Number(v) || 0;
+                        if (k) counts[k] = n;
+                    });
+                    if (active) {
+                        setPoStats(counts);
+                        setLoading(false);
+                    }
+                    return;
+                }
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
                 const { data }: any = await supabase.from('purchase_orders').select('status');
@@ -847,7 +854,7 @@ export const PurchasingSection: React.FC = () => {
         };
         load();
         return () => { active = false; };
-    }, [refreshKey]);
+    }, [kpiData, refreshKey]);
 
     const statuses = [
         { key: 'pending', label: 'قيد الانتظار', color: '#eab308' },
@@ -910,6 +917,7 @@ export const FinancialPositionCard: React.FC = () => {
 
     const { collected, ar, ap } = kpiData;
     const net = (collected || 0) + (ar || 0) - (ap || 0);
+    const dp = getCurrencyDecimalsByCode(currency);
 
     const items = [
         { label: 'الكاش (مبيعات)', value: collected, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
@@ -929,7 +937,7 @@ export const FinancialPositionCard: React.FC = () => {
                     <div key={i} className={`p-3 rounded-xl ${item.bg}`}>
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">{item.label}</div>
                         <div className={`text-sm font-mono ${item.bold ? 'font-bold' : 'font-medium'} ${item.color}`}>
-                            {fmt(item.value)} <span className="text-[9px] text-gray-400">{currency}</span>
+                            {fmt(item.value, dp)} <span className="text-[9px] text-gray-400">{currency}</span>
                         </div>
                     </div>
                 ))}
@@ -952,7 +960,7 @@ export const SalesStatusRow: React.FC = () => {
         { key: 'pending', label: 'انتظار', color: 'bg-yellow-100 text-yellow-700', icon: Icons.ClockIcon },
         { key: 'preparing', label: 'تحضير', color: 'bg-blue-100 text-blue-700', icon: Icons.RotateCwIcon },
         { key: 'out_for_delivery', label: 'توصيل', color: 'bg-orange-100 text-orange-700', icon: Icons.TruckIcon },
-        { key: 'delivered', label: 'تسليم', color: 'bg-green-100 text-green-700', icon: Icons.CheckCircleIcon },
+        { key: 'scheduled', label: 'مجدول', color: 'bg-purple-100 text-purple-700', icon: Icons.Calendar },
     ];
 
     return (

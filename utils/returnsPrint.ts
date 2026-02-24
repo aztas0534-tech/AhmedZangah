@@ -28,23 +28,47 @@ export const printSalesReturnById = async (returnId: string, brand?: Brand) => {
   const rid = String(returnId || '').trim();
   if (!rid) throw new Error('معرف المرتجع غير صالح.');
 
-  const { data: ret, error: rErr } = await supabase
-    .from('sales_returns')
-    .select('id,order_id,return_date,reason,refund_method,total_refund_amount,items,status,created_at')
-    .eq('id', rid)
-    .maybeSingle();
-  if (rErr) throw rErr;
+  let ret: any = null;
+  try {
+    const res = await supabase
+      .from('sales_returns')
+      .select('id,order_id,return_date,reason,refund_method,total_refund_amount,items,status,created_at')
+      .eq('id', rid)
+      .maybeSingle();
+    if (res.error) throw res.error;
+    ret = res.data;
+  } catch (e) {
+    const res2 = await supabase
+      .from('sales_returns')
+      .select('id,order_id,return_date,reason,refund_method,total_refund_amount,status,created_at')
+      .eq('id', rid)
+      .maybeSingle();
+    if (res2.error) throw res2.error;
+    ret = res2.data;
+  }
   if (!ret) throw new Error('المرتجع غير موجود.');
 
   const orderId = String((ret as any).order_id || '').trim();
   if (!orderId) throw new Error('الطلب غير صالح.');
 
-  const { data: order, error: oErr } = await supabase
-    .from('orders')
-    .select('id,invoice_number,customer_name,phone_number,currency,subtotal,discount,tax_amount,data')
-    .eq('id', orderId)
-    .maybeSingle();
-  if (oErr) throw oErr;
+  let order: any = null;
+  try {
+    const res = await supabase
+      .from('orders')
+      .select('id,invoice_number,customer_name,phone_number,currency,subtotal,discount,tax_amount,data')
+      .eq('id', orderId)
+      .maybeSingle();
+    if (res.error) throw res.error;
+    order = res.data;
+  } catch (e) {
+    const res2 = await supabase
+      .from('orders')
+      .select('id,invoice_number,currency,data')
+      .eq('id', orderId)
+      .maybeSingle();
+    if (res2.error) throw res2.error;
+    order = res2.data;
+  }
 
   const currency = String((order as any)?.currency || (order as any)?.data?.currency || '').trim().toUpperCase() || 'YER';
   const subtotal = Number((order as any)?.data?.subtotal ?? (order as any)?.subtotal ?? 0) || 0;
