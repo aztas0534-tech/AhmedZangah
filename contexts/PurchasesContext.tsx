@@ -24,7 +24,7 @@ interface PurchasesContextType {
         paymentTerms?: 'cash' | 'credit',
         netDays?: number,
         dueDate?: string
-    ) => Promise<void>;
+    ) => Promise<string>;
     deletePurchaseOrder: (purchaseOrderId: string) => Promise<void>;
     cancelPurchaseOrder: (purchaseOrderId: string, reason?: string, occurredAt?: string) => Promise<void>;
     recordPurchaseOrderPayment: (
@@ -648,7 +648,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         paymentTerms?: 'cash' | 'credit',
         netDays?: number,
         dueDate?: string
-    ) => {
+    ): Promise<string> => {
         if (!supabase) throw new Error('Supabase غير مهيأ.');
         if (!user) throw new Error('لم يتم تسجيل الدخول.');
 
@@ -924,7 +924,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 await reconcilePurchaseOrderStatus(orderId);
                 await updateMenuItemDates(items);
                 await fetchPurchaseOrders({ silent: false });
-                return;
+                  return orderId;
               }
 
               const msg = String((result.error as any)?.message || '');
@@ -933,7 +933,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
               if (isDup) {
                 const recovered = await recoverFromDuplicate(orderId, occurredAtIso, result.idempotencyKey);
-                if (recovered) return;
+                  if (recovered) return orderId;
                 if (/idx_purchase_receipts_grn_number_unique/i.test(msg) || /grn_number/i.test(msg)) {
                   lastReceiveErr = result.error as any;
                   continue;
@@ -951,7 +951,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                       await reconcilePurchaseOrderStatus(orderId);
                     await updateMenuItemDates(items);
                     await fetchPurchaseOrders({ silent: false });
-                    return;
+                      return orderId;
                   }
                   lastReceiveErr = retry.error as any;
                   continue;
@@ -965,6 +965,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
 
           await fetchPurchaseOrders({ silent: false });
+          return orderId;
         } catch (err) {
           const localized = localizeSupabaseError(err);
           const anyErr = err as any;

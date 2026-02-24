@@ -1119,6 +1119,7 @@ const PurchaseOrderScreen: React.FC = () => {
         e.preventDefault();
         try {
             const invoiceRef = typeof supplierInvoiceNumber === 'string' ? supplierInvoiceNumber.trim() : '';
+            const termsAtSubmit = paymentTerms;
             const errors: string[] = [];
             if (!supplierId) errors.push('المورد مطلوب');
             if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
@@ -1165,7 +1166,8 @@ const PurchaseOrderScreen: React.FC = () => {
                 uomCode: String((i as any).uomCode || '').trim(),
                 uomQtyInBase: Number((i as any).uomQtyInBase || 1) || 1,
             }));
-            await createPurchaseOrder(
+            const createdTotalAmount = validItems.reduce((sum, it) => sum + (Number(it.quantity || 0) * Number(it.unitCost || 0)), 0);
+            const createdId = await createPurchaseOrder(
                 supplierId,
                 purchaseDate,
                 normalizedPoCurrency,
@@ -1173,11 +1175,35 @@ const PurchaseOrderScreen: React.FC = () => {
                 receiveOnCreate,
                 invoiceRef || undefined,
                 warehouseId,
-                paymentTerms,
+                termsAtSubmit,
                 netDays,
                 dueDate
             );
             setIsModalOpen(false);
+            if (termsAtSubmit === 'cash') {
+                const supplierName = suppliers.find(s => s.id === supplierId)?.name || '';
+                const nowIso = new Date().toISOString();
+                openPaymentModal({
+                    id: createdId,
+                    supplierId,
+                    supplierName,
+                    status: 'draft',
+                    referenceNumber: invoiceRef || undefined,
+                    currency: normalizedPoCurrency,
+                    fxRate: poFxRate,
+                    totalAmount: createdTotalAmount,
+                    paidAmount: 0,
+                    purchaseDate,
+                    itemsCount: validItems.length,
+                    warehouseId,
+                    paymentTerms: termsAtSubmit,
+                    netDays: 0,
+                    dueDate: purchaseDate,
+                    createdBy: user!.id,
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
+                } as PurchaseOrder);
+            }
             // Reset form
             setSupplierId('');
             setSupplierInvoiceNumber('');
