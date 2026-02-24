@@ -2404,12 +2404,27 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             await rollbackCreatedOrder('offline_or_aborted');
             return await queueOfflineSale();
           }
-          await rollbackCreatedOrder(localizeSupabaseError(confirmError) || 'rpc_error');
+          const code = String((confirmError as any)?.code || '').trim();
+          const rawMsg = String((confirmError as any)?.message || (confirmError as any)?.details || '').trim();
+          const localizedMsg = localizeSupabaseError(confirmError);
+          const combinedMsg = (localizedMsg || rawMsg || '').trim();
+          const schemaHint = (() => {
+            const m = `${rawMsg}\n${localizedMsg}`.toLowerCase();
+            if (code === '42883' && m.includes('_money_round') && m.includes('numeric') && m.includes('text')) {
+              return 'قاعدة البيانات غير محدثة: دالة تقريب العملة مفقودة. طبّق ترحيلات Supabase الخاصة بالتقريب/العملات ثم أعد المحاولة.';
+            }
+            if (code === '42703' && (m.includes('currency_code') || m.includes('fx_rate') || m.includes('foreign_amount'))) {
+              return 'قاعدة البيانات غير محدثة: أعمدة FX غير موجودة على القيود. طبّق ترحيلات FX ثم أعد المحاولة.';
+            }
+            return '';
+          })();
+          const rollbackReason = [schemaHint || combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
+          await rollbackCreatedOrder(rollbackReason);
           console.error('In-store sale confirmation failed:', confirmError);
-          const msg = localizeSupabaseError(confirmError);
+          const msg = schemaHint || combinedMsg;
           throw new Error(
             msg && msg.trim()
-              ? `لم يتم تنفيذ البيع. تم التراجع عن الطلب. السبب: ${msg}`
+              ? `لم يتم تنفيذ البيع. تم التراجع عن الطلب. السبب: ${msg}${code ? ` (code:${code})` : ''}`
               : 'لم يتم تنفيذ البيع (فشل خصم المخزون أو التأكيد). تم التراجع عن الطلب. تحقق من توفر الأصناف والمستودع ثم أعد المحاولة.'
           );
         }
