@@ -35,6 +35,7 @@ export default function VoucherEntryScreen() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenterRow[]>([]);
   const [parties, setParties] = useState<PartyRow[]>([]);
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
 
   const [voucherType, setVoucherType] = useState<'receipt' | 'payment' | 'journal'>('receipt');
   const [occurredAt, setOccurredAt] = useState(() => toDateTimeLocalInputValue(new Date()));
@@ -69,14 +70,20 @@ export default function VoucherEntryScreen() {
     void (async () => {
       setLoading(true);
       try {
-        const [{ data: acc }, { data: cc }, { data: ps }] = await Promise.all([
+        const [{ data: acc }, { data: cc }, { data: ps }, { data: cur }] = await Promise.all([
           supabase.from('chart_of_accounts').select('id,code,name').eq('is_active', true).order('code', { ascending: true }).limit(1500),
           supabase.from('cost_centers').select('id,name,code').eq('is_active', true).order('name', { ascending: true }).limit(500),
           supabase.from('financial_parties').select('id,name').eq('is_active', true).order('created_at', { ascending: false }).limit(500),
+          supabase.from('currencies').select('code').order('code', { ascending: true }).limit(500),
         ]);
         setAccounts((Array.isArray(acc) ? acc : []).map((r: any) => ({ id: String(r.id), code: String(r.code || ''), name: String(r.name || '') })));
         setCostCenters((Array.isArray(cc) ? cc : []).map((r: any) => ({ id: String(r.id), name: String(r.name || ''), code: r.code ? String(r.code) : null })));
         setParties((Array.isArray(ps) ? ps : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
+        setCurrencyOptions(
+          (Array.isArray(cur) ? cur : [])
+            .map((r: any) => String(r.code || '').trim().toUpperCase())
+            .filter(Boolean),
+        );
       } catch (e: any) {
         showNotification(String(e?.message || 'تعذر تحميل البيانات المساعدة.'), 'error');
       } finally {
@@ -86,7 +93,7 @@ export default function VoucherEntryScreen() {
   }, [canView, showNotification]);
 
   const normalizedCurrency = useMemo(() => String(currencyCode || '').trim().toUpperCase(), [currencyCode]);
-  const usingForeign = normalizedCurrency && normalizedCurrency !== baseCurrencyCode;
+  const usingForeign = Boolean(normalizedCurrency && normalizedCurrency !== baseCurrencyCode);
   const occurredAtYmd = useMemo(() => {
     const raw = String(occurredAt || '');
     if (raw.length >= 10) return raw.slice(0, 10);
@@ -124,7 +131,7 @@ export default function VoucherEntryScreen() {
       setFxSource('system');
     } catch {
       setFxSource('unknown');
-      showNotification('تعذر جلب سعر الصرف من النظام. يمكنك إدخاله يدويًا.', 'error');
+      showNotification('تعذر جلب سعر الصرف من النظام.', 'error');
     }
   }, [baseCurrencyCode, normalizedCurrency, occurredAtYmd, showNotification]);
 
@@ -136,7 +143,6 @@ export default function VoucherEntryScreen() {
       if (fxSource !== 'unknown') setFxSource('unknown');
       return;
     }
-    if (fxSource === 'manual') return;
     if (fxRate && Number(fxRate) > 0) return;
     void applySystemFxRate();
   }, [applySystemFxRate, baseCurrencyCode, canView, foreignAmount, fxRate, fxSource, normalizedCurrency]);
@@ -157,7 +163,7 @@ export default function VoucherEntryScreen() {
   }, [foreignAmount]);
 
   const finalBaseAmount = useMemo(() => {
-    if (usingForeign && fx > 0 && fAmt > 0) return fx * fAmt;
+    if (usingForeign) return fx * fAmt;
     return amountBase;
   }, [amountBase, fAmt, fx, usingForeign]);
 
@@ -221,7 +227,7 @@ export default function VoucherEntryScreen() {
       return;
     }
     if (usingForeign && (!(fx > 0) || !(fAmt > 0))) {
-      showNotification('أدخل مبلغًا أجنبيًا وسعر صرف صحيحين.', 'error');
+      showNotification('تعذر اعتماد مبلغ أجنبي بدون سعر صرف من النظام ومبلغ أجنبي صحيح.', 'error');
       return;
     }
 
@@ -416,7 +422,14 @@ export default function VoucherEntryScreen() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">المبلغ (بالعملة الأساسية)</div>
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={baseCurrencyCode} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" />
+            <input
+              type="number"
+              value={usingForeign ? (finalBaseAmount > 0 ? String(finalBaseAmount.toFixed(2)) : '') : amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={baseCurrencyCode}
+              disabled={usingForeign}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono disabled:opacity-60"
+            />
             {usingForeign && fx > 0 && fAmt > 0 ? (
               <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono" dir="ltr">
                 محسوب: {(fx * fAmt).toFixed(2)} {baseCurrencyCode}
@@ -425,7 +438,7 @@ export default function VoucherEntryScreen() {
           </div>
           <div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">العملة (اختياري)</div>
-            <input
+            <select
               value={currencyCode}
               onChange={(e) => {
                 setCurrencyCode(e.target.value);
@@ -433,9 +446,17 @@ export default function VoucherEntryScreen() {
                 setForeignAmount('');
                 setFxSource('unknown');
               }}
-              placeholder={baseCurrencyCode}
               className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono"
-            />
+            >
+              <option value="">{baseCurrencyCode}</option>
+              {currencyOptions
+                .filter((c) => c !== baseCurrencyCode)
+                .map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -453,11 +474,8 @@ export default function VoucherEntryScreen() {
               </div>
               <input
                 type="number"
-                value={fxRate}
-                onChange={(e) => {
-                  setFxRate(e.target.value);
-                  if (usingForeign) setFxSource('manual');
-                }}
+                value={usingForeign ? fxRate : '1'}
+                readOnly
                 disabled={!usingForeign}
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono disabled:opacity-60"
               />

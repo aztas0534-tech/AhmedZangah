@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { getSupabaseClient } from '../../supabase';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -56,6 +56,8 @@ export default function PartyDocumentsScreen() {
   const canManage = hasPermission('accounting.manage');
   const canApprove = hasPermission('accounting.approve');
   const canView = hasPermission('accounting.view');
+  const [baseCurrencyCode, setBaseCurrencyCode] = useState('YER');
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [partyMap, setPartyMap] = useState<Record<string, string>>({});
@@ -74,6 +76,7 @@ export default function PartyDocumentsScreen() {
   const [currencyCode, setCurrencyCode] = useState('');
   const [fxRate, setFxRate] = useState<string>('');
   const [foreignAmount, setForeignAmount] = useState<string>('');
+  const [fxSource, setFxSource] = useState<'system' | 'unknown'>('unknown');
 
   const load = async () => {
     setLoading(true);
@@ -121,9 +124,101 @@ export default function PartyDocumentsScreen() {
   }, []);
 
   useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCurrencyCode(String(c).trim().toUpperCase());
+    });
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadCurrencies = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { data, error } = await supabase.from('currencies').select('code').order('code', { ascending: true }).limit(500);
+        if (error) throw error;
+        const codes = (Array.isArray(data) ? data : []).map((r: any) => String(r.code || '').trim().toUpperCase()).filter(Boolean);
+        if (active) setCurrencyOptions(codes);
+      } catch {
+        if (active) setCurrencyOptions([]);
+      }
+    };
+    void loadCurrencies();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     setPartyAccountCode(defaultAccounts[docType].partyAccount);
     setCounterAccountCode(defaultAccounts[docType].counterAccount);
   }, [docType]);
+
+  const normalizedCurrency = useMemo(() => String(currencyCode || '').trim().toUpperCase(), [currencyCode]);
+  const usingForeign = useMemo(() => Boolean(normalizedCurrency && normalizedCurrency !== baseCurrencyCode), [baseCurrencyCode, normalizedCurrency]);
+  const occurredAtYmd = useMemo(() => {
+    const raw = String(occurredAt || '');
+    if (raw.length >= 10) return raw.slice(0, 10);
+    try {
+      return new Date().toISOString().slice(0, 10);
+    } catch {
+      return '';
+    }
+  }, [occurredAt]);
+
+  const applySystemFxRate = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    if (!normalizedCurrency || !occurredAtYmd) return;
+    if (normalizedCurrency === baseCurrencyCode) {
+      setFxRate('1');
+      setFxSource('system');
+      return;
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_fx_rate', {
+        p_currency: normalizedCurrency,
+        p_date: occurredAtYmd,
+        p_rate_type: 'operational',
+      } as any);
+      if (error) throw error;
+      const n = Number(data);
+      if (!Number.isFinite(n) || n <= 0) {
+        setFxSource('unknown');
+        showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة في هذا التاريخ. أضف السعر من شاشة أسعار الصرف.', 'error');
+        return;
+      }
+      setFxRate(String(n));
+      setFxSource('system');
+    } catch {
+      setFxSource('unknown');
+      showNotification('تعذر جلب سعر الصرف من النظام.', 'error');
+    }
+  }, [baseCurrencyCode, normalizedCurrency, occurredAtYmd, showNotification]);
+
+  useEffect(() => {
+    if (!normalizedCurrency || normalizedCurrency === baseCurrencyCode) {
+      if (fxRate) setFxRate('');
+      if (foreignAmount) setForeignAmount('');
+      if (fxSource !== 'unknown') setFxSource('unknown');
+      return;
+    }
+    if (fxRate && Number(fxRate) > 0) return;
+    void applySystemFxRate();
+  }, [applySystemFxRate, baseCurrencyCode, foreignAmount, fxRate, fxSource, normalizedCurrency]);
+
+  const fx = useMemo(() => {
+    const n = Number(fxRate || '');
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [fxRate]);
+
+  const fAmt = useMemo(() => {
+    const n = Number(foreignAmount || '');
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [foreignAmount]);
+
+  const baseFromForeign = useMemo(() => (usingForeign ? fx * fAmt : 0), [fAmt, fx, usingForeign]);
 
   const filtered = useMemo(() => {
     const needle = String(q || '').trim().toLowerCase();
@@ -150,16 +245,16 @@ export default function PartyDocumentsScreen() {
     setCurrencyCode('');
     setFxRate('');
     setForeignAmount('');
+    setFxSource('unknown');
     setOccurredAt(new Date().toISOString().slice(0, 16));
     setIsModalOpen(true);
   };
 
   const buildLines = () => {
-    const amt = Number(amount || 0);
-    if (!(amt > 0)) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
-    const cur = String(currencyCode || '').trim().toUpperCase();
-    const fx = String(fxRate || '').trim();
-    const fa = String(foreignAmount || '').trim();
+    const cur = normalizedCurrency;
+    const baseAmt = usingForeign ? baseFromForeign : Number(amount || 0);
+    if (!(baseAmt > 0)) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
+    if (usingForeign && (!(fx > 0) || !(fAmt > 0))) throw new Error('تعذر اعتماد مبلغ أجنبي بدون سعر صرف من النظام ومبلغ أجنبي صحيح');
 
     const partyLine: any = {
       accountCode: partyAccountCode,
@@ -176,41 +271,41 @@ export default function PartyDocumentsScreen() {
     };
 
     if (docType === 'ar_invoice') {
-      partyLine.debit = amt;
-      counterLine.credit = amt;
+      partyLine.debit = baseAmt;
+      counterLine.credit = baseAmt;
     } else if (docType === 'ap_bill') {
-      counterLine.debit = amt;
-      partyLine.credit = amt;
+      counterLine.debit = baseAmt;
+      partyLine.credit = baseAmt;
     } else if (docType === 'ar_receipt') {
-      counterLine.debit = amt;
-      partyLine.credit = amt;
+      counterLine.debit = baseAmt;
+      partyLine.credit = baseAmt;
     } else if (docType === 'ap_payment') {
-      partyLine.debit = amt;
-      counterLine.credit = amt;
+      partyLine.debit = baseAmt;
+      counterLine.credit = baseAmt;
     } else if (docType === 'ar_credit_note') {
-      partyLine.credit = amt;
-      counterLine.debit = amt;
+      partyLine.credit = baseAmt;
+      counterLine.debit = baseAmt;
     } else if (docType === 'ap_credit_note') {
-      counterLine.credit = amt;
-      partyLine.debit = amt;
+      counterLine.credit = baseAmt;
+      partyLine.debit = baseAmt;
     } else if (docType === 'ar_debit_note') {
-      partyLine.debit = amt;
-      counterLine.credit = amt;
+      partyLine.debit = baseAmt;
+      counterLine.credit = baseAmt;
     } else if (docType === 'ap_debit_note') {
-      counterLine.debit = amt;
-      partyLine.credit = amt;
+      counterLine.debit = baseAmt;
+      partyLine.credit = baseAmt;
     } else if (docType === 'advance') {
-      partyLine.debit = amt;
-      counterLine.credit = amt;
+      partyLine.debit = baseAmt;
+      counterLine.credit = baseAmt;
     } else if (docType === 'custodian') {
-      partyLine.debit = amt;
-      counterLine.credit = amt;
+      partyLine.debit = baseAmt;
+      counterLine.credit = baseAmt;
     }
 
-    if (cur) {
+    if (usingForeign) {
       partyLine.currencyCode = cur;
-      if (fx) partyLine.fxRate = Number(fx);
-      if (fa) partyLine.foreignAmount = Number(fa);
+      partyLine.fxRate = fx;
+      partyLine.foreignAmount = fAmt;
     }
 
     return [partyLine, counterLine];
@@ -454,8 +549,9 @@ export default function PartyDocumentsScreen() {
                   <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">المبلغ (عملة الأساس)</label>
                   <input
                     type="number"
-                    value={String(amount)}
+                    value={usingForeign ? (baseFromForeign > 0 ? String(baseFromForeign.toFixed(2)) : '') : String(amount)}
                     onChange={(e) => setAmount(Number(e.target.value))}
+                    disabled={usingForeign}
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
                   />
                 </div>
@@ -480,19 +576,32 @@ export default function PartyDocumentsScreen() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">العملة (اختياري)</label>
-                  <input
+                  <select
                     value={currencyCode}
-                    onChange={(e) => setCurrencyCode(e.target.value)}
-                    placeholder="USD"
+                    onChange={(e) => {
+                      setCurrencyCode(e.target.value);
+                      setFxRate('');
+                      setForeignAmount('');
+                      setFxSource('unknown');
+                    }}
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
-                  />
+                  >
+                    <option value="">{baseCurrencyCode}</option>
+                    {currencyOptions
+                      .filter((c) => c !== baseCurrencyCode)
+                      .map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">FX Rate (اختياري)</label>
+                  <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">سعر الصرف (سعر النظام)</label>
                   <input
                     value={fxRate}
-                    onChange={(e) => setFxRate(e.target.value)}
-                    placeholder="250"
+                    readOnly
+                    disabled={!usingForeign}
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
                   />
                 </div>
