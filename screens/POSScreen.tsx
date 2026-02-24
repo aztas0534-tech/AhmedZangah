@@ -61,6 +61,7 @@ const POSScreen: React.FC = () => {
   const prevFxRateRef = useRef<number>(1);
   const prevCurrencyRef = useRef<string>('');
   const [fxRateProblem, setFxRateProblem] = useState<string>('');
+  const [transactionFxRate, setTransactionFxRate] = useState<number>(1);
   const [transactionCurrency, setTransactionCurrency] = useState<string>(() => {
     const ops = (settings as any)?.operationalCurrencies;
     const first = Array.isArray(ops) ? String(ops[0] || '').trim().toUpperCase() : '';
@@ -214,6 +215,7 @@ const POSScreen: React.FC = () => {
         if (!cancelled) {
           fxRateRef.current = 1;
           setFxRateProblem('');
+          setTransactionFxRate(1);
         }
         return;
       }
@@ -227,12 +229,39 @@ const POSScreen: React.FC = () => {
       }
       fxRateRef.current = rate;
       setFxRateProblem(rate === 1 ? 'سعر الصرف لهذه العملة يساوي 1. تحقق من أسعار الصرف أو أدخل سعر بيع لهذه العملة.' : '');
+      setTransactionFxRate(rate);
     };
     void run();
     return () => {
       cancelled = true;
     };
   }, [baseCode, mcPricingEnabled, operationalCurrencies, showNotification, transactionCurrency]);
+
+  const getCurrencyDecimalsByCode = (code: string) => {
+    const c = String(code || '').trim().toUpperCase();
+    return c === 'YER' ? 0 : 2;
+  };
+  const roundMoneyByCode = (v: number, code: string) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    const dp = getCurrencyDecimalsByCode(code);
+    const pow = Math.pow(10, dp);
+    return Math.round(n * pow) / pow;
+  };
+
+  useEffect(() => {
+    if (!items.length) return;
+    const oldRate = Number(prevFxRateRef.current) || 1;
+    const newRate = Number(transactionFxRate) || 1;
+    if (!(oldRate > 0) || !(newRate > 0)) return;
+    if (Math.abs(oldRate - newRate) < 1e-12) return;
+    if (discountType !== 'amount') return;
+    const d = Number(discountValue) || 0;
+    if (!(d > 0)) return;
+    const baseAmt = d * oldRate;
+    const next = roundMoneyByCode(baseAmt / newRate, transactionCurrency);
+    if (Math.abs(next - d) > 0.0001) setDiscountValue(next);
+  }, [discountType, discountValue, items.length, transactionCurrency, transactionFxRate]);
 
   useEffect(() => {
     if (!items.length) return;
@@ -1495,7 +1524,7 @@ const POSScreen: React.FC = () => {
           <select
             value={transactionCurrency}
             onChange={(e) => setTransactionCurrency(String(e.target.value || '').trim().toUpperCase())}
-            disabled={Boolean(pendingOrderId) || pricingBusy || items.length > 0}
+            disabled={Boolean(pendingOrderId) || pricingBusy}
             className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {operationalCurrencies.map((c) => (

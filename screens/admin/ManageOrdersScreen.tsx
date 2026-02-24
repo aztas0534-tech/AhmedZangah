@@ -2947,13 +2947,9 @@ const ManageOrdersScreen: React.FC = () => {
                                 value={inStoreTransactionCurrency}
                                 onChange={(e) => {
                                     const next = String(e.target.value || '').trim().toUpperCase();
-                                    if (inStoreLines.length > 0) {
-                                        showNotification('لا يمكن تغيير العملة بعد إضافة أصناف. احفظ أو امسح الأصناف أولاً.', 'error');
-                                        return;
-                                    }
                                     setInStoreTransactionCurrency(next);
                                 }}
-                                disabled={inStorePricingBusy || isInStoreCreating || inStoreLines.length > 0}
+                                disabled={inStorePricingBusy || isInStoreCreating}
                                 className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             >
                                 {operationalCurrencies.map((c) => (
