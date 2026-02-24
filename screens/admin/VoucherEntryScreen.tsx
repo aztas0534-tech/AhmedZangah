@@ -175,7 +175,6 @@ export default function VoucherEntryScreen() {
     };
     if (cur) {
       payloadCommon.currencyCode = cur;
-      payloadCommon.fxRate = fx > 0 ? fx : null;
       payloadCommon.foreignAmount = fAmt > 0 ? fAmt : null;
     }
     return [
