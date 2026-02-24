@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useOrders } from '../contexts/OrderContext';
 import { useCashShift } from '../contexts/CashShiftContext';
 import { useUserAuth } from '../contexts/UserAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useStock } from '../contexts/StockContext';
 import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
@@ -27,6 +28,7 @@ const POSScreen: React.FC = () => {
   const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder, fetchRemoteOrderById } = useOrders();
   const { currentShift } = useCashShift();
   const { customers, fetchCustomers } = useUserAuth();
+  const { user: adminUser, hasPermission } = useAuth();
   const { settings } = useSettings();
   const { fetchStock } = useStock();
   const { activePromotions, refreshActivePromotions, applyPromotionToCart } = usePromotions();
@@ -44,6 +46,10 @@ const POSScreen: React.FC = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [autoOpenInvoice, setAutoOpenInvoice] = useState(true);
+  const [belowCostReasonModalOpen, setBelowCostReasonModalOpen] = useState(false);
+  const [belowCostReason, setBelowCostReason] = useState('');
+  const [belowCostReasonConfirming, setBelowCostReasonConfirming] = useState(false);
+  const belowCostRetryRef = useRef<null | ((reason: string) => Promise<void>)>(null);
   const [addonsCartItemId, setAddonsCartItemId] = useState<string | null>(null);
   const [addonsDraft, setAddonsDraft] = useState<Record<string, number>>({});
   const [promotionPickerOpen, setPromotionPickerOpen] = useState(false);
@@ -67,6 +73,50 @@ const POSScreen: React.FC = () => {
     const first = Array.isArray(ops) ? String(ops[0] || '').trim().toUpperCase() : '';
     return first || '';
   });
+
+  const canOverrideBelowCost = useMemo(() => {
+    if (adminUser?.role === 'owner' || adminUser?.role === 'manager') return true;
+    return Boolean((settings as any)?.ALLOW_BELOW_COST_SALES) && hasPermission('sales.allowBelowCost' as any);
+  }, [adminUser?.role, hasPermission, settings]);
+
+  const getBelowCostErrorCode = (err: unknown) => {
+    const msg = String((err as any)?.message || '');
+    const raw = msg.trim().toUpperCase();
+    if (raw === 'SELLING_BELOW_COST_NOT_ALLOWED' || raw === 'BELOW_COST_REASON_REQUIRED') return raw;
+    if (/SELLING_BELOW_COST_NOT_ALLOWED/i.test(msg)) return 'SELLING_BELOW_COST_NOT_ALLOWED';
+    if (/BELOW_COST_REASON_REQUIRED/i.test(msg)) return 'BELOW_COST_REASON_REQUIRED';
+    return '';
+  };
+
+  const openBelowCostReasonModal = (retry: (reason: string) => Promise<void>) => {
+    belowCostRetryRef.current = retry;
+    setBelowCostReason('');
+    setBelowCostReasonConfirming(false);
+    setBelowCostReasonModalOpen(true);
+  };
+
+  const confirmBelowCostReason = async () => {
+    const reason = belowCostReason.trim();
+    if (!reason) {
+      showNotification('يرجى إدخال سبب البيع تحت التكلفة.', 'error');
+      return;
+    }
+    const retry = belowCostRetryRef.current;
+    if (!retry) {
+      setBelowCostReasonModalOpen(false);
+      return;
+    }
+    setBelowCostReasonConfirming(true);
+    try {
+      await retry(reason);
+      setBelowCostReasonModalOpen(false);
+    } catch (err) {
+      showNotification(localizeSupabaseError(err) || (err instanceof Error ? err.message : 'تعذر إتمام العملية.'), 'error');
+    } finally {
+      belowCostRetryRef.current = null;
+      setBelowCostReasonConfirming(false);
+    }
+  };
   const pricingCacheRef = useRef<Map<string, {
     baseUnitPrice?: number;
     unitPrice: number;
@@ -1283,38 +1333,46 @@ const POSScreen: React.FC = () => {
       };
     });
     if (pendingOrderId) {
-      resumeInStorePendingOrder(pendingOrderId, {
-        paymentMethod: payload.paymentMethod,
-        paymentBreakdown: breakdown.map(p => ({
-          method: p.method,
-          amount: Number(p.amount) || 0,
-          referenceNumber: p.referenceNumber,
-          senderName: p.senderName,
-          senderPhone: p.senderPhone,
-          declaredAmount: p.declaredAmount,
-          amountConfirmed: p.amountConfirmed,
-          cashReceived: p.cashReceived,
-        })),
-      }).then((order) => {
-        setPendingOrderId(null);
-        setItems([]);
-        resetCustomerFields();
-        setNotes('');
-        setDraftInvoice(null);
-        setPendingSelectedId(null);
-        showNotification('تم إتمام الطلب المستأنف', 'success');
-        void fetchStock();
-        if (autoOpenInvoice && order?.id) {
-          const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
-          const copies = Number(settings?.posFlags?.thermalCopies) || 1;
-          const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
-          navigate(`/admin/invoice/${order.id}${q}`);
-        }
-        focusSearch();
-      }).catch(err => {
-        const msg = err instanceof Error ? err.message : 'فشل إتمام الطلب المستأنف';
-        showNotification(msg, 'error');
-      });
+      const attempt = (reason?: string) => {
+        return resumeInStorePendingOrder(pendingOrderId, {
+          paymentMethod: payload.paymentMethod,
+          paymentBreakdown: breakdown.map(p => ({
+            method: p.method,
+            amount: Number(p.amount) || 0,
+            referenceNumber: p.referenceNumber,
+            senderName: p.senderName,
+            senderPhone: p.senderPhone,
+            declaredAmount: p.declaredAmount,
+            amountConfirmed: p.amountConfirmed,
+            cashReceived: p.cashReceived,
+          })),
+          belowCostOverrideReason: reason,
+        } as any).then((order) => {
+          setPendingOrderId(null);
+          setItems([]);
+          resetCustomerFields();
+          setNotes('');
+          setDraftInvoice(null);
+          setPendingSelectedId(null);
+          showNotification('تم إتمام الطلب المستأنف', 'success');
+          void fetchStock();
+          if (autoOpenInvoice && order?.id) {
+            const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
+            const copies = Number(settings?.posFlags?.thermalCopies) || 1;
+            const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
+            navigate(`/admin/invoice/${order.id}${q}`);
+          }
+          focusSearch();
+        }).catch((err) => {
+          const code = getBelowCostErrorCode(err);
+          if (canOverrideBelowCost && (code === 'BELOW_COST_REASON_REQUIRED' || code === 'SELLING_BELOW_COST_NOT_ALLOWED')) {
+            openBelowCostReasonModal(async (r) => attempt(r));
+            return;
+          }
+          showNotification(localizeSupabaseError(err) || (err instanceof Error ? err.message : 'فشل إتمام الطلب المستأنف'), 'error');
+        });
+      };
+      void attempt();
     } else {
       if (discountAmount > 0) {
         if (hasPromotionLines) {
@@ -1367,27 +1425,29 @@ const POSScreen: React.FC = () => {
         });
         return;
       }
-      createInStoreSale({
-        lines,
-        currency: transactionCurrency,
-        discountType,
-        discountValue,
-        customerName: customerName.trim() || undefined,
-        phoneNumber: phoneNumber.trim() || undefined,
-        notes: notes.trim() || undefined,
-        paymentMethod: payload.paymentMethod,
-        paymentAmountConfirmed: true, // Auto confirm for POS
-        paymentBreakdown: breakdown.map(p => ({
-          method: p.method,
-          amount: Number(p.amount) || 0,
-          referenceNumber: p.referenceNumber,
-          senderName: p.senderName,
-          senderPhone: p.senderPhone,
-          declaredAmount: p.declaredAmount,
-          amountConfirmed: p.amountConfirmed,
-          cashReceived: p.cashReceived,
-        })),
-      }).then((order) => {
+      const attempt = (reason?: string) => {
+        return createInStoreSale({
+          lines,
+          currency: transactionCurrency,
+          discountType,
+          discountValue,
+          customerName: customerName.trim() || undefined,
+          phoneNumber: phoneNumber.trim() || undefined,
+          notes: notes.trim() || undefined,
+          belowCostOverrideReason: reason,
+          paymentMethod: payload.paymentMethod,
+          paymentAmountConfirmed: true,
+          paymentBreakdown: breakdown.map(p => ({
+            method: p.method,
+            amount: Number(p.amount) || 0,
+            referenceNumber: p.referenceNumber,
+            senderName: p.senderName,
+            senderPhone: p.senderPhone,
+            declaredAmount: p.declaredAmount,
+            amountConfirmed: p.amountConfirmed,
+            cashReceived: p.cashReceived,
+          })),
+        } as any).then((order) => {
         const isQueuedOffline = Boolean((order as any)?.offlineState === 'CREATED_OFFLINE');
         const isDelivered = String((order as any)?.status || '') === 'delivered';
         const isPaid = Boolean((order as any)?.paidAt);
@@ -1427,10 +1487,16 @@ const POSScreen: React.FC = () => {
         showNotification('تم إنشاء الطلب وبانتظار التحصيل.', 'info');
         if (order?.id) setPendingSelectedId(order.id);
         focusSearch();
-      }).catch(err => {
-        const msg = err instanceof Error ? err.message : 'فشل إتمام الطلب';
-        showNotification(msg, 'error');
-      });
+      }).catch((err) => {
+          const code = getBelowCostErrorCode(err);
+          if (canOverrideBelowCost && (code === 'BELOW_COST_REASON_REQUIRED' || code === 'SELLING_BELOW_COST_NOT_ALLOWED')) {
+            openBelowCostReasonModal(async (r) => attempt(r));
+            return;
+          }
+          showNotification(localizeSupabaseError(err) || (err instanceof Error ? err.message : 'فشل إتمام الطلب'), 'error');
+        });
+      };
+      void attempt();
     }
   };
 
@@ -1880,6 +1946,35 @@ const POSScreen: React.FC = () => {
             </div>
           );
         })()}
+      </ConfirmationModal>
+      <ConfirmationModal
+        isOpen={belowCostReasonModalOpen}
+        onClose={() => {
+          setBelowCostReasonModalOpen(false);
+          setBelowCostReason('');
+          belowCostRetryRef.current = null;
+        }}
+        onConfirm={confirmBelowCostReason}
+        title="سبب البيع تحت التكلفة"
+        message=""
+        confirmText="متابعة"
+        confirmingText="جارٍ التنفيذ..."
+        confirmButtonClassName="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400"
+        isConfirming={belowCostReasonConfirming}
+        maxWidthClassName="max-w-lg"
+      >
+        <div className="space-y-3">
+          <div className="text-sm text-gray-700 dark:text-gray-200">
+            هذا البيع يحتوي صنفاً بسعر صافي أقل من الحد الأدنى (حسب التكلفة/هامش الربح). أدخل سبباً للتجاوز حتى يُسجّل في سجل التدقيق.
+          </div>
+          <textarea
+            value={belowCostReason}
+            onChange={(e) => setBelowCostReason(e.target.value)}
+            rows={3}
+            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+            placeholder="مثال: تصفية مخزون / تلف قريب / عرض ترويجي / عميل VIP / منافسة..."
+          />
+        </div>
       </ConfirmationModal>
       {promotionPickerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

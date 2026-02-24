@@ -133,6 +133,9 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreCreditOverrideModalOpen, setInStoreCreditOverrideModalOpen] = useState(false);
     const [inStoreCreditOverrideReason, setInStoreCreditOverrideReason] = useState('');
     const [inStoreCreditOverridePending, setInStoreCreditOverridePending] = useState<any | null>(null);
+    const [inStoreBelowCostModalOpen, setInStoreBelowCostModalOpen] = useState(false);
+    const [inStoreBelowCostReason, setInStoreBelowCostReason] = useState('');
+    const [inStoreBelowCostPending, setInStoreBelowCostPending] = useState<{ payload: any; creditOverrideReason?: string } | null>(null);
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
         items.sort((a, b) => {
@@ -613,6 +616,10 @@ const ManageOrdersScreen: React.FC = () => {
     const canVoidDelivered = hasPermission('accounting.void');
 
     const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
+    const canOverrideBelowCost = useMemo(() => {
+        if (adminUser?.role === 'owner' || adminUser?.role === 'manager') return true;
+        return Boolean((settings as any)?.ALLOW_BELOW_COST_SALES) && hasPermission('sales.allowBelowCost' as any);
+    }, [adminUser?.role, hasPermission, settings]);
     const inStoreAvailablePaymentMethods = useMemo(() => {
         const enabled = Object.entries(settings.paymentMethods || {})
             .filter(([, isEnabled]) => Boolean(isEnabled))
@@ -1353,9 +1360,11 @@ const ManageOrdersScreen: React.FC = () => {
     const runCreateInStoreSale = async (payload: any, creditOverrideReason?: string) => {
         setIsInStoreCreating(true);
         try {
+            const belowCostOverrideReason = String((payload as any)?.belowCostOverrideReason || '').trim();
             const order = await createInStoreSale({
                 ...payload,
                 creditOverrideReason: creditOverrideReason ? String(creditOverrideReason).trim() : undefined,
+                belowCostOverrideReason: belowCostOverrideReason || undefined,
             });
             const awaitingPayment = order.status === 'pending';
             const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
@@ -1396,6 +1405,15 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreSelectedPartyId('');
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
+            const upper = raw.trim().toUpperCase();
+            const isBelowCostReason = upper === 'BELOW_COST_REASON_REQUIRED' || /BELOW_COST_REASON_REQUIRED/i.test(raw);
+            const isBelowCostNotAllowed = upper === 'SELLING_BELOW_COST_NOT_ALLOWED' || /SELLING_BELOW_COST_NOT_ALLOWED/i.test(raw);
+            if (canOverrideBelowCost && (isBelowCostReason || isBelowCostNotAllowed)) {
+                setInStoreBelowCostPending({ payload, creditOverrideReason });
+                setInStoreBelowCostReason('');
+                setInStoreBelowCostModalOpen(true);
+                return;
+            }
             const message = language === 'ar'
                 ? (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.')
                 : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.');
@@ -3993,6 +4011,50 @@ const ManageOrdersScreen: React.FC = () => {
                         rows={4}
                         value={inStoreCreditOverrideReason}
                         onChange={(e) => setInStoreCreditOverrideReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="اكتب سبب التجاوز..."
+                    />
+                </div>
+            </ConfirmationModal>
+            <ConfirmationModal
+                isOpen={inStoreBelowCostModalOpen}
+                onClose={() => {
+                    if (isInStoreCreating) return;
+                    setInStoreBelowCostModalOpen(false);
+                    setInStoreBelowCostPending(null);
+                    setInStoreBelowCostReason('');
+                }}
+                onConfirm={async () => {
+                    const pending = inStoreBelowCostPending;
+                    const reason = String(inStoreBelowCostReason || '').trim();
+                    if (!pending) {
+                        setInStoreBelowCostModalOpen(false);
+                        return;
+                    }
+                    if (!reason) {
+                        showNotification('يرجى إدخال سبب التجاوز.', 'error');
+                        return;
+                    }
+                    setInStoreBelowCostModalOpen(false);
+                    setInStoreBelowCostPending(null);
+                    await runCreateInStoreSale({ ...pending.payload, belowCostOverrideReason: reason }, pending.creditOverrideReason);
+                }}
+                title="سبب البيع تحت التكلفة"
+                message=""
+                isConfirming={isInStoreCreating}
+                confirmText="متابعة"
+                confirmingText="جارٍ التنفيذ..."
+                cancelText="رجوع"
+                confirmButtonClassName="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400"
+            >
+                <div className="space-y-3">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                        هذا البيع يحتوي صنفاً بسعر صافي أقل من الحد الأدنى (حسب التكلفة/هامش الربح). أدخل سبباً للتجاوز حتى يُسجّل في سجل التدقيق.
+                    </div>
+                    <textarea
+                        rows={4}
+                        value={inStoreBelowCostReason}
+                        onChange={(e) => setInStoreBelowCostReason(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         placeholder="اكتب سبب التجاوز..."
                     />

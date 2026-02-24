@@ -1584,6 +1584,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    belowCostOverrideReason?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     paymentMethod: string;
@@ -2187,6 +2188,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
     const creditOverrideReason = String((input as any).creditOverrideReason || '').trim();
     if (creditOverrideReason) (newOrder as any).creditOverrideReason = creditOverrideReason;
+    const belowCostOverrideReason = String((input as any).belowCostOverrideReason || '').trim();
+    if (belowCostOverrideReason) (newOrder as any).belowCostOverrideReason = belowCostOverrideReason;
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
     if (isUuid(rawPartyId)) (newOrder as any).partyId = rawPartyId;
@@ -2960,6 +2963,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       cashReceived?: number;
     }>;
     occurredAt?: string;
+    belowCostOverrideReason?: string;
   }) => {
     const existing = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
     if (!existing || existing.status !== 'pending') {
@@ -3026,7 +3030,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (payloadItems.length === 0 && promoLines.length === 0) {
       throw new Error('لا يمكن إتمام الطلب: تأكد من الكمية/الوزن للأصناف.');
     }
-    const updatedDelivered: Order = { ...existing, status: 'delivered', deliveredAt: nowIso, paidAt: nowIso, paymentMethod: payment.paymentMethod };
+    const belowCostOverrideReason = String((payment as any).belowCostOverrideReason || '').trim();
+    const updatedDelivered: Order = {
+      ...existing,
+      status: 'delivered',
+      deliveredAt: nowIso,
+      paidAt: nowIso,
+      paymentMethod: payment.paymentMethod,
+      ...(belowCostOverrideReason ? ({ belowCostOverrideReason } as any) : {}),
+    };
     const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(supabase, {
       orderId: existing.id,
       items: payloadItems,

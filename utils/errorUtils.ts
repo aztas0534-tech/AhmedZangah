@@ -64,6 +64,9 @@ export const localizeError = (message: string): string => {
   if (raw === 'below_cost_not_allowed' || raw === 'selling_below_cost_not_allowed') {
     return 'تم رفض البيع لأن سعر البيع أقل من الحد الأدنى المسموح به بناءً على تكلفة الدفعة وهامش الربح. عدّل سعر البيع أو حدّث تكلفة الدفعة/هامش الربح ثم أعد المحاولة.';
   }
+  if (raw === 'below_cost_reason_required') {
+    return 'يلزم إدخال سبب قبل السماح بالبيع تحت التكلفة/الحد الأدنى.';
+  }
   if (raw === 'no_valid_batch_available') return 'لا توجد دفعة صالحة (غير منتهية) لهذا الصنف.';
   if (raw.includes('insufficient_fefo_batch_stock_for_item_')) return 'لا توجد كمية كافية في الدفعات الصالحة (FEFO) لهذا الصنف.';
   if (raw.includes('insufficient_reserved_batch_stock_for_item_')) return 'لا توجد كمية محجوزة كافية لهذا الصنف في الدفعات.';
