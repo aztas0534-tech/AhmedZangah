@@ -2283,18 +2283,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (canMarkPaidUi) {
         const rollbackCreatedOrder = async (reason: string) => {
           try {
-            const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
-            if (!deleteErr) return;
-            const cancelled = {
+            const pending = {
               ...finalized,
-              status: 'cancelled',
-              cancelledAt: nowIso,
-              cancelReason: reason,
+              status: 'pending',
+              inStoreFailureAt: nowIso,
+              inStoreFailureReason: reason,
             };
-            const { error: updErr } = await sb2.from('orders').update({ status: 'cancelled', data: cancelled }).eq('id', newOrder.id);
-            if (updErr) {
-              await sb2.from('orders').update({ status: 'cancelled' }).eq('id', newOrder.id);
-            }
+            const { error: updErr } = await sb2.from('orders').update({ status: 'pending', data: pending }).eq('id', newOrder.id);
+            if (updErr) await sb2.from('orders').update({ status: 'pending' }).eq('id', newOrder.id);
           } catch {
           }
         };
@@ -2402,12 +2398,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
           if (offlineNow || isAbortLikeError(confirmError)) {
             await rollbackCreatedOrder('offline_or_aborted');
-            return await queueOfflineSale();
+            const fresh = await fetchRemoteOrderById(newOrder.id);
+            return fresh || ({ ...newOrder, status: 'pending' } as Order);
           }
           const code = String((confirmError as any)?.code || '').trim();
           const rawMsg = String((confirmError as any)?.message || (confirmError as any)?.details || '').trim();
           const localizedMsg = localizeSupabaseError(confirmError);
-          const combinedMsg = (localizedMsg || rawMsg || '').trim();
+          const extraDetails = [String((confirmError as any)?.details || '').trim(), String((confirmError as any)?.hint || '').trim()]
+            .filter(Boolean)
+            .join(' | ');
+          const combinedMsg = (localizedMsg || rawMsg || extraDetails || '').trim();
+          const combinedForDisplay = (() => {
+            const generic = combinedMsg === 'فشل العملية.' || combinedMsg === 'حدث خطأ غير متوقع.' || combinedMsg === 'UNKNOWN' || combinedMsg === 'Unknown';
+            const dbg = [rawMsg, extraDetails].filter(Boolean).join(' | ');
+            if (generic && dbg) return `${combinedMsg} (${dbg})`;
+            return combinedMsg;
+          })();
           const schemaHint = (() => {
             const m = `${rawMsg}\n${localizedMsg}`.toLowerCase();
             if (code === '42883' && m.includes('_money_round') && m.includes('numeric') && m.includes('text')) {
@@ -2419,16 +2425,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return '';
           })();
           if (schemaHint) {
+            await rollbackCreatedOrder(`schema_mismatch | ${schemaHint}${code ? ` | code:${code}` : ''}`);
             throw new Error(`${schemaHint}${code ? ` (code:${code})` : ''} تم إنشاء الطلب كـ "معلق" ويمكن إتمامه بعد تطبيق الترحيلات.`);
           }
-          const rollbackReason = [combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
+          const rollbackReason = [combinedForDisplay || combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
           await rollbackCreatedOrder(rollbackReason);
           console.error('In-store sale confirmation failed:', confirmError);
-          const msg = schemaHint || combinedMsg;
+          const msg = schemaHint || combinedForDisplay || combinedMsg;
           throw new Error(
             msg && msg.trim()
-              ? `لم يتم تنفيذ البيع. تم التراجع عن الطلب. السبب: ${msg}${code ? ` (code:${code})` : ''}`
-              : 'لم يتم تنفيذ البيع (فشل خصم المخزون أو التأكيد). تم التراجع عن الطلب. تحقق من توفر الأصناف والمستودع ثم أعد المحاولة.'
+              ? `لم يتم تنفيذ البيع. تم حفظ الطلب كمعلّق. السبب: ${msg}${code ? ` (code:${code})` : ''}`
+              : 'لم يتم تنفيذ البيع (فشل خصم المخزون أو التأكيد). تم حفظ الطلب كمعلّق. تحقق من توفر الأصناف والمستودع ثم أعد المحاولة.'
           );
         }
 
