@@ -2418,7 +2418,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
             return '';
           })();
-          const rollbackReason = [schemaHint || combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
+          if (schemaHint) {
+            throw new Error(`${schemaHint}${code ? ` (code:${code})` : ''} تم إنشاء الطلب كـ "معلق" ويمكن إتمامه بعد تطبيق الترحيلات.`);
+          }
+          const rollbackReason = [combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
           await rollbackCreatedOrder(rollbackReason);
           console.error('In-store sale confirmation failed:', confirmError);
           const msg = schemaHint || combinedMsg;
