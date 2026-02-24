@@ -122,6 +122,7 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       setLoading(true);
       const currency = String((order as any)?.currency || '').trim().toUpperCase() || 'YER';
+      const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       const itemsTotal = items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
       const deliveryFee = Number((order as any)?.deliveryFee ?? (order as any)?.delivery_fee ?? 0) || 0;
       const itemsTotalRounded = roundMoneyByCode(itemsTotal, currency);
@@ -165,20 +166,43 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       })();
 
+      const existingKey = typeof (recentDraft as any)?.idempotency_key === 'string' ? String((recentDraft as any).idempotency_key) : '';
+      const payload: any = { ...returnData, idempotency_key: existingKey || idempotencyKey };
+
       const { data, error } = recentDraft?.id
         ? await supabase!
           .from('sales_returns')
-          .update({ ...returnData, updated_at: new Date().toISOString() } as any)
+          .update({ ...payload, updated_at: new Date().toISOString() } as any)
           .eq('id', recentDraft.id)
           .select()
           .single()
         : await supabase!
           .from('sales_returns')
-          .insert([returnData])
+          .insert([payload])
           .select()
           .single();
 
-      if (error) throw error;
+      if (error) {
+        const code = String((error as any)?.code || '');
+        if (code === '23505') {
+          const { data: existing, error: existingErr } = await supabase!
+            .from('sales_returns')
+            .select('*')
+            .eq('order_id', order.id)
+            .eq('idempotency_key', payload.idempotency_key)
+            .limit(1)
+            .maybeSingle();
+          if (!existingErr && existing) {
+            const mapped = mapRowToSalesReturn(existing);
+            setReturns(prev => {
+              const next = prev.filter(r => r.id !== mapped.id);
+              return [mapped, ...next];
+            });
+            return mapped;
+          }
+        }
+        throw error;
+      }
       
       const mapped = mapRowToSalesReturn(data);
       setReturns(prev => {

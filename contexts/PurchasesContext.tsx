@@ -44,7 +44,7 @@ interface PurchasesContextType {
         items: Array<{ itemId: string; quantity: number }>,
         reason?: string,
         occurredAt?: string
-    ) => Promise<void>;
+    ) => Promise<string>;
     updatePurchaseOrderInvoiceNumber: (purchaseOrderId: string, invoiceNumber: string | null) => Promise<void>;
     getPurchaseReturnSummary: (purchaseOrderId: string) => Promise<Record<string, number>>;
     fetchPurchaseOrders: () => Promise<void>;
@@ -1328,11 +1328,12 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         items: Array<{ itemId: string; quantity: number }>,
         reason?: string,
         occurredAt?: string
-    ) => {
+    ): Promise<string> => {
         if (!supabase) throw new Error('Supabase غير مهيأ.');
         try {
           const trimmedOrderId = String(purchaseOrderId || '').trim();
           if (!trimmedOrderId) throw new Error('معرف أمر الشراء غير صالح.');
+          const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 
           const occurredIso = (() => {
             if (!occurredAt) return new Date().toISOString();
@@ -1358,11 +1359,12 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const { data: authData } = await supabase.auth.getUser();
           const authUserId = typeof authData?.user?.id === 'string' ? authData.user.id : null;
 
-          const { data, error } = await supabase.rpc('create_purchase_return', {
+          const { data, error } = await supabase.rpc('create_purchase_return_v2', {
             p_order_id: trimmedOrderId,
             p_items: mergedItems,
             p_reason: reason || null,
             p_occurred_at: occurredIso,
+            p_idempotency_key: idempotencyKey,
           });
           if (error) throw error;
 
@@ -1373,9 +1375,10 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const maxIso = new Date(occurred.getTime() + 10_000).toISOString();
             const { data: row, error: findErr } = await supabase
               .from('purchase_returns')
-              .select('id')
+              .select('id,idempotency_key')
               .eq('purchase_order_id', trimmedOrderId)
               .eq('created_by', authUserId)
+              .eq('idempotency_key', idempotencyKey)
               .gte('returned_at', minIso)
               .lte('returned_at', maxIso)
               .order('returned_at', { ascending: false })
@@ -1409,6 +1412,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
 
           await fetchPurchaseOrders();
+          return returnId;
         } catch (err) {
           const anyErr = err as any;
           const localized = localizeSupabaseError(err);

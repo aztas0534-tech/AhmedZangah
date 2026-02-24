@@ -24,6 +24,7 @@ import { useGovernance } from '../../contexts/GovernanceContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import { printReceiptVoucherByPaymentId } from '../../utils/vouchers';
+import { printSalesReturnById } from '../../utils/returnsPrint';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
@@ -1123,6 +1124,46 @@ const ManageOrdersScreen: React.FC = () => {
             await printReceiptVoucherByPaymentId(paymentId, brand);
         } catch (e: any) {
             showNotification(String(e?.message || 'تعذر طباعة سند القبض'), 'error');
+        }
+    };
+
+    const handlePrintSalesReturn = async (returnId: string, order: Order) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        try {
+            const fallback = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+            const key = warehouseId ? String(warehouseId) : '';
+            const override = key ? settings.branchBranding?.[key] : undefined;
+            const brand: any = {
+                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                branchName: '',
+                branchCode: '',
+            };
+            try {
+                const bid = String(sessionScope.scope?.branchId || '').trim();
+                if (bid) {
+                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                    brand.branchName = String((b as any)?.name || '');
+                    brand.branchCode = String((b as any)?.code || '');
+                }
+            } catch {
+            }
+            await printSalesReturnById(returnId, brand);
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة المرتجع'), 'error');
         }
     };
 
@@ -4663,8 +4704,20 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <div className="font-semibold text-sm">
                                                     مرتجع #{String(r.id).slice(-6).toUpperCase()}
                                                 </div>
-                                                <div className="text-xs text-gray-600 dark:text-gray-300">
-                                                    {r.status === 'completed' ? 'مكتمل' : (r.status === 'draft' ? 'مسودة' : 'ملغي')}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                                                        {r.status === 'completed' ? 'مكتمل' : (r.status === 'draft' ? 'مسودة' : 'ملغي')}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (!returnsOrder) return;
+                                                            void handlePrintSalesReturn(String(r.id), returnsOrder);
+                                                        }}
+                                                        className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                    >
+                                                        طباعة
+                                                    </button>
                                                 </div>
                                             </div>
                                             {r.status === 'draft' && (

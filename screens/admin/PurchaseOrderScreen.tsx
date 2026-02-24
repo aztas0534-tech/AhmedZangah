@@ -21,6 +21,7 @@ import PrintablePurchaseOrder from '../../components/admin/documents/PrintablePu
 import PrintableGrn, { PrintableGrnData } from '../../components/admin/documents/PrintableGrn';
 import { printPaymentVoucherByPaymentId } from '../../utils/vouchers';
 import { localizeSupabaseError } from '../../utils/errorUtils';
+import { printPurchaseReturnById } from '../../utils/returnsPrint';
 
 interface OrderItemRow {
     itemId: string;
@@ -1572,8 +1573,14 @@ const PurchaseOrderScreen: React.FC = () => {
                 alert('الرجاء إدخال كمية للمرتجع.');
                 return;
             }
-            await createPurchaseReturn(returnOrder.id, items, returnReason, returnOccurredAt);
+            const returnId = await createPurchaseReturn(returnOrder.id, items, returnReason, returnOccurredAt);
             showNotification('تم تسجيل المرتجع بنجاح.', 'success', 3500);
+            try {
+                const brand = resolveBrandingForWarehouseId(returnOrder.warehouseId);
+                const branchHdr = await fetchBranchHeader(scope?.branchId);
+                await printPurchaseReturnById(returnId, { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode }, baseCode);
+            } catch {
+            }
             setIsReturnModalOpen(false);
             setReturnOrder(null);
             setReturnRows([]);
