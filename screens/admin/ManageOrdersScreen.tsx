@@ -23,7 +23,7 @@ import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useGovernance } from '../../contexts/GovernanceContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
-import { printReceiptVoucherByPaymentId } from '../../utils/vouchers';
+import { printJournalVoucherByEntryId, printPaymentVoucherByPaymentId, printReceiptVoucherByPaymentId } from '../../utils/vouchers';
 import { printSalesReturnById } from '../../utils/returnsPrint';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
@@ -98,6 +98,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [returnsByOrderId, setReturnsByOrderId] = useState<Record<string, any[]>>({});
     const [returnsLoading, setReturnsLoading] = useState(false);
     const [returnsActionBusy, setReturnsActionBusy] = useState<{ id: string; action: 'process' | 'cancel' | '' }>({ id: '', action: '' });
+    const [returnsDocsRepairing, setReturnsDocsRepairing] = useState(false);
     const returnsOrder = useMemo(() => {
         if (!returnsOrderId) return null;
         return orders.find(o => o.id === returnsOrderId) || null;
@@ -1171,6 +1172,136 @@ const ManageOrdersScreen: React.FC = () => {
             await printSalesReturnById(returnId, brand);
         } catch (e: any) {
             showNotification(String(e?.message || 'تعذر طباعة المرتجع'), 'error');
+        }
+    };
+
+    const handlePrintSalesReturnPaymentVoucher = async (returnId: string, order: Order) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        try {
+            const { data: p, error } = await supabase
+                .from('payments')
+                .select('id,occurred_at')
+                .eq('reference_table', 'sales_returns')
+                .eq('reference_id', String(returnId))
+                .eq('direction', 'out')
+                .order('occurred_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            const paymentId = String((p as any)?.id || '');
+            if (!paymentId) {
+                showNotification('لا يوجد سند صرف لهذا المرتجع.', 'error');
+                return;
+            }
+            const fallback = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+            const key = warehouseId ? String(warehouseId) : '';
+            const override = key ? settings.branchBranding?.[key] : undefined;
+            const brand: any = {
+                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                branchName: '',
+                branchCode: '',
+            };
+            try {
+                const bid = String(sessionScope.scope?.branchId || '').trim();
+                if (bid) {
+                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                    brand.branchName = String((b as any)?.name || '');
+                    brand.branchCode = String((b as any)?.code || '');
+                }
+            } catch {
+            }
+            await printPaymentVoucherByPaymentId(paymentId, brand);
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة سند الصرف'), 'error');
+        }
+    };
+
+    const handlePrintSalesReturnJournalVoucher = async (returnId: string, order: Order) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        try {
+            const { data: je, error } = await supabase
+                .from('journal_entries')
+                .select('id,entry_date')
+                .eq('source_table', 'sales_returns')
+                .eq('source_id', String(returnId))
+                .order('entry_date', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            const entryId = String((je as any)?.id || '');
+            if (!entryId) {
+                showNotification('لا يوجد قيد محاسبي مرتبط بهذا المرتجع.', 'error');
+                return;
+            }
+            const fallback = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+            const key = warehouseId ? String(warehouseId) : '';
+            const override = key ? settings.branchBranding?.[key] : undefined;
+            const brand: any = {
+                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                branchName: '',
+                branchCode: '',
+            };
+            try {
+                const bid = String(sessionScope.scope?.branchId || '').trim();
+                if (bid) {
+                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                    brand.branchName = String((b as any)?.name || '');
+                    brand.branchCode = String((b as any)?.code || '');
+                }
+            } catch {
+            }
+            await printJournalVoucherByEntryId(entryId, brand);
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة القيد'), 'error');
+        }
+    };
+
+    const handleRepairLegacySalesReturnDocuments = async () => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        if (returnsDocsRepairing) return;
+        setReturnsDocsRepairing(true);
+        try {
+            const { data, error } = await supabase.rpc('repair_sales_returns_payments_batch', { p_limit: 500, p_dry_run: false });
+            if (error) throw error;
+            const created = Number((data as any)?.created ?? 0) || 0;
+            const skipped = Number((data as any)?.skipped ?? 0) || 0;
+            showNotification(`تم إنشاء سندات صرف لمرتجعات قديمة: ${created} (تجاوز ${skipped}).`, 'success');
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر إصلاح مستندات المرتجعات'), 'error');
+        } finally {
+            setReturnsDocsRepairing(false);
         }
     };
 
@@ -4744,6 +4875,18 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="text-xs text-gray-600 dark:text-gray-300">
                             الطلب: #{returnsOrderId.slice(-6).toUpperCase()}
                         </div>
+                        {canManageAccounting && (
+                            <div className="flex items-center justify-end">
+                                <button
+                                    type="button"
+                                    disabled={returnsDocsRepairing}
+                                    onClick={() => void handleRepairLegacySalesReturnDocuments()}
+                                    className="px-3 py-2 rounded-md bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-60"
+                                >
+                                    {returnsDocsRepairing ? 'جاري الإصلاح...' : 'إصلاح سندات الصرف للمرتجعات القديمة'}
+                                </button>
+                            </div>
+                        )}
                         {returnsLoading && !returnsByOrderId[returnsOrderId] ? (
                             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                                 <Spinner />
@@ -4776,6 +4919,30 @@ const ManageOrdersScreen: React.FC = () => {
                                                     >
                                                         طباعة
                                                     </button>
+                                                    {r.status === 'completed' && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (!returnsOrder) return;
+                                                                    void handlePrintSalesReturnPaymentVoucher(String(r.id), returnsOrder);
+                                                                }}
+                                                                className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                            >
+                                                                سند صرف
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (!returnsOrder) return;
+                                                                    void handlePrintSalesReturnJournalVoucher(String(r.id), returnsOrder);
+                                                                }}
+                                                                className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                            >
+                                                                قيد
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                             {r.status === 'draft' && (
