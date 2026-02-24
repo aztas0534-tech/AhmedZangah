@@ -121,12 +121,28 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
   const fxRate = Number((po as any)?.fx_rate || 1) || 1;
   const safeFx = fxRate > 0 ? fxRate : 1;
 
-  const { data: retItems, error: riErr } = await supabase
-    .from('purchase_return_items')
-    .select('item_id,quantity,menu_items(name)')
-    .eq('return_id', rid)
-    .order('created_at', { ascending: true });
-  if (riErr) throw riErr;
+  let retItems: any[] = [];
+  try {
+    const { data, error: riErr } = await supabase
+      .from('purchase_return_items')
+      .select('item_id,quantity,menu_items(name)')
+      .eq('return_id', rid)
+      .order('created_at', { ascending: true });
+    if (riErr) throw riErr;
+    retItems = Array.isArray(data) ? data : [];
+  } catch {
+    try {
+      const { data, error: riErr2 } = await supabase
+        .from('purchase_return_items')
+        .select('item_id,quantity,menu_items(name)')
+        .eq('purchase_return_id', rid)
+        .order('created_at', { ascending: true });
+      if (riErr2) throw riErr2;
+      retItems = Array.isArray(data) ? data : [];
+    } catch {
+      retItems = [];
+    }
+  }
 
   const { data: mv, error: mvErr } = await supabase
     .from('inventory_movements')
