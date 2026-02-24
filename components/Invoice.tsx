@@ -7,6 +7,7 @@ import { generateZatcaTLV } from './admin/PrintableInvoice';
 import { AZTA_IDENTITY } from '../config/identity';
 import { useItemMeta } from '../contexts/ItemMetaContext';
 import { localizeUomCodeAr } from '../utils/displayLabels';
+import { useWarehouses } from '../contexts/WarehouseContext';
 
 interface InvoiceProps {
     order: Order;
@@ -25,6 +26,7 @@ interface InvoiceProps {
 const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, branding, copyLabel, accentColor, id }, ref) => {
     const lang = 'ar';
     const { getDeliveryZoneById } = useDeliveryZones();
+    const { getWarehouseById } = useWarehouses();
     const invoiceSnapshot = order.invoiceSnapshot;
     const invoiceOrder = invoiceSnapshot
         ? {
@@ -102,6 +104,13 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     };
 
     const invoiceCurrencyLabel = currencyLabelAr(currencyCode);
+    const invoiceWarehouseId = String((invoiceOrder as any)?.warehouseId || '').trim();
+    const invoiceWarehouseName = useMemo(() => {
+        if (!invoiceWarehouseId) return '';
+        const w = getWarehouseById(invoiceWarehouseId);
+        if (w?.name) return String(w.name);
+        return invoiceWarehouseId.slice(-6);
+    }, [getWarehouseById, invoiceWarehouseId]);
 
     const getItemNumber = (item: CartItem) => {
         const rawBarcode = String((item as any)?.barcode || '').trim();
@@ -393,9 +402,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-slate-400 w-16 text-center">#</th>
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest w-32">رقم الصنف</th>
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest">اسم الصنف</th>
+                            <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-center w-40">المخزن</th>
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-center w-28">الوحدة</th>
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-center w-28">الكمية</th>
-                            <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-left pl-6 w-40">{`سعر الحبة (${invoiceCurrencyLabel})`}</th>
+                            <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-left pl-6 w-40">{`سعر الوحدة (${invoiceCurrencyLabel})`}</th>
                             <th className="py-4 px-6 print:py-1 print:px-1 text-[10px] font-black uppercase tracking-widest text-left pl-8 w-44">{`الإجمالي (${invoiceCurrencyLabel})`}</th>
                         </tr>
                     </thead>
@@ -405,7 +415,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             const itemNo = getItemNumber(item);
                             const soldUnitLabel = getSoldUnitLabelAr(item, pricing);
                             const soldQtyText = getSoldQuantityTextAr(item, pricing);
-                            const unitPrice = pricing.unitPrice;
+                            const baseUnitPrice = pricing.unitPrice;
+                            const factor = pricing.isWeightBased ? 1 : (Number((item as any)?.uomQtyInBase || 1) || 1);
+                            const soldUnitPrice = pricing.isWeightBased ? baseUnitPrice : baseUnitPrice * factor;
                             const lineTotal = pricing.lineTotal;
                             const baseUnitLabel = (() => {
                                 if (pricing.isWeightBased) return soldUnitLabel;
@@ -430,16 +442,21 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                         )}
                                     </td>
                                     <td className="py-4 px-6 print:py-1 print:px-1 text-center">
+                                        <span className="font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800 print:bg-transparent print:px-0 print:py-0 print:rounded-none">{invoiceWarehouseName || '—'}</span>
+                                    </td>
+                                    <td className="py-4 px-6 print:py-1 print:px-1 text-center">
                                         <span className="font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800 print:bg-transparent print:px-0 print:py-0 print:rounded-none">{soldUnitLabel}</span>
                                     </td>
                                     <td className="py-4 px-6 print:py-1 print:px-1 text-center">
                                         <span className="font-mono font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800 print:bg-transparent print:px-0 print:py-0 print:rounded-none" dir="ltr">{soldQtyText}</span>
                                     </td>
                                     <td className="py-4 px-6 print:py-1 print:px-1 text-left pl-6" dir="ltr">
-                                        <div className="font-mono font-bold text-slate-900 print:text-[10px]">{formatMoney(unitPrice)} {invoiceCurrencyLabel}</div>
-                                        <div className="text-[11px] print:text-[9px] text-slate-500">
-                                            {`(${baseUnitLabel})`}
-                                        </div>
+                                        <div className="font-mono font-bold text-slate-900 print:text-[10px]">{formatMoney(soldUnitPrice)} {invoiceCurrencyLabel}</div>
+                                        {!pricing.isWeightBased && factor !== 1 ? (
+                                            <div className="text-[11px] print:text-[9px] text-slate-500">
+                                                {`يعادل ${String(factor)} ${baseUnitLabel}`}
+                                            </div>
+                                        ) : null}
                                     </td>
                                     <td className="py-4 px-6 print:py-1 print:px-1 text-left font-mono font-bold text-slate-900 pl-8 text-base print:text-[11px]" dir="ltr">
                                         <div>{formatMoney(lineTotal)} {invoiceCurrencyLabel}</div>

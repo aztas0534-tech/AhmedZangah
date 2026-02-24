@@ -4,6 +4,7 @@ import { Order } from '../../types';
 import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
+import { useWarehouses } from '../../contexts/WarehouseContext';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -79,6 +80,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     qrCodeDataUrl,
 }) => {
     const effectiveLanguage: 'ar' = language === 'ar' ? 'ar' : 'ar';
+    const { getWarehouseById } = useWarehouses();
     const invoiceSnapshot = order.invoiceSnapshot;
     const invoiceOrder = invoiceSnapshot
         ? {
@@ -116,6 +118,13 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const systemName = AZTA_IDENTITY.tradeNameAr;
     const branchName = resolvedCompanyName.trim();
     const showBranchName = Boolean(branchName) && branchName !== systemName.trim();
+    const invoiceWarehouseId = String((invoiceOrder as any)?.warehouseId || '').trim();
+    const invoiceWarehouseName = (() => {
+        if (!invoiceWarehouseId) return '';
+        const w = getWarehouseById(invoiceWarehouseId);
+        if (w?.name) return String(w.name);
+        return invoiceWarehouseId.slice(-6);
+    })();
 
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase();
     const currencyLabel = currencyCode || '—';
@@ -275,11 +284,12 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                         ) : (
                           <>
                             <th style={{ width: '14%' }}>رقم الصنف</th>
-                            <th style={{ width: '30%' }}>الصنف</th>
-                            <th style={{ width: '12%', textAlign: 'center' }}>الوحدة</th>
-                            <th style={{ width: '12%', textAlign: 'center' }}>الكمية</th>
-                            <th style={{ width: '16%', textAlign: 'center' }}>سعر الحبة</th>
-                            <th style={{ width: '16%', textAlign: 'left' }}>الإجمالي</th>
+                            <th style={{ width: '14%', textAlign: 'center' }}>المخزن</th>
+                            <th style={{ width: '26%' }}>الصنف</th>
+                            <th style={{ width: '10%', textAlign: 'center' }}>الوحدة</th>
+                            <th style={{ width: '10%', textAlign: 'center' }}>الكمية</th>
+                            <th style={{ width: '13%', textAlign: 'center' }}>سعر الوحدة</th>
+                            <th style={{ width: '13%', textAlign: 'left' }}>الإجمالي</th>
                           </>
                         )}
                     </tr>
@@ -299,7 +309,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                             : localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
                         const soldQty = pricing.isWeightBased ? String(pricing.quantity) : String(item.quantity);
                         const invoiceCurrencyLabel = currencyLabelAr(currencyLabel);
-                        const unitPrice = pricing.unitPrice;
+                        const baseUnitPrice = pricing.unitPrice;
+                        const factor = pricing.isWeightBased ? 1 : (Number((item as any)?.uomQtyInBase || 1) || 1);
+                        const soldUnitPrice = pricing.isWeightBased ? baseUnitPrice : baseUnitPrice * factor;
                         const lineTotal = pricing.lineTotal;
 
                         return (
@@ -323,13 +335,16 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                                       <span> | </span>
                                       <span className="tabular" dir="ltr">الكمية: {soldQty}</span>
                                       <span> | </span>
-                                      <span className="tabular" dir="ltr">سعر الحبة: {formatAmount(unitPrice)} {invoiceCurrencyLabel}</span>
+                                      <span className="tabular" dir="ltr">المخزن: {invoiceWarehouseName || '—'}</span>
+                                      <span> | </span>
+                                      <span className="tabular" dir="ltr">سعر الوحدة: {formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</span>
                                     </div>
                                     <div className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</div>
                                   </td>
                                 ) : (
                                   <>
                                     <td className="tabular" dir="ltr">{itemNo}</td>
+                                    <td className="text-center">{invoiceWarehouseName || '—'}</td>
                                     <td>
                                       <div className="item-name">{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</div>
                                       {Object.values(item.selectedAddons).length > 0 && (
@@ -342,7 +357,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                                     </td>
                                     <td className="text-center">{soldUnit}</td>
                                     <td className="text-center tabular" dir="ltr">{soldQty}</td>
-                                    <td className="text-center tabular" dir="ltr">{formatAmount(unitPrice)} {invoiceCurrencyLabel}</td>
+                                    <td className="text-center tabular" dir="ltr">{formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</td>
                                     <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</td>
                                   </>
                                 )}
