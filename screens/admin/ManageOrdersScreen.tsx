@@ -60,7 +60,7 @@ const unitTranslations: Record<string, string> = {
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders } = useOrders();
+    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders } = useOrders();
     const { createReturn, processReturn, getReturnsByOrder } = useSalesReturn();
     const { showNotification } = useToast();
     const language = 'ar';
@@ -608,6 +608,9 @@ const ManageOrdersScreen: React.FC = () => {
     const [codAuditOrderId, setCodAuditOrderId] = useState<string | null>(null);
     const [codAuditLoading, setCodAuditLoading] = useState(false);
     const [codAuditData, setCodAuditData] = useState<any>(null);
+    const [resumePendingBusyId, setResumePendingBusyId] = useState<string>('');
+    const [resumePendingBelowCostOrderId, setResumePendingBelowCostOrderId] = useState<string | null>(null);
+    const [resumePendingBelowCostReason, setResumePendingBelowCostReason] = useState('');
 
     const searchParams = new URLSearchParams(location.search);
     const highlightedOrderId = (searchParams.get('orderId') || '') || (typeof (location.state as any)?.orderId === 'string' ? (location.state as any).orderId : '');
@@ -621,6 +624,52 @@ const ManageOrdersScreen: React.FC = () => {
         if (adminUser?.role === 'owner' || adminUser?.role === 'manager') return true;
         return Boolean((settings as any)?.ALLOW_BELOW_COST_SALES) && hasPermission('sales.allowBelowCost' as any);
     }, [adminUser?.role, hasPermission, settings]);
+
+    const attemptResumeInStorePending = useCallback(async (order: Order, belowCostOverrideReason?: string) => {
+        if (!order || order.status !== 'pending' || !isInStoreOrder(order)) return;
+        const canMarkPaidNow = hasPermission('orders.markPaid');
+        if (!canMarkPaidNow) {
+            showNotification('لا تملك صلاحية إتمام البيع المعلّق.', 'error');
+            return;
+        }
+        if (resumePendingBusyId) return;
+
+        const pbRaw = (order as any)?.paymentBreakdown ?? (order as any)?.data?.paymentBreakdown;
+        const paymentBreakdown = Array.isArray(pbRaw) ? pbRaw : [];
+        const paymentMethod = String((order as any)?.paymentMethod ?? (order as any)?.data?.paymentMethod ?? 'cash').trim() || 'cash';
+        const occurredAt = new Date().toISOString();
+        const cashAmount = paymentBreakdown
+            .filter((p: any) => String(p?.method || '').trim() === 'cash')
+            .reduce((s: number, p: any) => s + (Number(p?.amount) || 0), 0);
+        const hasCash = cashAmount > 0.000000001 || (paymentBreakdown.length === 0 && paymentMethod === 'cash');
+        if (hasCash && !currentShift) {
+            showNotification('يجب فتح وردية نقدية قبل إتمام أي مبلغ نقدي.', 'error');
+            return;
+        }
+
+        setResumePendingBusyId(order.id);
+        try {
+            await resumeInStorePendingOrder(order.id, {
+                paymentMethod,
+                paymentBreakdown: paymentBreakdown.length ? paymentBreakdown : undefined,
+                occurredAt,
+                belowCostOverrideReason: belowCostOverrideReason ? String(belowCostOverrideReason).trim() : undefined,
+            });
+            showNotification(`تم إتمام البيع المعلّق #${order.id.slice(-6).toUpperCase()}`, 'success');
+            try { await fetchOrders(); } catch { }
+        } catch (error: any) {
+            const raw = String(error?.message || '');
+            const isBelowCostReason = /يلزم إدخال سبب/i.test(raw) || /تحت التكلفة/i.test(raw) || /below_cost/i.test(raw);
+            if (canOverrideBelowCost && isBelowCostReason) {
+                setResumePendingBelowCostOrderId(order.id);
+                setResumePendingBelowCostReason('');
+                return;
+            }
+            showNotification(raw || 'فشل إتمام البيع المعلّق.', 'error');
+        } finally {
+            setResumePendingBusyId('');
+        }
+    }, [canOverrideBelowCost, currentShift, fetchOrders, hasPermission, isInStoreOrder, resumeInStorePendingOrder, resumePendingBusyId, showNotification]);
     const inStoreAvailablePaymentMethods = useMemo(() => {
         const enabled = Object.entries(settings.paymentMethods || {})
             .filter(([, isEnabled]) => Boolean(isEnabled))
@@ -2317,6 +2366,48 @@ const ManageOrdersScreen: React.FC = () => {
                         </select>
                     </div>
 
+                    {isInStoreOrder(order) && order.status === 'pending' && canMarkPaid && (
+                        <div className="col-span-2 space-y-2">
+                            {String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim() && (
+                                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                                    سبب التعليق: {String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim()}
+                                </div>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => void attemptResumeInStorePending(order)}
+                                disabled={resumePendingBusyId === order.id}
+                                className="w-full py-2 bg-emerald-700 text-white rounded-md hover:bg-emerald-800 transition text-sm font-bold disabled:opacity-60"
+                            >
+                                {resumePendingBusyId === order.id ? 'جاري الإتمام...' : 'إعادة محاولة الإتمام'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setEditOrderId(order.id)}
+                                className="w-full py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 transition text-sm font-bold"
+                            >
+                                تعديل الأصناف
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (!canCancel) return;
+                                    try {
+                                        await cancelInStorePendingOrder(order.id);
+                                        showNotification('تم حذف الطلب المعلّق.', 'success');
+                                        try { await fetchOrders(); } catch { }
+                                    } catch (e: any) {
+                                        showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
+                                    }
+                                }}
+                                disabled={!canCancel || resumePendingBusyId === order.id}
+                                className="w-full py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition text-sm font-bold disabled:opacity-60"
+                            >
+                                حذف الطلب المعلّق
+                            </button>
+                        </div>
+                    )}
+
                     {/* Delivery Accept Button */}
                     {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
                         <button
@@ -2793,6 +2884,51 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 </button>
                                                             )}
                                                             {paymentActions}
+                                                        </div>
+                                                    );
+                                                }
+
+                                                if (isInStoreOrder(order) && order.status === 'pending' && canMarkPaid) {
+                                                    const reason = String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim();
+                                                    return (
+                                                        <div className="flex flex-col gap-2">
+                                                            {reason && (
+                                                                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                                                                    سبب التعليق: {reason}
+                                                                </div>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void attemptResumeInStorePending(order)}
+                                                                disabled={resumePendingBusyId === order.id}
+                                                                className="px-3 py-1 bg-emerald-700 text-white rounded hover:bg-emerald-800 transition text-xs font-semibold disabled:opacity-60"
+                                                            >
+                                                                {resumePendingBusyId === order.id ? 'جاري الإتمام...' : 'إعادة محاولة الإتمام'}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setEditOrderId(order.id)}
+                                                                className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800 transition text-xs font-semibold"
+                                                            >
+                                                                تعديل الأصناف
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={async () => {
+                                                                    if (!canCancel) return;
+                                                                    try {
+                                                                        await cancelInStorePendingOrder(order.id);
+                                                                        showNotification('تم حذف الطلب المعلّق.', 'success');
+                                                                        try { await fetchOrders(); } catch { }
+                                                                    } catch (e: any) {
+                                                                        showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
+                                                                    }
+                                                                }}
+                                                                disabled={!canCancel || resumePendingBusyId === order.id}
+                                                                className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs font-semibold disabled:opacity-60"
+                                                            >
+                                                                حذف الطلب المعلّق
+                                                            </button>
                                                         </div>
                                                     );
                                                 }
@@ -4186,6 +4322,54 @@ const ManageOrdersScreen: React.FC = () => {
                         rows={4}
                         value={inStoreBelowCostReason}
                         onChange={(e) => setInStoreBelowCostReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="اكتب سبب التجاوز..."
+                    />
+                </div>
+            </ConfirmationModal>
+            <ConfirmationModal
+                isOpen={Boolean(resumePendingBelowCostOrderId)}
+                onClose={() => {
+                    if (resumePendingBusyId) return;
+                    setResumePendingBelowCostOrderId(null);
+                    setResumePendingBelowCostReason('');
+                }}
+                onConfirm={async () => {
+                    const orderId = String(resumePendingBelowCostOrderId || '').trim();
+                    const reason = String(resumePendingBelowCostReason || '').trim();
+                    if (!orderId) {
+                        setResumePendingBelowCostOrderId(null);
+                        return;
+                    }
+                    if (!reason) {
+                        showNotification('يرجى إدخال سبب التجاوز.', 'error');
+                        return;
+                    }
+                    const order = orders.find(o => o.id === orderId);
+                    setResumePendingBelowCostOrderId(null);
+                    setResumePendingBelowCostReason('');
+                    if (!order) {
+                        showNotification('الطلب غير موجود.', 'error');
+                        return;
+                    }
+                    await attemptResumeInStorePending(order, reason);
+                }}
+                title="سبب البيع تحت التكلفة (إتمام طلب معلّق)"
+                message=""
+                isConfirming={Boolean(resumePendingBusyId)}
+                confirmText="متابعة"
+                confirmingText="جارٍ الإتمام..."
+                cancelText="رجوع"
+                confirmButtonClassName="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400"
+            >
+                <div className="space-y-3">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                        هذا الطلب المعلّق يحتوي صنفاً بسعر صافي أقل من الحد الأدنى. أدخل سبباً للتجاوز ثم أعد المحاولة.
+                    </div>
+                    <textarea
+                        rows={4}
+                        value={resumePendingBelowCostReason}
+                        onChange={(e) => setResumePendingBelowCostReason(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         placeholder="اكتب سبب التجاوز..."
                     />

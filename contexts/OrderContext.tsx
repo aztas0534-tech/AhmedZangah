@@ -92,6 +92,7 @@ interface OrderContextType {
       cashReceived?: number;
     }>;
     occurredAt?: string;
+    belowCostOverrideReason?: string;
   }) => Promise<Order>;
   cancelInStorePendingOrder: (orderId: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: OrderStatus, meta?: { deliveredLocation?: { lat: number; lng: number; accuracy?: number }; deliveryPin?: string }) => Promise<void>;
