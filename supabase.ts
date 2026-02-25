@@ -233,7 +233,8 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = toHeaders(init?.headers);
     if (key) {
-      if (!headers.has('apikey')) headers.set('apikey', key);
+      headers.set('apikey', key);
+      if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${key}`);
     }
 
     const res = await baseFetch(input, { ...init, headers });
