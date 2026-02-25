@@ -40,6 +40,7 @@ export type VoucherData = {
   toAccount?: string | null;
   fromAccount?: string | null;
   shiftId?: string | null;
+  shiftNumber?: number | null;
 };
 
 const fmt = (n: number) => {
@@ -78,6 +79,8 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
     return [name, code ? `(${code})` : ''].filter(Boolean).join(' ');
   })();
   const shiftNo = (() => {
+    const n = data.shiftNumber;
+    if (typeof n === 'number' && Number.isFinite(n) && n > 0) return String(Math.trunc(n));
     const id = String(data.shiftId || '').trim();
     if (!id) return '';
     const compact = id.replace(/-/g, '').toUpperCase();
@@ -85,8 +88,14 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
   })();
   const referenceLabel = (() => {
     const t = String(data.title || '');
-    if (t.includes('سند قبض')) return 'رقم المرجع';
+    if (t.includes('سند قبض') || t.includes('سند صرف')) return 'رقم المرجع';
     return 'رقم العملية';
+  })();
+  const actorLabel = (() => {
+    const t = String(data.title || '');
+    if (t.includes('سند قبض')) return 'اسم الصندوق';
+    if (t.includes('سند صرف')) return 'الصارف';
+    return 'المستلم';
   })();
 
   return (
@@ -272,15 +281,15 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
               <span className="info-value">{costCenterLabel}</span>
           </div>
         ) : null}
-        {data.title.includes('سند قبض') && shiftNo ? (
+        {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && shiftNo ? (
           <div className="info-item">
               <span className="info-label">رقم الصندوق</span>
               <span className="info-value tabular" dir="ltr">{shiftNo}</span>
           </div>
         ) : null}
-        {data.title.includes('سند قبض') && data.receivedBy ? (
+        {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && data.receivedBy ? (
           <div className="info-item">
-              <span className="info-label">اسم الصندوق</span>
+              <span className="info-label">{actorLabel}</span>
               <span className="info-value">{data.receivedBy}</span>
           </div>
         ) : null}
@@ -302,9 +311,9 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
               <span className="info-value tabular" dir="ltr">{data.paymentReferenceNumber}</span>
           </div>
         ) : null}
-        {!data.title.includes('سند قبض') && data.receivedBy ? (
+        {(!data.title.includes('سند قبض') && !data.title.includes('سند صرف')) && data.receivedBy ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
-              <span className="info-label">المستلم</span>
+              <span className="info-label">{actorLabel}</span>
               <span className="info-value">{data.receivedBy}</span>
           </div>
         ) : null}
@@ -379,13 +388,19 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
       <div className="signatures-section">
         <div className="signature-box">
-            <div className="signature-label">{data.title.includes('سند قبض') ? 'الصندوق' : 'إعداد (Prepared By)'}</div>
+            <div className="signature-label">
+              {data.title.includes('سند قبض')
+                ? 'الصندوق'
+                : data.title.includes('سند صرف')
+                  ? 'الصارف'
+                  : 'إعداد (Prepared By)'}
+            </div>
         </div>
         <div className="signature-box">
-            <div className="signature-label">{data.title.includes('سند قبض') ? 'المدير المالي' : 'مراجعة (Checked By)'}</div>
+            <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير المالي' : 'مراجعة (Checked By)'}</div>
         </div>
         <div className="signature-box">
-            <div className="signature-label">{data.title.includes('سند قبض') ? 'المدير العام' : 'اعتماد (Approved By)'}</div>
+            <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير العام' : 'اعتماد (Approved By)'}</div>
         </div>
       </div>
 

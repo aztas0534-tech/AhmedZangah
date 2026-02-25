@@ -56,6 +56,26 @@ const resolveAdminDisplayName = async (userId: string) => {
   }
 };
 
+const resolveShiftNumber = async (shiftId: string | null | undefined): Promise<number | null> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  const id = String(shiftId || '').trim();
+  if (!id) return null;
+  try {
+    const { data, error } = await supabase
+      .from('cash_shifts')
+      .select('shift_number')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) return null;
+    const n = (data as any)?.shift_number;
+    const v = n === null || n === undefined ? null : Number(n);
+    return Number.isFinite(v as any) && (v as number) > 0 ? Math.trunc(v as number) : null;
+  } catch {
+    return null;
+  }
+};
+
 const fetchJournalEntryWithLines = async (entryId: string) => {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -130,6 +150,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
   let senderPhone: string | null = null;
   let receivedBy: string | null = null;
   let shiftId: string | null = null;
+  let shiftNumber: number | null = null;
   const entryCreatedBy = String((entry as any)?.created_by || '').trim();
   if (entryCreatedBy) {
     receivedBy = await resolveAdminDisplayName(entryCreatedBy);
@@ -147,6 +168,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
       if (!pErr && pay) {
         paymentMethod = paymentMethodLabel(String((pay as any)?.method || '')) as any;
         shiftId = String((pay as any)?.shift_id || '').trim() || null;
+        shiftNumber = await resolveShiftNumber(shiftId);
         const pdata = (pay as any)?.data || {};
         const ref = String(pdata?.referenceNumber || pdata?.reference_number || pdata?.paymentReferenceNumber || '').trim();
         paymentReferenceNumber = ref || null;
@@ -180,6 +202,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     toAccount: toAccount || null,
     fromAccount: fromAccount || null,
     shiftId,
+    shiftNumber,
   };
 };
 
@@ -215,6 +238,7 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
     toAccount: (bundle as any).toAccount || null,
     fromAccount: (bundle as any).fromAccount || null,
     shiftId: (bundle as any).shiftId || null,
+    shiftNumber: (bundle as any).shiftNumber ?? null,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
@@ -254,6 +278,7 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
     toAccount: (bundle as any).toAccount || null,
     fromAccount: (bundle as any).fromAccount || null,
     shiftId: (bundle as any).shiftId || null,
+    shiftNumber: (bundle as any).shiftNumber ?? null,
   };
 
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
@@ -293,6 +318,7 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
   const amount = Number((pay as any).amount || 0);
   const currency = String((pay as any).currency || '').toUpperCase() || '';
   const shiftId = String((pay as any)?.shift_id || '').trim() || null;
+  const shiftNumber = await resolveShiftNumber(shiftId);
   const data = {
     voucherNumber: bundle.documentNumber,
     status: 'Posted',
@@ -312,6 +338,7 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
     toAccount: (bundle as any).toAccount || null,
     fromAccount: (bundle as any).fromAccount || null,
     shiftId,
+    shiftNumber,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
@@ -328,7 +355,7 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
 
   const { data: pay, error: pErr } = await supabase
     .from('payments')
-    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id,data,created_by')
+    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id,shift_id,data,created_by')
     .eq('id', pid)
     .maybeSingle();
   if (pErr) throw pErr;
@@ -350,6 +377,8 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
   const bundle = await fetchJournalEntryWithLines(entryId);
   const amount = Number((pay as any).amount || 0);
   const currency = String((pay as any).currency || '').toUpperCase() || '';
+  const shiftId = String((pay as any)?.shift_id || '').trim() || null;
+  const shiftNumber = await resolveShiftNumber(shiftId);
   const data = {
     voucherNumber: bundle.documentNumber,
     status: 'Posted',
@@ -368,6 +397,8 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
     receivedBy: (bundle as any).receivedBy || null,
     toAccount: (bundle as any).toAccount || null,
     fromAccount: (bundle as any).fromAccount || null,
+    shiftId,
+    shiftNumber,
   };
 
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
