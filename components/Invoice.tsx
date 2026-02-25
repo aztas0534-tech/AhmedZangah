@@ -18,12 +18,15 @@ interface InvoiceProps {
         contactNumber?: string;
         logoUrl?: string;
     };
+    costCenterLabel?: string | null;
+    creditSummary?: { previousBalance: number; invoiceAmount: number; newBalance: number; currencyCode: string } | null;
+    audit?: { printedBy?: string | null } | null;
     copyLabel?: string;
     accentColor?: string;
     id?: string;
 }
 
-const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, branding, copyLabel, accentColor, id }, ref) => {
+const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, branding, costCenterLabel, creditSummary, audit, copyLabel, accentColor, id }, ref) => {
     const lang = 'ar';
     const { getDeliveryZoneById } = useDeliveryZones();
     const { getWarehouseById } = useWarehouses();
@@ -74,6 +77,17 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
     const invoiceTermsLabel = invoiceTerms === 'credit' ? 'أجل' : 'نقد';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
+    const printedBy = String(audit?.printedBy || '').trim();
+    const fmtByCode = (value: number, code: string) => {
+        const c = String(code || '').trim().toUpperCase();
+        const dp = c === 'YER' ? 0 : 2;
+        const n = Number(value) || 0;
+        try {
+            return n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+        } catch {
+            return n.toFixed(dp);
+        }
+    };
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase() || '—';
     const vatNumber = (settings.taxSettings?.taxNumber || '').trim();
     const taxAmount = Number((invoiceOrder as any).taxAmount) || 0;
@@ -372,6 +386,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">شروط الدفع</span>
                             <span className="font-bold text-slate-800">{invoiceTermsLabel}</span>
                         </div>
+                        {costCenterLabel ? (
+                            <div className="col-span-2">
+                                <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">مركز التكلفة</span>
+                                <span className="font-bold text-slate-800">{costCenterLabel}</span>
+                            </div>
+                        ) : null}
                         {invoiceTerms === 'credit' && invoiceDueDate && (
                             <div>
                                 <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">تاريخ الاستحقاق</span>
@@ -390,6 +410,32 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                 <span className="font-bold text-slate-800">{(deliveryZone?.name?.[lang] || deliveryZone?.name?.ar || deliveryZone?.name?.en) || invoiceOrder.deliveryZoneId}</span>
                             </div>
                         )}
+                        {invoiceTerms === 'credit' && creditSummary ? (
+                            <div className="col-span-2">
+                                <div className="mt-2 border border-slate-200 rounded-xl p-3 bg-slate-50">
+                                    <div className="grid grid-cols-3 gap-3 text-center">
+                                        <div>
+                                            <div className="text-[10px] text-slate-500 font-bold">الرصيد السابق</div>
+                                            <div className="font-mono font-black text-slate-900" dir="ltr">
+                                                {fmtByCode(creditSummary.previousBalance, creditSummary.currencyCode)} {creditSummary.currencyCode}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] text-slate-500 font-bold">قيمة الفاتورة</div>
+                                            <div className="font-mono font-black text-slate-900" dir="ltr">
+                                                {fmtByCode(creditSummary.invoiceAmount, creditSummary.currencyCode)} {creditSummary.currencyCode}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] text-slate-500 font-bold">إجمالي الرصيد</div>
+                                            <div className="font-mono font-black text-slate-900" dir="ltr">
+                                                {fmtByCode(creditSummary.newBalance, creditSummary.currencyCode)} {creditSummary.currencyCode}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </div>
@@ -546,6 +592,21 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
             {/* Footer Bottom */}
             <div className="mt-auto pt-16 print:pt-4">
+                {invoiceTerms === 'credit' ? (
+                    <div className="mb-8 print:mb-3 border border-slate-200 rounded-2xl p-5 print:p-3 bg-white">
+                        <div className="text-sm print:text-xs text-slate-700 leading-relaxed">
+                            أنا الموقع أدناه أقر باستلام البضاعة كاملة وسليمة، وأتعهد بسداد قيمة الفاتورة وفقًا لشروطها.
+                        </div>
+                        <div className="mt-4 print:mt-2 grid grid-cols-2 gap-6">
+                            <div className="h-16 print:h-10 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
+                                <span className="text-[10px] text-slate-400">توقيع العميل</span>
+                            </div>
+                            <div className="h-16 print:h-10 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
+                                <span className="text-[10px] text-slate-400">توقيع المسؤول</span>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
                 {!isDense && (
                     <div className="grid grid-cols-3 gap-12 print:gap-4 text-center text-sm print:text-xs text-slate-500 border-t border-slate-200 pt-8 print:pt-2">
                     <div className="space-y-3">
@@ -570,6 +631,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* Print Meta */}
                 <div className={`flex justify-between items-center mt-10 print:mt-3 pt-4 print:pt-2 border-t border-slate-100 text-[9px] text-slate-400 font-mono ${isDense ? 'mt-4 print:mt-2' : ''}`}>
                     <span dir="ltr">{`مرجع النظام: ${invoiceOrder.id}`}</span>
+                    <span>{printedBy ? `طبع بواسطة: ${printedBy}` : ' '}</span>
                     <span dir="ltr">{`تاريخ الطباعة: ${new Date().toISOString()}`}</span>
                     <span>صفحة 1 من 1</span>
                 </div>

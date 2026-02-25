@@ -13,7 +13,7 @@ import PrintableOrder from '../components/admin/PrintableOrder';
 import { Capacitor } from '@capacitor/core';
 import PageLoader from '../components/PageLoader';
 import { useSettings } from '../contexts/SettingsContext';
-import { getSupabaseClient } from '../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../supabase';
 import ConfirmationModal from '../components/admin/ConfirmationModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionScope } from '../contexts/SessionScopeContext';
@@ -46,6 +46,8 @@ const InvoiceScreen: React.FC = () => {
     const sessionScope = useSessionScope();
     const { getWarehouseById } = useWarehouses();
     const { getDeliveryZoneById } = useDeliveryZones();
+    const [costCenterLabel, setCostCenterLabel] = useState<string>('');
+    const [creditSummary, setCreditSummary] = useState<{ previousBalance: number; invoiceAmount: number; newBalance: number; currencyCode: string } | null>(null);
     const [selectedTemplate, setSelectedTemplate] = useState<'thermal' | 'a4'>(() => {
         if (adminUser?.role === 'cashier') {
             return settings.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal';
@@ -79,6 +81,139 @@ const InvoiceScreen: React.FC = () => {
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
         };
     };
+
+    const isUuidText = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+    const isCreditInvoice = (ord: any): boolean => {
+        if (!ord) return false;
+        const snap = ord.invoiceSnapshot;
+        const terms = String(snap?.invoiceTerms ?? ord.invoiceTerms ?? '').trim().toLowerCase();
+        const method = String(snap?.paymentMethod ?? ord.paymentMethod ?? '').trim().toLowerCase();
+        return terms === 'credit' || method === 'ar';
+    };
+
+    useEffect(() => {
+        if (!order?.id) {
+            setCostCenterLabel('');
+            return;
+        }
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        let cancelled = false;
+        (async () => {
+            const branchId = String(sessionScope.scope?.branchId || '').trim();
+            if (branchId) {
+                try {
+                    const { data, error } = await supabase.from('branches').select('name,code').eq('id', branchId).maybeSingle();
+                    if (error) throw error;
+                    const name = String((data as any)?.name || '').trim();
+                    const code = String((data as any)?.code || '').trim();
+                    const label = [name, code ? `(${code})` : ''].filter(Boolean).join(' ');
+                    if (!cancelled) setCostCenterLabel(label);
+                    return;
+                } catch {
+                }
+            }
+            const wid = String((order as any)?.warehouseId || sessionScope.scope?.warehouseId || '').trim();
+            const w = wid ? getWarehouseById(wid) : null;
+            const label = String(w?.name || '').trim();
+            if (!cancelled) setCostCenterLabel(label);
+        })();
+        return () => { cancelled = true; };
+    }, [getWarehouseById, order?.id, sessionScope.scope?.branchId, sessionScope.scope?.warehouseId]);
+
+    useEffect(() => {
+        if (!order?.id) {
+            setCreditSummary(null);
+            return;
+        }
+        if (!isCreditInvoice(order)) {
+            setCreditSummary(null);
+            return;
+        }
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        let cancelled = false;
+        (async () => {
+            const baseCode = String((await getBaseCurrencyCode()) || '').trim().toUpperCase() || 'YER';
+            const snap = (order as any).invoiceSnapshot || null;
+            const asOf = String(snap?.issuedAt || (order as any).invoiceIssuedAt || (order as any).deliveredAt || (order as any).createdAt || new Date().toISOString());
+
+            let partyId = String((order as any).partyId || '').trim();
+            if (!isUuidText(partyId)) {
+                try {
+                    const { data, error } = await supabase.from('orders').select('party_id').eq('id', order.id).maybeSingle();
+                    if (!error) {
+                        const pid = String((data as any)?.party_id || '').trim();
+                        if (isUuidText(pid)) partyId = pid;
+                    }
+                } catch {
+                }
+            }
+            if (!isUuidText(partyId)) {
+                if (!cancelled) setCreditSummary(null);
+                return;
+            }
+
+            const fx = Number((snap?.fxRate ?? (order as any)?.fxRate ?? 1) || 1) || 1;
+            const orderCurrency = String((snap?.currency ?? (order as any)?.currency ?? '')).trim().toUpperCase();
+            const totalForeign = Number(snap?.total ?? (order as any)?.total ?? 0) || 0;
+            const computedInvoiceBase = orderCurrency && orderCurrency !== baseCode ? (totalForeign * fx) : totalForeign;
+
+            const loadStatement = async (endIso: string | null) => {
+                const { data, error } = await supabase.rpc('party_ledger_statement_v2', {
+                    p_party_id: partyId,
+                    p_account_code: null,
+                    p_currency: null,
+                    p_start: null,
+                    p_end: endIso,
+                } as any);
+                if (error) throw error;
+                return Array.isArray(data) ? data : [];
+            };
+
+            let rows: any[] = [];
+            try {
+                rows = await loadStatement(asOf || null);
+            } catch {
+                try {
+                    rows = await loadStatement(null);
+                } catch {
+                    rows = [];
+                }
+            }
+            if (rows.length === 0) {
+                if (!cancelled) setCreditSummary(null);
+                return;
+            }
+
+            const orderRows = rows.filter((r) => String(r?.source_table || '').trim().toLowerCase() === 'orders' && String(r?.source_id || '').trim() === String(order.id).trim());
+            const lastRow = rows[rows.length - 1];
+            const orderRow = orderRows.length ? orderRows[orderRows.length - 1] : null;
+            const running = Number((orderRow || lastRow)?.running_balance || 0) || 0;
+
+            const deriveInvoiceImpact = () => {
+                if (orderRow) {
+                    const baseAmount = Number(orderRow?.base_amount || 0) || 0;
+                    const dir = String(orderRow?.direction || '').trim().toLowerCase();
+                    const signed = (dir === 'credit' ? -1 : 1) * Math.abs(baseAmount);
+                    return { signed, amount: Math.abs(signed) };
+                }
+                return { signed: Math.abs(computedInvoiceBase), amount: Math.abs(computedInvoiceBase) };
+            };
+            const impact = deriveInvoiceImpact();
+            const previous = running - (impact.signed || 0);
+
+            if (!cancelled) {
+                setCreditSummary({
+                    previousBalance: previous,
+                    invoiceAmount: impact.amount || 0,
+                    newBalance: running,
+                    currencyCode: baseCode,
+                });
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [order?.id]);
 
     const resolveDeliveryZoneName = (ord: any): string | undefined => {
         if (!ord) return undefined;
@@ -156,6 +291,8 @@ const InvoiceScreen: React.FC = () => {
                     thermalPaperWidth={thermalPaperWidth}
                     isCopy={currentCount > 0}
                     copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
+                    costCenterLabel={costCenterLabel || undefined}
+                    creditSummary={creditSummary}
                 />
             );
             container.innerHTML = thermalHtml;
@@ -243,6 +380,8 @@ const InvoiceScreen: React.FC = () => {
                 isCopy={currentCount > 0}
                 copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
                 qrCodeDataUrl={qrCodeDataUrl}
+                costCenterLabel={costCenterLabel || undefined}
+                creditSummary={creditSummary}
             />
         );
         printContent(content, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { page: 'auto' });
@@ -381,6 +520,8 @@ const InvoiceScreen: React.FC = () => {
                     isCopy={currentCount > 0}
                     copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
                     qrCodeDataUrl={qrCodeDataUrl}
+                    costCenterLabel={costCenterLabel || undefined}
+                    creditSummary={creditSummary}
                 />
             );
             setPreviewHtml(buildPrintHtml(content, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { page: 'auto' }));
@@ -606,9 +747,25 @@ const InvoiceScreen: React.FC = () => {
                     <div className="bg-white p-4 rounded border border-gray-200">
                         <div className="text-xs text-gray-500 mb-3">هذه معاينة A4 ضمن الواجهة. عند الطباعة قد تُطبّق قواعد @media print.</div>
                         {isAdminInvoice ? (
-                            <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                            <TriplicateInvoice
+                                ref={invoiceRef}
+                                order={order}
+                                settings={settings as any}
+                                branding={resolveBranding()}
+                                costCenterLabel={costCenterLabel || null}
+                                creditSummary={creditSummary}
+                                audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                            />
                         ) : (
-                            <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                            <Invoice
+                                ref={invoiceRef}
+                                order={order}
+                                settings={settings as any}
+                                branding={resolveBranding()}
+                                costCenterLabel={costCenterLabel || null}
+                                creditSummary={creditSummary}
+                                audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                            />
                         )}
                     </div>
                 )}
@@ -616,9 +773,25 @@ const InvoiceScreen: React.FC = () => {
 
             <div id="print-area">
                 {isAdminInvoice && selectedTemplate === 'a4' ? (
-                    <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                    <TriplicateInvoice
+                        ref={invoiceRef}
+                        order={order}
+                        settings={settings as any}
+                        branding={resolveBranding()}
+                        costCenterLabel={costCenterLabel || null}
+                        creditSummary={creditSummary}
+                        audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                    />
                 ) : (
-                    <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                    <Invoice
+                        ref={invoiceRef}
+                        order={order}
+                        settings={settings as any}
+                        branding={resolveBranding()}
+                        costCenterLabel={costCenterLabel || null}
+                        creditSummary={creditSummary}
+                        audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                    />
                 )}
             </div>
         </div>

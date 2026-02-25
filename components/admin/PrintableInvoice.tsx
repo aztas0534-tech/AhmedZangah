@@ -65,6 +65,8 @@ interface PrintableInvoiceProps {
     copyNumber?: number;
     audit?: any;
     qrCodeDataUrl?: string;
+    costCenterLabel?: string;
+    creditSummary?: { previousBalance: number; invoiceAmount: number; newBalance: number; currencyCode: string } | null;
 }
 
 const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
@@ -80,6 +82,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     isCopy = false,
     qrCodeDataUrl,
     audit,
+    costCenterLabel,
+    creditSummary,
 }) => {
     const effectiveLanguage: 'ar' = language === 'ar' ? 'ar' : 'ar';
     const { getWarehouseById } = useWarehouses();
@@ -184,6 +188,17 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
         const v = String(a?.printedBy || '').trim();
         return v || '';
     })();
+    const typeLabel = invoiceTerms === 'credit' ? 'إلى حساب' : 'نقد';
+    const fmtByCode = (value: number, code: string) => {
+        const c = String(code || '').trim().toUpperCase();
+        const dp = c === 'YER' ? 0 : 2;
+        const n = Number(value) || 0;
+        try {
+            return n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+        } catch {
+            return n.toFixed(dp);
+        }
+    };
 
     return (
         <div className="thermal-invoice" dir="rtl">
@@ -260,6 +275,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
             <div className="text-center border-y py-1 mb-2">
                 <div className="font-bold text-lg">فاتورة ضريبية</div>
+                <div className="text-xs mt-1">نوع الفاتورة: {typeLabel}</div>
             </div>
 
             <div className="mb-2 text-sm">
@@ -271,6 +287,12 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     <span>التاريخ:</span>
                     <span className="tabular" dir="ltr">{new Date(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt).toLocaleDateString('en-GB')} {new Date(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                 </div>
+                {costCenterLabel ? (
+                    <div className="flex">
+                        <span>مركز التكلفة:</span>
+                        <span>{costCenterLabel}</span>
+                    </div>
+                ) : null}
                 <div className="flex">
                     <span>العميل:</span>
                     <span className="font-bold">{invoiceOrder.customerName}</span>
@@ -437,6 +459,23 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 ) : null}
             </div>
 
+            {invoiceTerms === 'credit' && creditSummary ? (
+                <div className="mb-3 text-sm border border-black rounded-md p-2">
+                    <div className="flex">
+                        <span>الرصيد السابق:</span>
+                        <span className="tabular" dir="ltr">{fmtByCode(creditSummary.previousBalance, creditSummary.currencyCode)} {creditSummary.currencyCode}</span>
+                    </div>
+                    <div className="flex">
+                        <span>قيمة الفاتورة:</span>
+                        <span className="tabular" dir="ltr">{fmtByCode(creditSummary.invoiceAmount, creditSummary.currencyCode)} {creditSummary.currencyCode}</span>
+                    </div>
+                    <div className="flex font-bold">
+                        <span>إجمالي الرصيد:</span>
+                        <span className="tabular" dir="ltr">{fmtByCode(creditSummary.newBalance, creditSummary.currencyCode)} {creditSummary.currencyCode}</span>
+                    </div>
+                </div>
+            ) : null}
+
             <div className="text-center mb-4">
                 <div style={{ display: 'inline-block', padding: '5px', background: 'white' }}>
                     {qrCodeDataUrl ? (
@@ -448,6 +487,18 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 <div className="text-xs mt-1">امسح للتحقق (ZATCA)</div>
             </div>
 
+            {invoiceTerms === 'credit' ? (
+                <div className="mb-3 text-xs">
+                    <div className="border border-black rounded-md p-2">
+                        <div>أنا الموقع أدناه أقر باستلام البضاعة كاملة وسليمة، وأتعهد بسداد قيمة الفاتورة وفقًا لشروطها.</div>
+                        <div className="mt-2 flex justify-between">
+                            <div>التوقيع:</div>
+                            <div style={{ width: 120, borderBottom: '1px solid #000' }} />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <div className="text-center text-xs mt-2">
                 <div className="font-bold">شكراً لزيارتكم!</div>
                 <div className="mt-1 tabular" dir="ltr">{new Date().toLocaleString('en-GB')}</div>
@@ -457,6 +508,12 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                         <>
                             <span> • </span>
                             <span>طبع بواسطة: {printedBy}</span>
+                        </>
+                    ) : null}
+                    {isCopy && typeof copyNumber === 'number' && copyNumber > 0 ? (
+                        <>
+                            <span> • </span>
+                            <span className="tabular" dir="ltr">{`نسخة رقم ${copyNumber}`}</span>
                         </>
                     ) : null}
                 </div>
