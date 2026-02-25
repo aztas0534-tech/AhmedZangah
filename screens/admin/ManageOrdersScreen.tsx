@@ -2105,6 +2105,7 @@ const ManageOrdersScreen: React.FC = () => {
         if (!returnOrderId) return;
         const order = orders.find(o => o.id === returnOrderId);
         if (!order) return;
+        const stableOrderId = order.id;
 
         const currency = String((order as any).currency || '').toUpperCase() || baseCode;
         const dp = getCurrencyDecimalsByCode(currency);
@@ -2184,7 +2185,6 @@ const ManageOrdersScreen: React.FC = () => {
             const created = await createReturn(order, itemsToReturn, returnReason, refundMethod);
             await processReturn(created.id);
             showNotification('تم الاسترجاع وردّ المبلغ بنجاح.', 'success');
-            try { await fetchOrders(); } catch { }
             setReturnOrderId(null);
             setReturnItems({});
             setReturnReason('');
@@ -2196,6 +2196,10 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification(message, 'error');
         } finally {
             setIsCreatingReturn(false);
+            if (stableOrderId) {
+                try { void fetchOrders(); } catch { }
+                try { void refreshReturnsForOrder(stableOrderId); } catch { }
+            }
         }
     };
 
