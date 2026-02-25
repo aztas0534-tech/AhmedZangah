@@ -480,6 +480,7 @@ export interface Order {
     deliveryZoneId?: string;
     taxAmount?: number;
     taxRate?: number;
+    isCreditSale?: boolean;
     invoiceTerms?: 'cash' | 'credit';
     netDays?: number;
     dueDate?: string;

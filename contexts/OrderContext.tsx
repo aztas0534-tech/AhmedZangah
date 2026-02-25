@@ -2320,7 +2320,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       } catch { }
 
-      const buildValidationInvoiceSnapshot = () => {
+      const buildValidationInvoiceSnapshot = (): NonNullable<Order['invoiceSnapshot']> => {
         const issuedAt = nowIso;
         const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAt);
         const snapshotItems = typeof structuredClone === 'function'

@@ -2233,12 +2233,56 @@ const ManageOrdersScreen: React.FC = () => {
         return typeof rec.lat === 'number' && typeof rec.lng === 'number';
     };
 
+    const getReturnStatus = (order: Order): 'full' | 'partial' | '' => {
+        const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
+        if (raw === 'full') return 'full';
+        if (raw === 'partial') return 'partial';
+        return '';
+    };
+
+    const renderReturnBadge = (order: Order, variant: 'banner' | 'pill' = 'banner') => {
+        const status = getReturnStatus(order);
+        if (!status) return null;
+
+        const label = status === 'full' ? 'مسترجع بالكامل' : 'مسترجع جزئيًا';
+
+        if (variant === 'pill') {
+            return (
+                <span
+                    className={
+                        status === 'full'
+                            ? 'px-2 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'
+                            : 'px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200'
+                    }
+                >
+                    {label}
+                </span>
+            );
+        }
+
+        return (
+            <div className="mb-2">
+                <span
+                    className={
+                        status === 'full'
+                            ? 'inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'
+                            : 'inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200'
+                    }
+                >
+                    {label}
+                </span>
+            </div>
+        );
+    };
+
     const renderMobileCard = (order: Order) => {
         const currency = String((order as any).currency || '').toUpperCase() || baseCode;
         const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
         const total = roundMoneyByCode(Number(order.total) || 0, currency);
         const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
-        const canReturn = order.status === 'delivered' && paid > Math.pow(10, -getCurrencyDecimalsByCode(currency));
+        const returnStatus = getReturnStatus(order);
+        const isFullyReturned = returnStatus === 'full';
+        const canReturn = order.status === 'delivered' && paid > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned;
         const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
         const items = Array.isArray((order as any)?.items) ? (order as any).items : [];
 
@@ -2254,6 +2298,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${adminStatusColors[order.status] || 'bg-gray-100 text-gray-800'}`}>
                             {statusTranslations[order.status] || order.status}
                         </span>
+                        {renderReturnBadge(order, 'pill')}
                         {order.isScheduled && order.scheduledAt && (
                             <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold" dir="ltr">
                                 🕒 {new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}
@@ -2377,7 +2422,8 @@ const ManageOrdersScreen: React.FC = () => {
                                 order.status === 'delivered' ||
                                 order.status === 'cancelled' ||
                                 getEditableStatusesForOrder(order).length === 0 ||
-                                (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt)
+                                (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
+                                isFullyReturned
                             }
                             className={`w-full p-2 border-none rounded-md text-sm font-semibold text-center focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                         >
@@ -2982,17 +3028,7 @@ const ManageOrdersScreen: React.FC = () => {
                                             })()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            {(() => {
-                                                const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
-                                                if (!isFullyReturned) return null;
-                                                return (
-                                                    <div className="mb-2">
-                                                        <span className="inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">
-                                                            مسترجع بالكامل
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })()}
+                                            {renderReturnBadge(order, 'banner')}
                                             <select
                                                 value={order.status}
                                                 onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
