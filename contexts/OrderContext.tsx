@@ -451,6 +451,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
+    // Final compatibility fallback: use non-credit delivery RPCs on legacy schemas
+    if (res?.error && isRpcNotFoundError(res.error)) {
+      try {
+        const fallback = await rpcConfirmOrderDelivery(supabase, input);
+        if (!fallback.error) {
+          confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
+          return fallback;
+        }
+      } catch {
+      }
+    }
+
     return res;
   };
 
@@ -2427,6 +2439,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
             if (code === '42703' && (m.includes('currency_code') || m.includes('fx_rate') || m.includes('foreign_amount'))) {
               return 'قاعدة البيانات غير محدثة: أعمدة FX غير موجودة على القيود. طبّق ترحيلات FX ثم أعد المحاولة.';
+            }
+            if (code === '42883' && (m.includes('confirm_order_delivery_with_credit') || m.includes('confirm_order_delivery'))) {
+              return 'قاعدة البيانات غير محدثة: وظائف تأكيد تسليم الطلب غير موجودة. طبّق ترحيلات Supabase الخاصة بواجهات التسليم ثم أعد المحاولة.';
             }
             return '';
           })();
