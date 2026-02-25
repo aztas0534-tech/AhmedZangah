@@ -53,6 +53,9 @@ export const localizeError = (message: string): string => {
   if (raw.includes('purchase_in requires batch_id') || raw.includes('purchase_in_requires_batch')) {
     return 'لا يمكن استلام المخزون بدون إنشاء دفعة (Batch). حدّث قاعدة البيانات (مايجريشن الاستلام) ثم أعد المحاولة.';
   }
+  if (raw.includes('accounting_documents_document_type_check') || (raw.includes('violates check constraint') && raw.includes('accounting_documents') && raw.includes('document_type'))) {
+    return 'تعذر تنفيذ العملية المالية بسبب عدم تطابق نسخة قاعدة البيانات (نوع مستند محاسبي غير مدعوم). طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
+  }
   if (raw.includes('purchase_items_received_quantity_check') || (raw.includes('violates check constraint') && raw.includes('received_quantity_check'))) {
     return 'كمية الاستلام تجاوزت الكمية المطلوبة لهذا الصنف (تحقق من وحدة القياس/الكرتون). حدّث الصفحة ثم أعد المحاولة.';
   }
