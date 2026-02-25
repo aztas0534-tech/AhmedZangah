@@ -552,6 +552,7 @@ export interface AppSettings {
   baseCurrency?: string;
   operationalCurrencies?: string[];
   ENABLE_MULTI_CURRENCY_PRICING?: boolean;
+  ALLOW_BELOW_COST_SALES?: boolean;
   maintenanceEnabled?: boolean;
   maintenanceMessage?: string;
   brandColors?: {
