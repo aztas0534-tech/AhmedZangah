@@ -1594,9 +1594,10 @@ const ManageOrdersScreen: React.FC = () => {
                 setInStoreBelowCostModalOpen(true);
                 return;
             }
+            const localized = localizeSupabaseError(error);
             const message = language === 'ar'
-                ? (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.')
-                : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.');
+                ? (localized ? `فشل تسجيل البيع الحضوري: ${localized}` : (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.'))
+                : (localized ? `Failed to create in-store sale: ${localized}` : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.'));
             showNotification(message, 'error');
         } finally {
             setIsInStoreCreating(false);

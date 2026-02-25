@@ -5,7 +5,7 @@ import { useDeliveryZones } from '../../../contexts/DeliveryZoneContext';
 import { exportToXlsx, sharePdf } from '../../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
-import { getBaseCurrencyCode, getSupabaseClient } from '../../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient, rpcHasFunction } from '../../../supabase';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
 import { useSessionScope } from '../../../contexts/SessionScopeContext';
@@ -181,17 +181,64 @@ const ProductReports: React.FC = () => {
                 }
 
                 let rpcRows: ProductSalesRow[] | null = null;
-                try {
-                    const { data: rpcData, error: rpcErr } = await supabase.rpc('get_product_sales_report_v9', {
-                        p_start_date: p_start,
-                        p_end_date: p_end,
-                        p_zone_id: zoneArg || undefined,
-                        p_invoice_only: false,
-                    } as any);
-                    if (!rpcErr && Array.isArray(rpcData)) {
-                        rpcRows = (rpcData as any[]).map(normalizeRpcRow);
+                {
+                    const candidates: Array<{
+                        name: string;
+                        has: () => Promise<boolean>;
+                        args: () => any;
+                    }> = [
+                            {
+                                name: 'get_product_sales_report_v9',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_v9'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || undefined,
+                                    p_invoice_only: false,
+                                }),
+                            },
+                            {
+                                name: 'get_product_sales_report_unified',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_unified'),
+                                args: () => ({
+                                    p_start_date: String(p_start || ''),
+                                    p_end_date: String(p_end || ''),
+                                    p_zone_id_text: zoneArg || null,
+                                    p_invoice_only: false,
+                                }),
+                            },
+                            {
+                                name: 'get_product_sales_report_v3',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_v3'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || null,
+                                }),
+                            },
+                            {
+                                name: 'get_product_sales_report',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || null,
+                                }),
+                            },
+                        ];
+
+                    for (const c of candidates) {
+                        try {
+                            const ok = await c.has();
+                            if (!ok) continue;
+                            const { data: rpcData, error: rpcErr } = await supabase.rpc(c.name, c.args() as any);
+                            if (!rpcErr && Array.isArray(rpcData)) {
+                                rpcRows = (rpcData as any[]).map(normalizeRpcRow);
+                                break;
+                            }
+                        } catch (_) { }
                     }
-                } catch (_) { }
+                }
 
                 const quantityFromMovements = new Map<string, number>();
                 try {

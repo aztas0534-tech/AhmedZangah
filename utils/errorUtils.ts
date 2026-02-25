@@ -188,6 +188,12 @@ export const localizeError = (message: string): string => {
   if (raw.includes('invoice_snapshot_items_missing')) {
     return 'لا يمكن تثبيت الطلب بدون أصناف داخل بيانات الفاتورة. حدّث قاعدة البيانات ثم أعد المحاولة.';
   }
+  if (raw.includes('posted_order_immutable')) {
+    return 'تم تنفيذ العملية مسبقًا لهذا الطلب (تم ترحيله/تثبيته). حدّث الصفحة وستظهر الحالة الصحيحة.';
+  }
+  if (raw.includes('fx_locked')) {
+    return 'لا يمكن تغيير العملة/سعر الصرف لهذا الطلب بعد تثبيته. أنشئ طلبًا جديدًا إذا لزم.';
+  }
   if (raw.includes('credit_limit_exceeded_requires_reason')) {
     return 'تجاوز سقف الائتمان يتطلب إدخال سبب.';
   }

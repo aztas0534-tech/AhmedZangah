@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
-import { getSupabaseClient, getBaseCurrencyCode } from '../../supabase';
+import { getSupabaseClient, getBaseCurrencyCode, rpcHasFunction } from '../../supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import * as Icons from '../icons';
 import { exportToXlsx } from '../../utils/export';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 // ─── CONTEXT ───────────────────────────────────────────────────────────────
 
@@ -263,32 +264,36 @@ export const KPIBar: React.FC = () => {
     const [prevStats, setPrevStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
         let active = true;
         const load = async () => {
             setLoading(true);
             setError(false);
+            setErrorMessage('');
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
 
                 const prev = getPreviousPeriod(dateRange);
-                const { data: kpi }: any = await supabase.rpc('get_dashboard_kpi_v3', {
+                const kpiRpc = (await rpcHasFunction('public.get_dashboard_kpi_v3')) ? 'get_dashboard_kpi_v3' : 'get_dashboard_kpi_v2';
+                const payload = {
                     p_start_date: dateRange.start.toISOString(),
                     p_end_date: dateRange.end.toISOString(),
                     p_zone_id: null,
                     p_invoice_only: false,
                     p_warehouse_id: null,
-                });
+                };
+                const { data: kpi, error: kpiErr }: any = await supabase.rpc(kpiRpc, payload as any);
+                if (kpiErr) throw kpiErr;
 
-                const { data: prevKpi }: any = await supabase.rpc('get_dashboard_kpi_v3', {
+                const { data: prevKpi, error: prevErr }: any = await supabase.rpc(kpiRpc, {
+                    ...payload,
                     p_start_date: prev.start.toISOString(),
                     p_end_date: prev.end.toISOString(),
-                    p_zone_id: null,
-                    p_invoice_only: false,
-                    p_warehouse_id: null,
-                });
+                } as any);
+                if (prevErr) throw prevErr;
 
                 const salesData = (kpi && typeof kpi === 'object') ? (kpi.sales || {}) : {};
                 const prevSalesData = (prevKpi && typeof prevKpi === 'object') ? (prevKpi.sales || {}) : {};
@@ -351,7 +356,11 @@ export const KPIBar: React.FC = () => {
                 }
             } catch (err) {
                 console.error(err);
-                if (active) setError(true);
+                if (active) {
+                    setError(true);
+                    const localized = localizeSupabaseError(err);
+                    setErrorMessage(localized || 'تعذر تحميل مؤشرات الأداء.');
+                }
             } finally {
                 if (active) setLoading(false);
             }
@@ -360,7 +369,7 @@ export const KPIBar: React.FC = () => {
         return () => { active = false; };
     }, [dateRange, refreshKey]);
 
-    if (error) return <ErrorBanner message="تعذر تحميل مؤشرات الأداء." />;
+    if (error) return <ErrorBanner message={errorMessage || 'تعذر تحميل مؤشرات الأداء.'} />;
 
     const cards = [
         {

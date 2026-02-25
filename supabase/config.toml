@@ -1,4 +1,4 @@
-project_id = "twcjjisnxmfpseksqnhb"
+project_id = "AhmedZ"
 
 [api]
 port = 54321
@@ -10,7 +10,6 @@ max_rows = 1000
 port = 54332
 shadow_port = 54330
 major_version = 17
-
 
 [functions.create-admin-user]
 enabled = true

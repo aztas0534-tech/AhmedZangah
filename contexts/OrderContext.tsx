@@ -378,11 +378,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       const preferred = await supabase.rpc('confirm_order_delivery_with_credit_rpc', args);
       if (!preferred?.error) return preferred;
-      // If any error occurs (not only NotFound), attempt the alias form as a compatibility fallback
-      if (!isRpcNotFoundError(preferred.error)) {
-        const alt = await supabase.rpc('confirm_order_delivery_with_credit', args);
-        return alt;
-      }
+      if (!isRpcNotFoundError(preferred.error)) return preferred;
 
       const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', args);
       return { data, error };
@@ -2283,15 +2279,44 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       } catch { }
 
-      // Note: We do NOT generate invoiceNumber or invoiceSnapshot here in the frontend.
-      // We rely on the backend trigger `trg_issue_invoice_on_delivery` to generate them when status changes to 'delivered'.
-      // This avoids the 22P02 (Invalid JSON) error caused by sending the complex snapshot structure from frontend.
+      const buildValidationInvoiceSnapshot = () => {
+        const snapshotItems = (newOrder.items || []).map((it: any) => {
+          const isWeight = it?.unitType === 'kg' || it?.unitType === 'gram';
+          const id = String(it?.itemId || it?.id || '');
+          const name = String(it?.name?.ar || it?.name?.en || it?.name || '');
+          const unitType = String(it?.unitType || it?.unit || 'piece');
+          const quantity = isWeight ? (Number(it?.quantity) || 0) : (Number(it?.quantity) || 0);
+          const weight = isWeight ? (Number(it?.weight) || 0) : undefined;
+          const price = Number(it?.price) || 0;
+          const pricePerUnit = it?.pricePerUnit != null ? (Number(it?.pricePerUnit) || 0) : undefined;
+          const uomCode = typeof it?.uomCode === 'string' ? String(it.uomCode) : undefined;
+          const uomQtyInBase = it?.uomQtyInBase != null ? (Number(it?.uomQtyInBase) || 1) : undefined;
+          return {
+            id,
+            name,
+            unitType,
+            quantity,
+            ...(weight != null ? { weight } : {}),
+            price,
+            ...(pricePerUnit != null ? { pricePerUnit } : {}),
+            ...(uomCode ? { uomCode } : {}),
+            ...(uomQtyInBase != null ? { uomQtyInBase } : {}),
+          };
+        });
+        return {
+          currency: desiredCurrency || baseCurrency,
+          fxRate: fxRate,
+          baseCurrency: baseCurrency,
+          items: snapshotItems,
+        };
+      };
+
       const deliveryPayload: Order = {
         ...newOrder,
         paidAt: undefined,
         invoiceNumber: undefined,
         invoiceIssuedAt: undefined,
-        invoiceSnapshot: undefined,
+        invoiceSnapshot: buildValidationInvoiceSnapshot(),
       };
       finalized = deliveryPayload;
 
@@ -2354,6 +2379,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         let confirmError: any = rpcError;
         if (confirmError) {
+          const msgLower = String((confirmError as any)?.message || '').trim().toLowerCase();
+          if (msgLower === 'posted_order_immutable' || msgLower.includes('posted_order_immutable')) {
+            const fresh = await fetchRemoteOrderById(newOrder.id);
+            if (fresh) {
+              finalized = fresh;
+            }
+            confirmError = null;
+          }
+        }
+        if (confirmError) {
           const isInvoiceSnapshotError = (() => {
             const rawCombined = [
               String((confirmError as any)?.message || '').trim(),
@@ -2374,46 +2409,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               const fxRateSnapshot = Number.isFinite(Number(fxRate)) ? Number(fxRate) : 1;
               const currencySnapshot = desiredCurrency || baseCurrencyCode;
               const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAtIso);
-              const normalizeItems = (orderItems: any[]) => {
-                const rows: any[] = [];
-                for (const it of orderItems || []) {
-                  const uomFactor = Number((it as any)?.uomQtyInBase || 1) || 1;
-                  const isWeight = (it.unitType === 'kg' || it.unitType === 'gram');
-                  const qty = isWeight ? (Number(it.weight) || Number(it.quantity) || 0) : (Number(it.quantity) || 0) * uomFactor;
-                  const unitPrice = isWeight
-                    ? (Number((it as any).pricePerUnit) || Number(it.price) * 1000) / 1000
-                    : Number(it.price);
-                  const addons = Object.values(it.selectedAddons || {}).map((e: any) => {
-                    const a = e?.addon || {};
-                    const aq = Number(e?.quantity) || 0;
-                    const ap = Number(a?._basePrice != null ? a._basePrice : a?.price) || 0;
-                    return {
-                      id: String(a?.id || ''),
-                      name: String((a?.name?.ar || a?.name?.en || '') || ''),
-                      quantity: aq,
-                      unitPrice: ap,
-                      lineTotal: ap * aq,
-                    };
-                  });
-                  const lineTotal = (unitPrice * qty) + addons.reduce((s: number, x: any) => s + (Number(x.lineTotal) || 0), 0);
-                  rows.push({
-                    id: String((it as any)?.itemId || it.id || ''),
-                    name: String((it?.name?.ar || it?.name?.en || '') || ''),
-                    unit: isWeight ? (it.unitType === 'gram' ? 'g' : 'kg') : 'unit',
-                    quantity: qty,
-                    unitPrice,
-                    lineTotal,
-                    addons,
-                  });
-                }
-                return rows;
-              };
               const snapshot: any = {
                 issuedAt: issuedAtIso,
                 invoiceNumber: invNum,
                 createdAt: newOrder.createdAt || issuedAtIso,
                 orderSource: 'in_store',
-                items: normalizeItems(newOrder.items || []),
+                items: (newOrder.items || []).map((it: any) => ({
+                  id: String(it?.itemId || it?.id || ''),
+                  name: String(it?.name?.ar || it?.name?.en || it?.name || ''),
+                  unitType: String(it?.unitType || it?.unit || 'piece'),
+                  quantity: Number(it?.quantity) || 0,
+                  weight: it?.weight != null ? (Number(it?.weight) || 0) : undefined,
+                  price: Number(it?.price) || 0,
+                  pricePerUnit: it?.pricePerUnit != null ? (Number(it?.pricePerUnit) || 0) : undefined,
+                })),
                 currency: currencySnapshot,
                 fxRate: fxRateSnapshot,
                 baseCurrency: baseCurrencyCode,
@@ -2460,6 +2469,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             await rollbackCreatedOrder('offline_or_aborted');
             const fresh = await fetchRemoteOrderById(newOrder.id);
             return fresh || ({ ...newOrder, status: 'pending' } as Order);
+          }
+          {
+            const msg = String((confirmError as any)?.message || '').trim().toLowerCase();
+            if (msg === 'posted_order_immutable' || msg.includes('posted_order_immutable')) {
+              const fresh = await fetchRemoteOrderById(newOrder.id);
+              if (fresh) return fresh;
+              return ({ ...newOrder, status: 'delivered' } as Order);
+            }
           }
           const code = String((confirmError as any)?.code || '').trim();
           const rawMsg = [
