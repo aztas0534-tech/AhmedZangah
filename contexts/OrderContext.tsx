@@ -2374,12 +2374,46 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               const fxRateSnapshot = Number.isFinite(Number(fxRate)) ? Number(fxRate) : 1;
               const currencySnapshot = desiredCurrency || baseCurrencyCode;
               const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAtIso);
+              const normalizeItems = (orderItems: any[]) => {
+                const rows: any[] = [];
+                for (const it of orderItems || []) {
+                  const uomFactor = Number((it as any)?.uomQtyInBase || 1) || 1;
+                  const isWeight = (it.unitType === 'kg' || it.unitType === 'gram');
+                  const qty = isWeight ? (Number(it.weight) || Number(it.quantity) || 0) : (Number(it.quantity) || 0) * uomFactor;
+                  const unitPrice = isWeight
+                    ? (Number((it as any).pricePerUnit) || Number(it.price) * 1000) / 1000
+                    : Number(it.price);
+                  const addons = Object.values(it.selectedAddons || {}).map((e: any) => {
+                    const a = e?.addon || {};
+                    const aq = Number(e?.quantity) || 0;
+                    const ap = Number(a?._basePrice != null ? a._basePrice : a?.price) || 0;
+                    return {
+                      id: String(a?.id || ''),
+                      name: String((a?.name?.ar || a?.name?.en || '') || ''),
+                      quantity: aq,
+                      unitPrice: ap,
+                      lineTotal: ap * aq,
+                    };
+                  });
+                  const lineTotal = (unitPrice * qty) + addons.reduce((s: number, x: any) => s + (Number(x.lineTotal) || 0), 0);
+                  rows.push({
+                    id: String((it as any)?.itemId || it.id || ''),
+                    name: String((it?.name?.ar || it?.name?.en || '') || ''),
+                    unit: isWeight ? (it.unitType === 'gram' ? 'g' : 'kg') : 'unit',
+                    quantity: qty,
+                    unitPrice,
+                    lineTotal,
+                    addons,
+                  });
+                }
+                return rows;
+              };
               const snapshot: any = {
                 issuedAt: issuedAtIso,
                 invoiceNumber: invNum,
                 createdAt: newOrder.createdAt || issuedAtIso,
                 orderSource: 'in_store',
-                items: typeof structuredClone === 'function' ? structuredClone(newOrder.items) : JSON.parse(JSON.stringify(newOrder.items)),
+                items: normalizeItems(newOrder.items || []),
                 currency: currencySnapshot,
                 fxRate: fxRateSnapshot,
                 baseCurrency: baseCurrencyCode,
@@ -2388,6 +2422,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 discountAmount: newOrder.discountAmount,
                 total: newOrder.total,
                 paymentMethod: newOrder.paymentMethod,
+                paymentBreakdown: Array.isArray(newOrder.paymentBreakdown) ? newOrder.paymentBreakdown : undefined,
+                isCreditSale: Boolean(newOrder.isCreditSale),
+                invoiceTerms: newOrder.invoiceTerms || (newOrder.isCreditSale ? 'credit' : 'cash'),
                 customerName: newOrder.customerName,
                 phoneNumber: newOrder.phoneNumber,
                 address: newOrder.address,
@@ -2502,14 +2539,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         paidAtIso = (paymentRecordOk && isFullyPaid) ? nowIso : undefined;
         shouldIssueInvoice = (paymentRecordOk && isFullyPaid);
         if (paidAtIso) {
-          try {
-            const updatedPaid = { ...finalized, paidAt: paidAtIso } as Order;
-            finalized = updatedPaid;
-            await updateRemoteOrder(updatedPaid, { includeStatus: false });
-          } catch (err) {
-            paymentRecordOk = false;
-            finalized = { ...finalized, paidAt: undefined } as Order;
-          }
+          // تجنب تعديل سجل الطلب بعد نشره (posted_order_immutable)
+          // نحدّث الحالة محليًا فقط. الخادم سيعكس ذلك عبر المدفوعات/التقارير.
+          finalized = { ...finalized, paidAt: paidAtIso } as Order;
         }
 
       } else {
