@@ -5,6 +5,7 @@ import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
 import { useWarehouses } from '../../contexts/WarehouseContext';
+import { DocumentAuditInfo } from '../../utils/documentStandards';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -78,6 +79,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     thermalPaperWidth = '58mm',
     isCopy = false,
     qrCodeDataUrl,
+    audit,
 }) => {
     const effectiveLanguage: 'ar' = language === 'ar' ? 'ar' : 'ar';
     const { getWarehouseById } = useWarehouses();
@@ -177,6 +179,11 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
+    const printedBy = (() => {
+        const a = audit as DocumentAuditInfo | null | undefined;
+        const v = String(a?.printedBy || '').trim();
+        return v || '';
+    })();
 
     return (
         <div className="thermal-invoice" dir="rtl">
@@ -416,6 +423,18 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                         <span className="tabular" dir="ltr">{invoiceDueDate ? new Date(invoiceDueDate).toLocaleDateString('en-GB') : '-'}</span>
                     </div>
                 )}
+                {String((invoiceOrder as any)?.currency || '').trim() ? (
+                    <div className="flex mt-1">
+                        <span>العملة:</span>
+                        <span className="tabular" dir="ltr">{String((invoiceOrder as any).currency || '').toUpperCase()}</span>
+                    </div>
+                ) : null}
+                {Number((invoiceOrder as any)?.fxRate || 0) > 0 ? (
+                    <div className="flex mt-1">
+                        <span>سعر الصرف:</span>
+                        <span className="tabular" dir="ltr">{formatAmount(Number((invoiceOrder as any).fxRate || 0))}</span>
+                    </div>
+                ) : null}
             </div>
 
             <div className="text-center mb-4">
@@ -432,6 +451,15 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div className="text-center text-xs mt-2">
                 <div className="font-bold">شكراً لزيارتكم!</div>
                 <div className="mt-1 tabular" dir="ltr">{new Date().toLocaleString('en-GB')}</div>
+                <div className="mt-1">
+                    <span className="tabular" dir="ltr">Order: {order.id.slice(-8).toUpperCase()}</span>
+                    {printedBy ? (
+                        <>
+                            <span> • </span>
+                            <span>طبع بواسطة: {printedBy}</span>
+                        </>
+                    ) : null}
+                </div>
             </div>
         </div>
     );

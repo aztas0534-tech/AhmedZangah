@@ -1,4 +1,6 @@
 import React from 'react';
+import DocumentAuditFooter from '../documents/DocumentAuditFooter';
+import { DocumentAuditInfo } from '../../../utils/documentStandards';
 
 type Brand = {
   name?: string;
@@ -46,7 +48,7 @@ const fmtTime = (iso: string) => {
   }
 };
 
-const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteData; brand?: Brand }> = ({ data, brand }) => {
+const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteData; brand?: Brand; audit?: DocumentAuditInfo | null }> = ({ data, brand, audit }) => {
   const cur = String(data.currency || '').trim().toUpperCase() || data.baseCurrency || 'YER';
   const baseCur = String(data.baseCurrency || '').trim().toUpperCase() || 'YER';
   const title = 'إشعار مرتجع مشتريات (Supplier Return Note)';
@@ -88,6 +90,9 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
             </div>
             <div style={{ fontSize: 12, color: '#374151' }}>
               أمر الشراء: <span className="mono">{String(data.purchaseOrderId || '').slice(-8)}</span>
+            </div>
+            <div style={{ fontSize: 12, color: '#374151' }}>
+              مرجع: <span className="mono" dir="ltr">{String(data.returnId || '').trim() || '—'}</span>
             </div>
           </div>
         </div>
@@ -153,10 +158,14 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
         <div style={{ marginTop: 10, fontSize: 11, color: '#6b7280' }}>
           هذا المستند صادر إلكترونياً ولا يحتاج ختم.
         </div>
+
+        <DocumentAuditFooter
+          audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || 'AZTA ERP', ...(audit || {}) }}
+          extraRight={<div>{brand?.name || 'AZTA ERP'}</div>}
+        />
       </div>
     </div>
   );
 };
 
 export default PrintablePurchaseReturnNote;
-

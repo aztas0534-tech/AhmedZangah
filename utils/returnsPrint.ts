@@ -4,6 +4,7 @@ import { getSupabaseClient } from '../supabase';
 import { printContent } from './printUtils';
 import PrintableSalesReturnNote, { PrintableSalesReturnNoteData } from '../components/admin/returns/PrintableSalesReturnNote';
 import PrintablePurchaseReturnNote, { PrintablePurchaseReturnNoteData } from '../components/admin/returns/PrintablePurchaseReturnNote';
+import { DocumentAuditInfo } from './documentStandards';
 
 type Brand = {
   name?: string;
@@ -22,7 +23,7 @@ const roundMoney = (amount: number, currency: string) => {
   return Math.round(n * factor) / factor;
 };
 
-export const printSalesReturnById = async (returnId: string, brand?: Brand) => {
+export const printSalesReturnById = async (returnId: string, brand?: Brand, audit?: DocumentAuditInfo | null) => {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase غير مهيأ.');
   const rid = String(returnId || '').trim();
@@ -112,11 +113,29 @@ export const printSalesReturnById = async (returnId: string, brand?: Brand) => {
     })),
   };
 
-  const html = renderToString(createElement(PrintableSalesReturnNote as any, { data, brand }));
+  const html = renderToString(createElement(PrintableSalesReturnNote as any, { data, brand, audit }));
   printContent(html, `مرتجع مبيعات #${String(data.returnId).slice(-8)}`);
+  try {
+    await supabase.from('system_audit_logs').insert({
+      action: 'print',
+      module: 'documents',
+      details: `Printed Sales Return ${String(data.returnId).slice(-8)}`,
+      metadata: {
+        docType: 'sales_return_note',
+        docNumber: String(data.returnId).slice(-8),
+        status: data.status,
+        sourceTable: 'sales_returns',
+        sourceId: data.returnId,
+        template: 'PrintableSalesReturnNote',
+        orderId: data.orderId,
+        invoiceNumber: data.invoiceNumber,
+      },
+    } as any);
+  } catch {
+  }
 };
 
-export const printPurchaseReturnById = async (returnId: string, brand?: Brand, baseCurrencyOverride?: string) => {
+export const printPurchaseReturnById = async (returnId: string, brand?: Brand, baseCurrencyOverride?: string, audit?: DocumentAuditInfo | null) => {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase غير مهيأ.');
   const rid = String(returnId || '').trim();
@@ -198,6 +217,23 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     })),
   };
 
-  const html = renderToString(createElement(PrintablePurchaseReturnNote as any, { data, brand }));
+  const html = renderToString(createElement(PrintablePurchaseReturnNote as any, { data, brand, audit }));
   printContent(html, `مرتجع مشتريات #${String(data.returnId).slice(-8)}`);
+  try {
+    await supabase.from('system_audit_logs').insert({
+      action: 'print',
+      module: 'documents',
+      details: `Printed Purchase Return ${String(data.returnId).slice(-8)}`,
+      metadata: {
+        docType: 'purchase_return_note',
+        docNumber: String(data.returnId).slice(-8),
+        status: 'Posted',
+        sourceTable: 'purchase_returns',
+        sourceId: data.returnId,
+        template: 'PrintablePurchaseReturnNote',
+        purchaseOrderId: data.purchaseOrderId,
+      },
+    } as any);
+  } catch {
+  }
 };

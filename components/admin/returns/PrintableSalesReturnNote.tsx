@@ -1,4 +1,6 @@
 import React from 'react';
+import DocumentAuditFooter from '../documents/DocumentAuditFooter';
+import { DocumentAuditInfo } from '../../../utils/documentStandards';
 
 type Brand = {
   name?: string;
@@ -63,7 +65,7 @@ const methodLabel = (m?: string | null) => {
   return v || '—';
 };
 
-const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; brand?: Brand }> = ({ data, brand }) => {
+const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; brand?: Brand; audit?: DocumentAuditInfo | null }> = ({ data, brand, audit }) => {
   const cur = String(data.currency || '').trim().toUpperCase() || 'YER';
   const title = 'إشعار مرتجع مبيعات (Credit Note)';
   const idShort = String(data.returnId || '').replace(/-/g, '').slice(-8).toUpperCase();
@@ -107,6 +109,9 @@ const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; b
                 رقم الفاتورة: <span className="mono">{invoice}</span>
               </div>
             ) : null}
+            <div style={{ fontSize: 12, color: '#374151' }}>
+              مرجع: <span className="mono" dir="ltr">{String(data.returnId || '').trim() || '—'}</span>
+            </div>
           </div>
         </div>
 
@@ -185,6 +190,11 @@ const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; b
         <div style={{ marginTop: 10, fontSize: 11, color: '#6b7280' }}>
           هذا المستند صادر إلكترونياً ولا يحتاج ختم.
         </div>
+
+        <DocumentAuditFooter
+          audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || 'AZTA ERP', ...(audit || {}) }}
+          extraRight={<div>{brand?.name || 'AZTA ERP'}</div>}
+        />
       </div>
     </div>
   );

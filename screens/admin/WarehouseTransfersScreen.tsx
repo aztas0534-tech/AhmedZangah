@@ -16,7 +16,7 @@ import { toYmdLocal } from '../../utils/dateUtils';
 const WarehouseTransfersScreen: React.FC = () => {
     const { warehouses, transfers, createTransfer, completeTransfer, cancelTransfer } = useWarehouses();
     const { menuItems } = useMenu();
-    const { hasPermission } = useAuth();
+    const { hasPermission, user } = useAuth();
     const { showNotification } = useToast();
     const { settings } = useSettings();
     const { scope } = useSessionScope();
@@ -104,6 +104,7 @@ const WarehouseTransfersScreen: React.FC = () => {
 
             const brand = resolveBrandingForWarehouseId(String(transfer.fromWarehouseId || ''));
             const branchHdr = await fetchBranchHeader(scope?.branchId);
+            const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
             const content = renderToString(
                 <PrintableWarehouseTransfer
                     data={data}
@@ -113,6 +114,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                         branchName: branchHdr.branchName,
                         branchCode: branchHdr.branchCode,
                     }}
+                    audit={{ printedBy }}
                 />
             );
             printContent(content, `تحويل مخزني #${data.transferNumber}`);

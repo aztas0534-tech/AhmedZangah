@@ -23,7 +23,7 @@ const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[8
 const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { hasPermission } = useAuth();
+    const { hasPermission, user } = useAuth();
     const { showNotification } = useToast();
     const { settings } = useSettings();
     const [query, setQuery] = useState('');
@@ -407,6 +407,7 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                     contactNumber: String(settings?.contactNumber || ''),
                     logoUrl: String(settings?.logoUrl || ''),
                 };
+                const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
                 const content = renderToString(
                     <PrintablePartyLedgerStatement
                         brand={brand}
@@ -417,6 +418,7 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                         start={null}
                         end={null}
                         rows={(Array.isArray(rows) ? rows : []) as any}
+                        audit={{ printedBy }}
                     />
                 );
                 printContent(content, `كشف حساب طرف • ${partyName}`, { page: 'A4' });

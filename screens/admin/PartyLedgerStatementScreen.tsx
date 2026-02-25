@@ -37,7 +37,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const location = useLocation();
   const { settings } = useSettings();
   const { showNotification } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [partyName, setPartyName] = useState<string>('—');
   const [partyType, setPartyType] = useState<string>('party');
@@ -254,6 +254,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
         contactNumber: String(settings?.contactNumber || ''),
         logoUrl: String(settings?.logoUrl || ''),
       };
+      const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
       const content = renderToString(
         <PrintablePartyLedgerStatement
           brand={brand}
@@ -267,6 +268,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
           printCurrencyCode={desired || baseCurrency || null}
           printFxRate={desired ? (desired === baseCurrency ? 1 : (printFxRate || 0)) : 1}
           baseCurrencyCode={baseCurrency || null}
+          audit={{ printedBy }}
         />
       );
       printContent(content, `كشف حساب طرف • ${partyName || partyId.slice(-8).toUpperCase()}`, { page: 'A4' });

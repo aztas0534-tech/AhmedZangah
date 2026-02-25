@@ -140,10 +140,11 @@ const InvoiceScreen: React.FC = () => {
             container.style.width = '576px';
             container.style.background = '#ffffff';
             const currentCount = typeof order.invoicePrintCount === 'number' ? order.invoicePrintCount : 0;
+            const printedBy = (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null;
             const thermalHtml = renderToString(
                 <PrintableInvoice
                     order={order}
-                    audit={invoiceAudit}
+                    audit={{ ...(invoiceAudit || {}), printedBy }}
                     language="ar"
                     companyName={storeName}
                     companyPhone={settings.contactNumber || ''}
@@ -229,7 +230,7 @@ const InvoiceScreen: React.FC = () => {
         const content = renderToString(
             <PrintableInvoice
                 order={order}
-                audit={invoiceAudit}
+                audit={{ ...(invoiceAudit || {}), printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
                 language="ar"
                 companyName={brand.name}
                 companyPhone={brand.contactNumber}
@@ -316,6 +317,7 @@ const InvoiceScreen: React.FC = () => {
     const handlePrintDeliveryNote = () => {
         if (!order) return;
         const brand = resolveBranding();
+        const printedBy = (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null;
         const content = renderToString(
             <PrintableOrder
                 order={order}
@@ -324,6 +326,7 @@ const InvoiceScreen: React.FC = () => {
                 companyAddress={brand.address}
                 companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
+                audit={{ printedBy }}
             />
         );
         printContent(content, `سند تسليم #${order.id.slice(-6).toUpperCase()}`);
@@ -365,7 +368,7 @@ const InvoiceScreen: React.FC = () => {
             const content = renderToString(
                 <PrintableInvoice
                     order={order}
-                    audit={invoiceAudit}
+                    audit={{ ...(invoiceAudit || {}), printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
                     language="ar"
                     companyName={brand.name}
                     companyPhone={brand.contactNumber}

@@ -126,6 +126,7 @@ const PurchaseOrderScreen: React.FC = () => {
             : order.status === 'cancelled'
                 ? 'Cancelled'
                 : 'Approved';
+        const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
         const content = renderToString(
             <PrintablePurchaseOrder
                 order={order}
@@ -137,6 +138,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 }}
                 documentStatus={statusLabel}
                 referenceId={order.id}
+                audit={{ printedBy }}
             />
         );
         printContent(content, `أمر شراء #${String(order.poNumber || order.id).slice(-12)}`);
@@ -553,6 +555,7 @@ const PurchaseOrderScreen: React.FC = () => {
             currency: String(po.currency || ''),
         };
 
+        const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
         const content = renderToString(
             <PrintableGrn
                 data={grn}
@@ -562,6 +565,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     branchName: branchHdr.branchName,
                     branchCode: branchHdr.branchCode,
                 }}
+                audit={{ printedBy }}
             />
         );
         printContent(content, `GRN #${grn.grnNumber}`);
@@ -1578,7 +1582,8 @@ const PurchaseOrderScreen: React.FC = () => {
             try {
                 const brand = resolveBrandingForWarehouseId(returnOrder.warehouseId);
                 const branchHdr = await fetchBranchHeader(scope?.branchId);
-                await printPurchaseReturnById(returnId, { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode }, baseCode);
+                const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+                await printPurchaseReturnById(returnId, { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode }, baseCode, { printedBy });
             } catch {
             }
             setIsReturnModalOpen(false);

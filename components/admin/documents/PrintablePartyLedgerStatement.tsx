@@ -1,6 +1,8 @@
 import { formatDateOnly } from '../../../utils/printUtils';
 import { formatSourceRefAr, localizeOpenStatusAr, shortId } from '../../../utils/displayLabels';
 import { AZTA_IDENTITY } from '../../../config/identity';
+import DocumentAuditFooter from './DocumentAuditFooter';
+import { DocumentAuditInfo } from '../../../utils/documentStandards';
 
 type Brand = {
   name?: string;
@@ -54,8 +56,9 @@ export default function PrintablePartyLedgerStatement(props: {
   printCurrencyCode?: string | null;
   printFxRate?: number | null;
   baseCurrencyCode?: string | null;
+  audit?: DocumentAuditInfo | null;
 }) {
-  const { brand, partyId, partyName, accountCode, currency, start, end, rows, printCurrencyCode, printFxRate, baseCurrencyCode } = props;
+  const { brand, partyId, partyName, accountCode, currency, start, end, rows, printCurrencyCode, printFxRate, baseCurrencyCode, audit } = props;
   const selectedCode = String(printCurrencyCode || '').trim().toUpperCase();
   const baseCode = String(baseCurrencyCode || '').trim().toUpperCase();
   const rate = Number(printFxRate || 1) || 1;
@@ -304,10 +307,10 @@ export default function PrintablePartyLedgerStatement(props: {
         </tbody>
       </table>
 
-      <div className="footer-meta">
-        <div>تمت الطباعة بواسطة النظام في <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span></div>
-        <div>{brand?.name || 'AZTA ERP'}</div>
-      </div>
+      <DocumentAuditFooter
+        audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || 'AZTA ERP', ...(audit || {}) }}
+        extraRight={<div>{brand?.name || 'AZTA ERP'}</div>}
+      />
     </div>
   );
 }
