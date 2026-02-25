@@ -2337,9 +2337,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         let confirmError: any = rpcError;
         if (confirmError) {
           const isInvoiceSnapshotError = (() => {
-            const rawMsg = String((confirmError as any)?.message || (confirmError as any)?.details || '').toLowerCase();
+            const rawCombined = [
+              String((confirmError as any)?.message || '').trim(),
+              String((confirmError as any)?.details || '').trim(),
+              String((confirmError as any)?.hint || '').trim(),
+            ].filter(Boolean).join('\n').toLowerCase();
             const localized = localizeSupabaseError(confirmError).toLowerCase();
-            const combined = `${rawMsg}\n${localized}`;
+            const combined = `${rawCombined}\n${localized}`;
             return combined.includes('invoice_snapshot_fields_missing')
               || combined.includes('invoice_snapshot_required')
               || combined.includes('invoice_snapshot_items_missing');
@@ -2403,15 +2407,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return fresh || ({ ...newOrder, status: 'pending' } as Order);
           }
           const code = String((confirmError as any)?.code || '').trim();
-          const rawMsg = String((confirmError as any)?.message || (confirmError as any)?.details || '').trim();
+          const rawMsg = [
+            String((confirmError as any)?.message || '').trim(),
+            String((confirmError as any)?.details || '').trim(),
+            String((confirmError as any)?.hint || '').trim(),
+          ].filter(Boolean).join(' | ');
           const localizedMsg = localizeSupabaseError(confirmError);
-          const extraDetails = [String((confirmError as any)?.details || '').trim(), String((confirmError as any)?.hint || '').trim()]
-            .filter(Boolean)
-            .join(' | ');
-          const combinedMsg = (localizedMsg || rawMsg || extraDetails || '').trim();
+          const combinedMsg = (localizedMsg || rawMsg || '').trim();
           const combinedForDisplay = (() => {
             const generic = combinedMsg === 'فشل العملية.' || combinedMsg === 'حدث خطأ غير متوقع.' || combinedMsg === 'UNKNOWN' || combinedMsg === 'Unknown';
-            const dbg = [rawMsg, extraDetails].filter(Boolean).join(' | ');
+            const dbg = rawMsg;
             if (generic && dbg) return `${combinedMsg} (${dbg})`;
             return combinedMsg;
           })();

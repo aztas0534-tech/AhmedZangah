@@ -3,6 +3,12 @@ export const resolveErrorMessage = (error: unknown): string => {
   const anyErr = error as any;
   const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
   if (msg) return msg;
+  const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+  if (details) return details;
+  const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+  if (hint) return hint;
+  const errorDescription = typeof anyErr?.error_description === 'string' ? anyErr.error_description : '';
+  if (errorDescription) return errorDescription;
   const str = typeof error === 'string' ? error : '';
   return str;
 };
@@ -284,6 +290,10 @@ export const localizeSupabaseError = (error: unknown): string => {
     }
     return 'البيانات المدخلة موجودة مسبقًا.';
   }
-  const message = resolveErrorMessage(error);
+  const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
+  const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+  const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+  const combined = [msg, details, hint].map(s => (s || '').trim()).filter(Boolean).join(' | ');
+  const message = combined || resolveErrorMessage(error);
   return localizeError(message || '');
 };
