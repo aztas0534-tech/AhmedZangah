@@ -377,7 +377,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
 
       const preferred = await supabase.rpc('confirm_order_delivery_with_credit_rpc', args);
-      if (!preferred?.error || !isRpcNotFoundError(preferred.error)) return preferred;
+      if (!preferred?.error) return preferred;
+      // If any error occurs (not only NotFound), attempt the alias form as a compatibility fallback
+      if (!isRpcNotFoundError(preferred.error)) {
+        const alt = await supabase.rpc('confirm_order_delivery_with_credit', args);
+        return alt;
+      }
 
       const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', args);
       return { data, error };
@@ -405,20 +410,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const strict = isRpcStrictMode();
     if (strict) {
       let res = await tryDirect4();
-      if (res.error && isRpcNotFoundError(res.error)) {
+      if (res.error) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryDirect4();
       }
-      if (!res.error || !isRpcNotFoundError(res.error)) {
+      if (!res.error) {
         confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
         return res;
       }
       res = await tryWrapper();
-      if (res.error && isRpcNotFoundError(res.error)) {
+      if (res.error) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryWrapper();
       }
-      if (!res.error || !isRpcNotFoundError(res.error)) {
+      if (!res.error) {
         confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
         return res;
@@ -428,13 +433,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     // Prefer direct4 mode — wrapper triggers PostgREST disambiguation issues
     let res = await tryDirect4();
-    if (!res.error || !isRpcNotFoundError(res.error)) {
+    if (!res.error) {
       confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
       return res;
     }
 
     res = await tryWrapper();
-    if (!res.error || !isRpcNotFoundError(res.error)) {
+    if (!res.error) {
       confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return res;
@@ -444,7 +449,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const reloaded = await reloadPostgrestSchema();
       if (reloaded) {
         res = await tryDirect4();
-        if (!res.error || !isRpcNotFoundError(res.error)) {
+        if (!res.error) {
           confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
           return res;
         }
@@ -452,7 +457,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     // Final compatibility fallback: use non-credit delivery RPCs on legacy schemas
-    if (res?.error && isRpcNotFoundError(res.error)) {
+    if (res?.error) {
       try {
         const fallback = await rpcConfirmOrderDelivery(supabase, input);
         if (!fallback.error) {
@@ -2302,7 +2307,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               inStoreFailureAt: nowIso,
               inStoreFailureReason: reason,
             };
-            const { error: updErr } = await sb2.from('orders').update({ status: 'pending', data: pending }).eq('id', newOrder.id);
+            const sanitizedPending = sanitizeForJsonb(JSON.parse(JSON.stringify(pending)));
+            const { error: updErr } = await sb2.from('orders').update({ status: 'pending', data: sanitizedPending }).eq('id', newOrder.id);
             if (updErr) await sb2.from('orders').update({ status: 'pending' }).eq('id', newOrder.id);
           } catch {
           }
