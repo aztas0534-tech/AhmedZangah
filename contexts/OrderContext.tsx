@@ -2280,33 +2280,38 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       } catch { }
 
       const buildValidationInvoiceSnapshot = () => {
-        const snapshotItems = (newOrder.items || []).map((it: any) => {
-          const isWeight = it?.unitType === 'kg' || it?.unitType === 'gram';
-          const id = String(it?.itemId || it?.id || '');
-          const name = String(it?.name?.ar || it?.name?.en || it?.name || '');
-          const unitType = String(it?.unitType || it?.unit || 'piece');
-          const quantity = isWeight ? (Number(it?.quantity) || 0) : (Number(it?.quantity) || 0);
-          const weight = isWeight ? (Number(it?.weight) || 0) : undefined;
-          const price = Number(it?.price) || 0;
-          const pricePerUnit = it?.pricePerUnit != null ? (Number(it?.pricePerUnit) || 0) : undefined;
-          const uomCode = typeof it?.uomCode === 'string' ? String(it.uomCode) : undefined;
-          const uomQtyInBase = it?.uomQtyInBase != null ? (Number(it?.uomQtyInBase) || 1) : undefined;
-          return {
-            id,
-            name,
-            unitType,
-            quantity,
-            ...(weight != null ? { weight } : {}),
-            price,
-            ...(pricePerUnit != null ? { pricePerUnit } : {}),
-            ...(uomCode ? { uomCode } : {}),
-            ...(uomQtyInBase != null ? { uomQtyInBase } : {}),
-          };
-        });
+        const issuedAt = nowIso;
+        const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAt);
+        const snapshotItems = typeof structuredClone === 'function'
+          ? structuredClone(newOrder.items || [])
+          : JSON.parse(JSON.stringify(newOrder.items || []));
         return {
+          issuedAt,
+          invoiceNumber: invNum,
+          createdAt: newOrder.createdAt || issuedAt,
+          orderSource: 'in_store',
           currency: desiredCurrency || baseCurrency,
           fxRate: fxRate,
           baseCurrency: baseCurrency,
+          totals: {
+            subtotal: newOrder.subtotal,
+            discountAmount: newOrder.discountAmount,
+            deliveryFee: newOrder.deliveryFee,
+            taxAmount: (newOrder as any).taxAmount,
+            total: newOrder.total,
+          },
+          subtotal: newOrder.subtotal,
+          deliveryFee: newOrder.deliveryFee,
+          discountAmount: newOrder.discountAmount,
+          total: newOrder.total,
+          paymentMethod: newOrder.paymentMethod,
+          paymentBreakdown: Array.isArray(newOrder.paymentBreakdown) ? newOrder.paymentBreakdown : undefined,
+          isCreditSale: Boolean(newOrder.isCreditSale),
+          invoiceTerms: newOrder.invoiceTerms || (newOrder.isCreditSale ? 'credit' : 'cash'),
+          customerName: newOrder.customerName,
+          phoneNumber: newOrder.phoneNumber,
+          address: newOrder.address,
+          deliveryZoneId: newOrder.deliveryZoneId,
           items: snapshotItems,
         };
       };
@@ -2314,8 +2319,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const deliveryPayload: Order = {
         ...newOrder,
         paidAt: undefined,
-        invoiceNumber: undefined,
-        invoiceIssuedAt: undefined,
+        invoiceNumber: invoiceNumber || newOrder.invoiceNumber,
+        invoiceIssuedAt: nowIso,
         invoiceSnapshot: buildValidationInvoiceSnapshot(),
       };
       finalized = deliveryPayload;
@@ -2414,18 +2419,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 invoiceNumber: invNum,
                 createdAt: newOrder.createdAt || issuedAtIso,
                 orderSource: 'in_store',
-                items: (newOrder.items || []).map((it: any) => ({
-                  id: String(it?.itemId || it?.id || ''),
-                  name: String(it?.name?.ar || it?.name?.en || it?.name || ''),
-                  unitType: String(it?.unitType || it?.unit || 'piece'),
-                  quantity: Number(it?.quantity) || 0,
-                  weight: it?.weight != null ? (Number(it?.weight) || 0) : undefined,
-                  price: Number(it?.price) || 0,
-                  pricePerUnit: it?.pricePerUnit != null ? (Number(it?.pricePerUnit) || 0) : undefined,
-                })),
+                items: typeof structuredClone === 'function'
+                  ? structuredClone(newOrder.items || [])
+                  : JSON.parse(JSON.stringify(newOrder.items || [])),
                 currency: currencySnapshot,
                 fxRate: fxRateSnapshot,
                 baseCurrency: baseCurrencyCode,
+                totals: {
+                  subtotal: newOrder.subtotal,
+                  discountAmount: newOrder.discountAmount,
+                  deliveryFee: newOrder.deliveryFee,
+                  taxAmount: (newOrder as any).taxAmount,
+                  total: newOrder.total,
+                },
                 subtotal: newOrder.subtotal,
                 deliveryFee: newOrder.deliveryFee,
                 discountAmount: newOrder.discountAmount,
