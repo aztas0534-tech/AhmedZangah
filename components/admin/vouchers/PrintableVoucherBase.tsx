@@ -31,6 +31,14 @@ export type VoucherData = {
   amount?: number | null;
   amountWords?: string | null;
   lines: VoucherLine[];
+  partyName?: string | null;
+  paymentMethod?: string | null;
+  paymentReferenceNumber?: string | null;
+  senderName?: string | null;
+  senderPhone?: string | null;
+  receivedBy?: string | null;
+  toAccount?: string | null;
+  fromAccount?: string | null;
 };
 
 const fmt = (n: number) => {
@@ -217,6 +225,51 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <span className="info-label">الوصف / البيان</span>
             <span className="info-value">{data.memo || '—'}</span>
         </div>
+        {data.partyName ? (
+          <div className="info-item" style={{ gridColumn: 'span 2' }}>
+              <span className="info-label">استلمنا من / الطرف</span>
+              <span className="info-value">{data.partyName}</span>
+          </div>
+        ) : null}
+        {data.paymentMethod ? (
+          <div className="info-item">
+              <span className="info-label">طريقة الدفع</span>
+              <span className="info-value">{data.paymentMethod}</span>
+          </div>
+        ) : null}
+        {data.paymentReferenceNumber ? (
+          <div className="info-item">
+              <span className="info-label">رقم العملية</span>
+              <span className="info-value tabular" dir="ltr">{data.paymentReferenceNumber}</span>
+          </div>
+        ) : null}
+        {data.receivedBy ? (
+          <div className="info-item" style={{ gridColumn: 'span 2' }}>
+              <span className="info-label">المستلم</span>
+              <span className="info-value">{data.receivedBy}</span>
+          </div>
+        ) : null}
+        {data.toAccount ? (
+          <div className="info-item" style={{ gridColumn: 'span 2' }}>
+              <span className="info-label">إلى حساب</span>
+              <span className="info-value">{data.toAccount}</span>
+          </div>
+        ) : null}
+        {data.fromAccount ? (
+          <div className="info-item" style={{ gridColumn: 'span 2' }}>
+              <span className="info-label">من حساب (المقابل)</span>
+              <span className="info-value">{data.fromAccount}</span>
+          </div>
+        ) : null}
+        {(data.senderName || data.senderPhone) ? (
+          <div className="info-item" style={{ gridColumn: 'span 2' }}>
+              <span className="info-label">بيانات المحوّل</span>
+              <span className="info-value">
+                {String(data.senderName || '').trim() || '—'}
+                {data.senderPhone ? <span className="tabular" dir="ltr">{` — ${data.senderPhone}`}</span> : null}
+              </span>
+          </div>
+        ) : null}
       </div>
 
       {typeof data.amount === 'number' && (

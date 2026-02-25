@@ -104,7 +104,20 @@ interface OrderContextType {
   awardPointsForReviewedOrder: (orderId: string) => Promise<boolean>;
   incrementInvoicePrintCount: (orderId: string) => Promise<void>;
   markOrderPaid: (orderId: string) => Promise<void>;
-  recordOrderPaymentPartial: (orderId: string, amount: number, method?: string, occurredAt?: string, overrideAccountId?: string) => Promise<void>;
+  recordOrderPaymentPartial: (
+    orderId: string,
+    amount: number,
+    method?: string,
+    occurredAt?: string,
+    overrideAccountId?: string,
+    meta?: {
+      referenceNumber?: string;
+      senderName?: string;
+      senderPhone?: string;
+      declaredAmount?: number;
+      amountConfirmed?: boolean;
+    }
+  ) => Promise<void>;
   issueInvoiceNow: (orderId: string) => Promise<void>;
 }
 
@@ -191,7 +204,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const rpcRecordOrderPayment = async (
     supabase: any,
-    input: { orderId: string; amount: number; method: string; occurredAt: string; currency?: string; idempotencyKey?: string; overrideAccountId?: string }
+    input: {
+      orderId: string;
+      amount: number;
+      method: string;
+      occurredAt: string;
+      currency?: string;
+      idempotencyKey?: string;
+      overrideAccountId?: string;
+      referenceNumber?: string;
+      senderName?: string;
+      senderPhone?: string;
+      declaredAmount?: number;
+      amountConfirmed?: boolean;
+    }
   ): Promise<any> => {
     const callV2 = async () => {
       const base: any = {
@@ -212,6 +238,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (override) {
         base.p_data.overrideAccountId = override;
       }
+      const referenceNumber = String(input.referenceNumber || '').trim();
+      if (referenceNumber) base.p_data.referenceNumber = referenceNumber;
+      const senderName = String(input.senderName || '').trim();
+      if (senderName) base.p_data.senderName = senderName;
+      const senderPhone = String(input.senderPhone || '').trim();
+      if (senderPhone) base.p_data.senderPhone = senderPhone;
+      const declaredAmount = Number(input.declaredAmount);
+      if (Number.isFinite(declaredAmount) && declaredAmount > 0) base.p_data.declaredAmount = declaredAmount;
+      if (typeof input.amountConfirmed === 'boolean') base.p_data.amountConfirmed = input.amountConfirmed;
       const { error } = await supabase.rpc('record_order_payment_v2', base);
       return error;
     };
@@ -239,8 +274,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     const hasOverride = String(input.overrideAccountId || '').trim().length > 0;
+    const hasMeta =
+      String(input.referenceNumber || '').trim().length > 0 ||
+      String(input.senderName || '').trim().length > 0 ||
+      String(input.senderPhone || '').trim().length > 0 ||
+      (Number.isFinite(Number(input.declaredAmount)) && Number(input.declaredAmount) > 0) ||
+      typeof input.amountConfirmed === 'boolean';
     let error: any = null;
-    if (hasOverride) {
+    if (hasOverride || hasMeta) {
       error = await callV2();
       if (!error) return null;
       if (isRecordOrderPaymentNotFoundError(error)) {
@@ -3946,7 +3987,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const recordOrderPaymentPartial = useCallback(
-    async (orderId: string, amount: number, method?: string, occurredAt?: string, overrideAccountId?: string) => {
+    async (
+      orderId: string,
+      amount: number,
+      method?: string,
+      occurredAt?: string,
+      overrideAccountId?: string,
+      meta?: { referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean }
+    ) => {
       const existing = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
       if (!existing) return;
       if (!canMarkPaidOrder()) {
@@ -3958,6 +4006,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       const occurredAtIso = occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString();
       const methodValue = (method || existing.paymentMethod || 'cash').trim() || 'cash';
+      const ref = String(meta?.referenceNumber || '').trim();
+      const senderName = String(meta?.senderName || '').trim();
+      const senderPhone = String(meta?.senderPhone || '').trim();
+      const declaredAmount = Number(meta?.declaredAmount);
+      const amountConfirmed = Boolean(meta?.amountConfirmed);
 
       await addOrderEvent({
         orderId,
@@ -3965,7 +4018,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         actorType: 'admin',
         actorId: adminUser?.id,
         createdAt: occurredAtIso,
-        payload: { amount: numericAmount, method: methodValue },
+        payload: {
+          amount: numericAmount,
+          method: methodValue,
+          ...(ref ? { referenceNumber: ref } : {}),
+          ...(senderName ? { senderName } : {}),
+          ...(senderPhone ? { senderPhone } : {}),
+          ...(Number.isFinite(declaredAmount) && declaredAmount > 0 ? { declaredAmount } : {}),
+          ...(meta && typeof meta.amountConfirmed === 'boolean' ? { amountConfirmed } : {}),
+        },
       });
 
       const supabase = getSupabaseClient();
@@ -3978,8 +4039,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         method: methodValue,
         occurredAt: occurredAtIso,
         currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
-        idempotencyKey: `partial:${existing.id}:${occurredAtIso}:${Number(numericAmount) || 0}`,
+        idempotencyKey: `partial:${existing.id}:${occurredAtIso}:${methodValue}:${Number(numericAmount) || 0}`,
         overrideAccountId,
+        referenceNumber: ref || undefined,
+        senderName: senderName || undefined,
+        senderPhone: senderPhone || undefined,
+        declaredAmount: Number.isFinite(declaredAmount) ? declaredAmount : undefined,
+        amountConfirmed: meta && typeof meta.amountConfirmed === 'boolean' ? amountConfirmed : undefined,
       });
       if (error) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;

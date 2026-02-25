@@ -25,13 +25,44 @@ const fmtTime = (iso: string) => {
   }
 };
 
+const paymentMethodLabel = (method: string) => {
+  const m = String(method || '').trim().toLowerCase();
+  if (m === 'cash') return 'نقدًا';
+  if (m === 'kuraimi' || m === 'bank') return 'حسابات بنكية';
+  if (m === 'network' || m === 'card') return 'حوالات';
+  if (m === 'ar') return 'آجل';
+  if (m === 'mixed') return 'متعدد';
+  return method || null;
+};
+
+const resolveAdminDisplayName = async (userId: string) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  const id = String(userId || '').trim();
+  if (!id) return null;
+  try {
+    const { data, error } = await supabase
+      .from('admin_users')
+      .select('full_name,username,email')
+      .eq('auth_user_id', id)
+      .maybeSingle();
+    if (error) return null;
+    const fullName = String((data as any)?.full_name || '').trim();
+    const username = String((data as any)?.username || '').trim();
+    const email = String((data as any)?.email || '').trim();
+    return fullName || username || email || null;
+  } catch {
+    return null;
+  }
+};
+
 const fetchJournalEntryWithLines = async (entryId: string) => {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase غير مهيأ.');
 
   const { data: entry, error: eErr } = await supabase
     .from('journal_entries')
-    .select('id,entry_date,memo,status,document_id,source_table,source_id,source_event,branch_id,company_id')
+    .select('id,entry_date,memo,status,document_id,source_table,source_id,source_event,branch_id,company_id,created_by')
     .eq('id', entryId)
     .maybeSingle();
   if (eErr) throw eErr;
@@ -65,12 +96,70 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     memo: l?.line_memo ?? null,
   }));
 
+  const debitLine = mappedLines.find((l) => Number(l.debit || 0) > 0);
+  const creditLine = mappedLines.find((l) => Number(l.credit || 0) > 0);
+  const toAccount = debitLine ? `${String(debitLine.accountCode || '').trim()} — ${String(debitLine.accountName || '').trim()}`.trim() : null;
+  const fromAccount = creditLine ? `${String(creditLine.accountCode || '').trim()} — ${String(creditLine.accountName || '').trim()}`.trim() : null;
+
   const status = String((entry as any)?.status || '').trim().toLowerCase();
   const statusLabel = status === 'draft' ? 'مسودة' : status === 'posted' ? 'مُرحّل' : status === 'voided' ? 'مبطل' : (status || null);
   const currencyCandidates = (Array.isArray(lines) ? lines : [])
     .map((l: any) => String(l?.currency_code || '').trim().toUpperCase())
     .filter(Boolean);
   const currency = currencyCandidates.length ? currencyCandidates[0] : null;
+
+  let partyName: string | null = null;
+  try {
+    const { data: ple, error: pleErr } = await supabase
+      .from('party_ledger_entries')
+      .select('party_id, financial_parties(name)')
+      .eq('journal_entry_id', entryId)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!pleErr) {
+      const n = (ple as any)?.financial_parties?.name;
+      partyName = typeof n === 'string' ? n.trim() : null;
+    }
+  } catch {
+  }
+
+  let paymentMethod: string | null = null;
+  let paymentReferenceNumber: string | null = null;
+  let senderName: string | null = null;
+  let senderPhone: string | null = null;
+  let receivedBy: string | null = null;
+  const entryCreatedBy = String((entry as any)?.created_by || '').trim();
+  if (entryCreatedBy) {
+    receivedBy = await resolveAdminDisplayName(entryCreatedBy);
+  }
+
+  const sourceTable = String((entry as any)?.source_table || '').trim().toLowerCase();
+  const sourceId = String((entry as any)?.source_id || '').trim();
+  if (sourceTable === 'payments' && sourceId) {
+    try {
+      const { data: pay, error: pErr } = await supabase
+        .from('payments')
+        .select('id,method,created_by,data,reference_table,reference_id,occurred_at')
+        .eq('id', sourceId)
+        .maybeSingle();
+      if (!pErr && pay) {
+        paymentMethod = paymentMethodLabel(String((pay as any)?.method || '')) as any;
+        const pdata = (pay as any)?.data || {};
+        const ref = String(pdata?.referenceNumber || pdata?.reference_number || pdata?.paymentReferenceNumber || '').trim();
+        paymentReferenceNumber = ref || null;
+        const sn = String(pdata?.senderName || pdata?.sender_name || '').trim();
+        senderName = sn || null;
+        const sp = String(pdata?.senderPhone || pdata?.sender_phone || '').trim();
+        senderPhone = sp || null;
+        if (!receivedBy) {
+          const payCreatedBy = String((pay as any)?.created_by || '').trim();
+          if (payCreatedBy) receivedBy = await resolveAdminDisplayName(payCreatedBy);
+        }
+      }
+    } catch {
+    }
+  }
 
   return {
     entry: entry as any,
@@ -80,6 +169,14 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     lines: mappedLines,
     statusLabel,
     currency,
+    partyName,
+    paymentMethod,
+    paymentReferenceNumber,
+    senderName,
+    senderPhone,
+    receivedBy,
+    toAccount: toAccount || null,
+    fromAccount: fromAccount || null,
   };
 };
 
@@ -106,6 +203,14 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
     amount,
     amountWords: amountToArabicWords(amount, currency === 'YER' ? 'ريال' : 'عملة'),
     lines: bundle.lines,
+    partyName: (bundle as any).partyName || null,
+    paymentMethod: (bundle as any).paymentMethod || null,
+    paymentReferenceNumber: (bundle as any).paymentReferenceNumber || null,
+    senderName: (bundle as any).senderName || null,
+    senderPhone: (bundle as any).senderPhone || null,
+    receivedBy: (bundle as any).receivedBy || null,
+    toAccount: (bundle as any).toAccount || null,
+    fromAccount: (bundle as any).fromAccount || null,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
@@ -136,6 +241,14 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
     amount,
     amountWords: amountToArabicWords(amount, currency === 'YER' ? 'ريال' : 'عملة'),
     lines: bundle.lines,
+    partyName: (bundle as any).partyName || null,
+    paymentMethod: (bundle as any).paymentMethod || null,
+    paymentReferenceNumber: (bundle as any).paymentReferenceNumber || null,
+    senderName: (bundle as any).senderName || null,
+    senderPhone: (bundle as any).senderPhone || null,
+    receivedBy: (bundle as any).receivedBy || null,
+    toAccount: (bundle as any).toAccount || null,
+    fromAccount: (bundle as any).fromAccount || null,
   };
 
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
@@ -152,7 +265,7 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
 
   const { data: pay, error: pErr } = await supabase
     .from('payments')
-    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id')
+    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id,data,created_by')
     .eq('id', pid)
     .maybeSingle();
   if (pErr) throw pErr;
@@ -184,6 +297,14 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
     amount,
     amountWords: amountToArabicWords(amount, currency === 'YER' ? 'ريال' : 'عملة'),
     lines: bundle.lines,
+    partyName: (bundle as any).partyName || null,
+    paymentMethod: paymentMethodLabel(String((pay as any)?.method || '')) as any,
+    paymentReferenceNumber: String(((pay as any)?.data?.referenceNumber || (pay as any)?.data?.reference_number || '')).trim() || null,
+    senderName: String(((pay as any)?.data?.senderName || (pay as any)?.data?.sender_name || '')).trim() || null,
+    senderPhone: String(((pay as any)?.data?.senderPhone || (pay as any)?.data?.sender_phone || '')).trim() || null,
+    receivedBy: (bundle as any).receivedBy || null,
+    toAccount: (bundle as any).toAccount || null,
+    fromAccount: (bundle as any).fromAccount || null,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
@@ -200,7 +321,7 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
 
   const { data: pay, error: pErr } = await supabase
     .from('payments')
-    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id')
+    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id,data,created_by')
     .eq('id', pid)
     .maybeSingle();
   if (pErr) throw pErr;
@@ -232,6 +353,14 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
     amount,
     amountWords: amountToArabicWords(amount, currency === 'YER' ? 'ريال' : 'عملة'),
     lines: bundle.lines,
+    partyName: (bundle as any).partyName || null,
+    paymentMethod: paymentMethodLabel(String((pay as any)?.method || '')) as any,
+    paymentReferenceNumber: String(((pay as any)?.data?.referenceNumber || (pay as any)?.data?.reference_number || '')).trim() || null,
+    senderName: String(((pay as any)?.data?.senderName || (pay as any)?.data?.sender_name || '')).trim() || null,
+    senderPhone: String(((pay as any)?.data?.senderPhone || (pay as any)?.data?.sender_phone || '')).trim() || null,
+    receivedBy: (bundle as any).receivedBy || null,
+    toAccount: (bundle as any).toAccount || null,
+    fromAccount: (bundle as any).fromAccount || null,
   };
 
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
@@ -258,6 +387,14 @@ export const printJournalVoucherByEntryId = async (entryId: string, brand?: Bran
     amount: total,
     amountWords: amountToArabicWords(total, (bundle.currency || 'YER') === 'YER' ? 'ريال' : 'عملة'),
     lines: bundle.lines,
+    partyName: (bundle as any).partyName || null,
+    paymentMethod: (bundle as any).paymentMethod || null,
+    paymentReferenceNumber: (bundle as any).paymentReferenceNumber || null,
+    senderName: (bundle as any).senderName || null,
+    senderPhone: (bundle as any).senderPhone || null,
+    receivedBy: (bundle as any).receivedBy || null,
+    toAccount: (bundle as any).toAccount || null,
+    fromAccount: (bundle as any).fromAccount || null,
   };
 
   const html = renderToString(createElement(PrintableJournalVoucher as any, { data, brand }));

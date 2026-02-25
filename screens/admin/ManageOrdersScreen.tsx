@@ -600,6 +600,11 @@ const ManageOrdersScreen: React.FC = () => {
     const [partialPaymentMethod, setPartialPaymentMethod] = useState<string>('cash');
     const [partialPaymentOccurredAt, setPartialPaymentOccurredAt] = useState<string>('');
     const [isRecordingPartialPayment, setIsRecordingPartialPayment] = useState(false);
+    const [partialPaymentReferenceNumber, setPartialPaymentReferenceNumber] = useState<string>('');
+    const [partialPaymentSenderName, setPartialPaymentSenderName] = useState<string>('');
+    const [partialPaymentSenderPhone, setPartialPaymentSenderPhone] = useState<string>('');
+    const [partialPaymentDeclaredAmount, setPartialPaymentDeclaredAmount] = useState<number>(0);
+    const [partialPaymentAmountConfirmed, setPartialPaymentAmountConfirmed] = useState(false);
     const [partialPaymentAdvancedAccounting, setPartialPaymentAdvancedAccounting] = useState(false);
     const [partialPaymentOverrideAccountId, setPartialPaymentOverrideAccountId] = useState<string>('');
     const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string }>>([]);
@@ -1888,6 +1893,11 @@ const ManageOrdersScreen: React.FC = () => {
         setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(dp)) : 0);
         setPartialPaymentMethod(isInStoreOrder(order) ? 'cash' : ((order.paymentMethod || 'cash').trim() || 'cash'));
         setPartialPaymentOccurredAt(toDateTimeLocalInputValue());
+        setPartialPaymentReferenceNumber('');
+        setPartialPaymentSenderName('');
+        setPartialPaymentSenderPhone('');
+        setPartialPaymentDeclaredAmount(remaining > 0 ? Number(remaining.toFixed(dp)) : 0);
+        setPartialPaymentAmountConfirmed(false);
         setPartialPaymentAdvancedAccounting(false);
         setPartialPaymentOverrideAccountId('');
     };
@@ -1919,16 +1929,33 @@ const ManageOrdersScreen: React.FC = () => {
             if (partialPaymentMethod === 'cash' && !currentShift) {
                 throw new Error('يجب فتح وردية نقدية قبل تسجيل دفعة نقدية.');
             }
+            const needsReference = partialPaymentMethod === 'kuraimi' || partialPaymentMethod === 'network';
+            if (needsReference) {
+                const ref = (partialPaymentReferenceNumber || '').trim();
+                const senderName = (partialPaymentSenderName || '').trim();
+                const declared = Number(partialPaymentDeclaredAmount) || 0;
+                if (!ref) throw new Error(partialPaymentMethod === 'kuraimi' ? 'يرجى إدخال رقم الإيداع.' : 'يرجى إدخال رقم الحوالة.');
+                if (!senderName) throw new Error(partialPaymentMethod === 'kuraimi' ? 'يرجى إدخال اسم المودِع.' : 'يرجى إدخال اسم المرسل.');
+                if (!(declared > 0)) throw new Error('يرجى إدخال مبلغ العملية.');
+                if (Math.abs(declared - amount) > tol) throw new Error('مبلغ العملية لا يطابق مبلغ هذه الدفعة.');
+                if (!partialPaymentAmountConfirmed) throw new Error('يرجى تأكيد مطابقة المبلغ قبل تسجيل الدفعة.');
+            }
             const occurredAtIso = partialPaymentOccurredAt ? new Date(partialPaymentOccurredAt).toISOString() : undefined;
             const override = partialPaymentAdvancedAccounting && canManageAccounting && isUuidText(partialPaymentOverrideAccountId)
                 ? String(partialPaymentOverrideAccountId || '').trim()
                 : undefined;
-            await recordOrderPaymentPartial(partialPaymentOrderId, amount, partialPaymentMethod, occurredAtIso, override);
+            await recordOrderPaymentPartial(partialPaymentOrderId, amount, partialPaymentMethod, occurredAtIso, override, {
+                referenceNumber: (partialPaymentReferenceNumber || '').trim() || undefined,
+                senderName: (partialPaymentSenderName || '').trim() || undefined,
+                senderPhone: (partialPaymentSenderPhone || '').trim() || undefined,
+                declaredAmount: Number(partialPaymentDeclaredAmount) || 0,
+                amountConfirmed: Boolean(partialPaymentAmountConfirmed),
+            });
             await loadPaidSums(filteredAndSortedOrders.map(o => o.id));
             showNotification('تم تسجيل الدفعة بنجاح.', 'success');
             const supabase = getSupabaseClient();
             const occ = occurredAtIso || new Date().toISOString();
-            const idempotencyKey = `partial:${partialPaymentOrderId}:${occ}:${Number(amount) || 0}`;
+            const idempotencyKey = `partial:${partialPaymentOrderId}:${occ}:${partialPaymentMethod}:${Number(amount) || 0}`;
             if (supabase) {
                 try {
                     const { data: p, error: pErr } = await supabase
@@ -4775,6 +4802,86 @@ const ManageOrdersScreen: React.FC = () => {
                                     step={0.01}
                                 />
                             </div>
+                            {(partialPaymentMethod === 'kuraimi' || partialPaymentMethod === 'network') && (
+                                <div className="p-3 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-3">
+                                    <div className="text-xs font-semibold text-blue-800 dark:text-blue-300">
+                                        {partialPaymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                            {partialPaymentMethod === 'kuraimi' ? 'رقم الإيداع' : 'رقم الحوالة'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={partialPaymentReferenceNumber}
+                                            onChange={(e) => setPartialPaymentReferenceNumber(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            placeholder={partialPaymentMethod === 'kuraimi' ? 'مثال: DEP-12345' : 'مثال: TRX-12345'}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                                {partialPaymentMethod === 'kuraimi' ? 'اسم المودِع' : 'اسم المرسل'}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={partialPaymentSenderName}
+                                                onChange={(e) => setPartialPaymentSenderName(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                                {partialPaymentMethod === 'kuraimi' ? 'رقم هاتف المودِع (اختياري)' : 'رقم هاتف المرسل (اختياري)'}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={partialPaymentSenderPhone}
+                                                onChange={(e) => setPartialPaymentSenderPhone(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                placeholder="مثال: 771234567"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                                        <div>
+                                            <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                                مبلغ العملية (يجب أن يطابق مبلغ هذه الدفعة)
+                                            </label>
+                                            <NumberInput
+                                                id="partialPaymentDeclaredAmount"
+                                                name="partialPaymentDeclaredAmount"
+                                                value={partialPaymentDeclaredAmount}
+                                                onChange={(e) => setPartialPaymentDeclaredAmount(parseFloat(e.target.value) || 0)}
+                                                min={0}
+                                                step={1}
+                                                className={(Math.abs((Number(partialPaymentDeclaredAmount) || 0) - (Number(partialPaymentAmount) || 0)) > 0.0001) ? 'border-red-500' : ''}
+                                            />
+                                            <div className="mt-1">
+                                                <CurrencyDualAmount
+                                                    amount={Number(partialPaymentAmount) || 0}
+                                                    currencyCode={(order as any).currency}
+                                                    baseAmount={undefined}
+                                                    fxRate={(order as any).fxRate}
+                                                    baseCurrencyCode={baseCode}
+                                                    label="مبلغ الدفعة الحالي"
+                                                    compact
+                                                />
+                                            </div>
+                                        </div>
+                                        <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={partialPaymentAmountConfirmed}
+                                                onChange={(e) => setPartialPaymentAmountConfirmed(e.target.checked)}
+                                                className="form-checkbox h-5 w-5 text-gold-500 rounded focus:ring-gold-500"
+                                            />
+                                            أؤكد مطابقة المبلغ وتم التحقق منه
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">وقت الدفعة</label>
                                 <input
