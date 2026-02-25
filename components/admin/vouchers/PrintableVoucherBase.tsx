@@ -39,6 +39,7 @@ export type VoucherData = {
   receivedBy?: string | null;
   toAccount?: string | null;
   fromAccount?: string | null;
+  shiftId?: string | null;
 };
 
 const fmt = (n: number) => {
@@ -57,7 +58,36 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
   
   // Format date safely to avoid RTL scrambling
   const formattedDate = new Date(data.date).toLocaleDateString('en-GB');
+  const formattedHijriDate = (() => {
+    try {
+      return new Intl.DateTimeFormat('ar-SA-u-nu-latn-ca-islamic', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(data.date));
+    } catch {
+      return '';
+    }
+  })();
   const currency = data.currency?.toUpperCase() || '—';
+  const isPosted = (() => {
+    const s = String(data.status || '').trim().toLowerCase();
+    if (!s) return false;
+    return s === 'posted' || s.includes('posted') || s.includes('مُرحّل') || s.includes('مرحل');
+  })();
+  const costCenterLabel = (() => {
+    const name = String(brand?.branchName || '').trim();
+    const code = String(brand?.branchCode || '').trim();
+    if (!name && !code) return '';
+    return [name, code ? `(${code})` : ''].filter(Boolean).join(' ');
+  })();
+  const shiftNo = (() => {
+    const id = String(data.shiftId || '').trim();
+    if (!id) return '';
+    const compact = id.replace(/-/g, '').toUpperCase();
+    return compact.slice(-6);
+  })();
+  const referenceLabel = (() => {
+    const t = String(data.title || '');
+    if (t.includes('سند قبض')) return 'رقم المرجع';
+    return 'رقم العملية';
+  })();
 
   return (
     <div className="voucher-container" dir="rtl">
@@ -205,7 +235,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <h2>{data.title}</h2>
             <div className="ref-number tabular" dir="ltr">#{data.voucherNumber}</div>
             <div style={{ marginTop: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 'bold', background: data.status === 'posted' ? '#dcfce7' : '#f1f5f9', color: data.status === 'posted' ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
+                <span style={{ fontSize: 12, fontWeight: 'bold', background: isPosted ? '#dcfce7' : '#f1f5f9', color: isPosted ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
                     {data.status || 'DRAFT'}
                 </span>
             </div>
@@ -217,6 +247,17 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <span className="info-label">التاريخ</span>
             <span className="info-value tabular" dir="ltr">{formattedDate}</span>
         </div>
+        {formattedHijriDate ? (
+          <div className="info-item">
+              <span className="info-label">التاريخ الهجري</span>
+              <span className="info-value tabular" dir="ltr">{formattedHijriDate}</span>
+          </div>
+        ) : (
+          <div className="info-item">
+              <span className="info-label">التاريخ الهجري</span>
+              <span className="info-value">—</span>
+          </div>
+        )}
         <div className="info-item">
             <span className="info-label">المعرف المرجعي</span>
             <span className="info-value tabular" dir="ltr">{data.referenceId || '—'}</span>
@@ -225,6 +266,24 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <span className="info-label">الوصف / البيان</span>
             <span className="info-value">{data.memo || '—'}</span>
         </div>
+        {costCenterLabel ? (
+          <div className="info-item" style={{ gridColumn: 'span 2' }}>
+              <span className="info-label">مركز التكلفة</span>
+              <span className="info-value">{costCenterLabel}</span>
+          </div>
+        ) : null}
+        {data.title.includes('سند قبض') && shiftNo ? (
+          <div className="info-item">
+              <span className="info-label">رقم الصندوق</span>
+              <span className="info-value tabular" dir="ltr">{shiftNo}</span>
+          </div>
+        ) : null}
+        {data.title.includes('سند قبض') && data.receivedBy ? (
+          <div className="info-item">
+              <span className="info-label">اسم الصندوق</span>
+              <span className="info-value">{data.receivedBy}</span>
+          </div>
+        ) : null}
         {data.partyName ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
               <span className="info-label">استلمنا من / الطرف</span>
@@ -239,11 +298,11 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
         ) : null}
         {data.paymentReferenceNumber ? (
           <div className="info-item">
-              <span className="info-label">رقم العملية</span>
+              <span className="info-label">{referenceLabel}</span>
               <span className="info-value tabular" dir="ltr">{data.paymentReferenceNumber}</span>
           </div>
         ) : null}
-        {data.receivedBy ? (
+        {!data.title.includes('سند قبض') && data.receivedBy ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
               <span className="info-label">المستلم</span>
               <span className="info-value">{data.receivedBy}</span>
@@ -276,7 +335,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
         <div className="amount-box">
             <div>
                 <div className="label">المبلغ الإجمالي</div>
-                {data.amountWords && <div style={{ fontSize: 11, fontWeight: 'normal', opacity: 0.8, marginTop: 4 }}>{data.amountWords}</div>}
+                {data.amountWords ? <div style={{ fontSize: 11, fontWeight: 'normal', opacity: 0.85, marginTop: 4 }}>{`مبلغ وقدره: ${data.amountWords}`}</div> : null}
             </div>
             <div className="value" dir="ltr">
                 {fmt(data.amount)} <span style={{ fontSize: 12 }}>{currency}</span>
@@ -320,13 +379,13 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
       <div className="signatures-section">
         <div className="signature-box">
-            <div className="signature-label">إعداد (Prepared By)</div>
+            <div className="signature-label">{data.title.includes('سند قبض') ? 'الصندوق' : 'إعداد (Prepared By)'}</div>
         </div>
         <div className="signature-box">
-            <div className="signature-label">مراجعة (Checked By)</div>
+            <div className="signature-label">{data.title.includes('سند قبض') ? 'المدير المالي' : 'مراجعة (Checked By)'}</div>
         </div>
         <div className="signature-box">
-            <div className="signature-label">اعتماد (Approved By)</div>
+            <div className="signature-label">{data.title.includes('سند قبض') ? 'المدير العام' : 'اعتماد (Approved By)'}</div>
         </div>
       </div>
 

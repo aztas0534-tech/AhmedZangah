@@ -129,6 +129,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
   let senderName: string | null = null;
   let senderPhone: string | null = null;
   let receivedBy: string | null = null;
+  let shiftId: string | null = null;
   const entryCreatedBy = String((entry as any)?.created_by || '').trim();
   if (entryCreatedBy) {
     receivedBy = await resolveAdminDisplayName(entryCreatedBy);
@@ -140,11 +141,12 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     try {
       const { data: pay, error: pErr } = await supabase
         .from('payments')
-        .select('id,method,created_by,data,reference_table,reference_id,occurred_at')
+        .select('id,method,created_by,data,reference_table,reference_id,occurred_at,shift_id')
         .eq('id', sourceId)
         .maybeSingle();
       if (!pErr && pay) {
         paymentMethod = paymentMethodLabel(String((pay as any)?.method || '')) as any;
+        shiftId = String((pay as any)?.shift_id || '').trim() || null;
         const pdata = (pay as any)?.data || {};
         const ref = String(pdata?.referenceNumber || pdata?.reference_number || pdata?.paymentReferenceNumber || '').trim();
         paymentReferenceNumber = ref || null;
@@ -177,6 +179,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     receivedBy,
     toAccount: toAccount || null,
     fromAccount: fromAccount || null,
+    shiftId,
   };
 };
 
@@ -211,6 +214,7 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
     receivedBy: (bundle as any).receivedBy || null,
     toAccount: (bundle as any).toAccount || null,
     fromAccount: (bundle as any).fromAccount || null,
+    shiftId: (bundle as any).shiftId || null,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
@@ -249,6 +253,7 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
     receivedBy: (bundle as any).receivedBy || null,
     toAccount: (bundle as any).toAccount || null,
     fromAccount: (bundle as any).fromAccount || null,
+    shiftId: (bundle as any).shiftId || null,
   };
 
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
@@ -265,7 +270,7 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
 
   const { data: pay, error: pErr } = await supabase
     .from('payments')
-    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id,data,created_by')
+    .select('id,direction,method,amount,currency,occurred_at,reference_table,reference_id,branch_id,shift_id,data,created_by')
     .eq('id', pid)
     .maybeSingle();
   if (pErr) throw pErr;
@@ -287,6 +292,7 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
   const bundle = await fetchJournalEntryWithLines(entryId);
   const amount = Number((pay as any).amount || 0);
   const currency = String((pay as any).currency || '').toUpperCase() || '';
+  const shiftId = String((pay as any)?.shift_id || '').trim() || null;
   const data = {
     voucherNumber: bundle.documentNumber,
     status: 'Posted',
@@ -305,6 +311,7 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
     receivedBy: (bundle as any).receivedBy || null,
     toAccount: (bundle as any).toAccount || null,
     fromAccount: (bundle as any).fromAccount || null,
+    shiftId,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));

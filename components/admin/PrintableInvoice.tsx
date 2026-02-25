@@ -6,6 +6,7 @@ import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { DocumentAuditInfo } from '../../utils/documentStandards';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -80,6 +81,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     deliveryZoneName,
     thermalPaperWidth = '58mm',
     isCopy = false,
+    copyNumber,
     qrCodeDataUrl,
     audit,
     costCenterLabel,
@@ -87,6 +89,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 }) => {
     const effectiveLanguage: 'ar' = language === 'ar' ? 'ar' : 'ar';
     const { getWarehouseById } = useWarehouses();
+    const { getUnitLabel } = useItemMeta();
     const invoiceSnapshot = order.invoiceSnapshot;
     const invoiceOrder = invoiceSnapshot
         ? {
@@ -189,6 +192,31 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
         return v || '';
     })();
     const typeLabel = invoiceTerms === 'credit' ? 'إلى حساب' : 'نقد';
+    const safeUomLabelAr = (codeOrName: string) => {
+        const raw = String(codeOrName || '').trim();
+        if (!raw) return 'وحدة';
+        if (/[\u0600-\u06FF]/.test(raw)) return raw;
+        const label = getUnitLabel(raw as any, 'ar');
+        if (label && /[\u0600-\u06FF]/.test(String(label))) return String(label);
+        const mapped = localizeUomCodeAr(raw);
+        if (!mapped || mapped === '—') return 'وحدة';
+        if (String(mapped).trim() === raw) {
+            const lower = raw.toLowerCase();
+            if (
+                lower === 'piece' || lower === 'pcs' || lower === 'pc' ||
+                lower === 'pack' || lower === 'pkt' ||
+                lower === 'carton' || lower === 'ctn' ||
+                lower === 'box' ||
+                lower === 'bottle' ||
+                lower === 'kg' ||
+                lower === 'gram' || lower === 'g'
+            ) {
+                return mapped;
+            }
+            return 'وحدة';
+        }
+        return mapped;
+    };
     const fmtByCode = (value: number, code: string) => {
         const c = String(code || '').trim().toUpperCase();
         const dp = c === 'YER' ? 0 : 2;
@@ -333,9 +361,12 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                             if (!rawId) return '—';
                             return rawId.replace(/-/g, '').slice(-6).toUpperCase();
                         })();
-                        const soldUnit = pricing.isWeightBased
-                            ? localizeUomCodeAr(String(pricing.unitType || 'kg'))
-                            : localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
+                        const uomCode = String((item as any)?.uomCode || '').trim();
+                        const baseUnit = String((item as any)?.baseUnit || (item as any)?.base_unit || '').trim();
+                        const unitKey = pricing.isWeightBased
+                            ? String(pricing.unitType || 'kg')
+                            : (uomCode || baseUnit || String(item.unitType || 'piece'));
+                        const soldUnit = safeUomLabelAr(unitKey);
                         const soldQty = pricing.isWeightBased ? String(pricing.quantity) : String(item.quantity);
                         const invoiceCurrencyLabel = currencyLabelAr(currencyLabel);
                         const baseUnitPrice = pricing.unitPrice;

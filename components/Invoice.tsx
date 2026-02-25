@@ -139,6 +139,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         if (!raw) return 'وحدة';
         const hasArabic = /[\u0600-\u06FF]/.test(raw);
         if (hasArabic) return raw;
+        const unitTypeLabel = getUnitLabel(raw as any, 'ar');
+        if (unitTypeLabel && /[\u0600-\u06FF]/.test(String(unitTypeLabel))) {
+            return String(unitTypeLabel);
+        }
         const mapped = localizeUomCodeAr(raw);
         if (!mapped || mapped === '—') return 'وحدة';
         if (String(mapped).trim() === raw) {
@@ -163,6 +167,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         if (pricing.isWeightBased) return safeUomLabelAr(String(pricing.unitType || 'kg'));
         const uomCode = String((item as any)?.uomCode || '').trim();
         if (uomCode) return safeUomLabelAr(uomCode);
+        const baseUnit = String((item as any)?.baseUnit || (item as any)?.base_unit || '').trim();
+        if (baseUnit) return safeUomLabelAr(baseUnit);
         if (pricing.unitType) return safeUomLabelAr(String(pricing.unitType));
         const unitTypeLabel = getUnitLabel((item as any)?.unitType, 'ar');
         return unitTypeLabel ? safeUomLabelAr(unitTypeLabel) : 'وحدة';
