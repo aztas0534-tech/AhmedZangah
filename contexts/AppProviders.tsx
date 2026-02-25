@@ -28,11 +28,13 @@ import { PricingProvider } from './PricingContext';
 import { SupplierEnhancementProvider } from './SupplierEnhancementContext';
 import { SessionScopeProvider } from './SessionScopeContext';
 import DbSchemaGuard from '../components/DbSchemaGuard';
+import SupabaseConfigGuard from '../components/SupabaseConfigGuard';
 
 export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return (
         <SettingsProvider>
             <ToastProvider>
+                <SupabaseConfigGuard />
                 <AuthProvider>
                     <DbSchemaGuard />
                     <SessionScopeProvider>
