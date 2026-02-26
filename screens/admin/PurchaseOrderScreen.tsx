@@ -86,6 +86,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [reportingPartial, setReportingPartial] = useState(false);
     const [finalizingNoShortages, setFinalizingNoShortages] = useState(false);
     const [forcingStatusOnly, setForcingStatusOnly] = useState(false);
+    const [repairingPurchaseInJournals, setRepairingPurchaseInJournals] = useState(false);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const fallback = {
             name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
@@ -274,6 +275,95 @@ const PurchaseOrderScreen: React.FC = () => {
             alert(getErrorMessage(e, 'فشل إكمال الحالة.'));
         } finally {
             setForcingStatusOnly(false);
+        }
+    };
+
+    const handleRepairPurchaseInJournalsFromMovements = async () => {
+        if (!canManageAccounting) {
+            showNotification('ليس لديك صلاحية تنفيذ إصلاح القيود.', 'error');
+            return;
+        }
+        if (repairingPurchaseInJournals) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة.', 'error');
+            return;
+        }
+
+        const startDate = window.prompt('أدخل تاريخ البداية (YYYY-MM-DD) أو اتركه فارغاً:', '');
+        if (startDate === null) return;
+        const endDate = window.prompt('أدخل تاريخ النهاية (YYYY-MM-DD) أو اتركه فارغاً:', '');
+        if (endDate === null) return;
+        const limitText = window.prompt('حد أقصى لعدد القيود للفحص/الإصلاح:', '500');
+        if (limitText === null) return;
+        const limit = Math.max(1, Math.min(5000, Number(limitText || 500) || 500));
+
+        const toStartIso = (d: string) => {
+            const x = String(d || '').trim();
+            if (!x) return null;
+            return `${x}T00:00:00Z`;
+        };
+        const toEndIso = (d: string) => {
+            const x = String(d || '').trim();
+            if (!x) return null;
+            return `${x}T23:59:59Z`;
+        };
+
+        const p_start = toStartIso(startDate);
+        const p_end = toEndIso(endDate);
+
+        setRepairingPurchaseInJournals(true);
+        try {
+            const dryRes = await supabase.rpc('repair_purchase_in_journals_from_movements', {
+                p_start,
+                p_end,
+                p_limit: limit,
+                p_dry_run: true,
+            } as any);
+            if ((dryRes as any)?.error) throw (dryRes as any).error;
+            const dryRows = Array.isArray((dryRes as any)?.data) ? ((dryRes as any).data as any[]) : [];
+
+            if (dryRows.length === 0) {
+                showNotification('لا توجد قيود مشتريات تحتاج إصلاح ضمن النطاق.', 'info');
+                return;
+            }
+
+            const dryCount = dryRows.filter((r) => String(r?.action || '') === 'dry_run').length;
+            const skippedCount = dryRows.filter((r) => String(r?.action || '') === 'skipped_complex').length;
+            const preview = dryRows.slice(0, 10).map((r) => {
+                const je = String(r?.journal_entry_id || '').slice(0, 8);
+                const mv = String(r?.movement_id || '').slice(0, 8);
+                const oldC = Number(r?.old_total_cost || 0);
+                const newC = Number(r?.new_total_cost || 0);
+                const act = String(r?.action || '');
+                return `- JE ${je} / MV ${mv} : ${oldC} → ${newC} (${act})`;
+            }).join('\n');
+
+            const ok = window.confirm(
+                `نتيجة الفحص:\n` +
+                `جاهز للإصلاح=${dryCount}\n` +
+                `تم تخطيه (قيد مركّب)=${skippedCount}\n\n` +
+                `عينة:\n${preview}\n\n` +
+                `هل تريد تنفيذ الإصلاح الآن؟`
+            );
+            if (!ok) return;
+
+            const runRes = await supabase.rpc('repair_purchase_in_journals_from_movements', {
+                p_start,
+                p_end,
+                p_limit: limit,
+                p_dry_run: false,
+            } as any);
+            if ((runRes as any)?.error) throw (runRes as any).error;
+            const runRows = Array.isArray((runRes as any)?.data) ? ((runRes as any).data as any[]) : [];
+            const fixedCount = runRows.filter((r) => String(r?.action || '') === 'fixed').length;
+            const runSkipped = runRows.filter((r) => String(r?.action || '') === 'skipped_complex').length;
+
+            showNotification(`تم إصلاح ${fixedCount} قيد. تم تخطي ${runSkipped} قيد مركب.`, 'success');
+        } catch (e) {
+            alert(getErrorMessage(e, localizeSupabaseError(e)));
+        } finally {
+            setRepairingPurchaseInJournals(false);
         }
     };
 
@@ -1939,6 +2029,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                 <Icons.SettingsIcon className="w-5 h-5" />
                                 <span>{reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}</span>
                             </button>
+                            {canManageAccounting ? (
+                                <button
+                                    onClick={() => { void handleRepairPurchaseInJournalsFromMovements(); }}
+                                    disabled={repairingPurchaseInJournals}
+                                    className="bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-800 shadow-lg"
+                                >
+                                    <Icons.SettingsIcon className="w-5 h-5" />
+                                    <span>{repairingPurchaseInJournals ? 'جاري إصلاح القيود...' : 'إصلاح قيود المشتريات'}</span>
+                                </button>
+                            ) : null}
                             <button
                                 onClick={() => { void handleReportPartialPurchaseOrders(); }}
                                 disabled={reportingPartial}

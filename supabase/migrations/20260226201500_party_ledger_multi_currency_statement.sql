@@ -1,5 +1,15 @@
 set app.allow_ledger_ddl = '1';
 
+do $$
+begin
+  begin
+    execute 'drop function if exists public.party_ledger_statement_v2(uuid, text, text, date, date)';
+  exception
+    when dependent_objects_still_exist then
+      execute 'drop function if exists public.party_ledger_statement_v2(uuid, text, text, date, date) cascade';
+  end;
+end $$;
+
 create or replace function public.party_ledger_statement_v2(
   p_party_id uuid,
   p_account_code text default null,
@@ -139,4 +149,3 @@ revoke all on function public.party_ledger_statement_v2(uuid, text, text, date, 
 grant execute on function public.party_ledger_statement_v2(uuid, text, text, date, date) to authenticated;
 
 notify pgrst, 'reload schema';
-
