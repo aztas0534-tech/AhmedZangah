@@ -47,6 +47,8 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const canQc = hasPermission('qc.inspect') || hasPermission('qc.release');
     const [showBatches, setShowBatches] = useState<boolean>(canQc);
     const [qcBusyBatchId, setQcBusyBatchId] = useState<string | null>(null);
+    const canRepairCost = hasPermission('accounting.manage');
+    const [repairCostBusy, setRepairCostBusy] = useState(false);
 
     useEffect(() => {
         setLocalStock(String(currentStock));
@@ -102,6 +104,41 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
         if (v === 'inspected') return 'مفحوص';
         if (v === 'pending' || v === 'quarantined') return 'معلّق';
         return v || 'غير محدد';
+    };
+
+    const refreshBatches = async () => {
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
+            if (error) return;
+            const rows = (data || []) as any[];
+            const mapped = rows.map(r => ({
+                batchId: r.batch_id,
+                occurredAt: r.occurred_at,
+                unitCost: Number(r.unit_cost) || 0,
+                unitCostOriginal: ((): number | undefined => {
+                    const c = Number((r as any)?.unit_cost_original);
+                    return Number.isFinite(c) && c > 0 ? c : undefined;
+                })(),
+                unitCostCurrency: ((): string | undefined => {
+                    const cur = String(((r as any)?.currency) || '').trim().toUpperCase();
+                    return cur || undefined;
+                })(),
+                fxAtReceipt: ((): number | undefined => {
+                    const fx = Number((r as any)?.fx_rate_at_receipt);
+                    return Number.isFinite(fx) && fx > 0 ? fx : undefined;
+                })(),
+                receivedQuantity: Number(r.received_quantity) || 0,
+                consumedQuantity: Number(r.consumed_quantity) || 0,
+                remainingQuantity: Number(r.remaining_quantity) || 0,
+                qcStatus: String(r.qc_status || ''),
+                lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
+                lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
+            })) as ItemBatch[];
+            setBatches(mapped);
+        } catch (_) {
+        }
     };
 
     const runQcInspect = async (batchId: string, result: 'pass' | 'fail') => {
@@ -171,6 +208,39 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                 }
             } catch {
             }
+        }
+    };
+
+    const repairItemCost = async () => {
+        if (!canRepairCost) return;
+        if (repairCostBusy) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة.', 'error');
+            return;
+        }
+        const ok = window.confirm(`سيتم محاولة إصلاح تكلفة هذا الصنف بناءً على أوامر الشراء وسندات الاستلام والدفعات.\nالصنف: ${itemName || item.id}\nهل تريد المتابعة؟`);
+        if (!ok) return;
+        setRepairCostBusy(true);
+        try {
+            const dry = await supabase.rpc('repair_item_purchase_costs', { p_item_id: item.id, p_warehouse_id: warehouseId || null, p_dry_run: true } as any);
+            if ((dry as any)?.error) throw (dry as any).error;
+            const d: any = (dry as any)?.data || {};
+            const ok2 = window.confirm(`نتيجة الفحص:\nسندات تحتاج تعديل=${Number(d?.receiptItemsNeedingFix || 0)}\nدفعات تحتاج تعديل=${Number(d?.batchesNeedingFix || 0)}\n\nهل تريد تنفيذ الإصلاح الآن؟`);
+            if (!ok2) return;
+            const run = await supabase.rpc('repair_item_purchase_costs', { p_item_id: item.id, p_warehouse_id: warehouseId || null, p_dry_run: false } as any);
+            if ((run as any)?.error) throw (run as any).error;
+            const r: any = (run as any)?.data || {};
+            showNotification(
+                `تم الإصلاح: سندات=${Number(r?.receiptItemsUpdated || 0)}، دفعات=${Number(r?.batchesUpdated || 0)}، حركات شراء=${Number(r?.purchaseInMovementsUpdated || 0)}.`,
+                'success'
+            );
+            await refreshBatches();
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : '';
+            showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل إصلاح تكلفة الصنف.', 'error');
+        } finally {
+            setRepairCostBusy(false);
         }
     };
 
@@ -345,6 +415,16 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         )}
                     </div>
                 )}
+                {canRepairCost ? (
+                    <button
+                        type="button"
+                        onClick={() => { void repairItemCost(); }}
+                        disabled={repairCostBusy}
+                        className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {repairCostBusy ? 'جاري إصلاح التكلفة...' : 'إصلاح تكلفة الصنف'}
+                    </button>
+                ) : null}
                 <button
                     type="button"
                     onClick={() => {
