@@ -424,6 +424,7 @@ export const KPIBar: React.FC = () => {
                         margin: netSales > 0 ? (grossProfit / netSales * 100) : 0,
                         grossProfit,
                         netProfit,
+                        cogs: adjustedCogs,
                         collected: Number(salesData?.total_collected) || 0, // Added Collected
                         ar: Number((kpi as any)?.arTotal) || 0,
                         ap: Number((kpi as any)?.apTotal) || 0,
@@ -449,6 +450,7 @@ export const KPIBar: React.FC = () => {
                         margin: prevNetSales > 0 ? (prevGrossProfit / prevNetSales * 100) : 0,
                         grossProfit: prevGrossProfit,
                         netProfit: prevNetProfit,
+                        cogs: prevCogs,
                         collected: Number(prevSalesData?.total_collected) || 0,
                         avgOrderValue: (Number(prevSalesData?.total_orders_accrual) || 0) > 0 ? prevNetSales / (Number(prevSalesData?.total_orders_accrual) || 1) : 0,
                     });
@@ -500,6 +502,16 @@ export const KPIBar: React.FC = () => {
             icon: Icons.TrendingUpIcon,
             gradient: 'from-violet-500 to-purple-600',
             light: 'bg-violet-50 dark:bg-violet-900/20',
+        },
+        {
+            title: 'تكلفة المبيعات',
+            value: stats?.cogs ?? 0,
+            prevValue: prevStats?.cogs ?? 0,
+            format: 'currency' as const,
+            sub: currency,
+            icon: Icons.ReceiptIcon,
+            gradient: 'from-stone-500 to-neutral-600',
+            light: 'bg-stone-50 dark:bg-stone-900/20',
         },
         {
             title: 'صافي الربح',
