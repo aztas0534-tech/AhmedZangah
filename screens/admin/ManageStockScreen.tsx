@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 import RecordWastageModal from '../../components/admin/RecordWastageModal';
 
@@ -49,6 +50,11 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const [qcBusyBatchId, setQcBusyBatchId] = useState<string | null>(null);
     const canRepairCost = hasPermission('accounting.manage');
     const [repairCostBusy, setRepairCostBusy] = useState(false);
+    const getErrorMessage = (error: unknown, fallback: string) => {
+        if (error instanceof Error && error.message) return error.message;
+        const msg = String((error as any)?.message || '');
+        return msg || fallback;
+    };
 
     useEffect(() => {
         setLocalStock(String(currentStock));
@@ -237,8 +243,8 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
             );
             await refreshBatches();
         } catch (e) {
-            const msg = e instanceof Error ? e.message : '';
-            showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل إصلاح تكلفة الصنف.', 'error');
+            const msg = localizeSupabaseError(e) || getErrorMessage(e, 'فشل إصلاح تكلفة الصنف.');
+            showNotification(msg, 'error');
         } finally {
             setRepairCostBusy(false);
         }
