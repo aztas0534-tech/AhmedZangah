@@ -158,12 +158,14 @@ const InvoiceScreen: React.FC = () => {
             const orderCurrency = String((snap?.currency ?? (order as any)?.currency ?? '')).trim().toUpperCase();
             const totalForeign = Number(snap?.total ?? (order as any)?.total ?? 0) || 0;
             const computedInvoiceBase = orderCurrency && orderCurrency !== baseCode ? (totalForeign * fx) : totalForeign;
+            const statementCurrency = (orderCurrency || baseCode).trim().toUpperCase() || baseCode;
+            const invoiceAmountInStatementCurrency = statementCurrency !== baseCode ? totalForeign : computedInvoiceBase;
 
             const loadStatement = async (endIso: string | null) => {
                 const { data, error } = await supabase.rpc('party_ledger_statement_v2', {
                     p_party_id: partyId,
-                    p_account_code: null,
-                    p_currency: null,
+                    p_account_code: '1200',
+                    p_currency: statementCurrency || null,
                     p_start: null,
                     p_end: endIso,
                 } as any);
@@ -189,16 +191,19 @@ const InvoiceScreen: React.FC = () => {
             const orderRows = rows.filter((r) => String(r?.source_table || '').trim().toLowerCase() === 'orders' && String(r?.source_id || '').trim() === String(order.id).trim());
             const lastRow = rows[rows.length - 1];
             const orderRow = orderRows.length ? orderRows[orderRows.length - 1] : null;
-            const running = Number((orderRow || lastRow)?.running_balance || 0) || 0;
+            const running = Number((orderRow || lastRow)?.running_foreign_balance ?? (orderRow || lastRow)?.running_balance ?? 0) || 0;
 
             const deriveInvoiceImpact = () => {
                 if (orderRow) {
-                    const baseAmount = Number(orderRow?.base_amount || 0) || 0;
                     const dir = String(orderRow?.direction || '').trim().toLowerCase();
-                    const signed = (dir === 'credit' ? -1 : 1) * Math.abs(baseAmount);
-                    return { signed, amount: Math.abs(signed) };
+                    const amt = Number(orderRow?.foreign_amount ?? orderRow?.base_amount ?? 0) || 0;
+                    const nb = String(orderRow?.account_normal_balance || 'debit').trim().toLowerCase();
+                    const signed = nb === 'credit'
+                        ? (dir === 'credit' ? 1 : -1) * Math.abs(amt)
+                        : (dir === 'debit' ? 1 : -1) * Math.abs(amt);
+                    return { signed, amount: Math.abs(amt) };
                 }
-                return { signed: Math.abs(computedInvoiceBase), amount: Math.abs(computedInvoiceBase) };
+                return { signed: Math.abs(invoiceAmountInStatementCurrency), amount: Math.abs(invoiceAmountInStatementCurrency) };
             };
             const impact = deriveInvoiceImpact();
             const previous = running - (impact.signed || 0);
@@ -208,7 +213,7 @@ const InvoiceScreen: React.FC = () => {
                     previousBalance: previous,
                     invoiceAmount: impact.amount || 0,
                     newBalance: running,
-                    currencyCode: baseCode,
+                    currencyCode: statementCurrency,
                 });
             }
         })();

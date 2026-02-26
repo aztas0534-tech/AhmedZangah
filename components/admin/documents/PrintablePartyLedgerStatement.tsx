@@ -32,6 +32,7 @@ type StatementRow = {
   open_base_amount: number | null;
   open_foreign_amount: number | null;
   open_status: string | null;
+  running_foreign_balance?: number | null;
   allocations?: any;
 };
 
@@ -58,38 +59,33 @@ export default function PrintablePartyLedgerStatement(props: {
   baseCurrencyCode?: string | null;
   audit?: DocumentAuditInfo | null;
 }) {
-  const { brand, partyId, partyName, accountCode, currency, start, end, rows, printCurrencyCode, printFxRate, baseCurrencyCode, audit } = props;
+  const { brand, partyId, partyName, accountCode, currency, start, end, rows, printCurrencyCode, baseCurrencyCode, audit } = props;
   const selectedCode = String(printCurrencyCode || '').trim().toUpperCase();
   const baseCode = String(baseCurrencyCode || '').trim().toUpperCase();
-  const rate = Number(printFxRate || 1) || 1;
-  const convertValue = (v: number): number => {
-    if (selectedCode && baseCode && selectedCode !== baseCode) return (Number(v || 0) / rate);
-    return Number(v || 0);
+  const filteredRows = selectedCode
+    ? rows.filter((r) => String(r.currency_code || '').trim().toUpperCase() === selectedCode)
+    : rows;
+
+  const amountInRowCurrency = (r: StatementRow) => {
+    const fa = r.foreign_amount;
+    if (fa == null) return Number(r.base_amount || 0) || 0;
+    return Number(fa || 0) || 0;
   };
 
-  const getRowAmount = (row: StatementRow): number => {
-    // If printing in the SAME currency as the transaction, use the original foreign amount!
-    if (selectedCode && row.currency_code && selectedCode === row.currency_code.toUpperCase()) {
-      return Number(row.foreign_amount || 0);
+  const summaries = (() => {
+    const map = new Map<string, { key: string; accountCode: string; currencyCode: string; debit: number; credit: number; last: number }>();
+    for (const r of filteredRows) {
+      const account = String(r.account_code || '').trim();
+      const curr = String(r.currency_code || '').trim().toUpperCase() || '—';
+      const key = `${account}|${curr}`;
+      if (!map.has(key)) map.set(key, { key, accountCode: account, currencyCode: curr, debit: 0, credit: 0, last: 0 });
+      const s = map.get(key)!;
+      const amt = amountInRowCurrency(r);
+      if (r.direction === 'debit') s.debit += amt;
+      if (r.direction === 'credit') s.credit += amt;
+      s.last = Number((r.running_foreign_balance ?? r.running_balance) ?? 0) || 0;
     }
-    // Otherwise, convert Base Amount
-    return convertValue(Number(row.base_amount || 0));
-  };
-
-  const getOpenAmount = (row: StatementRow): number => {
-    // If printing in the SAME currency as the transaction, use the original foreign open amount!
-    if (selectedCode && row.currency_code && selectedCode === row.currency_code.toUpperCase()) {
-      return Number(row.open_foreign_amount || 0);
-    }
-    // Otherwise, convert Base Open Amount
-    return convertValue(Number(row.open_base_amount || 0));
-  };
-
-  const totals = (() => {
-    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? getRowAmount(r) : 0), 0);
-    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? getRowAmount(r) : 0), 0);
-    const last = rows.length ? convertValue(rows[rows.length - 1].running_balance) : 0;
-    return { debit, credit, last };
+    return Array.from(map.values());
   })();
   const periodText = [start ? formatDateOnly(start) : null, end ? formatDateOnly(end) : null]
     .filter(Boolean)
@@ -98,7 +94,7 @@ export default function PrintablePartyLedgerStatement(props: {
     accountCode ? `الحساب: ${accountCode}` : '',
     currency ? `العملة: ${String(currency).toUpperCase()}` : '',
     periodText ? `الفترة: ${periodText}` : '',
-    selectedCode ? `طباعة بعملة: ${selectedCode}${(baseCode && selectedCode !== baseCode && rate > 0) ? ` • سعر: ${rate}` : ''}` : '',
+    selectedCode ? `العملة: ${selectedCode}` : '',
   ]
     .filter(Boolean)
     .join(' • ');
@@ -244,21 +240,40 @@ export default function PrintablePartyLedgerStatement(props: {
       </div>
 
       <div className="summary">
-        <div className="summary-card">
-          <div className="label">إجمالي مدين</div>
-          <div className="value tabular" dir="ltr">{fmt(totals.debit)}</div>
-        </div>
-        <div className="summary-card">
-          <div className="label">إجمالي دائن</div>
-          <div className="value tabular" dir="ltr">{fmt(totals.credit)}</div>
-        </div>
-        <div className="summary-card">
-          <div className="label">الرصيد الحالي</div>
-          <div className="value tabular" dir="ltr">{fmt(totals.last)}</div>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-            {totals.last < 0 ? 'دائن' : totals.last > 0 ? 'مدين' : 'متزن'}
+        {summaries.length === 0 ? (
+          <div className="summary-card">
+            <div className="label">ملخص</div>
+            <div className="value tabular" dir="ltr">{fmt(0)}</div>
           </div>
-        </div>
+        ) : summaries.length === 1 ? (
+          <>
+            <div className="summary-card">
+              <div className="label">إجمالي مدين</div>
+              <div className="value tabular" dir="ltr">{fmt(summaries[0].debit)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{summaries[0].currencyCode}</div>
+            </div>
+            <div className="summary-card">
+              <div className="label">إجمالي دائن</div>
+              <div className="value tabular" dir="ltr">{fmt(summaries[0].credit)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{summaries[0].currencyCode}</div>
+            </div>
+            <div className="summary-card">
+              <div className="label">الرصيد الحالي</div>
+              <div className="value tabular" dir="ltr">{fmt(summaries[0].last)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                {summaries[0].currencyCode} • {summaries[0].last < 0 ? 'دائن' : summaries[0].last > 0 ? 'مدين' : 'متزن'}
+              </div>
+            </div>
+          </>
+        ) : (
+          summaries.slice(0, 3).map((s) => (
+            <div key={s.key} className="summary-card">
+              <div className="label">{s.accountCode} • {s.currencyCode}</div>
+              <div className="value tabular" dir="ltr">{fmt(s.last)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>مدين {fmt(s.debit)} • دائن {fmt(s.credit)}</div>
+            </div>
+          ))
+        )}
       </div>
 
       <table className="lines-table">
@@ -275,28 +290,33 @@ export default function PrintablePartyLedgerStatement(props: {
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
+          {filteredRows.length === 0 ? (
             <tr><td colSpan={8} className="text-center" style={{ padding: 28, color: '#94a3b8' }}>لا توجد حركات</td></tr>
-          ) : rows.map((r) => (
+          ) : filteredRows.map((r) => (
             <tr key={r.journal_line_id}>
               <td className="tabular" dir="ltr">{new Date(r.occurred_at).toLocaleString('en-GB')}</td>
               <td className="tabular" dir="ltr" style={{ fontWeight: 700, color: '#475569' }}>{r.account_code}</td>
               <td style={{ fontWeight: 600 }}>{r.account_name}</td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'debit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'debit' ? fmt(getRowAmount(r)) : '—'}
-                <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
+                {r.direction === 'debit' ? fmt(amountInRowCurrency(r)) : '—'}
+                <div style={{ fontSize: 10, color: '#64748b' }}>{String(r.currency_code || '').toUpperCase()}</div>
               </td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'credit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'credit' ? fmt(getRowAmount(r)) : '—'}
-                <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
+                {r.direction === 'credit' ? fmt(amountInRowCurrency(r)) : '—'}
+                <div style={{ fontSize: 10, color: '#64748b' }}>{String(r.currency_code || '').toUpperCase()}</div>
               </td>
-              <td className="tabular text-center" dir="ltr">{fmt(convertValue(Number(r.running_balance || 0)))}</td>
+              <td className="tabular text-center" dir="ltr">{fmt(Number((r.running_foreign_balance ?? r.running_balance) ?? 0))}</td>
               <td>
                 <div className="tabular" style={{ fontSize: 11 }}>{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
               </td>
               <td>
                 <div className="tabular" dir="ltr" style={{ fontSize: 12 }}>
-                  {r.open_base_amount == null ? '—' : fmt(getOpenAmount(r))}
+                  {(() => {
+                    const curr = String(r.currency_code || '').toUpperCase();
+                    const isBase = baseCode && curr === baseCode;
+                    const primary = isBase ? r.open_base_amount : r.open_foreign_amount;
+                    return primary == null ? '—' : fmt(Number(primary || 0));
+                  })()}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b' }}>
                   {localizeOpenStatusAr(r.open_status)}

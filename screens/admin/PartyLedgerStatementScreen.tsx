@@ -29,6 +29,8 @@ type StatementRow = {
   open_base_amount: number | null;
   open_foreign_amount: number | null;
   open_status: string | null;
+  account_normal_balance?: string | null;
+  running_foreign_balance?: number | null;
   allocations?: any;
 };
 
@@ -57,7 +59,6 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const canManageAccounting = Boolean(hasPermission?.('accounting.manage'));
   const [baseCurrency, setBaseCurrency] = useState<string>('');
   const [printCurrency, setPrintCurrency] = useState<string>('');
-  const [printFxRate, setPrintFxRate] = useState<number>(1);
 
   const load = async () => {
     if (!partyId) return;
@@ -195,40 +196,28 @@ const PartyLedgerStatementScreen: React.FC = () => {
     void run();
     return () => { cancelled = true; };
   }, [partyId, partyType, rows.length]);
-  useEffect(() => {
-    const code = String(printCurrency || '').trim().toUpperCase();
-    if (!code || !baseCurrency) {
-      setPrintFxRate(1);
-      return;
-    }
-    if (code === baseCurrency) {
-      setPrintFxRate(1);
-      return;
-    }
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const { data, error } = await supabase.rpc('get_fx_rate_rpc', {
-          p_currency_code: code,
-        } as any);
-        if (error) throw error;
-        const n = Number(data);
-        const rate = Number.isFinite(n) && n > 0 ? n : 0;
-        if (!cancelled) setPrintFxRate(rate || 0);
-      } catch {
-        if (!cancelled) setPrintFxRate(0);
+  const amountInRowCurrency = (r: StatementRow) => {
+    const fa = r.foreign_amount;
+    if (fa == null) return Number(r.base_amount || 0) || 0;
+    return Number(fa || 0) || 0;
+  };
+
+  const summaries = useMemo(() => {
+    const map = new Map<string, { key: string; accountCode: string; currencyCode: string; debit: number; credit: number; last: number }>();
+    for (const r of rows) {
+      const account = String(r.account_code || '').trim();
+      const curr = String(r.currency_code || '').trim().toUpperCase() || '—';
+      const key = `${account}|${curr}`;
+      if (!map.has(key)) {
+        map.set(key, { key, accountCode: account, currencyCode: curr, debit: 0, credit: 0, last: 0 });
       }
-    };
-    void run();
-    return () => { cancelled = true; };
-  }, [printCurrency, baseCurrency]);
-  const totals = useMemo(() => {
-    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? Number(r.base_amount || 0) : 0), 0);
-    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? Number(r.base_amount || 0) : 0), 0);
-    const last = rows.length ? rows[rows.length - 1].running_balance : 0;
-    return { debit, credit, last };
+      const s = map.get(key)!;
+      const amt = amountInRowCurrency(r);
+      if (r.direction === 'debit') s.debit += amt;
+      if (r.direction === 'credit') s.credit += amt;
+      s.last = Number((r.running_foreign_balance ?? r.running_balance) ?? 0) || 0;
+    }
+    return Array.from(map.values());
   }, [rows]);
 
   const handlePrint = async () => {
@@ -240,10 +229,6 @@ const PartyLedgerStatementScreen: React.FC = () => {
     const desired = String(printCurrency || '').trim().toUpperCase();
     if (desired && !currencyOptions.includes(desired)) {
       showNotification('العملة المختارة غير معرفة ضمن النظام.', 'error');
-      return;
-    }
-    if (desired && desired !== baseCurrency && !(printFxRate > 0)) {
-      showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة اليوم. أضف السعر من شاشة أسعار الصرف.', 'error');
       return;
     }
     setPrinting(true);
@@ -265,8 +250,8 @@ const PartyLedgerStatementScreen: React.FC = () => {
           start={start.trim() || null}
           end={end.trim() || null}
           rows={rows}
-          printCurrencyCode={desired || baseCurrency || null}
-          printFxRate={desired ? (desired === baseCurrency ? 1 : (printFxRate || 0)) : 1}
+          printCurrencyCode={desired || null}
+          printFxRate={null}
           baseCurrencyCode={baseCurrency || null}
           audit={{ printedBy }}
         />
@@ -461,12 +446,8 @@ const PartyLedgerStatementScreen: React.FC = () => {
           />
           <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
             {printCurrency
-              ? (printCurrency === baseCurrency
-                  ? `ستتم الطباعة بالعملة الأساسية (${baseCurrency}).`
-                  : (printFxRate > 0
-                      ? `سعر الصرف: ${baseCurrency} لكل 1 ${printCurrency} = ${printFxRate}`
-                      : 'لا يوجد سعر صرف لهذه العملة اليوم.'))
-              : 'اتركها فارغة للطباعة بالعملة الأساسية.'}
+              ? 'سيتم طباعة كشف الحساب بهذه العملة (بدون تحويل).'
+              : 'اتركها فارغة لطباعة الكشف كما هو (قد يحتوي أكثر من عملة).'}
           </div>
         </div>
         <div className="flex items-end gap-2">
@@ -498,10 +479,27 @@ const PartyLedgerStatementScreen: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-        <div className="text-gray-700 dark:text-gray-200">إجمالي مدين: <span className="font-mono">{totals.debit.toFixed(2)}</span></div>
-        <div className="text-gray-700 dark:text-gray-200">إجمالي دائن: <span className="font-mono">{totals.credit.toFixed(2)}</span></div>
-        <div className="text-gray-700 dark:text-gray-200">الرصيد الحالي: <span className="font-mono">{totals.last.toFixed(2)}</span></div>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 text-sm">
+        {summaries.length === 0 ? (
+          <div className="text-gray-500 dark:text-gray-400">لا توجد بيانات ملخصة.</div>
+        ) : summaries.length === 1 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="text-gray-700 dark:text-gray-200">إجمالي مدين: <span className="font-mono">{summaries[0].debit.toFixed(2)}</span> <span className="text-xs text-gray-500">{summaries[0].currencyCode}</span></div>
+            <div className="text-gray-700 dark:text-gray-200">إجمالي دائن: <span className="font-mono">{summaries[0].credit.toFixed(2)}</span> <span className="text-xs text-gray-500">{summaries[0].currencyCode}</span></div>
+            <div className="text-gray-700 dark:text-gray-200">الرصيد الحالي: <span className="font-mono">{summaries[0].last.toFixed(2)}</span> <span className="text-xs text-gray-500">{summaries[0].currencyCode}</span></div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {summaries.map((s) => (
+              <div key={s.key} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20">
+                <div className="text-xs text-gray-500 dark:text-gray-400">الحساب {s.accountCode} • {s.currencyCode}</div>
+                <div className="mt-1 text-gray-700 dark:text-gray-200">مدين: <span className="font-mono">{s.debit.toFixed(2)}</span></div>
+                <div className="text-gray-700 dark:text-gray-200">دائن: <span className="font-mono">{s.credit.toFixed(2)}</span></div>
+                <div className="text-gray-700 dark:text-gray-200">الرصيد: <span className="font-mono">{s.last.toFixed(2)}</span></div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {rows.length === 0 && aging && aging.total_outstanding > 0 && (
@@ -549,22 +547,40 @@ const PartyLedgerStatementScreen: React.FC = () => {
                       <div className="text-xs text-gray-500 dark:text-gray-400">{r.account_name}</div>
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {r.direction === 'debit' ? Number(r.base_amount || 0).toFixed(2) : '—'}
+                      {r.direction === 'debit' ? amountInRowCurrency(r).toFixed(2) : '—'}
+                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
+                      ) : null}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {r.direction === 'credit' ? Number(r.base_amount || 0).toFixed(2) : '—'}
+                      {r.direction === 'credit' ? amountInRowCurrency(r).toFixed(2) : '—'}
+                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
+                      ) : null}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono">
-                      {r.currency_code}
-                      {r.foreign_amount != null ? <span className="text-xs text-gray-500 dark:text-gray-400"> ({Number(r.foreign_amount).toFixed(2)})</span> : null}
+                      {String(r.currency_code || '').toUpperCase()}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {Number(r.running_balance || 0).toFixed(2)}
+                      {Number((r.running_foreign_balance ?? r.running_balance) ?? 0).toFixed(2)}
+                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.running_balance || 0).toFixed(2)} {baseCurrency})</div>
+                      ) : null}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
                       <div className="font-mono" dir="ltr">
-                        {r.open_base_amount == null ? '—' : Number(r.open_base_amount || 0).toFixed(2)}
+                        {(() => {
+                          const curr = String(r.currency_code || '').toUpperCase();
+                          const isBase = baseCurrency && curr === String(baseCurrency || '').toUpperCase();
+                          const primary = isBase ? r.open_base_amount : r.open_foreign_amount;
+                          return primary == null ? '—' : Number(primary || 0).toFixed(2);
+                        })()}
                       </div>
+                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono" dir="ltr">
+                          {r.open_base_amount == null ? '' : `(${Number(r.open_base_amount || 0).toFixed(2)} ${baseCurrency})`}
+                        </div>
+                      ) : null}
                       {r.open_status ? (
                         <div className="text-xs text-gray-500 dark:text-gray-400">
                           {localizeOpenStatusAr(r.open_status)}
