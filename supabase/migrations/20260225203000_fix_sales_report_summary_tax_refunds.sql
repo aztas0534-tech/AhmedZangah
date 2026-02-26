@@ -1,14 +1,20 @@
+do $do$
+declare
+  v_existing_result text := null;
+  v_returns text := 'jsonb';
+  v_return_expr text := 'v_result';
+  v_template text := $tpl$
 create or replace function public.get_sales_report_summary(
   p_start_date timestamptz,
   p_end_date timestamptz,
   p_zone_id uuid default null,
   p_invoice_only boolean default false
 )
-returns jsonb
+returns __RET__
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $fn$
 declare
   v_total_collected numeric := 0;
   v_total_sales_accrual numeric := 0;
@@ -473,13 +479,29 @@ begin
     'online_count', v_online
   );
 
-  return v_result;
+  return __RETURN__;
 end;
-$$;
+$fn$;
+$tpl$;
+begin
+  begin
+    select pg_get_function_result('public.get_sales_report_summary(timestamptz,timestamptz,uuid,boolean)'::regprocedure)
+    into v_existing_result;
+  exception when undefined_function then
+    v_existing_result := null;
+  end;
+
+  if v_existing_result = 'json' then
+    v_returns := 'json';
+    v_return_expr := 'v_result::json';
+  end if;
+
+  execute replace(replace(v_template, '__RET__', v_returns), '__RETURN__', v_return_expr);
+end;
+$do$;
 
 revoke all on function public.get_sales_report_summary(timestamptz, timestamptz, uuid, boolean) from public;
 revoke execute on function public.get_sales_report_summary(timestamptz, timestamptz, uuid, boolean) from anon;
 grant execute on function public.get_sales_report_summary(timestamptz, timestamptz, uuid, boolean) to authenticated;
 
 notify pgrst, 'reload schema';
-

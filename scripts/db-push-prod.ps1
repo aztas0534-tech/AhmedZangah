@@ -43,15 +43,12 @@ elseif (-not $env:SUPABASE_ACCESS_TOKEN) {
 
 $plain = if ($DbPassword -and $DbPassword.Trim()) { $DbPassword } else { $env:SUPABASE_DB_PASSWORD }
 if (-not $plain -or -not $plain.Trim()) { $plain = $env:SUPABASE_PASSWORD }
-if (-not $plain -or -not $plain.Trim()) { $plain = $env:VITE_SUPABASE_DB_PASSWORD }
 if (-not $plain -or -not $plain.Trim()) {
-  Write-Error "DB password is required. Set -DbPassword or SUPABASE_DB_PASSWORD (or SUPABASE_PASSWORD/VITE_SUPABASE_DB_PASSWORD)."
+  Write-Error "DB password is required. Set -DbPassword or SUPABASE_DB_PASSWORD (or SUPABASE_PASSWORD)."
   exit 1
 }
 
-if (-not $plain -or -not $plain.Trim()) {
-  throw "DB password is required."
-}
+$plain = ([string]$plain).Trim()
 
 Write-Host "Linking project..."
 & npx supabase link --project-ref $projectRef --password $plain

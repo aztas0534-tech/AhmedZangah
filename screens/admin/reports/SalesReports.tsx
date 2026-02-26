@@ -168,10 +168,10 @@ const SalesReports: React.FC = () => {
             const payload: any = {
                 p_start_date: effectiveRange.start.toISOString(),
                 p_end_date: effectiveRange.end.toISOString(),
-                p_zone_id: zoneArg,
+                p_warehouse_id: zoneArg,
                 p_invoice_only: invoiceOnly,
             };
-            const { data, error } = await supabase.rpc('get_daily_sales_stats', payload);
+            const { data, error } = await supabase.rpc('get_daily_sales_stats_v2', payload);
             if (!active) return;
             if (error || !Array.isArray(data)) { showNotification(localizeSupabaseError(error || '')); setDailySalesData([]); return; }
             const rows = ((data as any[]) || [])

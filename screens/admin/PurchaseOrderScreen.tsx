@@ -41,6 +41,7 @@ interface ReceiveRow {
     remaining: number;
     receiveNow: number | string;
     uomCode?: string;
+    uomQtyInBase?: number;
     productionDate?: string;
     expiryDate?: string;
     previousReturned?: number;
@@ -71,6 +72,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const { scope } = useSessionScope();
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, ItemUomRow[]>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
+    const [itemExpiryMetaById, setItemExpiryMetaById] = useState<Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }>>({});
     const [receiptPostingByOrderId, setReceiptPostingByOrderId] = useState<Record<string, { receiptId: string; status: string; error: string }>>({});
     const [receiptPostingLoading, setReceiptPostingLoading] = useState(false);
     const canDelete = user?.role === 'owner';
@@ -814,6 +816,49 @@ const PurchaseOrderScreen: React.FC = () => {
     }, [orderItems, itemUomRowsByItemId]);
 
     useEffect(() => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const ids = Array.from(new Set([
+            ...orderItems.map((r) => String(r.itemId || '').trim()),
+            ...receiveRows.map((r) => String((r as any)?.itemId || '').trim()),
+            ...returnRows.map((r) => String((r as any)?.itemId || '').trim()),
+        ].filter(Boolean)));
+        const missing = ids.filter((id) => !(id in itemExpiryMetaById));
+        if (!missing.length) return;
+
+        let cancelled = false;
+        void (async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('menu_items')
+                    .select('id,is_food,expiry_required,category')
+                    .in('id', missing);
+                if (cancelled) return;
+                if (error) throw error;
+                const rows = Array.isArray(data) ? data : [];
+                const mapped: Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }> = {};
+                for (const r of rows as any[]) {
+                    const id = String((r as any)?.id || '').trim();
+                    if (!id) continue;
+                    mapped[id] = {
+                        isFood: Boolean((r as any)?.is_food),
+                        expiryRequired: Boolean((r as any)?.expiry_required),
+                        category: typeof (r as any)?.category === 'string' ? String((r as any).category) : undefined,
+                    };
+                }
+                setItemExpiryMetaById((prev) => ({ ...prev, ...mapped }));
+            } catch {
+                const fallback: Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }> = {};
+                for (const id of missing) fallback[id] = {};
+                setItemExpiryMetaById((prev) => ({ ...prev, ...fallback }));
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [orderItems, receiveRows, returnRows, itemExpiryMetaById]);
+
+    useEffect(() => {
         if (!isModalOpen) return;
         poCurrencyTouchedRef.current = false;
         poCurrencyInitRef.current = false;
@@ -949,10 +994,13 @@ const PurchaseOrderScreen: React.FC = () => {
         return false;
     };
     const isFoodItem = (itemId: string) => {
+        const cached = itemExpiryMetaById[String(itemId || '').trim()];
+        if (cached && (cached.isFood || cached.expiryRequired)) return true;
+        if (cached?.category && isFoodCategoryValue(cached.category)) return true;
         const item = getItemById(itemId) || (menuItems || []).find((i) => i && i.id === itemId);
         const flagged = Boolean((item as any)?.isFood ?? (item as any)?.is_food ?? (item as any)?.expiryRequired ?? (item as any)?.expiry_required);
         if (flagged) return true;
-        if (isFoodCategoryValue((item as any)?.category)) return true;
+        if (isFoodCategoryValue((item as any)?.category ?? (item as any)?.data?.category)) return true;
         const groupKeyRaw =
             String((item as any)?.group || (item as any)?.groupKey || (item as any)?.group_key || (item as any)?.data?.group || '').trim();
         if (!groupKeyRaw) return false;
@@ -965,6 +1013,46 @@ const PurchaseOrderScreen: React.FC = () => {
     const getQuantityStep = (itemId: string) => {
         const unit = getItemById(itemId)?.unitType;
         return unit === 'kg' || unit === 'gram' ? 0.5 : 1;
+    };
+
+    const getUomOptionsForItem = (itemId: string) => {
+        const it = itemId ? getItemById(itemId) : undefined;
+        const baseUom = String(it?.unitType || 'piece');
+        const baseLabel = (() => {
+            try {
+                const lbl = getUnitLabel(baseUom as any, language as any);
+                return String(lbl || baseUom);
+            } catch {
+                return baseUom;
+            }
+        })();
+        const baseLower = baseUom.toLowerCase();
+        const options: Array<{ code: string; label: string; qtyInBase: number }> = [
+            { code: baseUom, label: baseLabel, qtyInBase: 1 },
+        ];
+        const uomRows = itemId ? (itemUomRowsByItemId[String(itemId)] || []) : [];
+        for (const u of uomRows) {
+            const code = String((u as any)?.code || '').trim();
+            const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
+            if (!code || qtyInBase <= 0) continue;
+            const codeLower = code.toLowerCase();
+            if (codeLower === baseLower) continue;
+            const nameRaw = String((u as any)?.name || '').trim();
+            const displayName = codeLower === 'pack'
+                ? 'باكت'
+                : codeLower === 'carton'
+                    ? 'كرتون'
+                    : (nameRaw || code);
+            const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
+            options.push({ code, label, qtyInBase });
+        }
+        if (options.length === 1) {
+            const packSize = Number((it as any)?.packSize || 0);
+            const cartonSize = Number((it as any)?.cartonSize || 0);
+            if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
+            if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+        }
+        return options;
     };
 
     const normalizeCode = (value: unknown) => String(value || '').trim();
@@ -1143,6 +1231,36 @@ const PurchaseOrderScreen: React.FC = () => {
                 productionDate: normalizeIsoDateOnly(row.productionDate || ''),
                 expiryDate: normalizeIsoDateOnly(row.expiryDate || ''),
             }));
+            let submitExpiryMetaById = itemExpiryMetaById;
+            if (receiveOnCreate) {
+                const supabase = getSupabaseClient();
+                const ids = Array.from(new Set(normalizedItems.map((r) => String(r.itemId || '').trim()).filter(Boolean)));
+                const missing = ids.filter((id) => !(id in submitExpiryMetaById));
+                if (supabase && missing.length > 0) {
+                    try {
+                        const { data, error } = await supabase
+                            .from('menu_items')
+                            .select('id,is_food,expiry_required,category')
+                            .in('id', missing);
+                        if (!error) {
+                            const rows = Array.isArray(data) ? data : [];
+                            const mapped: Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }> = {};
+                            for (const r of rows as any[]) {
+                                const id = String((r as any)?.id || '').trim();
+                                if (!id) continue;
+                                mapped[id] = {
+                                    isFood: Boolean((r as any)?.is_food),
+                                    expiryRequired: Boolean((r as any)?.expiry_required),
+                                    category: typeof (r as any)?.category === 'string' ? String((r as any).category) : undefined,
+                                };
+                            }
+                            submitExpiryMetaById = { ...submitExpiryMetaById, ...mapped };
+                            setItemExpiryMetaById((prev) => ({ ...prev, ...mapped }));
+                        }
+                    } catch {
+                    }
+                }
+            }
             normalizedItems.forEach((row, idx) => {
                 const rowNo = idx + 1;
                 if (!row.itemId) errors.push(`سطر ${rowNo}: الصنف مطلوب`);
@@ -1151,9 +1269,14 @@ const PurchaseOrderScreen: React.FC = () => {
                 const item = row.itemId ? getItemById(row.itemId) : null;
                 const exp = typeof row.expiryDate === 'string' ? row.expiryDate.trim() : '';
                 const hv = typeof row.productionDate === 'string' ? row.productionDate.trim() : '';
-                if (receiveOnCreate && item && item.category === 'food') {
-                    if (!exp) errors.push(`سطر ${rowNo}: تاريخ الانتهاء مطلوب للصنف الغذائي (${item.name.ar})`);
-                    else if (!isIsoDate(exp)) errors.push(`سطر ${rowNo}: صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف (${item.name.ar})`);
+                const cached = submitExpiryMetaById[String(row.itemId || '').trim()];
+                const expiryRequired =
+                    Boolean(cached?.expiryRequired || cached?.isFood) ||
+                    isFoodItem(String(row.itemId || '').trim());
+                if (receiveOnCreate && expiryRequired) {
+                    const nm = item ? item.name.ar : (row.itemId || `سطر ${rowNo}`);
+                    if (!exp) errors.push(`سطر ${rowNo}: تاريخ الانتهاء مطلوب للصنف (${nm})`);
+                    else if (!isIsoDate(exp)) errors.push(`سطر ${rowNo}: صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف (${nm})`);
                 }
                 if (hv && !isIsoDate(hv)) {
                     const nm = item ? item.name.ar : (row.itemId || `سطر ${rowNo}`);
@@ -1526,12 +1649,14 @@ const PurchaseOrderScreen: React.FC = () => {
     const openReturnModal = async (order: PurchaseOrder) => {
         const summary = await getPurchaseReturnSummary(order.id);
         const rows: ReceiveRow[] = (order.items || []).map((it: any) => {
-            const ordered = Number(it.quantity || 0);
+            const ordered = Number(it.qtyBase ?? it.quantity ?? 0);
             const received = Number(it.receivedQuantity || 0);
             const prev = Number(summary[it.itemId] || 0);
             const remaining = Math.max(0, received - prev);
             const stock = stockItems.find(s => s.itemId === it.itemId);
             const available = stock ? Math.max(0, (stock as any).availableQuantity - (stock as any).reservedQuantity) : 0;
+            const base = getItemById(it.itemId);
+            const baseUom = String(base?.unitType || 'piece');
             return {
                 itemId: it.itemId,
                 itemName: it.itemName || it.itemId,
@@ -1540,7 +1665,9 @@ const PurchaseOrderScreen: React.FC = () => {
                 previousReturned: prev,
                 remaining,
                 receiveNow: remaining > 0 ? 0 : 0,
-                available
+                available,
+                uomCode: baseUom,
+                uomQtyInBase: 1,
             };
         });
         setReturnOrder(order);
@@ -1556,10 +1683,27 @@ const PurchaseOrderScreen: React.FC = () => {
         let nextVal = value;
         const num = Number(value);
         if (Number.isFinite(num)) {
-            if (num > row.remaining) nextVal = row.remaining;
+            const qtyInBase = Math.max(1, Number((row as any).uomQtyInBase || 1) || 1);
+            const maxBase = Math.max(0, Math.min(Number(row.remaining || 0), Number(row.available || 0) || 0));
+            const maxUom = qtyInBase > 0 ? (maxBase / qtyInBase) : 0;
+            if (num > maxUom) nextVal = maxUom;
             else if (num < 0) nextVal = 0;
         }
         next[index] = { ...row, receiveNow: nextVal };
+        setReturnRows(next);
+    };
+
+    const updateReturnUom = (index: number, code: string) => {
+        const next = [...returnRows];
+        const row = next[index];
+        const options = getUomOptionsForItem(row.itemId);
+        const found = options.find(o => o.code === code) || options[0];
+        const qtyInBase = Math.max(1, Number(found?.qtyInBase || 1) || 1);
+        const num = Number(row.receiveNow);
+        const maxBase = Math.max(0, Math.min(Number(row.remaining || 0), Number(row.available || 0) || 0));
+        const maxUom = qtyInBase > 0 ? (maxBase / qtyInBase) : 0;
+        const nextReceiveNow = Number.isFinite(num) ? Math.min(Math.max(0, num), maxUom) : row.receiveNow;
+        next[index] = { ...row, uomCode: found.code, uomQtyInBase: qtyInBase, receiveNow: nextReceiveNow };
         setReturnRows(next);
     };
 
@@ -1571,8 +1715,13 @@ const PurchaseOrderScreen: React.FC = () => {
         setIsCreatingReturn(true);
         try {
             const items = returnRows
-                .filter(r => Number(r.receiveNow) > 0)
-                .map(r => ({ itemId: r.itemId, quantity: Number(r.receiveNow) }));
+                .map((r) => {
+                    const qtyInBase = Math.max(1, Number((r as any).uomQtyInBase || 1) || 1);
+                    const qty = Number(r.receiveNow) || 0;
+                    const baseQty = qtyInBase > 0 ? (qty * qtyInBase) : 0;
+                    return { itemId: r.itemId, quantity: baseQty };
+                })
+                .filter(r => Number(r.quantity) > 0);
             if (items.length === 0) {
                 alert('الرجاء إدخال كمية للمرتجع.');
                 return;
@@ -3407,7 +3556,9 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     <th className="p-2 sm:p-3 w-24">مرتجع سابق</th>
                                                     <th className="p-2 sm:p-3 w-24">المتبقي</th>
                                                     <th className="p-2 sm:p-3 w-24">المتاح حالياً</th>
+                                                    <th className="p-2 sm:p-3 w-40">الوحدة</th>
                                                     <th className="p-2 sm:p-3 w-24">مرتجع الآن</th>
+                                                    <th className="p-2 sm:p-3 w-24">يعادل</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -3419,14 +3570,41 @@ const PurchaseOrderScreen: React.FC = () => {
                                                         <td className="p-2 sm:p-2 text-center font-mono">{r.remaining}</td>
                                                         <td className="p-2 sm:p-2 text-center font-mono">{Number(r.available || 0)}</td>
                                                         <td className="p-2 sm:p-2">
+                                                            {(() => {
+                                                                const options = getUomOptionsForItem(r.itemId);
+                                                                const current = String((r as any).uomCode || options[0]?.code || '');
+                                                                const safeCurrent = options.some((o) => String(o.code) === current) ? current : String(options[0]?.code || '');
+                                                                return (
+                                                                    <select
+                                                                        className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                                        value={safeCurrent}
+                                                                        disabled={!r.itemId}
+                                                                        onChange={(e) => updateReturnUom(idx, String(e.target.value || ''))}
+                                                                    >
+                                                                        {options.map((o) => (
+                                                                            <option key={o.code} value={o.code}>{o.label}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                );
+                                                            })()}
+                                                        </td>
+                                                        <td className="p-2 sm:p-2">
                                                             <input
                                                                 type="number"
                                                                 min={0}
-                                                                step={getQuantityStep(r.itemId)}
+                                                                step={(Number((r as any).uomQtyInBase || 1) || 1) > 1 ? 1 : getQuantityStep(r.itemId)}
                                                                 value={r.receiveNow}
                                                                 onChange={(e) => updateReturnRow(idx, e.target.value)}
                                                                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
                                                             />
+                                                        </td>
+                                                        <td className="p-2 sm:p-2 text-center font-mono">
+                                                            {(() => {
+                                                                const qtyInBase = Math.max(1, Number((r as any).uomQtyInBase || 1) || 1);
+                                                                const qty = Number(r.receiveNow) || 0;
+                                                                const baseQty = qtyInBase > 0 ? (qty * qtyInBase) : 0;
+                                                                return Number.isFinite(baseQty) ? baseQty : 0;
+                                                            })()}
                                                         </td>
                                                     </tr>
                                                 ))}

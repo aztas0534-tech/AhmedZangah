@@ -49,6 +49,7 @@ const ProductReports: React.FC = () => {
     const [endDate, setEndDate] = useState('');
     const [selectedZoneId, setSelectedZoneId] = useState<string>('');
     const [rangePreset, setRangePreset] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
+    const [invoiceOnly, setInvoiceOnly] = useState(false);
     const [productSearch, setProductSearch] = useState('');
     const [showAllProducts, setShowAllProducts] = useState(false);
 
@@ -71,19 +72,25 @@ const ProductReports: React.FC = () => {
         const now = new Date();
         const start = new Date(now);
         const end = new Date(now);
-
         if (preset === 'today') {
-            // Start and End are already 'now'
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
         } else if (preset === 'week') {
             const day = now.getDay();
-            const diff = (day + 6) % 7; // Adjust if week starts on Monday
+            const diff = (day + 6) % 7;
             start.setDate(now.getDate() - diff);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
         } else if (preset === 'month') {
             start.setDate(1);
+            start.setHours(0, 0, 0, 0);
             end.setMonth(now.getMonth() + 1, 0);
+            end.setHours(23, 59, 59, 999);
         } else if (preset === 'year') {
             start.setMonth(0, 1);
+            start.setHours(0, 0, 0, 0);
             end.setMonth(11, 31);
+            end.setHours(23, 59, 59, 999);
         }
         setStartDate(toYmdLocal(start));
         setEndDate(toYmdLocal(end));
@@ -194,7 +201,7 @@ const ProductReports: React.FC = () => {
                                     p_start_date: p_start,
                                     p_end_date: p_end,
                                     p_zone_id: zoneArg || undefined,
-                                    p_invoice_only: false,
+                                    p_invoice_only: invoiceOnly,
                                 }),
                             },
                             {
@@ -204,7 +211,7 @@ const ProductReports: React.FC = () => {
                                     p_start_date: String(p_start || ''),
                                     p_end_date: String(p_end || ''),
                                     p_zone_id_text: zoneArg || null,
-                                    p_invoice_only: false,
+                                    p_invoice_only: invoiceOnly,
                                 }),
                             },
                             {
@@ -592,10 +599,11 @@ const ProductReports: React.FC = () => {
                 if (active) setLoading(false);
             }
         };
-        load();
-        return () => { active = false; };
-    }, [range, selectedZoneId]);
-
+        void load();
+        return () => {
+            active = false;
+        };
+    }, [range, selectedZoneId, sessionScope.scope?.warehouseId, invoiceOnly]);
     const processedData = useMemo(() => {
         return reportData.map(row => {
             // Name resolution
@@ -860,6 +868,18 @@ const ProductReports: React.FC = () => {
                             <option key={z.id} value={z.id}>{z.name.ar || z.name.en || z.id}</option>
                         ))}
                     </select>
+                </div>
+                <div className="flex items-center gap-2 mr-4 ml-4">
+                    <label className="relative inline-flex items-center cursor-pointer" title="إظهار الطلبات المفوترة ضريبياً فقط">
+                        <input
+                            type="checkbox"
+                            checked={invoiceOnly}
+                            onChange={(e) => setInvoiceOnly(e.target.checked)}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 dark:peer-focus:ring-orange-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-orange-600"></div>
+                        <span className="ml-3 mr-3 text-sm font-medium text-gray-900 dark:text-gray-300">مفوتر فقط</span>
+                    </label>
                 </div>
                 <div className="flex gap-2 flex-wrap justify-center">
                     <button type="button" onClick={() => applyPreset('today')} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${rangePreset === 'today' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'}`}>اليوم</button>

@@ -252,6 +252,11 @@ export const localizeError = (message: string): string => {
     }
     return 'البيانات المدخلة موجودة مسبقًا.';
   }
+  if (raw.includes('expirydate is required')) {
+    const m = raw.match(/expirydate is required[^%]*?(?:item|for)\s+([a-z0-9-]{6,})/i);
+    const id = m?.[1] ? String(m[1]).trim() : '';
+    return id ? `تاريخ الانتهاء مطلوب للصنف (${id}) عند الاستلام.` : 'تاريخ الانتهاء مطلوب للصنف عند الاستلام.';
+  }
   if (raw.includes('missing required')) return 'الحقول المطلوبة ناقصة.';
   if (raw.includes(' is required') || raw.includes(' required')) return 'الحقول المطلوبة ناقصة.';
   return message;
