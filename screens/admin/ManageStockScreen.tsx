@@ -50,6 +50,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const [qcBusyBatchId, setQcBusyBatchId] = useState<string | null>(null);
     const canRepairCost = hasPermission('accounting.manage');
     const [repairCostBusy, setRepairCostBusy] = useState(false);
+    const [revalueBatchBusy, setRevalueBatchBusy] = useState(false);
     const getErrorMessage = (error: unknown, fallback: string) => {
         if (error instanceof Error && error.message) return error.message;
         const msg = String((error as any)?.message || '');
@@ -250,6 +251,50 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
         }
     };
 
+    const revalueSelectedBatchCost = async () => {
+        if (!canRepairCost) return;
+        if (revalueBatchBusy) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة.', 'error');
+            return;
+        }
+        const targetBatchId = String(selectedBatchId || (batches[0]?.batchId || '')).trim();
+        if (!targetBatchId) {
+            showNotification('لا توجد دفعة صالحة لتعديل تكلفتها.', 'error');
+            return;
+        }
+        const costStr = window.prompt(`أدخل التكلفة الصحيحة لكل وحدة أساسية (${baseCode || 'BASE'}).\nسيتم تطبيقها على الدفعة: ${targetBatchId.slice(0, 8)}\nمثال: 0.52`, '');
+        if (!costStr) return;
+        const newCost = Number(String(costStr).replace(',', '.'));
+        if (!Number.isFinite(newCost) || newCost <= 0) {
+            showNotification('قيمة التكلفة غير صحيحة.', 'error');
+            return;
+        }
+        const reason = (window.prompt('أدخل سبب تعديل التكلفة (إلزامي):', '') || '').trim();
+        if (!reason) return;
+        const ok = window.confirm(`سيتم تعديل تكلفة الدفعة (${targetBatchId.slice(0, 8)}) إلى ${newCost} ${baseCode || ''}.\nوسيتم إنشاء قيد تسوية (Revaluation) تلقائيًا إن أمكن.\nهل تريد المتابعة؟`);
+        if (!ok) return;
+        setRevalueBatchBusy(true);
+        try {
+            const res = await supabase.rpc('revalue_batch_unit_cost', {
+                p_batch_id: targetBatchId,
+                p_new_unit_cost: newCost,
+                p_reason: reason,
+                p_post_journal: true,
+            } as any);
+            if ((res as any)?.error) throw (res as any).error;
+            const d: any = (res as any)?.data || {};
+            showNotification(`تم تعديل تكلفة الدفعة: ${Number(d?.oldUnitCost || 0)} → ${Number(d?.newUnitCost || 0)} ${baseCode || ''}`, 'success');
+            await refreshBatches();
+        } catch (e) {
+            const msg = localizeSupabaseError(e) || getErrorMessage(e, 'فشل تعديل تكلفة الدفعة.');
+            showNotification(msg, 'error');
+        } finally {
+            setRevalueBatchBusy(false);
+        }
+    };
+
     const onStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalStock(e.target.value);
     };
@@ -429,6 +474,16 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {repairCostBusy ? 'جاري إصلاح التكلفة...' : 'إصلاح تكلفة الصنف'}
+                    </button>
+                ) : null}
+                {canRepairCost ? (
+                    <button
+                        type="button"
+                        onClick={() => { void revalueSelectedBatchCost(); }}
+                        disabled={revalueBatchBusy}
+                        className="mt-2 w-full px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {revalueBatchBusy ? 'جاري تعديل تكلفة الدفعة...' : 'تعديل تكلفة الدفعة'}
                     </button>
                 ) : null}
                 <button
