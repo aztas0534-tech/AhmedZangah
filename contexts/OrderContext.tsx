@@ -2525,6 +2525,27 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               return ({ ...newOrder, status: 'delivered' } as Order);
             }
           }
+          {
+            const rawCombined = [
+              String((confirmError as any)?.message || '').trim(),
+              String((confirmError as any)?.details || '').trim(),
+              String((confirmError as any)?.hint || '').trim(),
+            ].filter(Boolean).join(' | ');
+            const upper = rawCombined.toUpperCase();
+            const token =
+              upper.includes('BELOW_COST_REASON_REQUIRED')
+                ? 'BELOW_COST_REASON_REQUIRED'
+                : upper.includes('SELLING_BELOW_COST_NOT_ALLOWED')
+                  ? 'SELLING_BELOW_COST_NOT_ALLOWED'
+                  : null;
+            if (token) {
+              await rollbackCreatedOrder(`below_cost | ${token}`);
+              const e: any = new Error(token);
+              e.pendingOrderId = newOrder.id;
+              e.original = confirmError;
+              throw e;
+            }
+          }
           const code = String((confirmError as any)?.code || '').trim();
           const rawMsg = [
             String((confirmError as any)?.message || '').trim(),

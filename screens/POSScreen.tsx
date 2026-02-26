@@ -1489,7 +1489,45 @@ const POSScreen: React.FC = () => {
         focusSearch();
       }).catch((err) => {
           const code = getBelowCostErrorCode(err);
+          const pendingId = String((err as any)?.pendingOrderId || '').trim();
           if (canOverrideBelowCost && (code === 'BELOW_COST_REASON_REQUIRED' || code === 'SELLING_BELOW_COST_NOT_ALLOWED')) {
+            if (pendingId && code === 'BELOW_COST_REASON_REQUIRED') {
+              setPendingOrderId(pendingId);
+              setPendingSelectedId(pendingId);
+              openBelowCostReasonModal(async (r) => {
+                return resumeInStorePendingOrder(pendingId, {
+                  paymentMethod: payload.paymentMethod,
+                  paymentBreakdown: breakdown.map(p => ({
+                    method: p.method,
+                    amount: Number(p.amount) || 0,
+                    referenceNumber: p.referenceNumber,
+                    senderName: p.senderName,
+                    senderPhone: p.senderPhone,
+                    declaredAmount: p.declaredAmount,
+                    amountConfirmed: p.amountConfirmed,
+                    cashReceived: p.cashReceived,
+                  })),
+                  belowCostOverrideReason: r,
+                } as any).then((order) => {
+                  setPendingOrderId(null);
+                  setItems([]);
+                  resetCustomerFields();
+                  setNotes('');
+                  setDraftInvoice(null);
+                  setPendingSelectedId(null);
+                  showNotification('تم إتمام الطلب بعد إدخال سبب البيع تحت التكلفة', 'success');
+                  void fetchStock();
+                  if (autoOpenInvoice && order?.id) {
+                    const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
+                    const copies = Number(settings?.posFlags?.thermalCopies) || 1;
+                    const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
+                    navigate(`/admin/invoice/${order.id}${q}`);
+                  }
+                  focusSearch();
+                });
+              });
+              return;
+            }
             openBelowCostReasonModal(async (r) => attempt(r));
             return;
           }
