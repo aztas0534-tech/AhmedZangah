@@ -1,3 +1,5 @@
+drop function if exists public.get_sales_report_summary(timestamptz, timestamptz, uuid, boolean);
+
 create or replace function public.get_sales_report_summary(
   p_start_date timestamptz,
   p_end_date timestamptz,

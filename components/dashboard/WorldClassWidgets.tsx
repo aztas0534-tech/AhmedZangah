@@ -396,8 +396,7 @@ export const KPIBar: React.FC = () => {
                     const returnsAmount = Number((salesData as any)?.returns_total ?? salesData?.returns) || 0;
                     const netSales = grossSales - returnsAmount;
                     const cogs = Number(salesData?.cogs) || 0;
-                    const returnsCogs = Number(salesData?.returns_cogs) || 0;
-                    const adjustedCogs = Math.max(0, cogs - returnsCogs);
+                    const adjustedCogs = Math.max(0, cogs);
                     const discounts = Number(salesData?.discounts) || 0;
                     const grossSubtotal = Number(salesData?.gross_subtotal) || 0;
                     const expenses = Number(salesData?.expenses) || 0;
@@ -409,7 +408,7 @@ export const KPIBar: React.FC = () => {
                     const prevGrossSales = Number(prevSalesData?.total_sales_accrual) || 0;
                     const prevReturnsAmount = Number((prevSalesData as any)?.returns_total ?? prevSalesData?.returns) || 0;
                     const prevNetSales = prevGrossSales - prevReturnsAmount;
-                    const prevCogs = Math.max(0, (Number(prevSalesData?.cogs) || 0) - (Number(prevSalesData?.returns_cogs) || 0));
+                    const prevCogs = Math.max(0, Number(prevSalesData?.cogs) || 0);
                     const prevDiscounts = Number(prevSalesData?.discounts) || 0;
                     const prevGrossSubtotal = Number(prevSalesData?.gross_subtotal) || 0;
                     const prevGrossProfit = (prevGrossSubtotal - prevDiscounts - prevReturnsAmount) - prevCogs;

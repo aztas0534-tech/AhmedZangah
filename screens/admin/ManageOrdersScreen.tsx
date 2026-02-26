@@ -113,6 +113,7 @@ const ManageOrdersScreen: React.FC = () => {
     const { isWeightBasedUnit } = useItemMeta();
     const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
+    const [returnsOnly, setReturnsOnly] = useState(false);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
     const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
@@ -1812,6 +1813,13 @@ const ManageOrdersScreen: React.FC = () => {
             processedOrders = processedOrders.filter(order => order.status === filterStatus);
         }
 
+        if (returnsOnly) {
+            processedOrders = processedOrders.filter((order) => {
+                const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
+                return raw === 'full' || raw === 'partial';
+            });
+        }
+
         if (isDeliveryOnly && adminUser?.id) {
             processedOrders = processedOrders.filter(order => order.assignedDeliveryUserId === adminUser.id);
         }
@@ -1838,7 +1846,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, filterStatus, isDeliveryOnly, orders, sortOrder]);
+    }, [adminUser?.id, customerUserIdFilter, filterStatus, isDeliveryOnly, orders, returnsOnly, sortOrder]);
 
     const loadPaidSums = useCallback(async (orderIds: string[]) => {
         const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
@@ -2660,6 +2668,25 @@ const ManageOrdersScreen: React.FC = () => {
                             ))}
                         </select>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="returnsOnly" className="text-sm font-medium dark:text-gray-300">المرتجعات فقط:</label>
+                        <input
+                            id="returnsOnly"
+                            type="checkbox"
+                            checked={returnsOnly}
+                            onChange={(e) => setReturnsOnly(e.target.checked)}
+                            className="h-4 w-4"
+                        />
+                        {returnsOnly && (
+                            <button
+                                type="button"
+                                onClick={() => setReturnsOnly(false)}
+                                className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold"
+                            >
+                                مسح
+                            </button>
+                        )}
+                    </div>
                     <div>
                         <label htmlFor="sortOrder" className="text-sm font-medium dark:text-gray-300 mx-2">ترتيب حسب:</label>
                         <select
@@ -2681,6 +2708,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">رقم الطلب</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">المرتجع</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">بيانات الزبون</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">الأصناف</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">المبلغ</th>
@@ -2692,7 +2720,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                    <td colSpan={8} className="text-center py-10 text-gray-500 dark:text-gray-400">
                                         <div className="flex justify-center items-center space-x-2 rtl:space-x-reverse">
                                             <Spinner />
                                             <span>جاري تحميل الطلبات...</span>
@@ -2700,8 +2728,18 @@ const ManageOrdersScreen: React.FC = () => {
                                     </td>
                                 </tr>
                             ) : filteredAndSortedOrders.length > 0 ? (
-                                filteredAndSortedOrders.map(order => (
-                                    <tr key={order.id} data-order-id={order.id} className={order.id === highlightedOrderId ? 'bg-yellow-50 dark:bg-yellow-900/20' : undefined}>
+                                filteredAndSortedOrders.map(order => {
+                                    const returnStatus = getReturnStatus(order);
+                                    const rowClass =
+                                        order.id === highlightedOrderId
+                                            ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                                            : returnStatus === 'full'
+                                                ? 'bg-red-50/70 dark:bg-red-900/10'
+                                                : returnStatus === 'partial'
+                                                    ? 'bg-amber-50/70 dark:bg-amber-900/10'
+                                                    : undefined;
+                                    return (
+                                    <tr key={order.id} data-order-id={order.id} className={rowClass}>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                             <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
                                             <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
@@ -2710,6 +2748,13 @@ const ManageOrdersScreen: React.FC = () => {
                                                     مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}</span>
                                                 </div>
                                             )}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700 align-top">
+                                            <div className="flex items-center justify-start min-h-[24px]">
+                                                {renderReturnBadge(order, 'pill') || (
+                                                    <span className="text-xs text-gray-400">—</span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                             <div className="text-sm font-medium text-gray-900 dark:text-white">{order.customerName}</div>
@@ -3238,10 +3283,11 @@ const ManageOrdersScreen: React.FC = () => {
                                             )}
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             ) : (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                    <td colSpan={8} className="text-center py-10 text-gray-500 dark:text-gray-400">
                                         لا توجد طلبات تطابق الفلاتر الحالية.
                                     </td>
                                 </tr>
