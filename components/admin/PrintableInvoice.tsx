@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Order } from '../../types';
-import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
 import { useWarehouses } from '../../contexts/WarehouseContext';
@@ -160,6 +159,42 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             return n.toFixed(2);
         }
     };
+
+    const computeInvoiceLine = (item: any, mode: 'base_unit' | 'sold_uom') => {
+        const addonsArray = Object.values(item?.selectedAddons || {});
+        const addonsPrice = addonsArray.reduce((sum: number, { addon, quantity }: any) => sum + (Number(addon?.price) || 0) * (Number(quantity) || 0), 0);
+        const unitType = String(item?.unitType || item?.unit || 'piece');
+        const isWeightBased = unitType === 'kg' || unitType === 'gram';
+
+        let itemPrice = Number(item?.price) || 0;
+        let soldQty = Number(item?.quantity) || 0;
+        if (isWeightBased) {
+            soldQty = typeof item?.weight === 'number' ? Number(item?.weight) || 0 : soldQty;
+            if (unitType === 'gram' && item?.pricePerUnit) {
+                itemPrice = (Number(item?.pricePerUnit) || 0) / 1000;
+            }
+        }
+
+        const factor = isWeightBased ? 1 : (Number(item?.uomQtyInBase || 1) || 1);
+        const baseUnitPrice = itemPrice + addonsPrice;
+        const qtyForLine = isWeightBased ? soldQty : (mode === 'base_unit' ? (soldQty * factor) : soldQty);
+        const lineTotal = baseUnitPrice * qtyForLine;
+        const displayUnitPrice = isWeightBased ? baseUnitPrice : (mode === 'base_unit' ? (baseUnitPrice * factor) : baseUnitPrice);
+
+        return { addonsArray, isWeightBased, factor, soldQty, displayUnitPrice, lineTotal, unitType };
+    };
+
+    const invoicePricingMode: 'base_unit' | 'sold_uom' = (() => {
+        const targetSubtotal = Number((invoiceOrder as any)?.subtotal) || 0;
+        if (!(targetSubtotal > 0) || !Array.isArray((invoiceOrder as any)?.items) || (invoiceOrder as any).items.length === 0) {
+            return 'base_unit';
+        }
+        const sumBase = (invoiceOrder as any).items.reduce((sum: number, item: any) => sum + (computeInvoiceLine(item, 'base_unit').lineTotal || 0), 0);
+        const sumUom = (invoiceOrder as any).items.reduce((sum: number, item: any) => sum + (computeInvoiceLine(item, 'sold_uom').lineTotal || 0), 0);
+        const diffBase = Math.abs(sumBase - targetSubtotal);
+        const diffUom = Math.abs(sumUom - targetSubtotal);
+        return diffUom + 0.01 < diffBase ? 'sold_uom' : 'base_unit';
+    })();
 
     // Generate ZATCA QR Code Data
     const qrData = generateZatcaTLV(
@@ -353,7 +388,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 </thead>
                 <tbody>
                     {invoiceOrder.items.map((item, index) => {
-                        const pricing = computeCartItemPricing(item);
+                        const pricing = computeInvoiceLine(item, invoicePricingMode);
                         const itemNo = (() => {
                             const rawBarcode = String((item as any)?.barcode || '').trim();
                             if (rawBarcode) return rawBarcode;
@@ -367,11 +402,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                             ? String(pricing.unitType || 'kg')
                             : (uomCode || baseUnit || String(item.unitType || 'piece'));
                         const soldUnit = safeUomLabelAr(unitKey);
-                        const soldQty = pricing.isWeightBased ? String(pricing.quantity) : String(item.quantity);
+                        const soldQty = pricing.isWeightBased ? String(pricing.soldQty) : String(item.quantity);
                         const invoiceCurrencyLabel = currencyLabelAr(currencyLabel);
-                        const baseUnitPrice = pricing.unitPrice;
-                        const factor = pricing.isWeightBased ? 1 : (Number((item as any)?.uomQtyInBase || 1) || 1);
-                        const soldUnitPrice = pricing.isWeightBased ? baseUnitPrice : baseUnitPrice * factor;
+                        const soldUnitPrice = pricing.displayUnitPrice;
                         const lineTotal = pricing.lineTotal;
 
                         return (

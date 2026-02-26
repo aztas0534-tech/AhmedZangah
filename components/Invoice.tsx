@@ -1,7 +1,6 @@
 import { forwardRef, useEffect, useMemo, useState } from 'react';
 import { Order, AppSettings, CartItem } from '../types';
 import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
-import { computeCartItemPricing } from '../utils/orderUtils';
 import QRCode from 'qrcode';
 import { generateZatcaTLV } from './admin/PrintableInvoice';
 import { AZTA_IDENTITY } from '../config/identity';
@@ -95,6 +94,30 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     const { getUnitLabel } = useItemMeta();
     const isDense = invoiceOrder.items.length >= 18;
 
+    const computeInvoiceLine = (item: CartItem, mode: 'base_unit' | 'sold_uom') => {
+        const addonsArray = Object.values(item.selectedAddons || {});
+        const addonsPrice = addonsArray.reduce((sum, { addon, quantity }: any) => sum + (Number(addon?.price) || 0) * (Number(quantity) || 0), 0);
+        const unitType = String((item as any).unitType || (item as any).unit || 'piece');
+        const isWeightBased = unitType === 'kg' || unitType === 'gram';
+
+        let itemPrice = Number((item as any).price) || 0;
+        let soldQty = Number((item as any).quantity) || 0;
+        if (isWeightBased) {
+            soldQty = typeof (item as any).weight === 'number' ? Number((item as any).weight) || 0 : soldQty;
+            if (unitType === 'gram' && (item as any).pricePerUnit) {
+                itemPrice = (Number((item as any).pricePerUnit) || 0) / 1000;
+            }
+        }
+
+        const factor = isWeightBased ? 1 : (Number((item as any)?.uomQtyInBase || 1) || 1);
+        const baseUnitPrice = itemPrice + addonsPrice;
+        const qtyForLine = isWeightBased ? soldQty : (mode === 'base_unit' ? (soldQty * factor) : soldQty);
+        const lineTotal = baseUnitPrice * qtyForLine;
+        const displayUnitPrice = isWeightBased ? baseUnitPrice : (mode === 'base_unit' ? (baseUnitPrice * factor) : baseUnitPrice);
+
+        return { addonsArray, isWeightBased, unitType, factor, soldQty, baseUnitPrice, displayUnitPrice, lineTotal };
+    };
+
     const formatMoney = (v: number) => {
         const n = Number(v || 0);
         if (!Number.isFinite(n)) return '0.00';
@@ -163,7 +186,13 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         return mapped;
     };
 
-    const getSoldUnitLabelAr = (item: CartItem, pricing: ReturnType<typeof computeCartItemPricing>) => {
+    type InvoiceLinePricing = {
+        isWeightBased: boolean;
+        unitType?: string;
+        soldQty: number;
+    };
+
+    const getSoldUnitLabelAr = (item: CartItem, pricing: InvoiceLinePricing) => {
         if (pricing.isWeightBased) return safeUomLabelAr(String(pricing.unitType || 'kg'));
         const uomCode = String((item as any)?.uomCode || '').trim();
         if (uomCode) return safeUomLabelAr(uomCode);
@@ -174,8 +203,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         return unitTypeLabel ? safeUomLabelAr(unitTypeLabel) : 'وحدة';
     };
 
-    const getSoldQuantityTextAr = (item: CartItem, pricing: ReturnType<typeof computeCartItemPricing>) => {
-        if (pricing.isWeightBased) return String(pricing.quantity);
+    const getSoldQuantityTextAr = (item: CartItem, pricing: InvoiceLinePricing) => {
+        if (pricing.isWeightBased) return String(pricing.soldQty);
         return String(item.quantity);
     };
 
@@ -185,6 +214,18 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         const vatTotal = taxAmount.toFixed(2);
         return generateZatcaTLV(systemName || systemKey || '—', vatNumber, issueIso, total, vatTotal);
     }, [issueIso, invoiceOrder.total, systemKey, systemName, taxAmount, vatNumber]);
+
+    const invoicePricingMode = useMemo<'base_unit' | 'sold_uom'>(() => {
+        const targetSubtotal = Number((invoiceOrder as any)?.subtotal) || 0;
+        if (!(targetSubtotal > 0) || !Array.isArray(invoiceOrder.items) || invoiceOrder.items.length === 0) {
+            return 'base_unit';
+        }
+        const sumBase = invoiceOrder.items.reduce((sum: number, item: any) => sum + (computeInvoiceLine(item as CartItem, 'base_unit').lineTotal || 0), 0);
+        const sumUom = invoiceOrder.items.reduce((sum: number, item: any) => sum + (computeInvoiceLine(item as CartItem, 'sold_uom').lineTotal || 0), 0);
+        const diffBase = Math.abs(sumBase - targetSubtotal);
+        const diffUom = Math.abs(sumUom - targetSubtotal);
+        return diffUom + 0.01 < diffBase ? 'sold_uom' : 'base_unit';
+    }, [invoiceOrder.items, (invoiceOrder as any)?.subtotal]);
 
     const [qrUrl, setQrUrl] = useState<string>('');
 
@@ -463,13 +504,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     </thead>
                     <tbody className="text-slate-800 text-sm print:text-[10px] bg-white">
                         {invoiceOrder.items.map((item: CartItem, idx: number) => {
-                            const pricing = computeCartItemPricing(item);
                             const itemNo = getItemNumber(item);
-                            const soldUnitLabel = getSoldUnitLabelAr(item, pricing);
-                            const soldQtyText = getSoldQuantityTextAr(item, pricing);
-                            const baseUnitPrice = pricing.unitPrice;
-                            const factor = pricing.isWeightBased ? 1 : (Number((item as any)?.uomQtyInBase || 1) || 1);
-                            const soldUnitPrice = pricing.isWeightBased ? baseUnitPrice : baseUnitPrice * factor;
+                            const pricing = computeInvoiceLine(item, invoicePricingMode);
+                            const soldUnitLabel = getSoldUnitLabelAr(item, pricing as any);
+                            const soldQtyText = getSoldQuantityTextAr(item, pricing as any);
+                            const factor = pricing.factor;
+                            const soldUnitPrice = pricing.displayUnitPrice;
                             const lineTotal = pricing.lineTotal;
                             const baseUnitLabel = (() => {
                                 if (pricing.isWeightBased) return soldUnitLabel;
@@ -485,7 +525,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                         <div className="font-bold text-slate-900 text-base print:text-[11px] print:leading-tight">{item.name?.[lang] || item.name?.ar || item.name?.en || item.id}</div>
                                         {!isDense && pricing.addonsArray.length > 0 && (
                                             <div className="flex flex-wrap gap-1 text-xs print:text-[9px] text-slate-500 mt-1.5 print:mt-0.5">
-                                                {pricing.addonsArray.map(({ addon, quantity }) => (
+                                                {pricing.addonsArray.map(({ addon, quantity }: any) => (
                                                     <span key={addon.id} className="bg-slate-50 px-1.5 py-0.5 rounded text-slate-700 border border-slate-200 print:bg-transparent print:border-0 print:px-0 print:py-0 print:rounded-none">
                                                         + {addon.name?.[lang] || addon.name?.ar} {quantity > 1 ? `(${quantity})` : ''}
                                                     </span>

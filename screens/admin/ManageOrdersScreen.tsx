@@ -4261,25 +4261,74 @@ const ManageOrdersScreen: React.FC = () => {
                                                             value={String(line.uomCode || mi.unitType || 'piece')}
                                                             onChange={(e) => {
                                                                 const code = String(e.target.value || '').trim();
-                                                                const options = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
+                                                                const baseLabel = String(mi.unitType || 'piece');
+                                                                const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                                                                const fromMap = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
                                                                     ? itemUomRowsByItemId[mi.id]
-                                                                    : (Array.isArray((mi as any)?.uomUnits) ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>) : []);
-                                                                const baseLabel = (mi.unitType || 'piece');
-                                                                const found = options.find((o: any) => String(o?.code || '') === code);
-                                                                const qtyBase = Number(found?.qtyInBase || (code === baseLabel ? 1 : 0)) || (code === baseLabel ? 1 : 0);
+                                                                    : [];
+                                                                const fromItem = Array.isArray((mi as any)?.uomUnits)
+                                                                    ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>)
+                                                                    : [];
+                                                                const merged = [
+                                                                    { code: baseLabel, name: baseDisplay, qtyInBase: 1 },
+                                                                    ...fromMap,
+                                                                    ...fromItem,
+                                                                ].filter((o: any) => String(o?.code || '').trim());
+                                                                const uniq = new Map<string, { code: string; name?: string; qtyInBase: number }>();
+                                                                for (const o of merged) {
+                                                                    const c = String((o as any).code || '').trim();
+                                                                    if (!c) continue;
+                                                                    const qty = Number((o as any).qtyInBase || 0) || 0;
+                                                                    if (!(qty > 0)) continue;
+                                                                    if (!uniq.has(c)) uniq.set(c, { code: c, name: (o as any).name, qtyInBase: qty });
+                                                                }
+                                                                if (!uniq.has('pack')) {
+                                                                    const packSize = Number((mi as any)?.packSize || 0);
+                                                                    if (packSize > 0) uniq.set('pack', { code: 'pack', name: 'باكت', qtyInBase: packSize });
+                                                                }
+                                                                if (!uniq.has('carton')) {
+                                                                    const cartonSize = Number((mi as any)?.cartonSize || 0);
+                                                                    if (cartonSize > 0) uniq.set('carton', { code: 'carton', name: 'كرتون', qtyInBase: cartonSize });
+                                                                }
+                                                                const options = Array.from(uniq.values());
+                                                                const found = options.find((o) => String(o?.code || '').trim() === code);
+                                                                const qtyBase = found ? Number(found.qtyInBase) || 1 : (Number(line.uomQtyInBase || 1) || 1);
                                                                 updateInStoreLine(index, { uomCode: code, uomQtyInBase: qtyBase });
                                                             }}
                                                             className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                                         >
                                                             {(() => {
-                                                                const options = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
-                                                                    ? itemUomRowsByItemId[mi.id]
-                                                                    : (Array.isArray((mi as any)?.uomUnits) ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>) : []);
-                                                                const baseLabel = (mi.unitType || 'piece');
+                                                                const baseLabel = String(mi.unitType || 'piece');
                                                                 const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
-                                                                const baseOpt = [{ code: baseLabel, name: baseDisplay, qtyInBase: 1 }];
-                                                                const merged = [...baseOpt, ...options.filter((o: any) => String(o?.code || '') !== baseLabel)];
-                                                                return merged.map((o: any) => {
+                                                                const fromMap = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
+                                                                    ? itemUomRowsByItemId[mi.id]
+                                                                    : [];
+                                                                const fromItem = Array.isArray((mi as any)?.uomUnits)
+                                                                    ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>)
+                                                                    : [];
+                                                                const merged = [
+                                                                    { code: baseLabel, name: baseDisplay, qtyInBase: 1 },
+                                                                    ...fromMap,
+                                                                    ...fromItem,
+                                                                ].filter((o: any) => String(o?.code || '').trim());
+                                                                const uniq = new Map<string, { code: string; name?: string; qtyInBase: number }>();
+                                                                for (const o of merged) {
+                                                                    const c = String((o as any).code || '').trim();
+                                                                    if (!c) continue;
+                                                                    const qty = Number((o as any).qtyInBase || 0) || 0;
+                                                                    if (!(qty > 0)) continue;
+                                                                    if (!uniq.has(c)) uniq.set(c, { code: c, name: (o as any).name, qtyInBase: qty });
+                                                                }
+                                                                if (!uniq.has('pack')) {
+                                                                    const packSize = Number((mi as any)?.packSize || 0);
+                                                                    if (packSize > 0) uniq.set('pack', { code: 'pack', name: 'باكت', qtyInBase: packSize });
+                                                                }
+                                                                if (!uniq.has('carton')) {
+                                                                    const cartonSize = Number((mi as any)?.cartonSize || 0);
+                                                                    if (cartonSize > 0) uniq.set('carton', { code: 'carton', name: 'كرتون', qtyInBase: cartonSize });
+                                                                }
+                                                                const options = Array.from(uniq.values()).sort((a, b) => (a.qtyInBase || 0) - (b.qtyInBase || 0));
+                                                                return options.map((o: any) => {
                                                                     const codeLower = String(o.code || '').trim().toLowerCase();
                                                                     const nameRaw = String(o.name || '').trim();
                                                                     const displayName = codeLower === 'pack'
