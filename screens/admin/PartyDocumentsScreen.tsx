@@ -77,6 +77,8 @@ export default function PartyDocumentsScreen() {
   const [fxRate, setFxRate] = useState<string>('');
   const [foreignAmount, setForeignAmount] = useState<string>('');
   const [fxSource, setFxSource] = useState<'system' | 'unknown'>('unknown');
+  const [partyRegisteredCurrencies, setPartyRegisteredCurrencies] = useState<string[]>([]);
+  const [partyBalances, setPartyBalances] = useState<{ currency_code: string; account_code: string; foreign_balance: number }[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -122,6 +124,29 @@ export default function PartyDocumentsScreen() {
     void load();
     void loadParties();
   }, []);
+
+  // Load party currencies and balances when partyId changes
+  useEffect(() => {
+    if (!partyId) return;
+    let active = true;
+    const loadPartyCurrencies = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const [{ data: pcData }, { data: balData }] = await Promise.all([
+          supabase.from('party_currencies').select('currency_code').eq('party_id', partyId),
+          supabase.rpc('get_party_balance_by_currency', { p_party_id: partyId } as any),
+        ]);
+        if (!active) return;
+        setPartyRegisteredCurrencies(
+          (Array.isArray(pcData) ? pcData : []).map((r: any) => String(r.currency_code || '')).filter(Boolean)
+        );
+        setPartyBalances((Array.isArray(balData) ? balData : []) as any);
+      } catch { /* silent */ }
+    };
+    void loadPartyCurrencies();
+    return () => { active = false; };
+  }, [partyId]);
 
   useEffect(() => {
     void getBaseCurrencyCode().then((c) => {
@@ -572,9 +597,49 @@ export default function PartyDocumentsScreen() {
                 </div>
               </div>
 
+              {/* Party balance preview */}
+              {partyBalances.length > 0 && (
+                <div className="bg-gray-50 dark:bg-gray-900/30 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">أرصدة الطرف الحالية:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {partyBalances.map((b, i) => (
+                      <div key={`${b.currency_code}-${b.account_code}-${i}`} className="text-xs px-2 py-1 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                        <span className="font-mono text-primary-700 dark:text-primary-300">{b.currency_code}</span>
+                        <span className="mx-1 text-gray-400">|</span>
+                        <span className="font-mono">{Number(b.foreign_balance || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="mx-1 text-gray-400">({b.account_code})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">العملة (اختياري)</label>
+                  {/* Party currency quick-select */}
+                  {partyRegisteredCurrencies.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {partyRegisteredCurrencies.filter(c => c !== baseCurrencyCode).map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setCurrencyCode(c);
+                            setFxRate('');
+                            setForeignAmount('');
+                            setFxSource('unknown');
+                          }}
+                          className={`px-2 py-0.5 rounded text-xs font-mono transition-colors ${normalizedCurrency === c
+                              ? 'bg-primary-600 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-primary-100'
+                            }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <select
                     value={currencyCode}
                     onChange={(e) => {
@@ -590,7 +655,7 @@ export default function PartyDocumentsScreen() {
                       .filter((c) => c !== baseCurrencyCode)
                       .map((c) => (
                         <option key={c} value={c}>
-                          {c}
+                          {c}{partyRegisteredCurrencies.includes(c) ? ' ★' : ''}
                         </option>
                       ))}
                   </select>

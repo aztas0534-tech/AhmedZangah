@@ -59,6 +59,22 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const canManageAccounting = Boolean(hasPermission?.('accounting.manage'));
   const [baseCurrency, setBaseCurrency] = useState<string>('');
   const [printCurrency, setPrintCurrency] = useState<string>('');
+  const [currencyBalances, setCurrencyBalances] = useState<{ currency_code: string; account_code: string; account_name: string; foreign_balance: number; base_balance: number }[]>([]);
+  const [partyCurrencies, setPartyCurrencies] = useState<string[]>([]);
+
+  const loadCurrencyBalances = async () => {
+    if (!partyId) return;
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const [{ data: balData }, { data: pcData }] = await Promise.all([
+        supabase.rpc('get_party_balance_by_currency', { p_party_id: partyId } as any),
+        supabase.from('party_currencies').select('currency_code').eq('party_id', partyId),
+      ]);
+      setCurrencyBalances((Array.isArray(balData) ? balData : []) as any);
+      setPartyCurrencies((Array.isArray(pcData) ? pcData : []).map((r: any) => String(r.currency_code || '')).filter(Boolean));
+    } catch { /* silent */ }
+  };
 
   const load = async () => {
     if (!partyId) return;
@@ -75,13 +91,16 @@ const PartyLedgerStatementScreen: React.FC = () => {
       setPartyName(String((partyRow as any)?.name || '—'));
       setPartyType(String((partyRow as any)?.party_type || 'party'));
 
-      const { data, error } = await supabase.rpc('party_ledger_statement_v2', {
-        p_party_id: partyId,
-        p_account_code: accountCode.trim() || null,
-        p_currency: currency.trim().toUpperCase() || null,
-        p_start: start.trim() || null,
-        p_end: end.trim() || null,
-      } as any);
+      const [{ data, error }] = await Promise.all([
+        supabase.rpc('party_ledger_statement_v2', {
+          p_party_id: partyId,
+          p_account_code: accountCode.trim() || null,
+          p_currency: currency.trim().toUpperCase() || null,
+          p_start: start.trim() || null,
+          p_end: end.trim() || null,
+        } as any),
+        loadCurrencyBalances(),
+      ]);
       if (error) throw error;
       setRows((Array.isArray(data) ? data : []) as any);
 
@@ -301,13 +320,13 @@ const PartyLedgerStatementScreen: React.FC = () => {
       if (!supabase) throw new Error('supabase not available');
       const { data, error } = canManageAccounting
         ? await supabase.rpc('backfill_party_ledger_for_existing_entries', {
-            p_batch: 5000,
-            p_only_party_id: partyId,
-          } as any)
+          p_batch: 5000,
+          p_only_party_id: partyId,
+        } as any)
         : await supabase.rpc('backfill_party_ledger_entries_for_party', {
-            p_party_id: partyId,
-            p_batch: 5000,
-          } as any);
+          p_party_id: partyId,
+          p_batch: 5000,
+        } as any);
       if (error) throw error;
       const count = Number(data) || 0;
       setLastBackfillCount(count);
@@ -478,6 +497,61 @@ const PartyLedgerStatementScreen: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Per-currency balance cards */}
+      {currencyBalances.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          {currencyBalances.map((cb, i) => (
+            <div
+              key={`${cb.currency_code}-${cb.account_code}-${i}`}
+              className="relative overflow-hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 cursor-pointer hover:shadow-xl transition-shadow"
+              onClick={() => { setCurrency(cb.currency_code); void load(); }}
+            >
+              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary-500 to-gold-500 rounded-l-xl" />
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-lg font-bold text-primary-700 dark:text-primary-300 font-mono">{cb.currency_code}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{cb.account_code}</span>
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{cb.account_name}</div>
+              <div className="text-xl font-bold text-gray-900 dark:text-white font-mono" dir="ltr">
+                {Number(cb.foreign_balance || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              {baseCurrency && cb.currency_code.toUpperCase() !== baseCurrency.toUpperCase() && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1" dir="ltr">
+                  ≈ {Number(cb.base_balance || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCurrency}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Party registered currencies */}
+      {partyCurrencies.length > 1 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-3 mb-4 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500 dark:text-gray-400">عملات الطرف:</span>
+          {partyCurrencies.map((c) => (
+            <button
+              key={c}
+              onClick={() => { setCurrency(c); }}
+              className={`px-3 py-1 rounded-full text-xs font-mono transition-colors ${currency.toUpperCase() === c.toUpperCase()
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-primary-100 dark:hover:bg-primary-900/30'
+                }`}
+            >
+              {c}
+            </button>
+          ))}
+          {currency && (
+            <button
+              onClick={() => setCurrency('')}
+              className="px-3 py-1 rounded-full text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-red-100 dark:hover:bg-red-900/30"
+            >
+              الكل ×
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 text-sm">
         {summaries.length === 0 ? (
