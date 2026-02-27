@@ -73,7 +73,6 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
                 const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-                console.log('[QC_DEBUG] get_item_batches response:', { itemId: item.id, error, rowCount: (data || []).length, data });
                 if (error) return;
                 const rows = (data || []) as any[];
                 const mapped = rows.map(r => ({
@@ -423,7 +422,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                     {(b as any).lastQcResult ? ` • آخر نتيجة: ${(b as any).lastQcResult === 'pass' ? 'نجح' : 'فشل'}` : ''}
                                                 </div>
                                                 <div className="flex items-center gap-2 mt-2">
-                                                    {(String((b as any).qcStatus || '') === 'pending' || String((b as any).qcStatus || '') === 'quarantined') && (
+                                                    {(String((b as any).qcStatus || '') === 'pending' || String((b as any).qcStatus || '') === 'quarantined') && hasPermission('qc.inspect') && (
                                                         <>
                                                             <button
                                                                 type="button"
@@ -443,7 +442,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                             </button>
                                                         </>
                                                     )}
-                                                    {String((b as any).qcStatus || '') === 'inspected' && (b as any).lastQcResult === 'pass' && (
+                                                    {String((b as any).qcStatus || '') === 'inspected' && (b as any).lastQcResult === 'pass' && hasPermission('qc.release') && (
                                                         <button
                                                             type="button"
                                                             onClick={() => runQcRelease(String(b.batchId))}
