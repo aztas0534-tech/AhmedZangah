@@ -180,6 +180,11 @@ begin
     values
       (v_entry_id, v_inventory, v_mv.total_cost, 0, 'Adjustment in'),
       (v_entry_id, v_gain, 0, v_mv.total_cost, 'Inventory gain');
+  elsif v_mv.movement_type = 'return_out' then
+    insert into public.journal_lines(journal_entry_id, account_id, debit, credit, line_memo)
+    values
+      (v_entry_id, v_ap, v_mv.total_cost, 0, 'Purchase return debit'),
+      (v_entry_id, v_inventory, 0, v_mv.total_cost, 'Purchase return inventory out');
   end if;
 end;
 $$;

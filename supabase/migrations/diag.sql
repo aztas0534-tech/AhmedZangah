@@ -1,0 +1,3 @@
+select id, order_id, status, refund_method, total_refund_amount from public.sales_returns where id::text ilike '%d11611';
+select id, source_table, source_id, source_event, status from public.journal_entries where source_table = 'sales_returns' and source_id in (select id::text from public.sales_returns where id::text ilike '%d11611');
+select id, account_id, debit, credit, line_memo from public.journal_lines where journal_entry_id in (select id from public.journal_entries where source_table = 'sales_returns' and source_id in (select id::text from public.sales_returns where id::text ilike '%d11611'));
