@@ -56,7 +56,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
   const { data, brand } = props;
   const totalDebit = data.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
   const totalCredit = data.lines.reduce((s, l) => s + Number(l.credit || 0), 0);
-  
+
   // Format date safely to avoid RTL scrambling
   const formattedDate = new Date(data.date).toLocaleDateString('en-GB');
   const formattedHijriDate = (() => {
@@ -100,7 +100,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
   return (
     <div className="voucher-container" dir="rtl">
-        <style>{`
+      <style>{`
             @media print {
                 @page { size: A4; margin: 0; }
                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -233,183 +233,185 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
           {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 120, marginBottom: 15 }} />}
           <h1>{AZTA_IDENTITY.tradeNameAr}</h1>
           {(brand?.name || brand?.branchName) && (
-             <p style={{ fontSize: 16, fontWeight: 'bold', color: '#334155', marginBottom: 5 }}>
-               {brand?.name !== AZTA_IDENTITY.tradeNameAr ? brand?.name : brand?.branchName}
-             </p>
+            <p style={{ fontSize: 16, fontWeight: 'bold', color: '#334155', marginBottom: 5 }}>
+              {brand?.name !== AZTA_IDENTITY.tradeNameAr ? brand?.name : brand?.branchName}
+            </p>
           )}
           {brand?.address && <p>{brand.address}</p>}
-            {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
+          {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
         </div>
         <div className="doc-title">
-            <h2>{data.title}</h2>
-            <div className="ref-number tabular" dir="ltr">#{data.voucherNumber}</div>
-            <div style={{ marginTop: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 'bold', background: isPosted ? '#dcfce7' : '#f1f5f9', color: isPosted ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
-                    {data.status || 'DRAFT'}
-                </span>
-            </div>
+          <h2>{data.title}</h2>
+          <div className="ref-number tabular" dir="ltr">#{data.voucherNumber}</div>
+          <div style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 'bold', background: isPosted ? '#dcfce7' : '#f1f5f9', color: isPosted ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
+              {data.status || 'DRAFT'}
+            </span>
+          </div>
         </div>
       </div>
 
       <div className="info-grid">
         <div className="info-item">
-            <span className="info-label">التاريخ</span>
-            <span className="info-value tabular" dir="ltr">{formattedDate}</span>
+          <span className="info-label">التاريخ</span>
+          <span className="info-value tabular" dir="ltr">{formattedDate}</span>
         </div>
         {formattedHijriDate ? (
           <div className="info-item">
-              <span className="info-label">التاريخ الهجري</span>
-              <span className="info-value tabular" dir="ltr">{formattedHijriDate}</span>
+            <span className="info-label">التاريخ الهجري</span>
+            <span className="info-value tabular" dir="ltr">{formattedHijriDate}</span>
           </div>
         ) : (
           <div className="info-item">
-              <span className="info-label">التاريخ الهجري</span>
-              <span className="info-value">—</span>
+            <span className="info-label">التاريخ الهجري</span>
+            <span className="info-value">—</span>
           </div>
         )}
         <div className="info-item">
-            <span className="info-label">المعرف المرجعي</span>
-            <span className="info-value tabular" dir="ltr">{data.referenceId || '—'}</span>
+          <span className="info-label">المعرف المرجعي</span>
+          <span className="info-value tabular" dir="ltr">{data.referenceId || '—'}</span>
         </div>
         <div className="info-item" style={{ gridColumn: 'span 2' }}>
-            <span className="info-label">الوصف / البيان</span>
-            <span className="info-value">{data.memo || '—'}</span>
+          <span className="info-label">الوصف / البيان</span>
+          <span className="info-value">{data.memo || '—'}</span>
         </div>
         {costCenterLabel ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
-              <span className="info-label">مركز التكلفة</span>
-              <span className="info-value">{costCenterLabel}</span>
+            <span className="info-label">مركز التكلفة</span>
+            <span className="info-value">{costCenterLabel}</span>
           </div>
         ) : null}
         {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && shiftNo ? (
           <div className="info-item">
-              <span className="info-label">رقم الصندوق</span>
-              <span className="info-value tabular" dir="ltr">{shiftNo}</span>
+            <span className="info-label">رقم الصندوق</span>
+            <span className="info-value tabular" dir="ltr">{shiftNo}</span>
           </div>
         ) : null}
         {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && data.receivedBy ? (
           <div className="info-item">
-              <span className="info-label">{actorLabel}</span>
-              <span className="info-value">{data.receivedBy}</span>
+            <span className="info-label">{actorLabel}</span>
+            <span className="info-value">{data.receivedBy}</span>
           </div>
         ) : null}
         {data.partyName ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
-              <span className="info-label">استلمنا من / الطرف</span>
-              <span className="info-value">{data.partyName}</span>
+            <span className="info-label">استلمنا من / الطرف</span>
+            <span className="info-value">{data.partyName}</span>
           </div>
         ) : null}
         {data.paymentMethod ? (
           <div className="info-item">
-              <span className="info-label">طريقة الدفع</span>
-              <span className="info-value">{data.paymentMethod}</span>
+            <span className="info-label">طريقة الدفع</span>
+            <span className="info-value">{data.paymentMethod}</span>
           </div>
         ) : null}
         {data.paymentReferenceNumber ? (
           <div className="info-item">
-              <span className="info-label">{referenceLabel}</span>
-              <span className="info-value tabular" dir="ltr">{data.paymentReferenceNumber}</span>
+            <span className="info-label">{referenceLabel}</span>
+            <span className="info-value tabular" dir="ltr">{data.paymentReferenceNumber}</span>
           </div>
         ) : null}
         {(!data.title.includes('سند قبض') && !data.title.includes('سند صرف')) && data.receivedBy ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
-              <span className="info-label">{actorLabel}</span>
-              <span className="info-value">{data.receivedBy}</span>
+            <span className="info-label">{actorLabel}</span>
+            <span className="info-value">{data.receivedBy}</span>
           </div>
         ) : null}
         {data.toAccount ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
-              <span className="info-label">إلى حساب</span>
-              <span className="info-value">{data.toAccount}</span>
+            <span className="info-label">إلى حساب</span>
+            <span className="info-value">{data.toAccount}</span>
           </div>
         ) : null}
         {data.fromAccount ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
-              <span className="info-label">من حساب (المقابل)</span>
-              <span className="info-value">{data.fromAccount}</span>
+            <span className="info-label">من حساب (المقابل)</span>
+            <span className="info-value">{data.fromAccount}</span>
           </div>
         ) : null}
         {(data.senderName || data.senderPhone) ? (
           <div className="info-item" style={{ gridColumn: 'span 2' }}>
-              <span className="info-label">بيانات المحوّل</span>
-              <span className="info-value">
-                {String(data.senderName || '').trim() || '—'}
-                {data.senderPhone ? <span className="tabular" dir="ltr">{` — ${data.senderPhone}`}</span> : null}
-              </span>
+            <span className="info-label">بيانات المحوّل</span>
+            <span className="info-value">
+              {String(data.senderName || '').trim() || '—'}
+              {data.senderPhone ? <span className="tabular" dir="ltr">{` — ${data.senderPhone}`}</span> : null}
+            </span>
           </div>
         ) : null}
       </div>
 
       {typeof data.amount === 'number' && (
         <div className="amount-box">
-            <div>
-                <div className="label">المبلغ الإجمالي</div>
-                {data.amountWords ? <div style={{ fontSize: 11, fontWeight: 'normal', opacity: 0.85, marginTop: 4 }}>{`مبلغ وقدره: ${data.amountWords}`}</div> : null}
-            </div>
-            <div className="value" dir="ltr">
-                {fmt(data.amount)} <span style={{ fontSize: 12 }}>{currency}</span>
-            </div>
+          <div>
+            <div className="label">المبلغ الإجمالي</div>
+            {data.amountWords ? <div style={{ fontSize: 11, fontWeight: 'normal', opacity: 0.85, marginTop: 4 }}>{`مبلغ وقدره: ${data.amountWords}`}</div> : null}
+          </div>
+          <div className="value" dir="ltr">
+            {fmt(data.amount)} <span style={{ fontSize: 12 }}>{currency}</span>
+          </div>
         </div>
       )}
 
-      <div className="table-container">
-        <table className="lines-table">
-          <thead>
-            <tr>
-              <th style={{ width: '15%' }}>رمز الحساب</th>
-              <th style={{ width: '35%' }}>اسم الحساب</th>
-              <th style={{ width: '25%' }}>البيان</th>
-              <th style={{ width: '12%' }}>مدين</th>
-              <th style={{ width: '12%' }}>دائن</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.lines.length === 0 ? (
-              <tr><td colSpan={5} className="text-center" style={{ padding: 40, color: '#94a3b8' }}>لا توجد قيود مسجلة</td></tr>
-            ) : data.lines.map((l, idx) => (
-              <tr key={`${l.accountCode}-${idx}`}>
-                <td className="tabular" dir="ltr" style={{ fontWeight: 'bold', color: '#475569' }}>{l.accountCode}</td>
-                <td style={{ fontWeight: 600 }}>{l.accountName}</td>
-                <td style={{ color: '#64748b', fontSize: 11 }}>{l.memo || '—'}</td>
-                <td className="tabular text-center" dir="ltr" style={{ color: Number(l.debit) > 0 ? '#0f172a' : '#cbd5e1' }}>{Number(l.debit) > 0 ? fmt(l.debit) : '—'}</td>
-                <td className="tabular text-center" dir="ltr" style={{ color: Number(l.credit) > 0 ? '#0f172a' : '#cbd5e1' }}>{Number(l.credit) > 0 ? fmt(l.credit) : '—'}</td>
+      {data.title.includes('قيد يومية') && (
+        <div className="table-container">
+          <table className="lines-table">
+            <thead>
+              <tr>
+                <th style={{ width: '15%' }}>رمز الحساب</th>
+                <th style={{ width: '35%' }}>اسم الحساب</th>
+                <th style={{ width: '25%' }}>البيان</th>
+                <th style={{ width: '12%' }}>مدين</th>
+                <th style={{ width: '12%' }}>دائن</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="total-row">
-              <td colSpan={3} style={{ textAlign: 'left', paddingLeft: 20 }}>الإجمالي Total</td>
-              <td className="tabular text-center" dir="ltr">{fmt(totalDebit)}</td>
-              <td className="tabular text-center" dir="ltr">{fmt(totalCredit)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {data.lines.length === 0 ? (
+                <tr><td colSpan={5} className="text-center" style={{ padding: 40, color: '#94a3b8' }}>لا توجد قيود مسجلة</td></tr>
+              ) : data.lines.map((l, idx) => (
+                <tr key={`${l.accountCode}-${idx}`}>
+                  <td className="tabular" dir="ltr" style={{ fontWeight: 'bold', color: '#475569' }}>{l.accountCode}</td>
+                  <td style={{ fontWeight: 600 }}>{l.accountName}</td>
+                  <td style={{ color: '#64748b', fontSize: 11 }}>{l.memo || '—'}</td>
+                  <td className="tabular text-center" dir="ltr" style={{ color: Number(l.debit) > 0 ? '#0f172a' : '#cbd5e1' }}>{Number(l.debit) > 0 ? fmt(l.debit) : '—'}</td>
+                  <td className="tabular text-center" dir="ltr" style={{ color: Number(l.credit) > 0 ? '#0f172a' : '#cbd5e1' }}>{Number(l.credit) > 0 ? fmt(l.credit) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="total-row">
+                <td colSpan={3} style={{ textAlign: 'left', paddingLeft: 20 }}>الإجمالي Total</td>
+                <td className="tabular text-center" dir="ltr">{fmt(totalDebit)}</td>
+                <td className="tabular text-center" dir="ltr">{fmt(totalCredit)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
 
       <div className="signatures-section">
         <div className="signature-box">
-            <div className="signature-label">
-              {data.title.includes('سند قبض')
-                ? 'الصندوق'
-                : data.title.includes('سند صرف')
-                  ? 'الصارف'
-                  : 'إعداد (Prepared By)'}
-            </div>
+          <div className="signature-label">
+            {data.title.includes('سند قبض')
+              ? 'الصندوق'
+              : data.title.includes('سند صرف')
+                ? 'الصارف'
+                : 'إعداد (Prepared By)'}
+          </div>
         </div>
         <div className="signature-box">
-            <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير المالي' : 'مراجعة (Checked By)'}</div>
+          <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير المالي' : 'مراجعة (Checked By)'}</div>
         </div>
         <div className="signature-box">
-            <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير العام' : 'اعتماد (Approved By)'}</div>
+          <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير العام' : 'اعتماد (Approved By)'}</div>
         </div>
       </div>
 
       <div className="footer-meta">
         <div>
-            تمت الطباعة بواسطة النظام في <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span>
+          تمت الطباعة بواسطة النظام في <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span>
         </div>
         <div>
-            Generated by {brand?.name || 'AZTA ERP'}
+          Generated by {brand?.name || 'AZTA ERP'}
         </div>
       </div>
     </div>
