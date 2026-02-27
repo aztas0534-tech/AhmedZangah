@@ -73,6 +73,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
                 const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
+                console.log('[QC_DEBUG] get_item_batches response:', { itemId: item.id, error, rowCount: (data || []).length, data });
                 if (error) return;
                 const rows = (data || []) as any[];
                 const mapped = rows.map(r => ({
