@@ -3,6 +3,7 @@ import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supaba
 import { localizeSupabaseError } from '../utils/errorUtils';
 import { SalesReturn, SalesReturnItem, Order } from '../types';
 import { useAuth } from './AuthContext';
+import { roundMoneyByCode as sharedRoundMoneyByCode } from '../utils/currencyDecimals';
 
 interface SalesReturnContextType {
   returns: SalesReturn[];
@@ -20,17 +21,8 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const { user } = useAuth();
   const supabase = getSupabaseClient();
 
-  const getCurrencyDecimalsByCode = (code: string) => {
-    const c = String(code || '').toUpperCase();
-    return c === 'YER' ? 0 : 2;
-  };
-
   const roundMoneyByCode = (value: number, code: string) => {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return 0;
-    const dp = getCurrencyDecimalsByCode(code);
-    const pow = Math.pow(10, dp);
-    return Math.round(n * pow) / pow;
+    return sharedRoundMoneyByCode(value, code);
   };
 
   const mapRowToSalesReturn = (row: any): SalesReturn => {
@@ -203,7 +195,7 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
         throw error;
       }
-      
+
       const mapped = mapRowToSalesReturn(data);
       setReturns(prev => {
         const next = prev.filter(r => r.id !== mapped.id);
@@ -221,7 +213,7 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const processReturn = async (returnId: string) => {
     try {
       setLoading(true);
-      
+
       const attemptProcess = async () => {
         const { error } = await supabase!.rpc('process_sales_return', { p_return_id: returnId });
         if (error) throw error;
@@ -269,7 +261,7 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       // Update local state
-      setReturns(prev => 
+      setReturns(prev =>
         prev.map(r => r.id === returnId ? { ...r, status: 'completed' } : r)
       );
 
@@ -287,10 +279,10 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
       .from('sales_returns')
       .select('*')
       .eq('order_id', orderId);
-      
+
     if (error) {
-        console.error("Error fetching returns for order:", error);
-        return [];
+      console.error("Error fetching returns for order:", error);
+      return [];
     }
     return (data || []).map(mapRowToSalesReturn);
   };

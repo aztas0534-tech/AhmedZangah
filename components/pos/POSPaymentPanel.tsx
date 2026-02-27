@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSettings } from '../../contexts/SettingsContext';
 import NumericKeypadModal from './NumericKeypadModal';
+import { getCurrencyDecimalsByCode } from '../../utils/currencyDecimals';
 
 type PaymentLine = {
   method: string;
@@ -35,7 +36,7 @@ type KeypadTarget =
 const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, touchMode }) => {
   const { settings } = useSettings();
   const code = String(currencyCode || '').toUpperCase() || '—';
-  const currencyDecimals = useMemo(() => (code === 'YER' ? 0 : 2), [code]);
+  const currencyDecimals = useMemo(() => getCurrencyDecimalsByCode(code), [code]);
   const fmtLocal = (n: number) => {
     const v = Number(n || 0);
     try {
@@ -163,15 +164,15 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
   const canSubmit = validation.ok;
   const finalize = () => {
     const payloadBreakdown = breakdown.map(l => ({
-        method: l.method,
-        amount: Number(l.amount) || 0,
-        referenceNumber: l.referenceNumber,
-        senderName: l.senderName,
-        senderPhone: l.senderPhone,
-        declaredAmount: Number(l.declaredAmount) || 0,
-        amountConfirmed: Boolean(l.amountConfirmed),
-        cashReceived: l.method === 'cash' ? (Number(l.cashReceived) || 0) : 0,
-      }));
+      method: l.method,
+      amount: Number(l.amount) || 0,
+      referenceNumber: l.referenceNumber,
+      senderName: l.senderName,
+      senderPhone: l.senderPhone,
+      declaredAmount: Number(l.declaredAmount) || 0,
+      amountConfirmed: Boolean(l.amountConfirmed),
+      cashReceived: l.method === 'cash' ? (Number(l.cashReceived) || 0) : 0,
+    }));
     const primary = payloadBreakdown[0]?.method || method;
     onFinalize({ paymentMethod: primary, paymentBreakdown: payloadBreakdown });
   };

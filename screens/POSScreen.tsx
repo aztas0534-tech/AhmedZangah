@@ -13,6 +13,7 @@ import { getBaseCurrencyCode } from '../supabase';
 import { getSupabaseClient, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
+import { roundMoneyByCode } from '../utils/currencyDecimals';
 import POSItemSearch from '../components/pos/POSItemSearch';
 import POSLineItemList from '../components/pos/POSLineItemList';
 import POSTotals from '../components/pos/POSTotals';
@@ -287,17 +288,7 @@ const POSScreen: React.FC = () => {
     };
   }, [baseCode, mcPricingEnabled, operationalCurrencies, showNotification, transactionCurrency]);
 
-  const getCurrencyDecimalsByCode = (code: string) => {
-    const c = String(code || '').trim().toUpperCase();
-    return c === 'YER' ? 0 : 2;
-  };
-  const roundMoneyByCode = (v: number, code: string) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return 0;
-    const dp = getCurrencyDecimalsByCode(code);
-    const pow = Math.pow(10, dp);
-    return Math.round(n * pow) / pow;
-  };
+  // getCurrencyDecimalsByCode and roundMoneyByCode imported from utils/currencyDecimals
 
   useEffect(() => {
     if (!items.length) return;
@@ -379,7 +370,7 @@ const POSScreen: React.FC = () => {
     try {
       searchInputRef.current?.focus();
       searchInputRef.current?.select?.();
-    } catch {}
+    } catch { }
   };
 
   const resetCustomerFields = () => {
@@ -916,12 +907,12 @@ const POSScreen: React.FC = () => {
   }, [addonsCartItemId, items, openAddons, pendingOrderId, removeLine, selectedCartItemId, updateLine]);
 
   const openPromotionPicker = () => {
-  useEffect(() => {
-    const wid = String(sessionScope.scope?.warehouseId || '').trim();
-    if (items.length === 0) {
-      initialWarehouseIdRef.current = wid;
-    }
-  }, [items.length, sessionScope.scope?.warehouseId]);
+    useEffect(() => {
+      const wid = String(sessionScope.scope?.warehouseId || '').trim();
+      if (items.length === 0) {
+        initialWarehouseIdRef.current = wid;
+      }
+    }, [items.length, sessionScope.scope?.warehouseId]);
 
     if (pendingOrderId) return;
     if (pendingOrderId) return;
@@ -1448,46 +1439,46 @@ const POSScreen: React.FC = () => {
             cashReceived: p.cashReceived,
           })),
         } as any).then((order) => {
-        const isQueuedOffline = Boolean((order as any)?.offlineState === 'CREATED_OFFLINE');
-        const isDelivered = String((order as any)?.status || '') === 'delivered';
-        const isPaid = Boolean((order as any)?.paidAt);
-        const shouldAutoOpen = Boolean(autoOpenInvoice && order?.id && isDelivered && isPaid && !isQueuedOffline);
+          const isQueuedOffline = Boolean((order as any)?.offlineState === 'CREATED_OFFLINE');
+          const isDelivered = String((order as any)?.status || '') === 'delivered';
+          const isPaid = Boolean((order as any)?.paidAt);
+          const shouldAutoOpen = Boolean(autoOpenInvoice && order?.id && isDelivered && isPaid && !isQueuedOffline);
 
-        setItems([]);
-        resetCustomerFields();
-        setNotes('');
-        setDraftInvoice(null);
-        setPendingSelectedId(null);
+          setItems([]);
+          resetCustomerFields();
+          setNotes('');
+          setDraftInvoice(null);
+          setPendingSelectedId(null);
 
-        if (isQueuedOffline) {
-          showNotification('تم تسجيل البيع بدون اتصال وسيتم خصم المخزون وتحديث التقارير بعد إرسال التحديثات.', 'info');
+          if (isQueuedOffline) {
+            showNotification('تم تسجيل البيع بدون اتصال وسيتم خصم المخزون وتحديث التقارير بعد إرسال التحديثات.', 'info');
+            if (order?.id) setPendingSelectedId(order.id);
+            focusSearch();
+            return;
+          }
+
+          if (isDelivered && isPaid) {
+            showNotification('تم إتمام الطلب مباشرة', 'success');
+            if (shouldAutoOpen) {
+              const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
+              const copies = Number(settings?.posFlags?.thermalCopies) || 1;
+              const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
+              navigate(`/admin/invoice/${order.id}${q}`);
+            }
+            focusSearch();
+            return;
+          }
+
+          if (isDelivered && !isPaid) {
+            showNotification('تم تسجيل البيع لكن التحصيل لم يُسجل بالكامل. افتح إدارة الطلبات لاستكمال التحصيل.', 'info');
+            navigate(`/admin/orders?orderId=${order.id}`);
+            return;
+          }
+
+          showNotification('تم إنشاء الطلب وبانتظار التحصيل.', 'info');
           if (order?.id) setPendingSelectedId(order.id);
           focusSearch();
-          return;
-        }
-
-        if (isDelivered && isPaid) {
-          showNotification('تم إتمام الطلب مباشرة', 'success');
-          if (shouldAutoOpen) {
-            const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
-            const copies = Number(settings?.posFlags?.thermalCopies) || 1;
-            const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
-            navigate(`/admin/invoice/${order.id}${q}`);
-          }
-          focusSearch();
-          return;
-        }
-
-        if (isDelivered && !isPaid) {
-          showNotification('تم تسجيل البيع لكن التحصيل لم يُسجل بالكامل. افتح إدارة الطلبات لاستكمال التحصيل.', 'info');
-          navigate(`/admin/orders?orderId=${order.id}`);
-          return;
-        }
-
-        showNotification('تم إنشاء الطلب وبانتظار التحصيل.', 'info');
-        if (order?.id) setPendingSelectedId(order.id);
-        focusSearch();
-      }).catch((err) => {
+        }).catch((err) => {
           const code = getBelowCostErrorCode(err);
           const pendingId = String((err as any)?.pendingOrderId || '').trim();
           if (canOverrideBelowCost && (code === 'BELOW_COST_REASON_REQUIRED' || code === 'SELLING_BELOW_COST_NOT_ALLOWED')) {
@@ -1687,12 +1678,12 @@ const POSScreen: React.FC = () => {
                 key={`pay:${transactionCurrency}`}
                 total={total}
                 currencyCode={transactionCurrency}
-              canFinalize={(() => {
-                const wid = String(sessionScope.scope?.warehouseId || '').trim();
-                const initWid = String(initialWarehouseIdRef.current || '').trim();
-                const changed = items.length > 0 && initWid && wid && wid !== initWid;
-                return items.length > 0 && pricingReady && !pricingBusy && !changed && !fxRateProblem;
-              })()}
+                canFinalize={(() => {
+                  const wid = String(sessionScope.scope?.warehouseId || '').trim();
+                  const initWid = String(initialWarehouseIdRef.current || '').trim();
+                  const changed = items.length > 0 && initWid && wid && wid !== initWid;
+                  return items.length > 0 && pricingReady && !pricingBusy && !changed && !fxRateProblem;
+                })()}
                 blockReason={pricingBlockReason}
                 onHold={handleHold}
                 onFinalize={handleFinalize}

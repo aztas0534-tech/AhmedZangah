@@ -3,6 +3,7 @@ import { disableRealtime, getSupabaseClient, getBaseCurrencyCode, isRealtimeEnab
 import { useAuth } from '../../contexts/AuthContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import * as Icons from '../icons';
+import { getCurrencyDecimalsByCode } from '../../utils/currencyDecimals';
 import { exportToXlsx } from '../../utils/export';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 
@@ -118,7 +119,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 // ─── UTILS ─────────────────────────────────────────────────────────────────
 
-const getCurrencyDecimalsByCode = (code: string) => (String(code || '').trim().toUpperCase() === 'YER' ? 0 : 2);
+// getCurrencyDecimalsByCode imported from utils/currencyDecimals
 const fmt = (n: number, dp = 2) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 const fmtInt = (n: number) => n.toLocaleString('en-US');
 const fmtCompact = (n: number) => {

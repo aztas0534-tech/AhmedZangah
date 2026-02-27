@@ -19,6 +19,15 @@ type FinancialPartyRow = {
   created_at: string;
 };
 
+type CreditLimitRow = {
+  id?: string;
+  currency_code: string;
+  credit_limit: number;
+  credit_hold: boolean;
+  net_days: number;
+  _delete?: boolean;
+};
+
 const FinancialPartiesScreen: React.FC = () => {
   const { hasPermission } = useAuth();
   const { showNotification } = useToast();
@@ -35,6 +44,8 @@ const FinancialPartiesScreen: React.FC = () => {
   const [editingRow, setEditingRow] = useState<FinancialPartyRow | null>(null);
   const [form, setForm] = useState<Partial<FinancialPartyRow>>({});
   const [backfillBusyId, setBackfillBusyId] = useState<string>('');
+  const [creditLimitsRows, setCreditLimitsRows] = useState<CreditLimitRow[]>([]);
+  const [creditLimitsLoading, setCreditLimitsLoading] = useState(false);
 
   useEffect(() => {
     void getBaseCurrencyCode().then((c) => {
@@ -104,9 +115,35 @@ const FinancialPartiesScreen: React.FC = () => {
     if (row) {
       setEditingRow(row);
       setForm(row);
+      // Load per-currency credit limits
+      (async () => {
+        setCreditLimitsLoading(true);
+        try {
+          const supabase = getSupabaseClient();
+          if (!supabase) return;
+          const { data, error } = await supabase
+            .from('party_credit_limits')
+            .select('id,currency_code,credit_limit,credit_hold,net_days')
+            .eq('party_id', row.id)
+            .order('currency_code', { ascending: true });
+          if (error) throw error;
+          setCreditLimitsRows((Array.isArray(data) ? data : []).map((r: any) => ({
+            id: r.id,
+            currency_code: String(r.currency_code || '').toUpperCase(),
+            credit_limit: Number(r.credit_limit) || 0,
+            credit_hold: Boolean(r.credit_hold),
+            net_days: Number(r.net_days) || 30,
+          })));
+        } catch {
+          setCreditLimitsRows([]);
+        } finally {
+          setCreditLimitsLoading(false);
+        }
+      })();
     } else {
       setEditingRow(null);
       setForm({ is_active: true, party_type: 'generic', credit_limit_base: 0, credit_net_days: 30, credit_hold: false } as any);
+      setCreditLimitsRows([]);
     }
     setIsModalOpen(true);
   };
@@ -150,14 +187,43 @@ const FinancialPartiesScreen: React.FC = () => {
       default_account_id: null,
     };
 
+    let partyId = editingRow?.id;
     if (editingRow) {
       const { error } = await supabase.from('financial_parties').update(payload).eq('id', editingRow.id);
       if (error) throw error;
     } else {
-      const { error } = await supabase.from('financial_parties').insert(payload);
+      const { data: inserted, error } = await supabase.from('financial_parties').insert(payload).select('id').single();
       if (error) throw error;
+      partyId = (inserted as any)?.id;
     }
+
+    // Save per-currency credit limits
+    if (partyId && creditLimitsRows.length > 0) {
+      for (const cl of creditLimitsRows) {
+        const code = String(cl.currency_code || '').trim().toUpperCase();
+        if (!code) continue;
+        if (cl._delete && cl.id) {
+          await supabase.from('party_credit_limits').delete().eq('id', cl.id);
+          continue;
+        }
+        if (cl._delete) continue;
+        const clPayload = {
+          party_id: partyId,
+          currency_code: code,
+          credit_limit: Math.max(0, Number(cl.credit_limit) || 0),
+          credit_hold: Boolean(cl.credit_hold),
+          net_days: Math.max(0, Math.floor(Number(cl.net_days) || 30)),
+        };
+        if (cl.id) {
+          await supabase.from('party_credit_limits').update(clPayload).eq('id', cl.id);
+        } else {
+          await supabase.from('party_credit_limits').upsert(clPayload, { onConflict: 'party_id,currency_code' });
+        }
+      }
+    }
+
     setIsModalOpen(false);
+    setCreditLimitsRows([]);
     await load();
     showNotification('تم حفظ الطرف المالي.', 'success');
   };
@@ -175,13 +241,13 @@ const FinancialPartiesScreen: React.FC = () => {
       if (!supabase) throw new Error('supabase not available');
       const { data, error } = canManage
         ? await supabase.rpc('backfill_party_ledger_for_existing_entries', {
-            p_batch: 5000,
-            p_only_party_id: partyId,
-          } as any)
+          p_batch: 5000,
+          p_only_party_id: partyId,
+        } as any)
         : await supabase.rpc('backfill_party_ledger_entries_for_party', {
-            p_party_id: partyId,
-            p_batch: 5000,
-          } as any);
+          p_party_id: partyId,
+          p_batch: 5000,
+        } as any);
       if (error) throw error;
       const count = Number(data) || 0;
       showNotification(`تم تحديث دفتر الطرف (${count} سطر/أسطر).`, 'success');
@@ -376,7 +442,7 @@ const FinancialPartiesScreen: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">سقف الائتمان (بالعملة الأساسية {baseCode})</label>
+                  <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">سقف الائتمان الافتراضي ({baseCode})</label>
                   <input
                     type="number"
                     value={Number((form as any).credit_limit_base ?? 0)}
@@ -404,8 +470,92 @@ const FinancialPartiesScreen: React.FC = () => {
                   checked={Boolean((form as any).credit_hold)}
                   onChange={(e) => setForm((p) => ({ ...p, credit_hold: e.target.checked }))}
                 />
-                <span>إيقاف ائتمان (Credit Hold)</span>
+                <span>إيقاف ائتمان عام (Credit Hold)</span>
               </label>
+
+              {/* Per-Currency Credit Limits */}
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 mt-2">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">حدود الائتمان حسب العملة</label>
+                  <button
+                    type="button"
+                    onClick={() => setCreditLimitsRows(prev => [...prev, { currency_code: '', credit_limit: 0, credit_hold: false, net_days: 30 }])}
+                    className="text-xs px-2 py-1 rounded bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200 hover:bg-primary-100"
+                  >
+                    + إضافة عملة
+                  </button>
+                </div>
+                {creditLimitsLoading ? (
+                  <div className="text-xs text-gray-400 text-center py-2">جاري التحميل...</div>
+                ) : creditLimitsRows.filter(cl => !cl._delete).length === 0 ? (
+                  <div className="text-xs text-gray-400 text-center py-2">لا توجد حدود ائتمان مخصصة — سيُستخدم الحد الافتراضي ({baseCode})</div>
+                ) : (
+                  <div className="space-y-2">
+                    {creditLimitsRows.map((cl, idx) => cl._delete ? null : (
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-3">
+                          {idx === 0 && <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-0.5">العملة</label>}
+                          <select
+                            value={cl.currency_code}
+                            onChange={(e) => setCreditLimitsRows(prev => prev.map((r, i) => i === idx ? { ...r, currency_code: e.target.value.toUpperCase() } : r))}
+                            className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+                          >
+                            <option value="">اختر</option>
+                            {currencyOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div className="col-span-3">
+                          {idx === 0 && <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-0.5">الحد</label>}
+                          <input
+                            type="number"
+                            value={cl.credit_limit}
+                            onChange={(e) => setCreditLimitsRows(prev => prev.map((r, i) => i === idx ? { ...r, credit_limit: Number(e.target.value) || 0 } : r))}
+                            min={0}
+                            step={0.01}
+                            className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          {idx === 0 && <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-0.5">الأيام</label>}
+                          <input
+                            type="number"
+                            value={cl.net_days}
+                            onChange={(e) => setCreditLimitsRows(prev => prev.map((r, i) => i === idx ? { ...r, net_days: Math.max(0, Number(e.target.value) || 0) } : r))}
+                            min={0}
+                            className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+                          />
+                        </div>
+                        <div className="col-span-2 flex items-center gap-1">
+                          {idx === 0 && <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 w-full">إيقاف</label>}
+                          <input
+                            type="checkbox"
+                            checked={cl.credit_hold}
+                            onChange={(e) => setCreditLimitsRows(prev => prev.map((r, i) => i === idx ? { ...r, credit_hold: e.target.checked } : r))}
+                          />
+                        </div>
+                        <div className="col-span-2 flex justify-end">
+                          {idx === 0 && <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 w-full">&nbsp;</label>}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (cl.id) {
+                                setCreditLimitsRows(prev => prev.map((r, i) => i === idx ? { ...r, _delete: true } : r));
+                              } else {
+                                setCreditLimitsRows(prev => prev.filter((_, i) => i !== idx));
+                              }
+                            }}
+                            className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            title="حذف"
+                          >
+                            <Icons.XIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                 <input
                   type="checkbox"

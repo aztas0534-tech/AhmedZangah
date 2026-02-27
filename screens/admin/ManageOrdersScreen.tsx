@@ -28,6 +28,7 @@ import { printSalesReturnById } from '../../utils/returnsPrint';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
+import { getCurrencyDecimalsByCode as sharedGetCurrencyDecimals, initCurrencyDecimals } from '../../utils/currencyDecimals';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -66,6 +67,7 @@ const ManageOrdersScreen: React.FC = () => {
     const language = 'ar';
     const { settings } = useSettings();
     const [baseCode, setBaseCode] = useState('—');
+    useEffect(() => { void initCurrencyDecimals(); }, []);
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
     const isInStoreOrder = (order: Order) => {
         if (!order) return false;
@@ -335,8 +337,7 @@ const ManageOrdersScreen: React.FC = () => {
     }, [inStoreTransactionCurrency, operationalCurrencies]);
 
     const getCurrencyDecimalsByCode = (code: string) => {
-        const c = String(code || '').toUpperCase();
-        return c === 'YER' ? 0 : 2;
+        return sharedGetCurrencyDecimals(code);
     };
     const formatMoneyByCode = (v: number, code: string) => {
         const n = Number(v);
@@ -1767,13 +1768,18 @@ const ManageOrdersScreen: React.FC = () => {
         };
 
         if (inStoreIsCredit && inStoreCustomerMode === 'party' && inStoreSelectedPartyId) {
-            const baseTotal = Number(inStoreTotals.baseTotal) || 0;
             const fx = Number(inStoreTotals.fxRate) || 1;
             const paidForeign = normalizedPaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-            const paidBase = roundMoney(paidForeign * fx);
-            const netAr = Math.max(0, baseTotal - paidBase);
-            const available = Number(inStoreCreditSummary?.available_credit || 0);
-            const hold = Boolean(inStoreCreditSummary?.credit_hold);
+            const txnCurrency = String(inStoreTransactionCurrency || '').trim().toUpperCase();
+            const total = Number(inStoreTotals.total) || 0;
+            const netArForeign = Math.max(0, total - paidForeign);
+            // Look up per-currency credit info from the currencies array
+            const currenciesArr = Array.isArray(inStoreCreditSummary?.currencies) ? inStoreCreditSummary.currencies : [];
+            const currencyEntry = currenciesArr.find((c: any) => String(c?.currency_code || '').toUpperCase() === txnCurrency);
+            // Use per-currency values if available, otherwise fallback to base
+            const netAr = currencyEntry ? netArForeign : Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(paidForeign * fx));
+            const available = Number(currencyEntry?.available_credit ?? inStoreCreditSummary?.available_credit ?? 0);
+            const hold = Boolean(currencyEntry?.credit_hold ?? inStoreCreditSummary?.credit_hold);
             if (netAr > 0 && (hold || (netAr - available > 0.0001))) {
                 if (!canManageAccounting) {
                     showNotification('هذا البيع يتجاوز سقف ائتمان الطرف أو عليه إيقاف ائتمان ويتطلب موافقة.', 'error');

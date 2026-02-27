@@ -11,6 +11,7 @@ import { createLogger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
 import { decryptField, isEncrypted } from '../utils/encryption';
+import { getCurrencyDecimalsByCode } from '../utils/currencyDecimals';
 
 const logger = createLogger('OrderContext');
 
@@ -1992,7 +1993,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const taxableBase = Math.max(0, computedSubtotal - discountAmount);
     const computedTotal = taxableBase;
-    const currencyDecimals = desiredCurrency === 'YER' ? 0 : 2;
+    const currencyDecimals = getCurrencyDecimalsByCode(desiredCurrency);
     const computedTotalRounded = Number(computedTotal.toFixed(currencyDecimals));
 
     const normalizedBreakdown = (input.paymentBreakdown || [])
@@ -2079,7 +2080,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const mainIdx = cashIdx >= 0
         ? cashIdx
         : paymentBreakdown.reduce((best, p, i, arr) =>
-            (Number(p.amount) || 0) > (Number(arr[best].amount) || 0) ? i : best, 0);
+          (Number(p.amount) || 0) > (Number(arr[best].amount) || 0) ? i : best, 0);
       const diff = computedTotalRounded - paymentTotal;
       const nextAmount = Math.max(0, (Number(paymentBreakdown[mainIdx].amount) || 0) + diff);
       paymentBreakdown[mainIdx].amount = nextAmount;
