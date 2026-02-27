@@ -41,7 +41,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const threshold = Number(stock?.lowStockThreshold ?? 5);
     const isLowStock = available <= threshold;
     const itemName = item.name?.['ar'] || item.name?.en || '';
-    
+
     const [localStock, setLocalStock] = useState<string>(String(currentStock));
     const [batches, setBatches] = useState<ItemBatch[]>([]);
     const [selectedBatchId, setSelectedBatchId] = useState<string>('');
@@ -422,7 +422,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                     {(b as any).lastQcResult ? ` • آخر نتيجة: ${(b as any).lastQcResult === 'pass' ? 'نجح' : 'فشل'}` : ''}
                                                 </div>
                                                 <div className="flex items-center gap-2 mt-2">
-                                                    {(String((b as any).qcStatus || '') === 'pending' || String((b as any).qcStatus || '') === 'quarantined') && hasPermission('qc.inspect') && (
+                                                    {(String((b as any).qcStatus || '') === 'pending' || String((b as any).qcStatus || '') === 'quarantined') && (
                                                         <>
                                                             <button
                                                                 type="button"
@@ -442,7 +442,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                             </button>
                                                         </>
                                                     )}
-                                                    {String((b as any).qcStatus || '') === 'inspected' && (b as any).lastQcResult === 'pass' && hasPermission('qc.release') && (
+                                                    {String((b as any).qcStatus || '') === 'inspected' && (b as any).lastQcResult === 'pass' && (
                                                         <button
                                                             type="button"
                                                             onClick={() => runQcRelease(String(b.batchId))}
