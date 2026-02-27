@@ -455,7 +455,7 @@ const ManageOrdersScreen: React.FC = () => {
                     .from('financial_parties')
                     .select('id, name, party_type')
                     .eq('is_active', true)
-                    .in('party_type', ['customer', 'partner', 'generic'])
+                    .in('party_type', ['customer', 'partner', 'generic', 'supplier', 'employee'])
                     .order('name', { ascending: true })
                     .limit(500);
                 if (error) throw error;
@@ -794,9 +794,28 @@ const ManageOrdersScreen: React.FC = () => {
                         return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
                     };
 
-                    // Prefer local pricing for in-store sales; skip server suggested pricing
-                    if (warehouseId) {
-                        return await fallback();
+                    // Use FEFO batch pricing from server when warehouse is available
+                    if (warehouseId && supabase) {
+                        try {
+                            const customerId = inStoreSelectedCustomerId || undefined;
+                            const { data: fefo, error: fefoErr } = await supabase.rpc('get_fefo_pricing', {
+                                p_item_id: r.itemId,
+                                p_warehouse_id: warehouseId,
+                                p_quantity: r.pricingQty,
+                                p_customer_id: customerId || null,
+                                p_currency_code: null,
+                            } as any);
+                            if (fefoErr || !fefo || (Array.isArray(fefo) && fefo.length === 0)) {
+                                return await fallback();
+                            }
+                            const row = Array.isArray(fefo) ? fefo[0] : fefo;
+                            const suggestedPrice = Number(row?.suggested_price) || 0;
+                            if (suggestedPrice <= 0) return await fallback();
+                            const unitPricePerKg = r.unitType === 'gram' ? suggestedPrice * 1000 : undefined;
+                            return { key: r.key, unitPrice: suggestedPrice, unitPricePerKg, unitType: r.unitType };
+                        } catch {
+                            return await fallback();
+                        }
                     }
 
                     return await fallback();
@@ -1700,6 +1719,13 @@ const ManageOrdersScreen: React.FC = () => {
                     return;
                 }
             }
+        }
+
+        // Prevent duplicate cash payment lines
+        const cashCount = normalizedPaymentLines.filter(p => p.method === 'cash').length;
+        if (cashCount > 1) {
+            showNotification('لا يمكن تكرار الدفع النقدي أكثر من مرة.', 'error');
+            return;
         }
 
         const primaryPaymentMethod = inStoreIsCredit
@@ -2739,264 +2765,325 @@ const ManageOrdersScreen: React.FC = () => {
                                                     ? 'bg-amber-50/70 dark:bg-amber-900/10'
                                                     : undefined;
                                     return (
-                                    <tr key={order.id} data-order-id={order.id} className={rowClass}>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
-                                            {order.isScheduled && order.scheduledAt && (
-                                                <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold" title={new Date(order.scheduledAt).toLocaleString('ar-EG-u-nu-latn')}>
-                                                    مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}</span>
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700 align-top">
-                                            <div className="flex items-center justify-start min-h-[24px]">
-                                                {renderReturnBadge(order, 'pill') || (
-                                                    <span className="text-xs text-gray-400">—</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            <div className="text-sm font-medium text-gray-900 dark:text-white">{order.customerName}</div>
-                                            <div className="text-sm text-gray-500 dark:text-gray-400" dir="ltr">{order.phoneNumber}</div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400 max-w-xs truncate" title={order.address}>{order.address}</div>
-                                            {order.deliveryZoneId && !isInStoreOrder(order) && (
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs truncate" title={getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId}>
-                                                    منطقة التوصيل: {getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId.slice(-6).toUpperCase()}
-                                                </div>
-                                            )}
-                                            {(() => {
-                                                const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
-                                                if (!isCod) return null;
-                                                const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
-                                                const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
-                                                if (bal <= 0.01) return null;
-                                                return (
-                                                    <div className="mt-1">
-                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
-                                                            نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)} {baseCode || '—'}</span>
-                                                        </span>
+                                        <tr key={order.id} data-order-id={order.id} className={rowClass}>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
+                                                {order.isScheduled && order.scheduledAt && (
+                                                    <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold" title={new Date(order.scheduledAt).toLocaleString('ar-EG-u-nu-latn')}>
+                                                        مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}</span>
                                                     </div>
-                                                );
-                                            })()}
-                                            {order.location && !isInStoreOrder(order) && (
-                                                <div className="mt-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setMapModal({ title: language === 'ar' ? 'موقع العميل' : 'Customer location', coords: order.location! })}
-                                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                                    >
-                                                        {language === 'ar' ? 'عرض الخريطة' : 'Show map'}
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {order.notes && (
-                                                <div className="text-xs text-blue-500 dark:text-blue-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.notes}>
-                                                    ملاحظة: {order.notes}
-                                                </div>
-                                            )}
-                                            {order.deliveryInstructions && (
-                                                <div className="text-xs text-orange-600 dark:text-orange-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.deliveryInstructions}>
-                                                    تعليمات التوصيل: {order.deliveryInstructions}
-                                                </div>
-                                            )}
-                                            {(order.paymentProof || order.appliedCouponCode || (order.pointsRedeemedValue && order.pointsRedeemedValue > 0)) && (
-                                                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
-                                                    {order.paymentProof && (
-                                                        <div>
-                                                            <span className="text-xs font-semibold dark:text-gray-300">إثبات الدفع: </span>
-                                                            {order.paymentProofType === 'image' ? (
-                                                                <a href={order.paymentProof} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">عرض الصورة</a>
-                                                            ) : (
-                                                                <span className="text-xs text-gray-700 dark:text-gray-400 font-mono">{order.paymentProof}</span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {order.appliedCouponCode && (
-                                                        <div className="text-xs"><span className="font-semibold dark:text-gray-300">الكوبون:</span> <span className="font-mono text-green-600 dark:text-green-400">{order.appliedCouponCode}</span></div>
-                                                    )}
-                                                    {order.pointsRedeemedValue && order.pointsRedeemedValue > 0 && (
-                                                        <div className="text-xs"><span className="font-semibold dark:text-gray-300">نقاط مستبدلة:</span> <span className="font-mono text-yellow-600 dark:text-yellow-400">{order.pointsRedeemedValue.toFixed(0)}</span></div>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700 align-top">
+                                                <div className="flex items-center justify-start min-h-[24px]">
+                                                    {renderReturnBadge(order, 'pill') || (
+                                                        <span className="text-xs text-gray-400">—</span>
                                                     )}
                                                 </div>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 align-top border-r dark:border-gray-700">
-                                            <ul className="space-y-1">
-                                                {(order.items || []).map((item: CartItem, idx: number) => {
-                                                    const selectedAddonsRaw = (item as any)?.selectedAddons;
-                                                    const selectedAddonsObj =
-                                                        selectedAddonsRaw && typeof selectedAddonsRaw === 'object' ? selectedAddonsRaw : {};
-                                                    const addonsArray = Object.values(selectedAddonsObj as Record<string, any>);
-                                                    const itemName = String(
-                                                        (item as any)?.name?.[language] ||
-                                                        (item as any)?.name?.ar ||
-                                                        (item as any)?.name?.en ||
-                                                        (item as any)?.name ||
-                                                        (item as any)?.itemName ||
-                                                        (item as any)?.id ||
-                                                        (item as any)?.itemId ||
-                                                        ''
-                                                    );
-                                                    const key =
-                                                        item.cartItemId ||
-                                                        (item as any).id ||
-                                                        `${(item as any).menuItemId || 'item'}-${idx}`;
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                <div className="text-sm font-medium text-gray-900 dark:text-white">{order.customerName}</div>
+                                                <div className="text-sm text-gray-500 dark:text-gray-400" dir="ltr">{order.phoneNumber}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 max-w-xs truncate" title={order.address}>{order.address}</div>
+                                                {order.deliveryZoneId && !isInStoreOrder(order) && (
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs truncate" title={getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId}>
+                                                        منطقة التوصيل: {getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId.slice(-6).toUpperCase()}
+                                                    </div>
+                                                )}
+                                                {(() => {
+                                                    const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
+                                                    if (!isCod) return null;
+                                                    const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
+                                                    const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
+                                                    if (bal <= 0.01) return null;
                                                     return (
-                                                        <li key={key}>
-                                                            <span className="font-semibold">{itemName || 'منتج'} x{Number((item as any)?.quantity || 0)}</span>
-                                                            {addonsArray.length > 0 && (
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400 pl-2 rtl:pr-2">
-                                                                    {addonsArray
-                                                                        .map((entry: any) => {
-                                                                            const addon = entry?.addon || entry;
-                                                                            const addonName =
-                                                                                addon?.name?.[language] ||
-                                                                                addon?.name?.ar ||
-                                                                                addon?.name?.en ||
-                                                                                addon?.name ||
-                                                                                addon?.title ||
-                                                                                '';
-                                                                            return addonName ? `+ ${String(addonName)}` : '';
-                                                                        })
-                                                                        .filter(Boolean)
-                                                                        .join(', ')}
-                                                                </div>
-                                                            )}
-                                                        </li>
+                                                        <div className="mt-1">
+                                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                                                                نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)} {baseCode || '—'}</span>
+                                                            </span>
+                                                        </div>
                                                     );
-                                                })}
-                                            </ul>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            <CurrencyDualAmount
-                                                amount={Number(order.total || 0)}
-                                                currencyCode={(order as any).currency}
-                                                baseAmount={(order as any).baseTotal}
-                                                fxRate={(order as any).fxRate}
-                                                baseCurrencyCode={baseCode}
-                                                compact
-                                            />
-                                            {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
-                                            {(() => {
-                                                const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-                                                const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
-                                                const total = roundMoneyByCode(Number(order.total) || 0, currency);
-                                                const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
-                                                return (
-                                                    <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
-                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{formatMoneyByCode(paid || 0, currency)} {currency || '—'}</span></div>
-                                                        <div>متبقي: <span className="font-mono" dir="ltr">{formatMoneyByCode(remaining || 0, currency)} {currency || '—'}</span></div>
-                                                        {remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && order.status !== 'delivered' && (
+                                                })()}
+                                                {order.location && !isInStoreOrder(order) && (
+                                                    <div className="mt-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setMapModal({ title: language === 'ar' ? 'موقع العميل' : 'Customer location', coords: order.location! })}
+                                                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                                        >
+                                                            {language === 'ar' ? 'عرض الخريطة' : 'Show map'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {order.notes && (
+                                                    <div className="text-xs text-blue-500 dark:text-blue-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.notes}>
+                                                        ملاحظة: {order.notes}
+                                                    </div>
+                                                )}
+                                                {order.deliveryInstructions && (
+                                                    <div className="text-xs text-orange-600 dark:text-orange-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.deliveryInstructions}>
+                                                        تعليمات التوصيل: {order.deliveryInstructions}
+                                                    </div>
+                                                )}
+                                                {(order.paymentProof || order.appliedCouponCode || (order.pointsRedeemedValue && order.pointsRedeemedValue > 0)) && (
+                                                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
+                                                        {order.paymentProof && (
                                                             <div>
-                                                                <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
-                                                                    بانتظار التحصيل
-                                                                </span>
+                                                                <span className="text-xs font-semibold dark:text-gray-300">إثبات الدفع: </span>
+                                                                {order.paymentProofType === 'image' ? (
+                                                                    <a href={order.paymentProof} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">عرض الصورة</a>
+                                                                ) : (
+                                                                    <span className="text-xs text-gray-700 dark:text-gray-400 font-mono">{order.paymentProof}</span>
+                                                                )}
                                                             </div>
                                                         )}
+                                                        {order.appliedCouponCode && (
+                                                            <div className="text-xs"><span className="font-semibold dark:text-gray-300">الكوبون:</span> <span className="font-mono text-green-600 dark:text-green-400">{order.appliedCouponCode}</span></div>
+                                                        )}
+                                                        {order.pointsRedeemedValue && order.pointsRedeemedValue > 0 && (
+                                                            <div className="text-xs"><span className="font-semibold dark:text-gray-300">نقاط مستبدلة:</span> <span className="font-mono text-yellow-600 dark:text-yellow-400">{order.pointsRedeemedValue.toFixed(0)}</span></div>
+                                                        )}
                                                     </div>
-                                                );
-                                            })()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 border-r dark:border-gray-700">{paymentTranslations[order.paymentMethod] || order.paymentMethod}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            {(() => {
-                                                const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-                                                const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
-                                                const total = roundMoneyByCode(Number(order.total) || 0, currency);
-                                                const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
-                                                const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
-                                                const showPaymentActions = order.status === 'delivered' && remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned;
-
-                                                const paymentActions = showPaymentActions ? (
-                                                    <div className="flex flex-col gap-2">
-                                                        <button
-                                                            onClick={() => openPartialPaymentModal(order.id)}
-                                                            disabled={!canMarkPaid}
-                                                            className="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition text-sm disabled:opacity-60"
-                                                        >
-                                                            تحصيل جزئي
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleMarkPaid(order.id)}
-                                                            disabled={!canMarkPaid}
-                                                            className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition text-sm disabled:opacity-60"
-                                                        >
-                                                            {order.paymentMethod === 'cash' ? 'تأكيد التحصيل' : 'تأكيد الدفع'}
-                                                        </button>
-                                                    </div>
-                                                ) : null;
-
-                                                if (order.invoiceIssuedAt) {
-                                                    return (
-                                                        <div className="flex flex-col gap-2">
-                                                            {canViewInvoice ? (
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="text-xs">
-                                                                        <div className="font-mono text-gray-800 dark:text-gray-200">{order.invoiceNumber}</div>
-                                                                        <div className="text-gray-500 dark:text-gray-400">طباعة: {order.invoicePrintCount || 0}</div>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 align-top border-r dark:border-gray-700">
+                                                <ul className="space-y-1">
+                                                    {(order.items || []).map((item: CartItem, idx: number) => {
+                                                        const selectedAddonsRaw = (item as any)?.selectedAddons;
+                                                        const selectedAddonsObj =
+                                                            selectedAddonsRaw && typeof selectedAddonsRaw === 'object' ? selectedAddonsRaw : {};
+                                                        const addonsArray = Object.values(selectedAddonsObj as Record<string, any>);
+                                                        const itemName = String(
+                                                            (item as any)?.name?.[language] ||
+                                                            (item as any)?.name?.ar ||
+                                                            (item as any)?.name?.en ||
+                                                            (item as any)?.name ||
+                                                            (item as any)?.itemName ||
+                                                            (item as any)?.id ||
+                                                            (item as any)?.itemId ||
+                                                            ''
+                                                        );
+                                                        const key =
+                                                            item.cartItemId ||
+                                                            (item as any).id ||
+                                                            `${(item as any).menuItemId || 'item'}-${idx}`;
+                                                        return (
+                                                            <li key={key}>
+                                                                <span className="font-semibold">{itemName || 'منتج'} x{Number((item as any)?.quantity || 0)}</span>
+                                                                {addonsArray.length > 0 && (
+                                                                    <div className="text-xs text-gray-500 dark:text-gray-400 pl-2 rtl:pr-2">
+                                                                        {addonsArray
+                                                                            .map((entry: any) => {
+                                                                                const addon = entry?.addon || entry;
+                                                                                const addonName =
+                                                                                    addon?.name?.[language] ||
+                                                                                    addon?.name?.ar ||
+                                                                                    addon?.name?.en ||
+                                                                                    addon?.name ||
+                                                                                    addon?.title ||
+                                                                                    '';
+                                                                                return addonName ? `+ ${String(addonName)}` : '';
+                                                                            })
+                                                                            .filter(Boolean)
+                                                                            .join(', ')}
                                                                     </div>
-                                                                    <button
-                                                                        onClick={() => navigate(`/admin/invoice/${order.id}`)}
-                                                                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs font-semibold"
-                                                                    >
-                                                                        عرض/طباعة
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-xs text-gray-400">غير متاحة</div>
-                                                            )}
-                                                            {!isInStoreOrder(order) && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handlePrintDeliveryNote(order)}
-                                                                    className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                                >
-                                                                    طباعة سند تسليم
-                                                                </button>
-                                                            )}
-                                                            {canViewAccounting && (Number(paidSumByOrderId[order.id]) || 0) > 0 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => { void handlePrintReceiptVoucher(order); }}
-                                                                    className="px-3 py-1 bg-gray-900 text-white rounded hover:bg-black transition text-xs font-semibold"
-                                                                >
-                                                                    طباعة سند قبض
-                                                                </button>
-                                                            )}
-                                                            {paymentActions}
-                                                        </div>
-                                                    );
-                                                }
-
-                                                if (order.status === 'delivered') {
-                                                    const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
+                                                                )}
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                <CurrencyDualAmount
+                                                    amount={Number(order.total || 0)}
+                                                    currencyCode={(order as any).currency}
+                                                    baseAmount={(order as any).baseTotal}
+                                                    fxRate={(order as any).fxRate}
+                                                    baseCurrencyCode={baseCode}
+                                                    compact
+                                                />
+                                                {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
+                                                {(() => {
                                                     const currency = String((order as any).currency || '').toUpperCase() || baseCode;
                                                     const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
                                                     const total = roundMoneyByCode(Number(order.total) || 0, currency);
-                                                    const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
-                                                    const isPaid = total > 0 && (paid + tol) >= total;
-                                                    const canIssueInvoice = !isCod && (isPaid || order.paymentMethod === 'ar') && canManageAccounting;
+                                                    const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
                                                     return (
-                                                        <div className="flex flex-col gap-2">
-                                                            {canIssueInvoice && (
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">جاري إصدار الفاتورة...</div>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            const g = guardPosting();
-                                                                            if (!g.ok) {
-                                                                                showNotification(g.reason || 'لا تملك صلاحية إصدار الفاتورة.', 'error');
-                                                                                return;
-                                                                            }
-                                                                            issueInvoiceNow(order.id);
-                                                                        }}
-                                                                        className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs"
-                                                                    >
-                                                                        إصدار الآن
-                                                                    </button>
+                                                        <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
+                                                            <div>مدفوع: <span className="font-mono" dir="ltr">{formatMoneyByCode(paid || 0, currency)} {currency || '—'}</span></div>
+                                                            <div>متبقي: <span className="font-mono" dir="ltr">{formatMoneyByCode(remaining || 0, currency)} {currency || '—'}</span></div>
+                                                            {remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && order.status !== 'delivered' && (
+                                                                <div>
+                                                                    <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                                                                        بانتظار التحصيل
+                                                                    </span>
                                                                 </div>
                                                             )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 border-r dark:border-gray-700">{paymentTranslations[order.paymentMethod] || order.paymentMethod}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                {(() => {
+                                                    const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                                                    const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+                                                    const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                                                    const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+                                                    const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+                                                    const showPaymentActions = order.status === 'delivered' && remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned;
+
+                                                    const paymentActions = showPaymentActions ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            <button
+                                                                onClick={() => openPartialPaymentModal(order.id)}
+                                                                disabled={!canMarkPaid}
+                                                                className="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition text-sm disabled:opacity-60"
+                                                            >
+                                                                تحصيل جزئي
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleMarkPaid(order.id)}
+                                                                disabled={!canMarkPaid}
+                                                                className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition text-sm disabled:opacity-60"
+                                                            >
+                                                                {order.paymentMethod === 'cash' ? 'تأكيد التحصيل' : 'تأكيد الدفع'}
+                                                            </button>
+                                                        </div>
+                                                    ) : null;
+
+                                                    if (order.invoiceIssuedAt) {
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                {canViewInvoice ? (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-xs">
+                                                                            <div className="font-mono text-gray-800 dark:text-gray-200">{order.invoiceNumber}</div>
+                                                                            <div className="text-gray-500 dark:text-gray-400">طباعة: {order.invoicePrintCount || 0}</div>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => navigate(`/admin/invoice/${order.id}`)}
+                                                                            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs font-semibold"
+                                                                        >
+                                                                            عرض/طباعة
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-xs text-gray-400">غير متاحة</div>
+                                                                )}
+                                                                {!isInStoreOrder(order) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handlePrintDeliveryNote(order)}
+                                                                        className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                                    >
+                                                                        طباعة سند تسليم
+                                                                    </button>
+                                                                )}
+                                                                {canViewAccounting && (Number(paidSumByOrderId[order.id]) || 0) > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { void handlePrintReceiptVoucher(order); }}
+                                                                        className="px-3 py-1 bg-gray-900 text-white rounded hover:bg-black transition text-xs font-semibold"
+                                                                    >
+                                                                        طباعة سند قبض
+                                                                    </button>
+                                                                )}
+                                                                {paymentActions}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (order.status === 'delivered') {
+                                                        const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
+                                                        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                                                        const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+                                                        const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                                                        const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+                                                        const isPaid = total > 0 && (paid + tol) >= total;
+                                                        const canIssueInvoice = !isCod && (isPaid || order.paymentMethod === 'ar') && canManageAccounting;
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                {canIssueInvoice && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-xs text-gray-500 dark:text-gray-400">جاري إصدار الفاتورة...</div>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                const g = guardPosting();
+                                                                                if (!g.ok) {
+                                                                                    showNotification(g.reason || 'لا تملك صلاحية إصدار الفاتورة.', 'error');
+                                                                                    return;
+                                                                                }
+                                                                                issueInvoiceNow(order.id);
+                                                                            }}
+                                                                            className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs"
+                                                                        >
+                                                                            إصدار الآن
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                                {!isInStoreOrder(order) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handlePrintDeliveryNote(order)}
+                                                                        className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                                    >
+                                                                        طباعة سند تسليم
+                                                                    </button>
+                                                                )}
+                                                                {paymentActions}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (isInStoreOrder(order) && order.status === 'pending' && canMarkPaid) {
+                                                        const reason = String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim();
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                {reason && (
+                                                                    <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                                                                        سبب التعليق: {reason}
+                                                                    </div>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void attemptResumeInStorePending(order)}
+                                                                    disabled={resumePendingBusyId === order.id}
+                                                                    className="px-3 py-1 bg-emerald-700 text-white rounded hover:bg-emerald-800 transition text-xs font-semibold disabled:opacity-60"
+                                                                >
+                                                                    {resumePendingBusyId === order.id ? 'جاري الإتمام...' : 'إعادة محاولة الإتمام'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setEditOrderId(order.id)}
+                                                                    className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800 transition text-xs font-semibold"
+                                                                >
+                                                                    تعديل الأصناف
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={async () => {
+                                                                        if (!canCancel) return;
+                                                                        try {
+                                                                            await cancelInStorePendingOrder(order.id);
+                                                                            showNotification('تم حذف الطلب المعلّق.', 'success');
+                                                                            try { await fetchOrders(); } catch { }
+                                                                        } catch (e: any) {
+                                                                            showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
+                                                                        }
+                                                                    }}
+                                                                    disabled={!canCancel || resumePendingBusyId === order.id}
+                                                                    className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs font-semibold disabled:opacity-60"
+                                                                >
+                                                                    حذف الطلب المعلّق
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div className="flex flex-col gap-2">
                                                             {!isInStoreOrder(order) && (
                                                                 <button
                                                                     type="button"
@@ -3006,283 +3093,222 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     طباعة سند تسليم
                                                                 </button>
                                                             )}
-                                                            {paymentActions}
+                                                            <div className="text-xs text-gray-400">غير متاحة</div>
                                                         </div>
                                                     );
-                                                }
-
-                                                if (isInStoreOrder(order) && order.status === 'pending' && canMarkPaid) {
-                                                    const reason = String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim();
-                                                    return (
-                                                        <div className="flex flex-col gap-2">
-                                                            {reason && (
-                                                                <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                                                                    سبب التعليق: {reason}
-                                                                </div>
-                                                            )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => void attemptResumeInStorePending(order)}
-                                                                disabled={resumePendingBusyId === order.id}
-                                                                className="px-3 py-1 bg-emerald-700 text-white rounded hover:bg-emerald-800 transition text-xs font-semibold disabled:opacity-60"
-                                                            >
-                                                                {resumePendingBusyId === order.id ? 'جاري الإتمام...' : 'إعادة محاولة الإتمام'}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setEditOrderId(order.id)}
-                                                                className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800 transition text-xs font-semibold"
-                                                            >
-                                                                تعديل الأصناف
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={async () => {
-                                                                    if (!canCancel) return;
-                                                                    try {
-                                                                        await cancelInStorePendingOrder(order.id);
-                                                                        showNotification('تم حذف الطلب المعلّق.', 'success');
-                                                                        try { await fetchOrders(); } catch { }
-                                                                    } catch (e: any) {
-                                                                        showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
-                                                                    }
-                                                                }}
-                                                                disabled={!canCancel || resumePendingBusyId === order.id}
-                                                                className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs font-semibold disabled:opacity-60"
-                                                            >
-                                                                حذف الطلب المعلّق
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                }
-
-                                                return (
-                                                    <div className="flex flex-col gap-2">
-                                                        {!isInStoreOrder(order) && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handlePrintDeliveryNote(order)}
-                                                                className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                            >
-                                                                طباعة سند تسليم
-                                                            </button>
-                                                        )}
-                                                        <div className="text-xs text-gray-400">غير متاحة</div>
-                                                    </div>
-                                                );
-                                            })()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            {renderReturnBadge(order, 'banner')}
-                                            <select
-                                                value={order.status}
-                                                onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
-                                                disabled={
-                                                    order.status === 'delivered' ||
-                                                    order.status === 'cancelled' ||
-                                                    getEditableStatusesForOrder(order).length === 0 ||
-                                                    (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
-                                                    String((order as any).returnStatus || '').toLowerCase() === 'full'
-                                                }
-                                                className={`w-full p-2 border-none rounded-md text-sm focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
-                                            >
-                                                {order.status === 'cancelled' ? (
-                                                    <option value="cancelled">ملغي</option>
-                                                ) : getEditableStatusesForOrder(order).length > 0 && !getEditableStatusesForOrder(order).includes(order.status) ? (
-                                                    <>
-                                                        <option key={`current-${order.status}`} value={order.status}>{statusTranslations[order.status] || order.status}</option>
-                                                        {getEditableStatusesForOrder(order).map(status => (
-                                                            <option key={status} value={status}>{statusTranslations[status] || status}</option>
-                                                        ))}
-                                                    </>
-                                                ) : (
-                                                    (getEditableStatusesForOrder(order).length > 0 ? getEditableStatusesForOrder(order) : [order.status]).map(status => (
-                                                        <option key={status} value={status}>{statusTranslations[status] || status}</option>
-                                                    ))
-                                                )}
-                                            </select>
-                                            {canCancel && order.status !== 'delivered' && order.status !== 'cancelled' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setCancelOrderId(order.id)}
-                                                    className="mt-2 w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
+                                                })()}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                {renderReturnBadge(order, 'banner')}
+                                                <select
+                                                    value={order.status}
+                                                    onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
+                                                    disabled={
+                                                        order.status === 'delivered' ||
+                                                        order.status === 'cancelled' ||
+                                                        getEditableStatusesForOrder(order).length === 0 ||
+                                                        (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
+                                                        String((order as any).returnStatus || '').toLowerCase() === 'full'
+                                                    }
+                                                    className={`w-full p-2 border-none rounded-md text-sm focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                                                 >
-                                                    {language === 'ar' ? 'إلغاء الطلب' : 'Cancel order'}
-                                                </button>
-                                            )}
-                                            {(() => {
-                                                const paid = Number(paidSumByOrderId[order.id]) || 0;
-                                                const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
-                                                const canReturn = order.status === 'delivered' && paid > 0.01 && !isFullyReturned;
-                                                if (!canReturn) return null;
-                                                return (
-                                                    <div className="mt-2 flex flex-col gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openReturnsModal(order.id)}
-                                                            className="w-full px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 transition text-sm font-semibold"
-                                                        >
-                                                            📚 سجل المرتجعات
-                                                        </button>
+                                                    {order.status === 'cancelled' ? (
+                                                        <option value="cancelled">ملغي</option>
+                                                    ) : getEditableStatusesForOrder(order).length > 0 && !getEditableStatusesForOrder(order).includes(order.status) ? (
+                                                        <>
+                                                            <option key={`current-${order.status}`} value={order.status}>{statusTranslations[order.status] || order.status}</option>
+                                                            {getEditableStatusesForOrder(order).map(status => (
+                                                                <option key={status} value={status}>{statusTranslations[status] || status}</option>
+                                                            ))}
+                                                        </>
+                                                    ) : (
+                                                        (getEditableStatusesForOrder(order).length > 0 ? getEditableStatusesForOrder(order) : [order.status]).map(status => (
+                                                            <option key={status} value={status}>{statusTranslations[status] || status}</option>
+                                                        ))
+                                                    )}
+                                                </select>
+                                                {canCancel && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCancelOrderId(order.id)}
+                                                        className="mt-2 w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
+                                                    >
+                                                        {language === 'ar' ? 'إلغاء الطلب' : 'Cancel order'}
+                                                    </button>
+                                                )}
+                                                {(() => {
+                                                    const paid = Number(paidSumByOrderId[order.id]) || 0;
+                                                    const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+                                                    const canReturn = order.status === 'delivered' && paid > 0.01 && !isFullyReturned;
+                                                    if (!canReturn) return null;
+                                                    return (
+                                                        <div className="mt-2 flex flex-col gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openReturnsModal(order.id)}
+                                                                className="w-full px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 transition text-sm font-semibold"
+                                                            >
+                                                                📚 سجل المرتجعات
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setReturnOrderId(order.id);
+                                                                    setReturnItems({});
+                                                                    setReturnReason('');
+                                                                    setRefundMethod('cash');
+                                                                }}
+                                                                className="w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
+                                                            >
+                                                                ↩️ استرجاع (مرتجع)
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                {order.status === 'delivered'
+                                                    && canVoidDelivered
+                                                    && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt)
+                                                    && String((order as any).returnStatus || '').toLowerCase() !== 'full'
+                                                    && (
                                                         <button
                                                             type="button"
                                                             onClick={() => {
-                                                                setReturnOrderId(order.id);
-                                                                setReturnItems({});
-                                                                setReturnReason('');
-                                                                setRefundMethod('cash');
+                                                                setVoidOrderId(order.id);
+                                                                setVoidReason('');
                                                             }}
-                                                            className="w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
+                                                            className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold"
                                                         >
-                                                            ↩️ استرجاع (مرتجع)
+                                                            🧾 إلغاء بعد التسليم (عكس)
                                                         </button>
-                                                    </div>
-                                                );
-                                            })()}
-                                            {order.status === 'delivered'
-                                                && canVoidDelivered
-                                                && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt)
-                                                && String((order as any).returnStatus || '').toLowerCase() !== 'full'
-                                                && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setVoidOrderId(order.id);
-                                                        setVoidReason('');
-                                                    }}
-                                                    className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold"
-                                                >
-                                                    🧾 إلغاء بعد التسليم (عكس)
-                                                </button>
-                                            )}
-                                            {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleAcceptDelivery(order.id)}
-                                                    className="mt-2 w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm font-semibold"
-                                                >
-                                                    {language === 'ar' ? 'قبول مهمة التوصيل' : 'Accept delivery'}
-                                                </button>
-                                            )}
-                                            {canAssignDelivery && !isInStoreOrder(order) && (
-                                                <div className="mt-2">
-                                                    <select
-                                                        value={order.assignedDeliveryUserId || 'none'}
-                                                        onChange={(e) => handleAssignDelivery(order.id, e.target.value)}
-                                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs text-gray-900 dark:text-white focus:ring-orange-500 focus:border-orange-500 transition"
-                                                    >
-                                                        <option value="none">{language === 'ar' ? 'بدون مندوب' : 'Unassigned'}</option>
-                                                        {deliveryUsers.map(u => (
-                                                            <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleAudit(order.id)}
-                                                className="mt-2 w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition text-sm font-semibold dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                                            >
-                                                {expandedAuditOrderId === order.id
-                                                    ? (language === 'ar' ? 'إخفاء السجل' : 'Hide log')
-                                                    : (language === 'ar' ? 'سجل الإجراءات' : 'Audit log')}
-                                            </button>
-                                            {canViewAccounting && order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openCodAudit(order.id)}
-                                                    className="mt-2 w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-semibold"
-                                                >
-                                                    عرض سجل COD
-                                                </button>
-                                            )}
-                                            {expandedAuditOrderId === order.id && (
-                                                <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
-                                                    {auditLoadingOrderId === order.id ? (
-                                                        <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'جاري تحميل السجل...' : 'Loading log...'}</div>
-                                                    ) : (auditByOrderId[order.id]?.length || 0) > 0 ? (
-                                                        <ul className="space-y-2 text-xs">
-                                                            {auditByOrderId[order.id]!.map(ev => {
-                                                                const actor = ev.actorType === 'admin'
-                                                                    ? (language === 'ar' ? 'إداري' : 'Admin')
-                                                                    : ev.actorType === 'customer'
-                                                                        ? (language === 'ar' ? 'زبون' : 'Customer')
-                                                                        : (language === 'ar' ? 'نظام' : 'System');
-
-                                                                const statusPart = ev.fromStatus || ev.toStatus
-                                                                    ? `${ev.fromStatus ? (statusTranslations[ev.fromStatus as OrderStatus] || ev.fromStatus) : ''}${ev.fromStatus && ev.toStatus ? ' → ' : ''}${ev.toStatus ? (statusTranslations[ev.toStatus as OrderStatus] || ev.toStatus) : ''}`.trim()
-                                                                    : '';
-
-                                                                const payload = ev.payload;
-                                                                const deliveredLocationCandidate =
-                                                                    payload && typeof payload === 'object' && 'deliveredLocation' in payload
-                                                                        ? (payload as Record<string, unknown>).deliveredLocation
-                                                                        : undefined;
-                                                                const deliveredLocation = isDeliveredLocation(deliveredLocationCandidate)
-                                                                    ? deliveredLocationCandidate
-                                                                    : undefined;
-
-                                                                const deliveryPinVerified =
-                                                                    payload && typeof payload === 'object' && 'deliveryPinVerified' in payload
-                                                                        ? Boolean((payload as Record<string, unknown>).deliveryPinVerified)
-                                                                        : false;
-
-                                                                return (
-                                                                    <li key={ev.id} className="text-gray-700 dark:text-gray-200">
-                                                                        <div className="flex items-start justify-between gap-2">
-                                                                            <div className="min-w-0">
-                                                                                <div className="font-semibold">{ev.action}</div>
-                                                                                <div className="text-gray-500 dark:text-gray-400">
-                                                                                    {actor}{ev.actorId ? ` • ${ev.actorId}` : ''}{statusPart ? ` • ${statusPart}` : ''}
-                                                                                </div>
-                                                                                {(deliveryPinVerified || deliveredLocation) && (
-                                                                                    <div className="mt-1 text-gray-500 dark:text-gray-400">
-                                                                                        {deliveryPinVerified && (
-                                                                                            <span>{language === 'ar' ? 'تم التحقق من الرمز' : 'PIN verified'}</span>
-                                                                                        )}
-                                                                                        {deliveryPinVerified && deliveredLocation && <span>{' • '}</span>}
-                                                                                        {deliveredLocation && (
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => setMapModal({ title: language === 'ar' ? 'موقع التسليم' : 'Delivery location', coords: { lat: deliveredLocation.lat, lng: deliveredLocation.lng } })}
-                                                                                                className="text-blue-600 dark:text-blue-400 hover:underline"
-                                                                                            >
-                                                                                                {language === 'ar' ? 'موقع التسليم' : 'Delivery location'}
-                                                                                                {typeof deliveredLocation.accuracy === 'number'
-                                                                                                    ? ` (${deliveredLocation.accuracy.toFixed(0)}m)`
-                                                                                                    : ''}
-                                                                                            </button>
-                                                                                        )}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                            <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
-                                                                                {new Date(ev.createdAt).toLocaleString('ar-EG-u-nu-latn')}
-                                                                            </div>
-                                                                        </div>
-                                                                    </li>
-                                                                );
-                                                            })}
-                                                        </ul>
-                                                    ) : (
-                                                        <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'لا يوجد سجل لهذا الطلب.' : 'No audit events for this order.'}</div>
                                                     )}
-                                                </div>
-                                            )}
-                                            {!isInStoreOrder(order) && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAcceptDelivery(order.id)}
+                                                        className="mt-2 w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm font-semibold"
+                                                    >
+                                                        {language === 'ar' ? 'قبول مهمة التوصيل' : 'Accept delivery'}
+                                                    </button>
+                                                )}
+                                                {canAssignDelivery && !isInStoreOrder(order) && (
+                                                    <div className="mt-2">
+                                                        <select
+                                                            value={order.assignedDeliveryUserId || 'none'}
+                                                            onChange={(e) => handleAssignDelivery(order.id, e.target.value)}
+                                                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs text-gray-900 dark:text-white focus:ring-orange-500 focus:border-orange-500 transition"
+                                                        >
+                                                            <option value="none">{language === 'ar' ? 'بدون مندوب' : 'Unassigned'}</option>
+                                                            {deliveryUsers.map(u => (
+                                                                <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
                                                 <button
                                                     type="button"
-                                                    onClick={() => {
-                                                        setEditOrderId(order.id);
-                                                        setEditChangesByCartItemId({});
-                                                    }}
-                                                    className="mt-2 w-full px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition text-sm font-semibold"
+                                                    onClick={() => toggleAudit(order.id)}
+                                                    className="mt-2 w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition text-sm font-semibold dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                                                 >
-                                                    تعديل الأصناف
+                                                    {expandedAuditOrderId === order.id
+                                                        ? (language === 'ar' ? 'إخفاء السجل' : 'Hide log')
+                                                        : (language === 'ar' ? 'سجل الإجراءات' : 'Audit log')}
                                                 </button>
-                                            )}
-                                        </td>
-                                    </tr>
+                                                {canViewAccounting && order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openCodAudit(order.id)}
+                                                        className="mt-2 w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-semibold"
+                                                    >
+                                                        عرض سجل COD
+                                                    </button>
+                                                )}
+                                                {expandedAuditOrderId === order.id && (
+                                                    <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
+                                                        {auditLoadingOrderId === order.id ? (
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'جاري تحميل السجل...' : 'Loading log...'}</div>
+                                                        ) : (auditByOrderId[order.id]?.length || 0) > 0 ? (
+                                                            <ul className="space-y-2 text-xs">
+                                                                {auditByOrderId[order.id]!.map(ev => {
+                                                                    const actor = ev.actorType === 'admin'
+                                                                        ? (language === 'ar' ? 'إداري' : 'Admin')
+                                                                        : ev.actorType === 'customer'
+                                                                            ? (language === 'ar' ? 'زبون' : 'Customer')
+                                                                            : (language === 'ar' ? 'نظام' : 'System');
+
+                                                                    const statusPart = ev.fromStatus || ev.toStatus
+                                                                        ? `${ev.fromStatus ? (statusTranslations[ev.fromStatus as OrderStatus] || ev.fromStatus) : ''}${ev.fromStatus && ev.toStatus ? ' → ' : ''}${ev.toStatus ? (statusTranslations[ev.toStatus as OrderStatus] || ev.toStatus) : ''}`.trim()
+                                                                        : '';
+
+                                                                    const payload = ev.payload;
+                                                                    const deliveredLocationCandidate =
+                                                                        payload && typeof payload === 'object' && 'deliveredLocation' in payload
+                                                                            ? (payload as Record<string, unknown>).deliveredLocation
+                                                                            : undefined;
+                                                                    const deliveredLocation = isDeliveredLocation(deliveredLocationCandidate)
+                                                                        ? deliveredLocationCandidate
+                                                                        : undefined;
+
+                                                                    const deliveryPinVerified =
+                                                                        payload && typeof payload === 'object' && 'deliveryPinVerified' in payload
+                                                                            ? Boolean((payload as Record<string, unknown>).deliveryPinVerified)
+                                                                            : false;
+
+                                                                    return (
+                                                                        <li key={ev.id} className="text-gray-700 dark:text-gray-200">
+                                                                            <div className="flex items-start justify-between gap-2">
+                                                                                <div className="min-w-0">
+                                                                                    <div className="font-semibold">{ev.action}</div>
+                                                                                    <div className="text-gray-500 dark:text-gray-400">
+                                                                                        {actor}{ev.actorId ? ` • ${ev.actorId}` : ''}{statusPart ? ` • ${statusPart}` : ''}
+                                                                                    </div>
+                                                                                    {(deliveryPinVerified || deliveredLocation) && (
+                                                                                        <div className="mt-1 text-gray-500 dark:text-gray-400">
+                                                                                            {deliveryPinVerified && (
+                                                                                                <span>{language === 'ar' ? 'تم التحقق من الرمز' : 'PIN verified'}</span>
+                                                                                            )}
+                                                                                            {deliveryPinVerified && deliveredLocation && <span>{' • '}</span>}
+                                                                                            {deliveredLocation && (
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => setMapModal({ title: language === 'ar' ? 'موقع التسليم' : 'Delivery location', coords: { lat: deliveredLocation.lat, lng: deliveredLocation.lng } })}
+                                                                                                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                                                                                                >
+                                                                                                    {language === 'ar' ? 'موقع التسليم' : 'Delivery location'}
+                                                                                                    {typeof deliveredLocation.accuracy === 'number'
+                                                                                                        ? ` (${deliveredLocation.accuracy.toFixed(0)}m)`
+                                                                                                        : ''}
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
+                                                                                    {new Date(ev.createdAt).toLocaleString('ar-EG-u-nu-latn')}
+                                                                                </div>
+                                                                            </div>
+                                                                        </li>
+                                                                    );
+                                                                })}
+                                                            </ul>
+                                                        ) : (
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'لا يوجد سجل لهذا الطلب.' : 'No audit events for this order.'}</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {!isInStoreOrder(order) && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditOrderId(order.id);
+                                                            setEditChangesByCartItemId({});
+                                                        }}
+                                                        className="mt-2 w-full px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition text-sm font-semibold"
+                                                    >
+                                                        تعديل الأصناف
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
                                     );
                                 })
                             ) : (
