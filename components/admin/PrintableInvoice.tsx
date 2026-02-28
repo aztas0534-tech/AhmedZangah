@@ -372,17 +372,17 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 <thead>
                     <tr>
                         {resolvedThermalPaperWidth === '58mm' ? (
-                          <th style={{ width: '100%' }}>تفاصيل الأصناف</th>
+                            <th style={{ width: '100%' }}>تفاصيل الأصناف</th>
                         ) : (
-                          <>
-                            <th style={{ width: '14%' }}>رقم الصنف</th>
-                            <th style={{ width: '14%', textAlign: 'center' }}>المخزن</th>
-                            <th style={{ width: '26%' }}>الصنف</th>
-                            <th style={{ width: '10%', textAlign: 'center' }}>الوحدة</th>
-                            <th style={{ width: '10%', textAlign: 'center' }}>الكمية</th>
-                            <th style={{ width: '13%', textAlign: 'center' }}>سعر الوحدة</th>
-                            <th style={{ width: '13%', textAlign: 'left' }}>الإجمالي</th>
-                          </>
+                            <>
+                                <th style={{ width: '14%' }}>رقم الصنف</th>
+                                <th style={{ width: '14%', textAlign: 'center' }}>المخزن</th>
+                                <th style={{ width: '26%' }}>الصنف</th>
+                                <th style={{ width: '10%', textAlign: 'center' }}>الوحدة</th>
+                                <th style={{ width: '10%', textAlign: 'center' }}>الكمية</th>
+                                <th style={{ width: '13%', textAlign: 'center' }}>سعر الوحدة</th>
+                                <th style={{ width: '13%', textAlign: 'left' }}>الإجمالي</th>
+                            </>
                         )}
                     </tr>
                 </thead>
@@ -410,49 +410,59 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                         return (
                             <tr key={item.cartItemId || index}>
                                 {resolvedThermalPaperWidth === '58mm' ? (
-                                  <td>
-                                    <div className="item-name">
-                                      <span className="tabular" dir="ltr">{itemNo}</span>
-                                      <span> - </span>
-                                      <span>{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</span>
-                                    </div>
-                                    {Object.values(item.selectedAddons).length > 0 && (
-                                      <div className="item-meta">
-                                        {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
-                                          <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                    <div className="item-meta">
-                                      <span>الوحدة: {soldUnit}</span>
-                                      <span> | </span>
-                                      <span className="tabular" dir="ltr">الكمية: {soldQty}</span>
-                                      <span> | </span>
-                                      <span className="tabular" dir="ltr">المخزن: {invoiceWarehouseName || '—'}</span>
-                                      <span> | </span>
-                                      <span className="tabular" dir="ltr">سعر الوحدة: {formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</span>
-                                    </div>
-                                    <div className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</div>
-                                  </td>
-                                ) : (
-                                  <>
-                                    <td className="tabular" dir="ltr">{itemNo}</td>
-                                    <td className="text-center">{invoiceWarehouseName || '—'}</td>
                                     <td>
-                                      <div className="item-name">{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</div>
-                                      {Object.values(item.selectedAddons).length > 0 && (
-                                        <div className="item-meta">
-                                          {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
-                                            <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
-                                          ))}
+                                        <div className="item-name">
+                                            <span className="tabular" dir="ltr">{itemNo}</span>
+                                            <span> - </span>
+                                            <span>{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</span>
                                         </div>
-                                      )}
+                                        {Object.values(item.selectedAddons).length > 0 && (
+                                            <div className="item-meta">
+                                                {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
+                                                    <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {item.notes && item.notes.trim().length > 0 && (
+                                            <div className="item-meta" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                                {item.notes.trim()}
+                                            </div>
+                                        )}
+                                        <div className="item-meta">
+                                            <span>الوحدة: {soldUnit}</span>
+                                            <span> | </span>
+                                            <span className="tabular" dir="ltr">الكمية: {soldQty}</span>
+                                            <span> | </span>
+                                            <span className="tabular" dir="ltr">المخزن: {invoiceWarehouseName || '—'}</span>
+                                            <span> | </span>
+                                            <span className="tabular" dir="ltr">سعر الوحدة: {formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</span>
+                                        </div>
+                                        <div className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</div>
                                     </td>
-                                    <td className="text-center">{soldUnit}</td>
-                                    <td className="text-center tabular" dir="ltr">{soldQty}</td>
-                                    <td className="text-center tabular" dir="ltr">{formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</td>
-                                    <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</td>
-                                  </>
+                                ) : (
+                                    <>
+                                        <td className="tabular" dir="ltr">{itemNo}</td>
+                                        <td className="text-center">{invoiceWarehouseName || '—'}</td>
+                                        <td>
+                                            <div className="item-name">{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</div>
+                                            {Object.values(item.selectedAddons).length > 0 && (
+                                                <div className="item-meta">
+                                                    {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
+                                                        <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {item.notes && item.notes.trim().length > 0 && (
+                                                <div className="item-meta" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                                    {item.notes.trim()}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="text-center">{soldUnit}</td>
+                                        <td className="text-center tabular" dir="ltr">{soldQty}</td>
+                                        <td className="text-center tabular" dir="ltr">{formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</td>
+                                        <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</td>
+                                    </>
                                 )}
                             </tr>
                         );
@@ -464,28 +474,28 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 <div className="flex mb-1">
                     <span>المجموع الفرعي:</span>
                     <span className="tabular" dir="ltr">
-                      {formatAmount(Number(invoiceOrder.subtotal) || 0)} {currencyLabelAr(currencyLabel)}
+                        {formatAmount(Number(invoiceOrder.subtotal) || 0)} {currencyLabelAr(currencyLabel)}
                     </span>
                 </div>
                 {(invoiceOrder.discountAmount || 0) > 0 && (
                     <div className="flex mb-1">
                         <span>الخصم:</span>
                         <span className="tabular" dir="ltr">
-                          - {formatAmount(Number(invoiceOrder.discountAmount) || 0)} {currencyLabelAr(currencyLabel)}
+                            - {formatAmount(Number(invoiceOrder.discountAmount) || 0)} {currencyLabelAr(currencyLabel)}
                         </span>
                     </div>
                 )}
                 <div className="flex mb-1">
                     <span>الضريبة (15%):</span>
                     <span className="tabular" dir="ltr">
-                      {formatAmount(Number(invoiceOrder.taxAmount) || 0)} {currencyLabelAr(currencyLabel)}
+                        {formatAmount(Number(invoiceOrder.taxAmount) || 0)} {currencyLabelAr(currencyLabel)}
                     </span>
                 </div>
                 {Number(invoiceOrder.deliveryFee) > 0 && (
                     <div className="flex mb-1">
                         <span>التوصيل:</span>
                         <span className="tabular" dir="ltr">
-                          {formatAmount(Number(invoiceOrder.deliveryFee) || 0)} {currencyLabelAr(currencyLabel)}
+                            {formatAmount(Number(invoiceOrder.deliveryFee) || 0)} {currencyLabelAr(currencyLabel)}
                         </span>
                     </div>
                 )}
@@ -494,7 +504,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div className="total-box text-center mb-4">
                 <div className="text-sm font-bold mb-1">الإجمالي النهائي</div>
                 <div className="text-xl font-bold tabular" dir="ltr">
-                  {formatAmount(Number(invoiceOrder.total) || 0)} {currencyLabelAr(currencyLabel)}
+                    {formatAmount(Number(invoiceOrder.total) || 0)} {currencyLabelAr(currencyLabel)}
                 </div>
             </div>
 

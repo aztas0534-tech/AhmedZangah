@@ -536,6 +536,11 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                                     ))}
                                                 </div>
                                             )}
+                                            {item.notes && item.notes.trim().length > 0 && (
+                                                <div className="mt-1 text-xs text-slate-600 print:text-[9px] print:mt-0.5 whitespace-pre-wrap leading-relaxed">
+                                                    {item.notes.trim()}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="py-4 px-6 print:py-1 print:px-1 text-center">
                                             <span className="font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800 print:bg-transparent print:px-0 print:py-0 print:rounded-none">{invoiceWarehouseName || '—'}</span>

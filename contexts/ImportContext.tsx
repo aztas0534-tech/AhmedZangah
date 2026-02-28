@@ -268,8 +268,9 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 expense_type: expense.expenseType,
                 amount: expense.amount,
                 currency,
-                payment_method: expense.paymentMethod || 'cash',
+                exchange_rate: expense.exchangeRate || 1,
                 description: expense.description,
+                payment_method: expense.paymentMethod || 'cash',
                 invoice_number: expense.invoiceNumber,
                 paid_at: expense.paidAt,
                 created_by: user?.id

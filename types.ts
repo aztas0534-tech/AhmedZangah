@@ -181,9 +181,9 @@ export interface ImportExpense {
   currency: string;
   exchangeRate: number;
   baseAmount?: number;
-  paymentMethod?: 'cash' | 'bank';
   description?: string;
   invoiceNumber?: string;
+  paymentMethod?: 'cash' | 'bank'; // Added this back
   paidAt?: string;
   createdBy?: string;
   createdAt: string;
