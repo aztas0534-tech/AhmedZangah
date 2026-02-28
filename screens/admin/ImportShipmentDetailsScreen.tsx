@@ -209,6 +209,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             const receiptIds = (receiptIdsRows || []).map((r: any) => String(r?.id || '')).filter(Boolean);
             if (receiptIds.length === 0) {
                 setPricingRows([]);
+                showNotification('لا توجد استلامات مرتبطة بهذه الشحنة في المستودع المحدد.', 'info');
                 return;
             }
 
@@ -1509,7 +1510,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
                         {pricingRows.length === 0 && (
                             <div className="text-center py-10 text-gray-500">
-                                اربط الاستلامات بالشحنة أولاً ثم افتح تبويب التسعير.
+                                {pricingLoading ? 'جاري تحميل بيانات التسعير...' : 'لا توجد بيانات تسعير. تأكد أن الاستلامات مرتبطة بالشحنة وتم توليد الأصناف.'}
                             </div>
                         )}
                     </div>
