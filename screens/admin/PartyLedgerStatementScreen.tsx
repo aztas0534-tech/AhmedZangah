@@ -535,8 +535,8 @@ const PartyLedgerStatementScreen: React.FC = () => {
               key={c}
               onClick={() => { setCurrency(c); }}
               className={`px-3 py-1 rounded-full text-xs font-mono transition-colors ${currency.toUpperCase() === c.toUpperCase()
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-primary-100 dark:hover:bg-primary-900/30'
+                ? 'bg-primary-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-primary-100 dark:hover:bg-primary-900/30'
                 }`}
             >
               {c}
@@ -621,16 +621,24 @@ const PartyLedgerStatementScreen: React.FC = () => {
                       <div className="text-xs text-gray-500 dark:text-gray-400">{r.account_name}</div>
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {r.direction === 'debit' ? amountInRowCurrency(r).toFixed(2) : '—'}
-                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
-                      ) : null}
+                      {r.direction === 'debit' ? (
+                        <>
+                          {amountInRowCurrency(r).toFixed(2)}
+                          {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() && (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
+                          )}
+                        </>
+                      ) : '—'}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {r.direction === 'credit' ? amountInRowCurrency(r).toFixed(2) : '—'}
-                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
-                      ) : null}
+                      {r.direction === 'credit' ? (
+                        <>
+                          {amountInRowCurrency(r).toFixed(2)}
+                          {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() && (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
+                          )}
+                        </>
+                      ) : '—'}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono">
                       {String(r.currency_code || '').toUpperCase()}
