@@ -1,0 +1,1 @@
+select pi.id, mi.name, pi.quantity as o_qty, pi.qty_base as o_base, pi.received_quantity as r_qty, u.name as u_name from public.purchase_items pi left join public.menu_items mi on mi.id = pi.item_id left join public.uom u on u.id = pi.uom_id where pi.purchase_order_id = '05968e82-bf9f-49e1-a656-5c55c5c3d926';  

@@ -16,12 +16,10 @@ for (const line of envLocal.split('\n')) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-    const sql = fs.readFileSync('supabase/migrations/20260228054000_restore_post_inventory_movement_full.sql', 'utf8');
-    // Need to use an RPC that can execute arbitrary SQL since supabase-js does not support direct SQL queries.
-    // There is an 'execute_sql' rpc we discovered earlier. Let's try it.
-    const { data, error } = await supabase.rpc('execute_sql', { sql: sql });
-    console.log('Result:', data);
-    console.log('Error:', error);
+    const { data, error } = await supabase.rpc('execute_sql', {
+        sql: "SELECT * FROM purchase_returns LIMIT 1;"
+    });
+    console.log(data || error);
 }
 
 run();

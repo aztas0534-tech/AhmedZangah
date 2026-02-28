@@ -2451,247 +2451,247 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const termsLabel = inferredTerms === 'credit' ? 'أجل' : 'نقد';
                                     const dueLabel = order.dueDate ? formatPurchaseDate(order.dueDate) : '-';
                                     return (
-                                <tr
-                                    key={order.id}
-                                    id={`po-${order.id}`}
-                                    className={[
-                                        'hover:bg-gray-50 dark:hover:bg-gray-700/30',
-                                        focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : ''
-                                    ].join(' ')}
-                                >
-                                    <td className="p-4 font-mono text-sm dark:text-gray-300">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</td>
-                                    <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
-                                    <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300">{order.warehouseName || '-'}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inferredTerms === 'credit' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>
-                                            {termsLabel}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 text-sm dark:text-gray-300">{dueLabel}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
-                                    <td className="p-4 font-bold text-primary-600 dark:text-primary-400">
-                                        {(() => {
-                                            const code = currencyCode;
-                                            const fmt = (n: number) => { try { return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return n.toFixed(2); } };
-                                            const totalCur = fmt(Number(order.totalAmount || 0));
-                                            const totalBase = fmt(Number(order.baseTotal || 0));
-                                            const rate = Number(order.fxRate || 0);
-                                            return (
-                                                <div className="space-y-1">
-                                                    <div>{totalCur} <span className="text-xs">{code || '—'}</span></div>
-                                                    <div className="text-xs text-gray-600 dark:text-gray-300">{`FX=${rate > 0 ? rate.toFixed(6) : '—'} • ${totalBase} ${baseCode || '—'}`}</div>
+                                        <tr
+                                            key={order.id}
+                                            id={`po-${order.id}`}
+                                            className={[
+                                                'hover:bg-gray-50 dark:hover:bg-gray-700/30',
+                                                focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : ''
+                                            ].join(' ')}
+                                        >
+                                            <td className="p-4 font-mono text-sm dark:text-gray-300">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</td>
+                                            <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
+                                            <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
+                                            <td className="p-4 text-sm dark:text-gray-300">{order.warehouseName || '-'}</td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inferredTerms === 'credit' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>
+                                                    {termsLabel}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-sm dark:text-gray-300">{dueLabel}</td>
+                                            <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
+                                            <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
+                                            <td className="p-4 font-bold text-primary-600 dark:text-primary-400">
+                                                {(() => {
+                                                    const code = currencyCode;
+                                                    const fmt = (n: number) => { try { return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return n.toFixed(2); } };
+                                                    const totalCur = fmt(Number(order.totalAmount || 0));
+                                                    const totalBase = fmt(Number(order.baseTotal || 0));
+                                                    const rate = Number(order.fxRate || 0);
+                                                    return (
+                                                        <div className="space-y-1">
+                                                            <div>{totalCur} <span className="text-xs">{code || '—'}</span></div>
+                                                            <div className="text-xs text-gray-600 dark:text-gray-300">{`FX=${rate > 0 ? rate.toFixed(6) : '—'} • ${totalBase} ${baseCode || '—'}`}</div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <CurrencyDualAmount amount={paid} currencyCode={currencyCode} compact />
+                                            </td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <CurrencyDualAmount amount={remaining} currencyCode={currencyCode} compact />
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex flex-col items-start gap-1">
+                                                    <span className={[
+                                                        'px-2 py-1 rounded-full text-xs font-bold',
+                                                        order.status === 'cancelled' ? 'bg-red-100 text-red-700'
+                                                            : fullyReceived ? 'bg-green-100 text-green-700'
+                                                                : hasReceived ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-gray-100 text-gray-700'
+                                                    ].join(' ')}>
+                                                        {order.status === 'cancelled'
+                                                            ? 'الاستلام: ملغي'
+                                                            : fullyReceived
+                                                                ? 'الاستلام: مستلم بالكامل'
+                                                                : hasReceived
+                                                                    ? 'الاستلام: مستلم جزئيًا'
+                                                                    : order.status === 'draft'
+                                                                        ? 'الاستلام: مسودة'
+                                                                        : 'الاستلام: غير مستلم'}
+                                                    </span>
+                                                    <span className={['px-2 py-1 rounded-full text-xs font-bold', paymentBadge.className].join(' ')}>
+                                                        {`الدفع: ${paymentBadge.label}`}
+                                                    </span>
                                                 </div>
-                                            );
-                                        })()}
-                                    </td>
-                                    <td className="p-4 text-sm dark:text-gray-300">
-                                        <CurrencyDualAmount amount={paid} currencyCode={currencyCode} compact />
-                                    </td>
-                                    <td className="p-4 text-sm dark:text-gray-300">
-                                        <CurrencyDualAmount amount={remaining} currencyCode={currencyCode} compact />
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex flex-col items-start gap-1">
-                                            <span className={[
-                                                'px-2 py-1 rounded-full text-xs font-bold',
-                                                order.status === 'cancelled' ? 'bg-red-100 text-red-700'
-                                                    : fullyReceived ? 'bg-green-100 text-green-700'
-                                                        : hasReceived ? 'bg-yellow-100 text-yellow-700'
-                                                            : 'bg-gray-100 text-gray-700'
-                                            ].join(' ')}>
-                                                {order.status === 'cancelled'
-                                                    ? 'الاستلام: ملغي'
-                                                    : fullyReceived
-                                                        ? 'الاستلام: مستلم بالكامل'
-                                                        : hasReceived
-                                                            ? 'الاستلام: مستلم جزئيًا'
-                                                            : order.status === 'draft'
-                                                                ? 'الاستلام: مسودة'
-                                                                : 'الاستلام: غير مستلم'}
-                                            </span>
-                                            <span className={['px-2 py-1 rounded-full text-xs font-bold', paymentBadge.className].join(' ')}>
-                                                {`الدفع: ${paymentBadge.label}`}
-                                            </span>
-                                        </div>
-                                        {order.hasReturns ? (
-                                            <span className="ml-2 px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-                                                {total <= 1e-9 ? 'مرتجع كلي' : 'مرتجع جزئي'}
-                                            </span>
-                                        ) : null}
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex flex-wrap gap-2 justify-end">
-                                            <button
-                                                type="button"
-                                                onClick={() => { void handlePrintPo(order); }}
-                                                disabled={order.status === 'cancelled'}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                طباعة PO
-                                            </button>
-                                            {hasReceived ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        void (async () => {
-                                                            try {
-                                                                const latest = await getLatestReceiptForOrder(order.id);
-                                                                if (!latest?.id) {
-                                                                    showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
-                                                                    return;
-                                                                }
-                                                                await handlePrintGrn(latest.id, order);
-                                                            } catch (e) {
-                                                                alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.'));
-                                                            }
-                                                        })();
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    طباعة الاستلام
-                                                </button>
-                                            ) : null}
-                                            {hasReceived && hasPermission('accounting.manage') ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        void (async () => {
-                                                            try {
-                                                                const latest = await getLatestReceiptForOrder(order.id);
-                                                                if (!latest?.id) {
-                                                                    showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
-                                                                    return;
-                                                                }
-                                                                if (latest.postingStatus === 'posted') {
-                                                                    showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
-                                                                    return;
-                                                                }
-                                                                const supabase = getSupabaseClient();
-                                                                if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
-                                                                const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
-                                                                if (error) throw error;
-                                                                const st = String((data as any)?.status || '');
-                                                                if (st === 'failed') {
-                                                                    const details = String((data as any)?.error || latest.postingError || '');
-                                                                    alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
-                                                                    setReceiptPostingByOrderId((prev) => ({
-                                                                        ...prev,
-                                                                        [order.id]: { receiptId: latest.id, status: 'failed', error: details },
-                                                                    }));
-                                                                } else {
-                                                                    showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
-                                                                    setReceiptPostingByOrderId((prev) => ({
-                                                                        ...prev,
-                                                                        [order.id]: { receiptId: latest.id, status: 'posted', error: '' },
-                                                                    }));
-                                                                    await fetchPurchaseOrders();
-                                                                }
-                                                            } catch (e) {
-                                                                alert(getErrorMessage(e, localizeSupabaseError(e)));
-                                                            }
-                                                        })();
-                                                    }}
-                                                    disabled={receiptPostingLoading || isReceiptPosted}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
-                                                </button>
-                                            ) : null}
-                                            <button
-                                                type="button"
-                                                onClick={() => openReceiveModal(order)}
-                                                disabled={order.status === 'cancelled' || order.status === 'completed' || fullyReceived}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {fullyReceived ? 'مستلم بالكامل' : 'استلام'}
-                                            </button>
-                                            {canManageImports ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { void handleCreateOrUpdateShipmentFromOrder(order); }}
-                                                    disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    شحنة
-                                                </button>
-                                            ) : null}
-                                            {canRepairReceipt ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRepairPurchaseOrder(order)}
-                                                    disabled={order.status === 'cancelled'}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    إصلاح الاستلام
-                                                </button>
-                                            ) : null}
-                                            <button
-                                                type="button"
-                                                onClick={() => openReturnModal(order)}
-                                                disabled={order.status === 'cancelled'}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                مرتجع
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => openPaymentModal(order)}
-                                                disabled={!canPay}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const ref = order.poNumber || order.referenceNumber || order.id;
-                                                    const current = order.referenceNumber || '';
-                                                    const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, current);
-                                                    if (next === null) return;
-                                                    updatePurchaseOrderInvoiceNumber(order.id, next)
-                                                        .catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
-                                                }}
-                                                disabled={order.status === 'cancelled'}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                فاتورة المورد
-                                            </button>
-                                            {canCancelOrder ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const ref = order.poNumber || order.referenceNumber || order.id;
-                                                        const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
-                                                        const ok = window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`);
-                                                        if (!ok) return;
-                                                        cancelPurchaseOrder(order.id, reason)
-                                                            .catch((e) => alert(getErrorMessage(e, 'فشل إلغاء أمر الشراء.')));
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700"
-                                                >
-                                                    إلغاء
-                                                </button>
-                                            ) : null}
-                                            {canPurge ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const ref = order.poNumber || order.referenceNumber || order.id;
-                                                        const ok = window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`);
-                                                        if (!ok) return;
-                                                        deletePurchaseOrder(order.id)
-                                                            .catch((e) => alert(getErrorMessage(e, 'فشل حذف أمر الشراء.')));
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black"
-                                                >
-                                                    حذف
-                                                </button>
-                                            ) : null}
-                                        </div>
-                                    </td>
-                                </tr>
+                                                {order.hasReturns ? (
+                                                    <span className="ml-2 px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                                        {total <= 1e-9 ? 'مرتجع كلي' : 'مرتجع جزئي'}
+                                                    </span>
+                                                ) : null}
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex flex-wrap gap-2 justify-end">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { void handlePrintPo(order); }}
+                                                        disabled={order.status === 'cancelled'}
+                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        طباعة PO
+                                                    </button>
+                                                    {hasReceived ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                void (async () => {
+                                                                    try {
+                                                                        const latest = await getLatestReceiptForOrder(order.id);
+                                                                        if (!latest?.id) {
+                                                                            showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
+                                                                            return;
+                                                                        }
+                                                                        await handlePrintGrn(latest.id, order);
+                                                                    } catch (e) {
+                                                                        alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.'));
+                                                                    }
+                                                                })();
+                                                            }}
+                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            طباعة الاستلام
+                                                        </button>
+                                                    ) : null}
+                                                    {hasReceived && hasPermission('accounting.manage') ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                void (async () => {
+                                                                    try {
+                                                                        const latest = await getLatestReceiptForOrder(order.id);
+                                                                        if (!latest?.id) {
+                                                                            showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
+                                                                            return;
+                                                                        }
+                                                                        if (latest.postingStatus === 'posted') {
+                                                                            showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
+                                                                            return;
+                                                                        }
+                                                                        const supabase = getSupabaseClient();
+                                                                        if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
+                                                                        const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
+                                                                        if (error) throw error;
+                                                                        const st = String((data as any)?.status || '');
+                                                                        if (st === 'failed') {
+                                                                            const details = String((data as any)?.error || latest.postingError || '');
+                                                                            alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
+                                                                            setReceiptPostingByOrderId((prev) => ({
+                                                                                ...prev,
+                                                                                [order.id]: { receiptId: latest.id, status: 'failed', error: details },
+                                                                            }));
+                                                                        } else {
+                                                                            showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                                            setReceiptPostingByOrderId((prev) => ({
+                                                                                ...prev,
+                                                                                [order.id]: { receiptId: latest.id, status: 'posted', error: '' },
+                                                                            }));
+                                                                            await fetchPurchaseOrders();
+                                                                        }
+                                                                    } catch (e) {
+                                                                        alert(getErrorMessage(e, localizeSupabaseError(e)));
+                                                                    }
+                                                                })();
+                                                            }}
+                                                            disabled={receiptPostingLoading || isReceiptPosted}
+                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openReceiveModal(order)}
+                                                        disabled={order.status === 'cancelled' || order.status === 'completed' || fullyReceived}
+                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {fullyReceived ? 'مستلم بالكامل' : 'استلام'}
+                                                    </button>
+                                                    {canManageImports ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { void handleCreateOrUpdateShipmentFromOrder(order); }}
+                                                            disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
+                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            شحنة
+                                                        </button>
+                                                    ) : null}
+                                                    {canRepairReceipt ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRepairPurchaseOrder(order)}
+                                                            disabled={order.status === 'cancelled'}
+                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            إصلاح الاستلام
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openReturnModal(order)}
+                                                        disabled={order.status === 'cancelled'}
+                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        مرتجع
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openPaymentModal(order)}
+                                                        disabled={!canPay}
+                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const ref = order.poNumber || order.referenceNumber || order.id;
+                                                            const current = order.referenceNumber || '';
+                                                            const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, current);
+                                                            if (next === null) return;
+                                                            updatePurchaseOrderInvoiceNumber(order.id, next)
+                                                                .catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
+                                                        }}
+                                                        disabled={order.status === 'cancelled'}
+                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        فاتورة المورد
+                                                    </button>
+                                                    {canCancelOrder ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
+                                                                const ok = window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`);
+                                                                if (!ok) return;
+                                                                cancelPurchaseOrder(order.id, reason)
+                                                                    .catch((e) => alert(getErrorMessage(e, 'فشل إلغاء أمر الشراء.')));
+                                                            }}
+                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700"
+                                                        >
+                                                            إلغاء
+                                                        </button>
+                                                    ) : null}
+                                                    {canPurge ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                const ok = window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`);
+                                                                if (!ok) return;
+                                                                deletePurchaseOrder(order.id)
+                                                                    .catch((e) => alert(getErrorMessage(e, 'فشل حذف أمر الشراء.')));
+                                                            }}
+                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black"
+                                                        >
+                                                            حذف
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            </td>
+                                        </tr>
                                     );
                                 })()
                             ))
@@ -3020,167 +3020,167 @@ const PurchaseOrderScreen: React.FC = () => {
                                     </div>
                                     <div className="border rounded-lg overflow-hidden dark:border-gray-700">
                                         <div className="overflow-x-auto">
-                                        <table className="min-w-[720px] w-full text-right text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700">
-                                                <tr>
-                                                    <th className="p-2 sm:p-3 w-1/2">الصنف</th>
-                                                    <th className="p-2 sm:p-3 w-24">الكمية</th>
-                                                    <th className="p-2 sm:p-3 w-40">الوحدة</th>
-                                                    <th className="p-2 sm:p-3 w-32">{`سعر الشراء (للوحدة)${poCurrency ? ` (${poCurrency})` : ''}`}</th>
-                                                    <th className="p-2 sm:p-3 w-32">الإجمالي</th>
-                                                    {showCreateDates ? (
-                                                        <>
-                                                            <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
-                                                            <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
-                                                        </>
-                                                    ) : null}
-                                                    <th className="p-2 sm:p-3 w-10"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                                {orderItems.map((row, index) => (
-                                                    <tr key={index}>
-                                                        <td className="p-2 sm:p-2">
-                                                            <select
-                                                                className="w-full p-1 border rounded"
-                                                                value={row.itemId}
-                                                                required
-                                                                onChange={(e) => updateRow(index, 'itemId', e.target.value)}
-                                                            >
-                                                                <option value="">اختر صنف...</option>
-                                                                {activeMenuItems.map((item: MenuItem) => (
-                                                                    <option key={item.id} value={item.id}>{item.name.ar} (الحالي: {item.availableStock})</option>
-                                                                ))}
-                                                            </select>
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min={getQuantityStep(row.itemId)}
-                                                                step={getQuantityStep(row.itemId)}
-                                                                required
-                                                                className="w-full p-1 border rounded text-center font-mono"
-                                                                value={row.quantity}
-                                                                onChange={(e) => updateRow(index, 'quantity', e.target.value)}
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            {(() => {
-                                                                const it = row.itemId ? getItemById(row.itemId) : undefined;
-                                                                const baseUom = String(it?.unitType || 'piece');
-                                                                const baseLabel = (() => {
-                                                                    try {
-                                                                        const lbl = getUnitLabel(baseUom as any, language as any);
-                                                                        return String(lbl || baseUom);
-                                                                    } catch {
-                                                                        return baseUom;
-                                                                    }
-                                                                })();
-                                                                const baseLower = baseUom.toLowerCase();
-                                                                const options: Array<{ code: string; label: string; qtyInBase: number }> = [
-                                                                    { code: baseUom, label: baseLabel, qtyInBase: 1 },
-                                                                ];
-                                                                const uomRows = row.itemId ? (itemUomRowsByItemId[String(row.itemId)] || []) : [];
-                                                                for (const u of uomRows) {
-                                                                    const code = String((u as any)?.code || '').trim();
-                                                                    const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
-                                                                    if (!code || qtyInBase <= 0) continue;
-                                                                    const codeLower = code.toLowerCase();
-                                                                    if (codeLower === baseLower) continue;
-                                                                    const nameRaw = String((u as any)?.name || '').trim();
-                                                                    const displayName = codeLower === 'pack'
-                                                                        ? 'باكت'
-                                                                        : codeLower === 'carton'
-                                                                            ? 'كرتون'
-                                                                            : (nameRaw || code);
-                                                                    const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
-                                                                    options.push({ code, label, qtyInBase });
-                                                                }
-                                                                if (options.length === 1) {
-                                                                    const packSize = Number((it as any)?.packSize || 0);
-                                                                    const cartonSize = Number((it as any)?.cartonSize || 0);
-                                                                    if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
-                                                                    if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
-                                                                }
-                                                                const current = String((row as any).uomCode || baseUom);
-                                                                const safeCurrent = options.some((o) => String(o.code) === current) ? current : baseUom;
-                                                                return (
-                                                                    <select
-                                                                        className="w-full p-1 border rounded font-mono"
-                                                                        value={safeCurrent}
-                                                                        disabled={!row.itemId}
-                                                                        onChange={(e) => {
-                                                                            const code = String(e.target.value || '').trim();
-                                                                            const found = options.find(o => o.code === code) || options[0];
-                                                                            const next = [...orderItems];
-                                                                            next[index] = { ...next[index], uomCode: found.code, uomQtyInBase: found.qtyInBase };
-                                                                            setOrderItems(next);
-                                                                        }}
-                                                                    >
-                                                                        {options.map((o) => (
-                                                                            <option key={o.code} value={o.code}>{o.label}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                );
-                                                            })()}
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                required
-                                                                className="w-full p-1 border rounded text-center font-mono"
-                                                                value={row.unitCost}
-                                                                onChange={(e) => updateRow(index, 'unitCost', e.target.value)}
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 sm:p-2 font-mono font-bold text-gray-700">
-                                                            <CurrencyDualAmount amount={Number(Number(row.quantity) * Number(row.unitCost)) || 0} currencyCode={poCurrency} compact />
-                                                        </td>
+                                            <table className="min-w-[720px] w-full text-right text-sm">
+                                                <thead className="bg-gray-50 dark:bg-gray-700">
+                                                    <tr>
+                                                        <th className="p-2 sm:p-3 w-1/2">الصنف</th>
+                                                        <th className="p-2 sm:p-3 w-24">الكمية</th>
+                                                        <th className="p-2 sm:p-3 w-40">الوحدة</th>
+                                                        <th className="p-2 sm:p-3 w-32">{`سعر الشراء (للوحدة)${poCurrency ? ` (${poCurrency})` : ''}`}</th>
+                                                        <th className="p-2 sm:p-3 w-32">الإجمالي</th>
                                                         {showCreateDates ? (
                                                             <>
-                                                                {isFoodItem(row.itemId) ? (
-                                                                    <>
-                                                                        <td className="p-2 sm:p-2">
-                                                                            <input
-                                                                                type="date"
-                                                                                value={row.productionDate || ''}
-                                                                                onChange={(e) => updateRow(index, 'productionDate', e.target.value)}
-                                                                                className="w-full p-1 border rounded"
-                                                                            />
-                                                                        </td>
-                                                                        <td className="p-2 sm:p-2">
-                                                                            <input
-                                                                                type="date"
-                                                                                value={row.expiryDate || ''}
-                                                                                onChange={(e) => updateRow(index, 'expiryDate', e.target.value)}
-                                                                                className="w-full p-1 border rounded"
-                                                                                required
-                                                                            />
-                                                                        </td>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
-                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
-                                                                    </>
-                                                                )}
+                                                                <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
+                                                                <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
                                                             </>
                                                         ) : null}
-                                                        <td className="p-2 sm:p-2 text-center">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeRow(index)}
-                                                                className="text-red-500 hover:text-red-700"
-                                                            >
-                                                                <Icons.TrashIcon className="w-4 h-4" />
-                                                            </button>
-                                                        </td>
+                                                        <th className="p-2 sm:p-3 w-10"></th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                    {orderItems.map((row, index) => (
+                                                        <tr key={index}>
+                                                            <td className="p-2 sm:p-2">
+                                                                <select
+                                                                    className="w-full p-1 border rounded"
+                                                                    value={row.itemId}
+                                                                    required
+                                                                    onChange={(e) => updateRow(index, 'itemId', e.target.value)}
+                                                                >
+                                                                    <option value="">اختر صنف...</option>
+                                                                    {activeMenuItems.map((item: MenuItem) => (
+                                                                        <option key={item.id} value={item.id}>{item.name.ar} (الحالي: {item.availableStock})</option>
+                                                                    ))}
+                                                                </select>
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={getQuantityStep(row.itemId)}
+                                                                    step={getQuantityStep(row.itemId)}
+                                                                    required
+                                                                    className="w-full p-1 border rounded text-center font-mono"
+                                                                    value={row.quantity}
+                                                                    onChange={(e) => updateRow(index, 'quantity', e.target.value)}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                {(() => {
+                                                                    const it = row.itemId ? getItemById(row.itemId) : undefined;
+                                                                    const baseUom = String(it?.unitType || 'piece');
+                                                                    const baseLabel = (() => {
+                                                                        try {
+                                                                            const lbl = getUnitLabel(baseUom as any, language as any);
+                                                                            return String(lbl || baseUom);
+                                                                        } catch {
+                                                                            return baseUom;
+                                                                        }
+                                                                    })();
+                                                                    const baseLower = baseUom.toLowerCase();
+                                                                    const options: Array<{ code: string; label: string; qtyInBase: number }> = [
+                                                                        { code: baseUom, label: baseLabel, qtyInBase: 1 },
+                                                                    ];
+                                                                    const uomRows = row.itemId ? (itemUomRowsByItemId[String(row.itemId)] || []) : [];
+                                                                    for (const u of uomRows) {
+                                                                        const code = String((u as any)?.code || '').trim();
+                                                                        const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
+                                                                        if (!code || qtyInBase <= 0) continue;
+                                                                        const codeLower = code.toLowerCase();
+                                                                        if (codeLower === baseLower) continue;
+                                                                        const nameRaw = String((u as any)?.name || '').trim();
+                                                                        const displayName = codeLower === 'pack'
+                                                                            ? 'باكت'
+                                                                            : codeLower === 'carton'
+                                                                                ? 'كرتون'
+                                                                                : (nameRaw || code);
+                                                                        const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
+                                                                        options.push({ code, label, qtyInBase });
+                                                                    }
+                                                                    if (options.length === 1) {
+                                                                        const packSize = Number((it as any)?.packSize || 0);
+                                                                        const cartonSize = Number((it as any)?.cartonSize || 0);
+                                                                        if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
+                                                                        if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+                                                                    }
+                                                                    const current = String((row as any).uomCode || baseUom);
+                                                                    const safeCurrent = options.some((o) => String(o.code) === current) ? current : baseUom;
+                                                                    return (
+                                                                        <select
+                                                                            className="w-full p-1 border rounded font-mono"
+                                                                            value={safeCurrent}
+                                                                            disabled={!row.itemId}
+                                                                            onChange={(e) => {
+                                                                                const code = String(e.target.value || '').trim();
+                                                                                const found = options.find(o => o.code === code) || options[0];
+                                                                                const next = [...orderItems];
+                                                                                next[index] = { ...next[index], uomCode: found.code, uomQtyInBase: found.qtyInBase };
+                                                                                setOrderItems(next);
+                                                                            }}
+                                                                        >
+                                                                            {options.map((o) => (
+                                                                                <option key={o.code} value={o.code}>{o.label}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    required
+                                                                    className="w-full p-1 border rounded text-center font-mono"
+                                                                    value={row.unitCost}
+                                                                    onChange={(e) => updateRow(index, 'unitCost', e.target.value)}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 sm:p-2 font-mono font-bold text-gray-700">
+                                                                <CurrencyDualAmount amount={Number(Number(row.quantity) * Number(row.unitCost)) || 0} currencyCode={poCurrency} compact />
+                                                            </td>
+                                                            {showCreateDates ? (
+                                                                <>
+                                                                    {isFoodItem(row.itemId) ? (
+                                                                        <>
+                                                                            <td className="p-2 sm:p-2">
+                                                                                <input
+                                                                                    type="date"
+                                                                                    value={row.productionDate || ''}
+                                                                                    onChange={(e) => updateRow(index, 'productionDate', e.target.value)}
+                                                                                    className="w-full p-1 border rounded"
+                                                                                />
+                                                                            </td>
+                                                                            <td className="p-2 sm:p-2">
+                                                                                <input
+                                                                                    type="date"
+                                                                                    value={row.expiryDate || ''}
+                                                                                    onChange={(e) => updateRow(index, 'expiryDate', e.target.value)}
+                                                                                    className="w-full p-1 border rounded"
+                                                                                    required
+                                                                                />
+                                                                            </td>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                            <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                        </>
+                                                                    )}
+                                                                </>
+                                                            ) : null}
+                                                            <td className="p-2 sm:p-2 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeRow(index)}
+                                                                    className="text-red-500 hover:text-red-700"
+                                                                >
+                                                                    <Icons.TrashIcon className="w-4 h-4" />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>
@@ -3206,7 +3206,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     </div>
                 </div>
             )}
-            
+
             {/* Reorder Suggestions */}
             {isModalOpen && (
                 <div className="fixed inset-x-0 top-[5rem] z-40 mx-auto max-w-4xl px-4">
