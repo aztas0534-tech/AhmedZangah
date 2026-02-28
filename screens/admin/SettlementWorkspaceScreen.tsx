@@ -81,7 +81,7 @@ export default function SettlementWorkspaceScreen() {
   const [nextBase, setNextBase] = useState<string>('');
   const [backfilling, setBackfilling] = useState(false);
   const [lastBackfillCount, setLastBackfillCount] = useState<number | null>(null);
-  const [didAutoBackfill, setDidAutoBackfill] = useState(false);
+  const didAutoBackfillRef = useRef(false);
 
   const loadParties = async () => {
     const supabase = getSupabaseClient();
@@ -143,8 +143,8 @@ export default function SettlementWorkspaceScreen() {
           setCurrency(currencies[0]);
         }
       }
-      if (rows.length === 0 && !didAutoBackfill && canManage) {
-        setDidAutoBackfill(true);
+      if (rows.length === 0 && !didAutoBackfillRef.current && canManage) {
+        didAutoBackfillRef.current = true;
         void backfillOpenItems();
       }
     } catch (e: any) {
