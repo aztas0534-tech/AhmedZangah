@@ -25,6 +25,20 @@ type TrialBalanceRow = {
   balance: number;
 };
 
+type CurrencyBalanceRow = {
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  normal_balance: string;
+  currency_code: string;
+  total_debit: number;
+  total_credit: number;
+  balance: number;
+  base_total_debit: number;
+  base_total_credit: number;
+  base_balance: number;
+};
+
 type IncomeStatementRow = {
   income: number;
   expenses: number;
@@ -525,6 +539,7 @@ const FinancialReports: React.FC = () => {
   }, [appliedFilters]);
 
   const [trialBalance, setTrialBalance] = useState<TrialBalanceRow[]>([]);
+  const [currencyBalances, setCurrencyBalances] = useState<CurrencyBalanceRow[]>([]);
   const [trialBalanceAsOf, setTrialBalanceAsOf] = useState<TrialBalanceRow[]>([]);
   const [trialBalanceAsOfDate, setTrialBalanceAsOfDate] = useState<string>('');
   const [incomeStatement, setIncomeStatement] = useState<IncomeStatementRow | null>(null);
@@ -845,7 +860,7 @@ const FinancialReports: React.FC = () => {
     if (!supabase) return;
     setLoadingKey('statements', true);
     try {
-      const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }] = await Promise.all([
+      const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }, { data: cbData, error: cbError }] = await Promise.all([
         supabase.rpc('trial_balance', periodRangeParams),
         supabase.rpc('income_statement', periodRangeParams),
         supabase.rpc('balance_sheet', {
@@ -864,12 +879,14 @@ const FinancialReports: React.FC = () => {
           p_currency_view: 'base',
           p_rollup: 'account',
         }),
+        supabase.rpc('currency_balances', periodRangeParams),
       ]);
 
       if (tbError) throw tbError;
       if (isError) throw isError;
       if (bsError) throw bsError;
       if (tbEntErr) throw tbEntErr;
+      if (cbError) throw cbError;
 
       setTrialBalance(((tbData as any[]) || []).map((r) => ({
         account_code: String(r.account_code),
@@ -879,6 +896,20 @@ const FinancialReports: React.FC = () => {
         debit: Number(r.debit) || 0,
         credit: Number(r.credit) || 0,
         balance: Number(r.balance) || 0,
+      })));
+
+      setCurrencyBalances(((cbData as any[]) || []).map((r) => ({
+        account_code: String(r.account_code),
+        account_name: String(r.account_name),
+        account_type: String(r.account_type),
+        normal_balance: String(r.normal_balance),
+        currency_code: String(r.currency_code).trim().toUpperCase(),
+        total_debit: Number(r.total_debit) || 0,
+        total_credit: Number(r.total_credit) || 0,
+        balance: Number(r.balance) || 0,
+        base_total_debit: Number(r.base_total_debit) || 0,
+        base_total_credit: Number(r.base_total_credit) || 0,
+        base_balance: Number(r.base_balance) || 0,
       })));
 
       const isRow = ((isData as any[]) || [])[0];
@@ -894,6 +925,7 @@ const FinancialReports: React.FC = () => {
     } catch (err: any) {
       showNotification(err?.message || 'تعذر تحميل القوائم المالية', 'error');
       setTrialBalance([]);
+      setCurrencyBalances([]);
       setTrialBalanceAsOf([]);
       setTrialBalanceAsOfDate('');
       setIncomeStatement(null);
@@ -3020,6 +3052,13 @@ const FinancialReports: React.FC = () => {
         </button>
         <button
           type="button"
+          onClick={() => document.getElementById('currency-balances-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          أرصدة حسابات العملات
+        </button>
+        <button
+          type="button"
           onClick={() => ledgerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
         >
@@ -3882,6 +3921,55 @@ const FinancialReports: React.FC = () => {
               ))}
               {trialBalance.length === 0 && (
                 <tr><td colSpan={5} className="py-6 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="currency-balances-section" className="bg-white dark:bg-gray-800 rounded-xl shadow p-4 mt-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold dark:text-white">أرصدة حسابات العملات</h2>
+            <div className="text-sm text-gray-500 dark:text-gray-400">حسب العملة والفترة المحددة</div>
+          </div>
+        </div>
+        <div className="mt-4 overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-gray-500 dark:text-gray-400">
+              <tr className="border-b dark:border-gray-700">
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الكود</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الحساب</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">العملة</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">مدين (عملة)</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">دائن (عملة)</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700 font-semibold bg-gray-50 dark:bg-gray-900/50">الرصيد (عملة)</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الرصيد المُقوّم ({baseCode})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currencyBalances.map((r, i) => (
+                <tr
+                  key={`${r.account_code}-${r.currency_code}-${i}`}
+                  className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
+                  onClick={() => {
+                    const code = r.account_code;
+                    setAccountCode(code);
+                    void loadLedgerFor(code).then(() => ledgerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }}
+                  title="عرض دفتر الأستاذ لهذا الحساب"
+                >
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.account_code}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.account_name}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-bold" dir="ltr">{r.currency_code}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatAmountWithCode(r.total_debit, r.currency_code)}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatAmountWithCode(r.total_credit, r.currency_code)}</td>
+                  <td className="py-2 px-3 font-bold text-primary-600 dark:text-primary-400 border-l dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50" dir="ltr">{formatAmountWithCode(r.balance, r.currency_code)}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.base_balance)}</td>
+                </tr>
+              ))}
+              {currencyBalances.length === 0 && (
+                <tr><td colSpan={7} className="py-6 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات تخص العملات</td></tr>
               )}
             </tbody>
           </table>

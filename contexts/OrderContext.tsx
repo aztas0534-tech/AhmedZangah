@@ -3246,38 +3246,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
-    const payloadItems = existing.items
-      .map((item) => ({
-        itemId: String((item as any)?.itemId || (item as any)?.id || ''),
-        quantity: getRequestedItemQuantity(item),
-      }))
-      .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
-    const resolveWarehouseId = async (): Promise<string> => {
-      const byCol = typeof (existing as any).warehouseId === 'string' ? (existing as any).warehouseId : undefined;
-      if (byCol) return byCol;
-      const scoped = sessionScope.scope?.warehouseId;
-      if (scoped) return scoped;
-      throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
-    };
-    const warehouseId = await resolveWarehouseId();
-    if (payloadItems.length > 0) {
-      const { error: releaseErr } = await supabase.rpc('release_reserved_stock_for_order', {
-        p_items: payloadItems,
-        p_order_id: existing.id,
-        p_warehouse_id: warehouseId,
-      });
-      if (releaseErr) {
-        throw new Error(localizeSupabaseError(releaseErr));
-      }
+
+    // We no longer attempt to delete orders or manually manage stock here.
+    // The cancel_order RPC handles stock release, payment reversal, and status update reliably on the server.
+    const { error: cancelErr } = await supabase.rpc('cancel_order', {
+      p_order_id: existing.id,
+      p_reason: 'تم الإلغاء من قبل البائع'
+    });
+
+    if (cancelErr) {
+      throw new Error(localizeSupabaseError(cancelErr));
     }
-    const { error: deleteErr } = await supabase.from('orders').delete().eq('id', existing.id);
-    if (deleteErr) {
-      const cancelled = { ...existing, status: 'cancelled' } as Order;
-      await updateRemoteOrder(cancelled);
-      setOrders(prev => prev.map(o => (o.id === existing.id ? cancelled : o)));
-      return;
-    }
-    setOrders(prev => prev.filter(o => o.id !== existing.id));
+
+    const cancelled = { ...existing, status: 'cancelled' } as Order;
+    setOrders(prev => prev.map(o => (o.id === existing.id ? cancelled : o)));
   };
 
   const assignOrderToDelivery = async (orderId: string, deliveryUserId: string | null) => {
@@ -3893,7 +3875,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const persistBase = deliveredSnapshot || remoteSnapshot || existing;
     const persisted = { ...persistBase, ...updates } as Order;
-    if (!willCancel && !willDeliver) {
+    if (!willDeliver) {
       await updateRemoteOrder(persisted);
     }
     const display = await resolveOrderAddress(persisted);

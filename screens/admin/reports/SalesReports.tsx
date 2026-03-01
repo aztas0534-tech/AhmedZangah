@@ -270,6 +270,34 @@ const SalesReports: React.FC = () => {
         return () => { active = false; };
     }, [effectiveRange, selectedZoneId, invoiceOnly]);
 
+    const [currencySalesData, setCurrencySalesData] = useState<Array<{ label: string; value: number }>>([]);
+    useEffect(() => {
+        let active = true;
+        const loadCurrencySales = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase || !effectiveRange) { setCurrencySalesData([]); return; }
+            const zoneArg = (selectedZoneId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedZoneId)) ? selectedZoneId : null;
+            const payload: any = {
+                p_start_date: effectiveRange.start.toISOString(),
+                p_end_date: effectiveRange.end.toISOString(),
+                p_zone_id: zoneArg,
+                p_invoice_only: invoiceOnly,
+            };
+            const { data, error } = await supabase.rpc('get_sales_by_currency', payload);
+            if (!active) return;
+            if (error || !Array.isArray(data)) { setCurrencySalesData([]); return; }
+            setCurrencySalesData(
+                (data as any[]).map((r: any) => ({
+                    label: String(r.currency_code),
+                    value: Number(r.total_base_amount) || 0, // Viewing the base equivalent of those foreign sales for Apples-to-Apples comparison
+                    actual_foreign: Number(r.total_foreign_amount) || 0
+                })).sort((a, b) => b.value - a.value)
+            );
+        };
+        void loadCurrencySales();
+        return () => { active = false; };
+    }, [effectiveRange, selectedZoneId, invoiceOnly]);
+
     // Load Summary RPC
     useEffect(() => {
         const loadSummary = async () => {
@@ -794,6 +822,18 @@ const SalesReports: React.FC = () => {
                             <BarChart data={orderSourceRevenue} title="المبيعات حسب مصدر الطلب" currency={currency} />
                         </div>
                     </div>
+
+                    {currencySalesData.length > 0 && (
+                        <div className="grid grid-cols-1 gap-4 mb-6">
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
+                                <HorizontalBarChart
+                                    data={currencySalesData}
+                                    title={`المبيعات حسب عملة البيع الأصلية (مقومة بـ ${currency})`}
+                                    unit={currency}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </>
 
                 {/* Integration Consistency Check (Debug Toggle) */}
