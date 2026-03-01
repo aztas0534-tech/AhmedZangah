@@ -266,68 +266,71 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         <div ref={ref} className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
                 @media print {
-                    @page { size: A4; margin: 4mm 5mm; }
+                    @page { size: A4; margin: 3mm 5mm; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
                     * { box-sizing: border-box; }
-
-                    /* ─── Top accent stripe ─── */
-                    .invoice-container::before {
-                        content: '';
-                        display: block;
-                        width: 100%;
-                        height: 3px;
-                        background: linear-gradient(90deg, #0f172a 0%, #334155 40%, #94a3b8 100%);
-                        margin-bottom: 4px;
-                    }
 
                     .invoice-container { 
                         width: 100% !important; 
                         max-width: none !important; 
                         margin: 0 !important; 
-                        padding: 0mm 2mm !important;
+                        padding: 0 !important;
                         gap: 0px !important;
                         display: flex !important;
                         flex-direction: column !important;
                         font-size: 7px !important;
                     }
 
-                    /* ─── Header: Premium & Prominent ─── */
+                    /* ═══ HEADER: Dark premium bar ═══ */
                     .invoice-header {
-                        padding-bottom: 4px !important;
-                        margin-bottom: 3px !important;
-                        border-bottom: 2.5px solid #0f172a !important;
+                        background-color: #0f172a !important;
+                        color: white !important;
+                        padding: 6px 8px !important;
+                        margin-bottom: 0 !important;
+                        border: none !important;
                         gap: 4px !important;
                         page-break-inside: avoid;
                     }
+                    .invoice-header * {
+                        color: white !important;
+                    }
+                    .invoice-header .text-slate-400,
+                    .invoice-header .text-slate-500,
+                    .invoice-header .text-slate-600 {
+                        color: #94a3b8 !important;
+                    }
                     .invoice-title {
-                        font-size: 18px !important;
+                        font-size: 16px !important;
                         line-height: 1 !important;
                         letter-spacing: -0.5px !important;
                     }
                     .brand-name {
-                        font-size: 14px !important;
+                        font-size: 13px !important;
                         line-height: 1.15 !important;
                         letter-spacing: -0.3px !important;
                     }
 
-                    /* ─── Meta section ─── */
+                    /* ═══ META: Clean cards ═══ */
                     .invoice-meta {
                         gap: 3px !important;
                         margin-bottom: 2px !important;
+                        margin-top: 3px !important;
                         page-break-inside: avoid;
                     }
                     .meta-card {
-                        padding: 2px 4px !important;
-                        border: 0.7px solid #cbd5e1 !important;
-                        border-radius: 2px !important;
-                        border-right: 2px solid #0f172a !important;
+                        padding: 3px 5px !important;
+                        border: 0.7px solid #e2e8f0 !important;
+                        border-radius: 0 !important;
+                        border-right: 2.5px solid #0f172a !important;
+                        background-color: #f8fafc !important;
                     }
 
-                    /* ─── Table: compact but elegant ─── */
+                    /* ═══ TABLE: Professional ═══ */
                     .invoice-container table {
                         font-size: 6.5px !important;
                         page-break-inside: auto;
                         border-collapse: collapse !important;
+                        border: 1px solid #0f172a !important;
                     }
                     .invoice-container thead {
                         display: table-header-group;
@@ -336,37 +339,53 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         page-break-inside: avoid;
                     }
                     .invoice-container tbody tr:nth-child(even) {
-                        background-color: #f8fafc !important;
+                        background-color: #f1f5f9 !important;
                     }
                     .invoice-container th {
                         background-color: #0f172a !important;
                         color: white !important;
-                        padding: 2.5px 3px !important;
+                        padding: 3px 4px !important;
                         font-size: 6.5px !important;
-                        line-height: 1.15 !important;
-                        letter-spacing: 0.2px !important;
-                        border-bottom: 2px solid #334155 !important;
+                        line-height: 1.2 !important;
+                        letter-spacing: 0.3px !important;
+                        text-transform: uppercase !important;
+                        border-left: 0.5px solid #334155 !important;
                     }
                     .invoice-container td {
-                        padding: 1.5px 3px !important;
-                        border-bottom: 0.5px solid #e2e8f0 !important;
+                        padding: 2px 3px !important;
+                        border-bottom: 0.5px solid #cbd5e1 !important;
+                        border-left: 0.5px solid #e2e8f0 !important;
                         font-size: 6.5px !important;
-                        line-height: 1.15 !important;
+                        line-height: 1.2 !important;
+                    }
+                    .invoice-container tbody tr:last-child td {
+                        border-bottom: 2px solid #0f172a !important;
                     }
 
-                    /* ─── Totals: prominent ─── */
+                    /* ═══ TOTALS: Bold & prominent ═══ */
                     .totals-box {
                         background-color: #f8fafc !important;
                         color: #0f172a !important;
-                        border: 1.5px solid #0f172a !important;
-                        padding: 3px 5px !important;
+                        border: 2px solid #0f172a !important;
+                        padding: 4px 6px !important;
                         page-break-inside: avoid;
                         border-radius: 0 !important;
                     }
+                    /* Grand total row dark */
+                    .totals-grand-total {
+                        background-color: #0f172a !important;
+                        color: white !important;
+                        margin: 3px -6px -4px -6px !important;
+                        padding: 4px 6px !important;
+                    }
+                    .totals-grand-total * {
+                        color: white !important;
+                    }
+
                     .credit-summary-box {
                         background-color: #fff !important;
-                        border: 0.7px solid #e2e8f0 !important;
-                        padding: 2px 4px !important;
+                        border: 1px solid #cbd5e1 !important;
+                        padding: 3px 5px !important;
                         page-break-inside: avoid;
                     }
                     .qr-section {
@@ -375,14 +394,16 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         page-break-inside: avoid;
                     }
 
-                    /* ─── Bottom accent stripe ─── */
-                    .invoice-print-footer::after {
-                        content: '';
-                        display: block;
-                        width: 100%;
-                        height: 2px;
-                        background: linear-gradient(90deg, #0f172a 0%, #334155 40%, #94a3b8 100%);
-                        margin-top: 3px;
+                    /* ═══ Footer bar ═══ */
+                    .invoice-print-footer {
+                        background-color: #0f172a !important;
+                        color: white !important;
+                        padding: 2px 6px !important;
+                        margin-top: 4px !important;
+                        border: none !important;
+                    }
+                    .invoice-print-footer * {
+                        color: white !important;
                     }
 
                     .print-hide-subtext {
@@ -710,12 +731,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             </span>
                         </div>
 
-                        <div className="flex justify-between items-end mt-2 print:mt-1">
+                        <div className="totals-grand-total flex justify-between items-end mt-2 print:mt-1">
                             <div className="flex flex-col">
-                                <span className="text-3xl print:text-[11px] font-black text-slate-900 tracking-tight">الإجمالي</span>
+                                <span className="text-3xl print:text-[12px] font-black text-slate-900 tracking-tight">الإجمالي</span>
                                 <span className="text-slate-400 font-bold text-base print:text-[6px] mt-1 print:mt-0">{invoiceCurrencyLabel}</span>
                             </div>
-                            <span className="font-mono text-5xl print:text-[13px] font-black text-slate-900 tracking-tighter decoration-4 print:decoration-1">
+                            <span className="font-mono text-5xl print:text-[14px] font-black text-slate-900 tracking-tighter decoration-4 print:decoration-1">
                                 {fmtByCode(invoiceOrder.total, currencyCode)}
                             </span>
                         </div>
