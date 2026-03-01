@@ -131,12 +131,47 @@ const ShiftDetailsScreen: React.FC = () => {
   const [cashMoveReason, setCashMoveReason] = useState('');
   const [cashMoveError, setCashMoveError] = useState('');
   const [cashMoveLoading, setCashMoveLoading] = useState(false);
+  const [accounts, setAccounts] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
 
   useEffect(() => {
     void getBaseCurrencyCode().then((c) => {
       if (!c) return;
       setBaseCode(c);
     });
+
+    const loadAccounts = async () => {
+      const supabaseObj = getSupabaseClient();
+      if (!supabaseObj) return;
+      try {
+        const { data, error } = await supabaseObj
+          .from('chart_of_accounts')
+          .select('id, name, code')
+          .in('code', ['1010', '1020', '1011', '1021', '1012', '1022']) // Typical cash/bank codes, or more broadly fetching based on type
+          .eq('is_active', true)
+          .order('code');
+
+        if (!error && data) {
+          // Alternatively, fetch all assets then filter in memory if codes vary
+          const { data: allAssets } = await supabaseObj
+            .from('chart_of_accounts')
+            .select('id, name, code')
+            .eq('account_type', 'asset')
+            .eq('is_active', true)
+            .order('code');
+
+          if (allAssets) {
+            const cashBankOptions = allAssets.filter(a => a.code.startsWith('101') || a.code.startsWith('102') || a.code.startsWith('103'));
+            setAccounts(cashBankOptions);
+          } else {
+            setAccounts(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load accounts', err);
+      }
+    };
+    void loadAccounts();
   }, []);
 
   useEffect(() => {
@@ -347,6 +382,7 @@ const ShiftDetailsScreen: React.FC = () => {
         p_amount: amount,
         p_reason: cashMoveReason.trim() || null,
         p_occurred_at: null,
+        p_destination_account_id: selectedAccountId || null,
       });
       if (error) throw error;
 
@@ -480,19 +516,19 @@ const ShiftDetailsScreen: React.FC = () => {
         <div className="flex gap-2">
           <button
             type="button"
-          onClick={async () => {
-            if (!shift) return;
-            await sharePdf(
-              reportElementId,
-              'تقرير الوردية',
-              `shift-${shift.id}.pdf`,
-              buildPdfBrandOptions(settings, 'تقرير الوردية', { pageNumbers: true })
-            );
-          }}
-          className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-        >
-          طباعة/مشاركة
-        </button>
+            onClick={async () => {
+              if (!shift) return;
+              await sharePdf(
+                reportElementId,
+                'تقرير الوردية',
+                `shift-${shift.id}.pdf`,
+                buildPdfBrandOptions(settings, 'تقرير الوردية', { pageNumbers: true })
+              );
+            }}
+            className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            طباعة/مشاركة
+          </button>
           <button
             type="button"
             onClick={async () => {
@@ -541,8 +577,8 @@ const ShiftDetailsScreen: React.FC = () => {
                 ]);
               }
               await exportToXlsx(
-                ['القسم', 'البند', 'القيمة'], 
-                sectionRows, 
+                ['القسم', 'البند', 'القيمة'],
+                sectionRows,
                 `shift-${shift.id}-summary.xlsx`,
                 { sheetName: 'Shift Summary', ...buildXlsxBrandOptions(settings, 'الوردية', 3, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
               );
@@ -565,8 +601,8 @@ const ShiftDetailsScreen: React.FC = () => {
                 p.reference_table ? `${p.reference_table}${p.reference_id ? `:${String(p.reference_id).slice(-6).toUpperCase()}` : ''}` : '-',
               ]));
               await exportToXlsx(
-                headers, 
-                rows, 
+                headers,
+                rows,
                 `shift-${shift.id}-payments.xlsx`,
                 { sheetName: 'Shift Payments', currencyColumns: [3], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'عمليات الوردية', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
               );
@@ -583,6 +619,7 @@ const ShiftDetailsScreen: React.FC = () => {
                 setCashMoveDirection(canCashIn ? 'in' : 'out');
                 setCashMoveAmount('');
                 setCashMoveReason('');
+                setSelectedAccountId('');
                 setCashMoveOpen(true);
               }}
               className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
@@ -627,6 +664,23 @@ const ShiftDetailsScreen: React.FC = () => {
                   {canCashOut && <option value="out">خارج</option>}
                 </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب الوجهة (بنك / صندوق)</label>
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                >
+                  <option value="">-- اختياري (الحساب الافتراضي للنظام) --</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.code} - {acc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1 dark:text-gray-300">المبلغ</label>
                 <input
@@ -665,209 +719,209 @@ const ShiftDetailsScreen: React.FC = () => {
 
       <div id={reportElementId} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <div className="text-sm text-gray-500 dark:text-gray-300">الحالة</div>
-          <div className="mt-2 flex items-center gap-2">
-            {shift.status === 'open' ? <Icons.ClockIcon className="w-5 h-5 text-green-600" /> : <Icons.CheckIcon className="w-5 h-5 text-gray-600" />}
-            <span className="font-bold dark:text-white">{shift.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <div className="text-sm text-gray-500 dark:text-gray-300">عهدة البداية</div>
-          <div className="mt-2 text-xl font-bold font-mono text-green-600">{formatNumber(shift.start_amount)} {baseCode || '—'}</div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <div className="text-sm text-gray-500 dark:text-gray-300">النقد المتوقع</div>
-          <div className="mt-2 text-xl font-bold font-mono text-indigo-600">{formatNumber(expectedDisplay)} {baseCode || '—'}</div>
-          <div className="mt-1 text-xs text-gray-400">
-            داخل: {formatNumber(computed.cash.in)} {baseCode || '—'} — خارج: {formatNumber(computed.cash.out)} {baseCode || '—'}
-          </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <div className="text-sm text-gray-500 dark:text-gray-300">النقد الفعلي</div>
-          <div className="mt-2 text-xl font-bold font-mono dark:text-white">{formatNumber(shift.end_amount)} {baseCode || '—'}</div>
-          <div className={`mt-1 text-xs ${shift.difference && Math.abs(shift.difference) > 0.01 ? 'text-red-500' : 'text-gray-400'}`}>
-            الفرق: {formatNumber(shift.difference)} {baseCode || '—'}
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div className="font-bold dark:text-white">ملخص الوردية</div>
-          <div className="text-xs text-gray-500 dark:text-gray-300">{recognizedOrders.length} طلب</div>
-        </div>
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-            <div className="text-xs text-gray-500 dark:text-gray-300">المبيعات</div>
-            <div className="mt-1 text-lg font-bold font-mono dark:text-white">{computed.salesTotal.toFixed(2)} {baseCode || '—'}</div>
-            <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
-              {Object.entries(computed.salesByCurrency).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ') || '—'}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div className="text-sm text-gray-500 dark:text-gray-300">الحالة</div>
+            <div className="mt-2 flex items-center gap-2">
+              {shift.status === 'open' ? <Icons.ClockIcon className="w-5 h-5 text-green-600" /> : <Icons.CheckIcon className="w-5 h-5 text-gray-600" />}
+              <span className="font-bold dark:text-white">{shift.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
             </div>
           </div>
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-            <div className="text-xs text-gray-500 dark:text-gray-300">المرتجعات</div>
-            <div className="mt-1 text-lg font-bold font-mono text-rose-600 dark:text-rose-400">{computed.refundsTotal.toFixed(2)} {baseCode || '—'}</div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div className="text-sm text-gray-500 dark:text-gray-300">عهدة البداية</div>
+            <div className="mt-2 text-xl font-bold font-mono text-green-600">{formatNumber(shift.start_amount)} {baseCode || '—'}</div>
           </div>
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-            <div className="text-xs text-gray-500 dark:text-gray-300">الخصومات</div>
-            <div className="mt-1 text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{computed.discountsTotal.toFixed(2)} {baseCode || '—'}</div>
-          </div>
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-            <div className="text-xs text-gray-500 dark:text-gray-300">الصافي</div>
-            <div className="mt-1 text-lg font-bold font-mono dark:text-white">{(computed.salesTotal - computed.refundsTotal).toFixed(2)} {baseCode || '—'}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="font-bold dark:text-white">ملخص طرق الدفع (متوقع)</div>
-          <div className="mt-1 text-xs text-gray-500 dark:text-gray-300">التسوية إلزامية للنقد فقط. باقي الطرق للعرض.</div>
-        </div>
-        <div className="p-4">
-          {Object.keys(computed.totalsByMethod).length === 0 ? (
-            <div className="text-sm text-gray-500 dark:text-gray-300">لا توجد عمليات.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {Object.entries(computed.totalsByMethod)
-                .sort(([a], [b]) => (a === 'cash' ? -1 : b === 'cash' ? 1 : a.localeCompare(b)))
-                .map(([method, totals]) => {
-                  const net = (totals?.in || 0) - (totals?.out || 0);
-                  return (
-                    <div key={method} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm font-bold dark:text-gray-200">{methodLabel(method)}</div>
-                        <div className="text-sm font-mono dark:text-gray-200">{net.toFixed(2)} {baseCode || '—'}</div>
-                      </div>
-                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-300">
-                        داخل: <span className="font-mono">{(totals?.in || 0).toFixed(2)} {baseCode || '—'}</span> — خارج:{' '}
-                        <span className="font-mono">{(totals?.out || 0).toFixed(2)} {baseCode || '—'}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div className="text-sm text-gray-500 dark:text-gray-300">النقد المتوقع</div>
+            <div className="mt-2 text-xl font-bold font-mono text-indigo-600">{formatNumber(expectedDisplay)} {baseCode || '—'}</div>
+            <div className="mt-1 text-xs text-gray-400">
+              داخل: {formatNumber(computed.cash.in)} {baseCode || '—'} — خارج: {formatNumber(computed.cash.out)} {baseCode || '—'}
             </div>
-          )}
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div className="text-sm text-gray-500 dark:text-gray-300">النقد الفعلي</div>
+            <div className="mt-2 text-xl font-bold font-mono dark:text-white">{formatNumber(shift.end_amount)} {baseCode || '—'}</div>
+            <div className={`mt-1 text-xs ${shift.difference && Math.abs(shift.difference) > 0.01 ? 'text-red-500' : 'text-gray-400'}`}>
+              الفرق: {formatNumber(shift.difference)} {baseCode || '—'}
+            </div>
+          </div>
         </div>
-      </div>
 
-      {(shift.status === 'closed' && (shift.forced_close || shift.forced_close_reason || shift.denomination_counts || shift.tender_counts)) && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <div className="font-bold dark:text-white">بيانات الإغلاق</div>
+            <div className="font-bold dark:text-white">ملخص الوردية</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">{recognizedOrders.length} طلب</div>
           </div>
-          <div className="p-4 space-y-3 text-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-gray-500 dark:text-gray-300">إغلاق قسري</div>
-              <div className="font-bold dark:text-white">{shift.forced_close ? 'نعم' : 'لا'}</div>
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              <div className="text-xs text-gray-500 dark:text-gray-300">المبيعات</div>
+              <div className="mt-1 text-lg font-bold font-mono dark:text-white">{computed.salesTotal.toFixed(2)} {baseCode || '—'}</div>
+              <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
+                {Object.entries(computed.salesByCurrency).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ') || '—'}
+              </div>
             </div>
-            {shift.forced_close_reason && (
-              <div>
-                <div className="text-gray-500 dark:text-gray-300 mb-1">سبب الإغلاق</div>
-                <div className="dark:text-white whitespace-pre-wrap">{shift.forced_close_reason}</div>
-              </div>
-            )}
-            {shift.denomination_counts && (
-              <div>
-                <div className="text-gray-500 dark:text-gray-300 mb-1">عدّ الفئات</div>
-                <pre className="text-xs p-3 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-gray-200 overflow-auto">{JSON.stringify(shift.denomination_counts, null, 2)}</pre>
-              </div>
-            )}
-            {shift.tender_counts && (
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <div className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">تسوية حسب طريقة الدفع (المعدود)</div>
-                <div className="grid grid-cols-12 gap-2 text-xs text-gray-500 dark:text-gray-300 mb-2">
-                  <div className="col-span-4">الطريقة</div>
-                  <div className="col-span-3 text-right">المتوقع</div>
-                  <div className="col-span-3 text-right">المعدود</div>
-                  <div className="col-span-2 text-right">الفرق</div>
-                </div>
-                <div className="space-y-2">
-                  {Object.entries(shift.tender_counts)
-                    .map(([k, v]) => [String(k || '-'), v] as const)
-                    .sort(([a], [b]) => (a === 'cash' ? -1 : b === 'cash' ? 1 : a.localeCompare(b)))
-                    .map(([method, rawCounted]) => {
-                      const isCash = method.toLowerCase() === 'cash';
-                      const exp = isCash
-                        ? (Number(expectedDisplay) || 0)
-                        : (((computed.totalsByMethod[method]?.in || 0) - (computed.totalsByMethod[method]?.out || 0)));
-                      const counted = Number(rawCounted);
-                      const diff = Number.isFinite(counted) ? counted - exp : NaN;
-                      return (
-                        <div key={method} className="grid grid-cols-12 gap-2 items-center">
-                          <div className="col-span-4 text-sm dark:text-gray-200">{methodLabel(method)}</div>
-                          <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{exp.toFixed(2)} {baseCode || '—'}</div>
-                          <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{Number.isFinite(counted) ? `${counted.toFixed(2)} ${baseCode || '—'}` : '-'}</div>
-                          <div className={`col-span-2 text-right text-sm font-mono ${Number.isFinite(diff) && Math.abs(diff) > 0.01 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                            {Number.isFinite(diff) ? `${diff > 0 ? '+' : ''}${diff.toFixed(2)} ${baseCode || '—'}` : '-'}
-                          </div>
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              <div className="text-xs text-gray-500 dark:text-gray-300">المرتجعات</div>
+              <div className="mt-1 text-lg font-bold font-mono text-rose-600 dark:text-rose-400">{computed.refundsTotal.toFixed(2)} {baseCode || '—'}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              <div className="text-xs text-gray-500 dark:text-gray-300">الخصومات</div>
+              <div className="mt-1 text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{computed.discountsTotal.toFixed(2)} {baseCode || '—'}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              <div className="text-xs text-gray-500 dark:text-gray-300">الصافي</div>
+              <div className="mt-1 text-lg font-bold font-mono dark:text-white">{(computed.salesTotal - computed.refundsTotal).toFixed(2)} {baseCode || '—'}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="font-bold dark:text-white">ملخص طرق الدفع (متوقع)</div>
+            <div className="mt-1 text-xs text-gray-500 dark:text-gray-300">التسوية إلزامية للنقد فقط. باقي الطرق للعرض.</div>
+          </div>
+          <div className="p-4">
+            {Object.keys(computed.totalsByMethod).length === 0 ? (
+              <div className="text-sm text-gray-500 dark:text-gray-300">لا توجد عمليات.</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Object.entries(computed.totalsByMethod)
+                  .sort(([a], [b]) => (a === 'cash' ? -1 : b === 'cash' ? 1 : a.localeCompare(b)))
+                  .map(([method, totals]) => {
+                    const net = (totals?.in || 0) - (totals?.out || 0);
+                    return (
+                      <div key={method} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-bold dark:text-gray-200">{methodLabel(method)}</div>
+                          <div className="text-sm font-mono dark:text-gray-200">{net.toFixed(2)} {baseCode || '—'}</div>
                         </div>
-                      );
-                    })}
-                </div>
+                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-300">
+                          داخل: <span className="font-mono">{(totals?.in || 0).toFixed(2)} {baseCode || '—'}</span> — خارج:{' '}
+                          <span className="font-mono">{(totals?.out || 0).toFixed(2)} {baseCode || '—'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>
         </div>
-      )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div className="font-bold dark:text-white">العمليات المرتبطة بالوردية</div>
-          <div className="text-xs text-gray-500 dark:text-gray-300">{payments.length} عملية</div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">الوقت</th>
-                <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">الاتجاه</th>
-                <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">الطريقة</th>
-                <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">المبلغ</th>
-                <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">تفاصيل</th>
-                <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">المرجع</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {payments.length === 0 ? (
+        {(shift.status === 'closed' && (shift.forced_close || shift.forced_close_reason || shift.denomination_counts || shift.tender_counts)) && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div className="font-bold dark:text-white">بيانات الإغلاق</div>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <div className="text-gray-500 dark:text-gray-300">إغلاق قسري</div>
+                <div className="font-bold dark:text-white">{shift.forced_close ? 'نعم' : 'لا'}</div>
+              </div>
+              {shift.forced_close_reason && (
+                <div>
+                  <div className="text-gray-500 dark:text-gray-300 mb-1">سبب الإغلاق</div>
+                  <div className="dark:text-white whitespace-pre-wrap">{shift.forced_close_reason}</div>
+                </div>
+              )}
+              {shift.denomination_counts && (
+                <div>
+                  <div className="text-gray-500 dark:text-gray-300 mb-1">عدّ الفئات</div>
+                  <pre className="text-xs p-3 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-gray-200 overflow-auto">{JSON.stringify(shift.denomination_counts, null, 2)}</pre>
+                </div>
+              )}
+              {shift.tender_counts && (
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                  <div className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">تسوية حسب طريقة الدفع (المعدود)</div>
+                  <div className="grid grid-cols-12 gap-2 text-xs text-gray-500 dark:text-gray-300 mb-2">
+                    <div className="col-span-4">الطريقة</div>
+                    <div className="col-span-3 text-right">المتوقع</div>
+                    <div className="col-span-3 text-right">المعدود</div>
+                    <div className="col-span-2 text-right">الفرق</div>
+                  </div>
+                  <div className="space-y-2">
+                    {Object.entries(shift.tender_counts)
+                      .map(([k, v]) => [String(k || '-'), v] as const)
+                      .sort(([a], [b]) => (a === 'cash' ? -1 : b === 'cash' ? 1 : a.localeCompare(b)))
+                      .map(([method, rawCounted]) => {
+                        const isCash = method.toLowerCase() === 'cash';
+                        const exp = isCash
+                          ? (Number(expectedDisplay) || 0)
+                          : (((computed.totalsByMethod[method]?.in || 0) - (computed.totalsByMethod[method]?.out || 0)));
+                        const counted = Number(rawCounted);
+                        const diff = Number.isFinite(counted) ? counted - exp : NaN;
+                        return (
+                          <div key={method} className="grid grid-cols-12 gap-2 items-center">
+                            <div className="col-span-4 text-sm dark:text-gray-200">{methodLabel(method)}</div>
+                            <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{exp.toFixed(2)} {baseCode || '—'}</div>
+                            <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{Number.isFinite(counted) ? `${counted.toFixed(2)} ${baseCode || '—'}` : '-'}</div>
+                            <div className={`col-span-2 text-right text-sm font-mono ${Number.isFinite(diff) && Math.abs(diff) > 0.01 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'}`}>
+                              {Number.isFinite(diff) ? `${diff > 0 ? '+' : ''}${diff.toFixed(2)} ${baseCode || '—'}` : '-'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="font-bold dark:text-white">العمليات المرتبطة بالوردية</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">{payments.length} عملية</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <td className="p-6 text-center text-gray-500 dark:text-gray-300" colSpan={6}>
-                    لا توجد عمليات مسجلة لهذه الوردية.
-                  </td>
+                  <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">الوقت</th>
+                  <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">الاتجاه</th>
+                  <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">الطريقة</th>
+                  <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">المبلغ</th>
+                  <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">تفاصيل</th>
+                  <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">المرجع</th>
                 </tr>
-              ) : (
-                payments.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td className="p-4 text-sm font-mono dark:text-gray-300">
-                      {new Date(p.occurred_at).toLocaleString('ar-EG-u-nu-latn')}
-                    </td>
-                    <td className="p-4 text-sm dark:text-gray-300">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${p.direction === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                        {p.direction === 'in' ? 'داخل' : 'خارج'}
-                      </span>
-                    </td>
-                    <td className="p-4 text-sm dark:text-gray-300">{p.method}</td>
-                    <td className="p-4 text-sm font-mono dark:text-gray-300">
-                      <CurrencyDualAmount
-                        amount={Number(p.amount) || 0}
-                        currencyCode={String(p.currency || '').toUpperCase()}
-                        baseAmount={p.base_amount === null || p.base_amount === undefined ? undefined : Number(p.base_amount)}
-                        fxRate={p.fx_rate === null || p.fx_rate === undefined ? undefined : Number(p.fx_rate)}
-                        compact
-                      />
-                    </td>
-                    <td className="p-4 text-sm text-gray-700 dark:text-gray-200">{paymentDetails(p)}</td>
-                    <td className="p-4 text-sm text-gray-500 dark:text-gray-300">
-                      {p.reference_table ? `${p.reference_table}${p.reference_id ? `:${String(p.reference_id).slice(-6).toUpperCase()}` : ''}` : '-'}
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {payments.length === 0 ? (
+                  <tr>
+                    <td className="p-6 text-center text-gray-500 dark:text-gray-300" colSpan={6}>
+                      لا توجد عمليات مسجلة لهذه الوردية.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  payments.map((p) => (
+                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="p-4 text-sm font-mono dark:text-gray-300">
+                        {new Date(p.occurred_at).toLocaleString('ar-EG-u-nu-latn')}
+                      </td>
+                      <td className="p-4 text-sm dark:text-gray-300">
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${p.direction === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                          {p.direction === 'in' ? 'داخل' : 'خارج'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm dark:text-gray-300">{p.method}</td>
+                      <td className="p-4 text-sm font-mono dark:text-gray-300">
+                        <CurrencyDualAmount
+                          amount={Number(p.amount) || 0}
+                          currencyCode={String(p.currency || '').toUpperCase()}
+                          baseAmount={p.base_amount === null || p.base_amount === undefined ? undefined : Number(p.base_amount)}
+                          fxRate={p.fx_rate === null || p.fx_rate === undefined ? undefined : Number(p.fx_rate)}
+                          compact
+                        />
+                      </td>
+                      <td className="p-4 text-sm text-gray-700 dark:text-gray-200">{paymentDetails(p)}</td>
+                      <td className="p-4 text-sm text-gray-500 dark:text-gray-300">
+                        {p.reference_table ? `${p.reference_table}${p.reference_id ? `:${String(p.reference_id).slice(-6).toUpperCase()}` : ''}` : '-'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );
