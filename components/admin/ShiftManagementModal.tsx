@@ -40,6 +40,7 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
 
     useEffect(() => {
         const fetchFx = async () => {
+            if (!supabase) return;
             const { data } = await supabase.from('currencies').select('code, current_exchange_rate');
             const map: Record<string, number> = {};
             data?.forEach(d => { map[String(d.code).toUpperCase()] = Number(d.current_exchange_rate) || 1; });
