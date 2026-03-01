@@ -266,46 +266,47 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         <div ref={ref} className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
                 @media print {
-                    @page { size: A4; margin: 4mm 6mm; }
+                    @page { size: A4; margin: 3mm; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
                     * { box-sizing: border-box; }
                     .invoice-container { 
                         width: 100% !important; 
                         max-width: none !important; 
                         margin: 0 !important; 
-                        padding: 2mm 4mm !important;
-                        gap: 3px !important;
+                        padding: 1mm 2mm !important;
+                        gap: 0px !important;
                         display: flex !important;
                         flex-direction: column !important;
-                        font-size: 8px !important;
+                        font-size: 6.5px !important;
                     }
                     .invoice-header {
-                        padding-bottom: 3px !important;
-                        margin-bottom: 3px !important;
-                        border-bottom-width: 2px !important;
+                        padding-bottom: 2px !important;
+                        margin-bottom: 1px !important;
+                        border-bottom-width: 1.5px !important;
                         border-color: #0f172a !important;
-                        gap: 4px !important;
+                        gap: 2px !important;
                         page-break-inside: avoid;
                     }
                     .invoice-title {
-                        font-size: 14px !important;
+                        font-size: 11px !important;
                         line-height: 1 !important;
                     }
                     .brand-name {
-                        font-size: 13px !important;
+                        font-size: 10px !important;
+                        line-height: 1.1 !important;
                     }
                     .invoice-meta {
-                        gap: 4px !important;
-                        margin-bottom: 2px !important;
+                        gap: 2px !important;
+                        margin-bottom: 1px !important;
                         page-break-inside: avoid;
                     }
                     .meta-card {
-                        padding: 3px 5px !important;
-                        border: 1px solid #cbd5e1 !important;
-                        border-radius: 4px !important;
+                        padding: 1.5px 3px !important;
+                        border: 0.5px solid #cbd5e1 !important;
+                        border-radius: 2px !important;
                     }
                     .invoice-container table {
-                        font-size: 7px !important;
+                        font-size: 6px !important;
                         page-break-inside: auto;
                     }
                     .invoice-container thead {
@@ -317,33 +318,36 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-container th {
                         background-color: #0f172a !important;
                         color: white !important;
-                        padding: 2px 3px !important;
-                        font-size: 7px !important;
-                        line-height: 1.2 !important;
+                        padding: 1px 2px !important;
+                        font-size: 5.5px !important;
+                        line-height: 1.1 !important;
                     }
                     .invoice-container td {
-                        padding: 1px 3px !important;
-                        border-bottom: 1px solid #e2e8f0 !important;
-                        font-size: 7px !important;
-                        line-height: 1.2 !important;
+                        padding: 0.5px 2px !important;
+                        border-bottom: 0.5px solid #e2e8f0 !important;
+                        font-size: 5.5px !important;
+                        line-height: 1.1 !important;
                     }
                     .totals-box {
                         background-color: #f1f5f9 !important;
                         color: #0f172a !important;
                         border: 1px solid #0f172a !important;
-                        padding: 4px 6px !important;
+                        padding: 2px 4px !important;
                         page-break-inside: avoid;
                     }
                     .credit-summary-box {
                         background-color: #fff !important;
-                        border: 1px solid #e2e8f0 !important;
-                        padding: 3px 5px !important;
+                        border: 0.5px solid #e2e8f0 !important;
+                        padding: 1.5px 3px !important;
                         page-break-inside: avoid;
                     }
                     .qr-section {
-                        border: 1px solid #e2e8f0 !important;
+                        border: 0.5px solid #e2e8f0 !important;
                         background: #fff !important;
                         page-break-inside: avoid;
+                    }
+                    .print-hide-subtext {
+                        display: none !important;
                     }
                 }
             `}</style>
@@ -370,14 +374,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <div className="flex items-center gap-6 print:gap-2">
                         {storeLogoUrl && (
                             <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-sm print:border-none print:shadow-none print:p-0">
-                                <img src={storeLogoUrl} alt="Logo" className="h-32 print:h-10 w-auto object-contain" />
+                                <img src={storeLogoUrl} alt="Logo" className="h-32 print:h-7 w-auto object-contain" />
                             </div>
                         )}
                         <div className="flex flex-col justify-center">
-                            <h1 className="brand-name text-4xl print:text-lg font-black text-slate-900 tracking-tight leading-tight">{systemName}</h1>
-                            <div className="text-sm print:text-[7px] font-bold text-slate-500 mt-1 print:mt-0 uppercase tracking-[0.2em]" dir="ltr">{systemKey}</div>
+                            <h1 className="brand-name text-4xl print:text-[10px] font-black text-slate-900 tracking-tight leading-tight">{systemName}</h1>
+                            <div className="text-sm print:text-[5px] font-bold text-slate-500 mt-1 print:mt-0 uppercase tracking-[0.2em]" dir="ltr">{systemKey}</div>
 
-                            <div className="mt-4 flex flex-col gap-1.5 text-sm print:text-[8px] text-slate-600 font-medium print:mt-0.5 print:gap-0">
+                            <div className="mt-4 flex flex-col gap-1.5 text-sm print:text-[6px] text-slate-600 font-medium print:mt-0 print:gap-0">
                                 {showBranchName && (
                                     <div className="flex items-center gap-2 print:gap-1">
                                         <span className="text-slate-400 print:hidden">🏢</span>
@@ -414,18 +418,18 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     {/* Invoice Title & Meta */}
                     <div className="text-left rtl:text-left flex flex-col items-end">
-                        <h2 className="invoice-title text-5xl print:text-xl font-black text-slate-900 uppercase tracking-tighter">فاتورة</h2>
-                        <div className="text-slate-500 text-sm print:text-[7px] font-extrabold tracking-[0.3em] mt-2 print:mt-0.5 uppercase bg-slate-100 px-3 py-1 print:px-0 print:py-0 border border-slate-200 rounded print:bg-transparent print:border-none">فاتورة ضريبية</div>
+                        <h2 className="invoice-title text-5xl print:text-sm font-black text-slate-900 uppercase tracking-tighter">فاتورة</h2>
+                        <div className="text-slate-500 text-sm print:text-[5px] font-extrabold tracking-[0.3em] mt-2 print:mt-0 uppercase bg-slate-100 px-3 py-1 print:px-0 print:py-0 border border-slate-200 rounded print:bg-transparent print:border-none">فاتورة ضريبية</div>
 
-                        <div className="mt-8 flex gap-6 mt-auto border-t-2 border-slate-100 pt-4 print:mt-1 print:pt-1 print:gap-2 print:border-t">
+                        <div className="mt-8 flex gap-6 mt-auto border-t-2 border-slate-100 pt-4 print:mt-0.5 print:pt-0.5 print:gap-1 print:border-t">
                             <div className="flex flex-col items-end">
-                                <span className="text-[11px] print:text-[6px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">تاريخ الإصدار</span>
-                                <span className="text-xl print:text-[9px] font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('en-GB')}</span>
+                                <span className="text-[11px] print:text-[5px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">تاريخ الإصدار</span>
+                                <span className="text-xl print:text-[7px] font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('en-GB')}</span>
                             </div>
                             <div className="w-px bg-slate-200"></div>
                             <div className="flex flex-col items-end">
-                                <span className="text-[11px] print:text-[6px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">رقم الفاتورة</span>
-                                <span className="text-2xl print:text-[10px] font-black font-mono text-slate-900" dir="ltr">#{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
+                                <span className="text-[11px] print:text-[5px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">رقم الفاتورة</span>
+                                <span className="text-2xl print:text-[8px] font-black font-mono text-slate-900" dir="ltr">#{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
                             </div>
                         </div>
                     </div>
@@ -436,19 +440,19 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     {/* Bill To */}
                     <div className="col-span-12 md:col-span-5 meta-card bg-slate-50 rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden print:shadow-none print:rounded-md print:p-1.5 print:border">
                         <div className="absolute top-0 right-0 w-1.5 print:w-0.5 h-full bg-slate-800"></div>
-                        <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2 print:mb-0.5 print:pb-0.5">
-                            <span className="text-sm print:text-[7px] font-black text-slate-800 uppercase tracking-widest">إلى السادة / العميل</span>
+                        <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2 print:mb-0 print:pb-0">
+                            <span className="text-sm print:text-[5.5px] font-black text-slate-800 uppercase tracking-widest">إلى السادة / العميل</span>
                         </div>
                         <div className="space-y-2 print:space-y-0.5 relative z-10">
-                            <div className="text-2xl print:text-xs font-black text-slate-900">{invoiceOrder.customerName}</div>
+                            <div className="text-2xl print:text-[8px] font-black text-slate-900">{invoiceOrder.customerName}</div>
                             {invoiceOrder.phoneNumber && (
-                                <div className="text-base print:text-[8px] text-slate-600 font-mono font-medium flex items-center gap-2 mt-2 print:mt-0" dir="ltr">
+                                <div className="text-base print:text-[6px] text-slate-600 font-mono font-medium flex items-center gap-2 mt-2 print:mt-0" dir="ltr">
                                     <span className="text-slate-400 print:hidden text-lg">📱</span>
                                     {invoiceOrder.phoneNumber}
                                 </div>
                             )}
                             {invoiceOrder.address && (
-                                <div className="text-sm text-slate-600 mt-2 flex items-start gap-2 leading-relaxed print:text-[7px] print:mt-0 print:leading-tight">
+                                <div className="text-sm text-slate-600 mt-2 flex items-start gap-2 leading-relaxed print:text-[5.5px] print:mt-0 print:leading-tight">
                                     <span className="text-slate-400 mt-0.5 print:hidden text-lg">📍</span>
                                     {invoiceOrder.address}
                                 </div>
@@ -458,40 +462,40 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     {/* Details */}
                     <div className="col-span-12 md:col-span-7 meta-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm print:shadow-none print:rounded-md print:p-1.5 print:border">
-                        <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 pb-2 print:mb-0.5 print:pb-0.5">
-                            <span className="text-sm print:text-[7px] font-black text-slate-800 uppercase tracking-widest">تفاصيل الطلب والدفع</span>
+                        <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 pb-2 print:mb-0 print:pb-0">
+                            <span className="text-sm print:text-[5.5px] font-black text-slate-800 uppercase tracking-widest">تفاصيل الطلب والدفع</span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-6 print:gap-y-1 print:gap-x-1 text-sm print:text-[7px]">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-6 print:gap-y-0.5 print:gap-x-0.5 text-sm print:text-[5.5px]">
                             <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                <span className="block text-[11px] print:text-[6px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">طريقة الدفع</span>
-                                <span className="font-black text-slate-900 text-base print:text-[8px] leading-tight">{getPaymentMethodName(invoiceOrder.paymentMethod)}</span>
+                                <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">طريقة الدفع</span>
+                                <span className="font-black text-slate-900 text-base print:text-[6px] leading-tight">{getPaymentMethodName(invoiceOrder.paymentMethod)}</span>
                             </div>
                             <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                <span className="block text-[11px] print:text-[6px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">شروط الدفع</span>
-                                <span className="font-black text-slate-900 text-base print:text-[8px] leading-tight">{invoiceTermsLabel}</span>
+                                <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">شروط الدفع</span>
+                                <span className="font-black text-slate-900 text-base print:text-[6px] leading-tight">{invoiceTermsLabel}</span>
                             </div>
                             {invoiceTerms === 'credit' && invoiceDueDate && (
                                 <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                    <span className="block text-[11px] print:text-[6px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">تاريخ الاستحقاق</span>
-                                    <span className="font-bold text-slate-800 font-mono text-base print:text-[8px] leading-tight" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('en-GB')}</span>
+                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">تاريخ الاستحقاق</span>
+                                    <span className="font-bold text-slate-800 font-mono text-base print:text-[6px] leading-tight" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('en-GB')}</span>
                                 </div>
                             )}
                             {costCenterLabel && (
                                 <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                    <span className="block text-[11px] print:text-[6px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">مركز التكلفة</span>
-                                    <span className="font-bold text-slate-800 text-sm print:text-[8px] leading-tight">{costCenterLabel}</span>
+                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">مركز التكلفة</span>
+                                    <span className="font-bold text-slate-800 text-sm print:text-[6px] leading-tight">{costCenterLabel}</span>
                                 </div>
                             )}
                             {invoiceOrder.orderSource && (
                                 <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                    <span className="block text-[11px] print:text-[6px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">مصدر الطلب</span>
-                                    <span className="font-bold text-slate-800 text-sm print:text-[8px] leading-tight">{invoiceOrder.orderSource === 'in_store' ? 'داخل المتجر' : 'أونلاين'}</span>
+                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">مصدر الطلب</span>
+                                    <span className="font-bold text-slate-800 text-sm print:text-[6px] leading-tight">{invoiceOrder.orderSource === 'in_store' ? 'داخل المتجر' : 'أونلاين'}</span>
                                 </div>
                             )}
                             {invoiceOrder.deliveryZoneId && (
                                 <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0 md:col-span-2">
-                                    <span className="block text-[11px] print:text-[6px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">منطقة التوصيل</span>
-                                    <span className="font-bold text-slate-800 text-sm print:text-[8px] leading-tight">{(deliveryZone?.name?.[lang] || deliveryZone?.name?.ar || deliveryZone?.name?.en) || invoiceOrder.deliveryZoneId}</span>
+                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">منطقة التوصيل</span>
+                                    <span className="font-bold text-slate-800 text-sm print:text-[6px] leading-tight">{(deliveryZone?.name?.[lang] || deliveryZone?.name?.ar || deliveryZone?.name?.en) || invoiceOrder.deliveryZoneId}</span>
                                 </div>
                             )}
                         </div>
@@ -550,12 +554,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                                 <span>{fmtByCode(pricing.displayUnitPrice, currencyCode)}</span>
                                             </div>
                                             {currencyCode === 'YER' && (
-                                                <span className="text-[10px] text-slate-400 mt-0.5 print:mt-0 print:text-[5px] font-medium block w-full text-center">
+                                                <span className="text-[10px] text-slate-400 mt-0.5 print:mt-0 print:text-[5px] font-medium block w-full text-center print-hide-subtext">
                                                     يعادل {fmtByCode(pricing.displayUnitPrice / (Number((invoiceOrder as any).fxRate) || 1), 'SAR')} سعودي
                                                 </span>
                                             )}
                                             {invoicePricingMode === 'base_unit' && !pricing.isWeightBased && pricing.factor > 1 && (
-                                                <span className="text-[10px] text-emerald-600 mt-1 bg-emerald-50 px-2 py-0.5 rounded font-bold print:mt-0 print:text-[5px] print:bg-transparent print:px-0">
+                                                <span className="text-[10px] text-emerald-600 mt-1 bg-emerald-50 px-2 py-0.5 rounded font-bold print:mt-0 print:text-[5px] print:bg-transparent print:px-0 print-hide-subtext">
                                                     يعادل {pricing.factor} {unitLabelText}
                                                 </span>
                                             )}
@@ -568,7 +572,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                                 <span>{fmtByCode(pricing.lineTotal, currencyCode)}</span>
                                             </div>
                                             {currencyCode === 'YER' && (
-                                                <span className="text-[10px] text-slate-400 mt-0.5 print:mt-0 print:text-[5px] font-medium block w-full text-center">
+                                                <span className="text-[10px] text-slate-400 mt-0.5 print:mt-0 print:text-[5px] font-medium block w-full text-center print-hide-subtext">
                                                     يعادل {fmtByCode(pricing.lineTotal / (Number((invoiceOrder as any).fxRate) || 1), 'SAR')} سعودي
                                                 </span>
                                             )}
@@ -582,27 +586,27 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Footer Section (Totals + Info) */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 print:mt-1 print:gap-1 break-inside-avoid print:break-inside-auto">
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 print:mt-0.5 print:gap-0.5 break-inside-avoid print:break-inside-auto">
                 {/* Legal & Terms */}
-                <div className="order-2 md:order-1 flex flex-col gap-6 print:gap-1 text-slate-600 relative z-10">
+                <div className="order-2 md:order-1 flex flex-col gap-6 print:gap-0.5 text-slate-600 relative z-10">
                     {/* Receipt Confirmation Box */}
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-sm print:bg-transparent print:border print:border-slate-300 print:rounded-none print:p-1 print:shadow-none">
-                        <h4 className="font-bold text-sm text-slate-800 mb-2 print:text-[7px] print:mb-0 flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-slate-800 mb-2 print:text-[5.5px] print:mb-0 flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-slate-400 print:hidden"></span>
                             إقرار استلام
                         </h4>
-                        <p className="text-sm leading-relaxed print:text-[6px] print:leading-tight mb-6 print:mb-0.5 font-medium">
+                        <p className="text-sm leading-relaxed print:text-[4.5px] print:leading-tight mb-6 print:mb-0 font-medium">
                             أنا الموقع أدناه أقر باستلام البضاعة المذكورة أعلاه كاملة وسليمة وبحالة جيدة، وأتعهد بسداد قيمة هذه الفاتورة وفقاً لشروط الدفع المتفق عليها.
                         </p>
-                        <div className="grid grid-cols-2 gap-8 print:gap-2 mt-8 print:mt-0.5">
+                        <div className="grid grid-cols-2 gap-8 print:gap-1 mt-8 print:mt-0">
                             <div className="text-center">
-                                <div className="text-xs font-bold text-slate-500 mb-6 print:text-[6px] print:mb-1">توقيع المستلم / العميل</div>
+                                <div className="text-xs font-bold text-slate-500 mb-6 print:text-[4.5px] print:mb-0.5">توقيع المستلم / العميل</div>
                                 <div className="border-b-2 border-dashed border-slate-300 relative print:border-slate-400">
                                     <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-slate-50 px-2 text-[10px] text-slate-300 print:hidden">✖</span>
                                 </div>
                             </div>
                             <div className="text-center">
-                                <div className="text-xs font-bold text-slate-500 mb-6 print:text-[6px] print:mb-1">توقيع المسئول / البائع</div>
+                                <div className="text-xs font-bold text-slate-500 mb-6 print:text-[4.5px] print:mb-0.5">توقيع المسئول / البائع</div>
                                 <div className="border-b-2 border-dashed border-slate-300 relative print:border-slate-400">
                                     <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-slate-50 px-2 text-[10px] text-slate-300 print:hidden">✖</span>
                                 </div>
@@ -611,14 +615,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     </div>
 
                     {/* QR Code and Footer Notes */}
-                    <div className="flex gap-6 items-center print:gap-2">
+                    <div className="flex gap-6 items-center print:gap-1">
                         {qrUrl && (
-                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100 flex-shrink-0 print:p-1 print:border-slate-300 print:shadow-none print:rounded-md">
-                                <img src={qrUrl} alt="ZATCA QR Code" className="w-24 h-24 print:w-10 print:h-10 object-contain" />
+                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100 flex-shrink-0 print:p-0.5 print:border-slate-300 print:shadow-none print:rounded-md">
+                                <img src={qrUrl} alt="ZATCA QR Code" className="w-24 h-24 print:w-8 print:h-8 object-contain" />
                             </div>
                         )}
                         <div className="flex-1">
-                            <p className="text-xs font-bold text-slate-700 leading-relaxed print:text-[6px] print:leading-tight">
+                            <p className="text-xs font-bold text-slate-700 leading-relaxed print:text-[4.5px] print:leading-tight">
                                 شكراً لثقتكم بنا. <br />
                                 <span className="text-slate-500 font-medium">نتطلع دائماً لتقديم الأفضل لكم.</span>
                             </p>
@@ -629,50 +633,50 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* Totals */}
                 <div className="order-1 md:order-2 space-y-4 print:space-y-0.5 relative z-10 w-full md:max-w-md ml-auto rtl:ml-0 rtl:mr-auto">
                     <div className="totals-box bg-slate-50 rounded-3xl p-8 border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a] print:shadow-none print:rounded-none print:border print:p-1 print:border-slate-800">
-                        <div className="flex justify-between items-center mb-4 print:mb-1">
-                            <span className="text-slate-500 font-bold text-sm print:text-[7px]">المجموع الفرعي</span>
-                            <span className="font-mono font-bold text-slate-800 text-lg print:text-[9px] flex items-center gap-2 print:gap-1">
-                                <span className="text-xs print:text-[6px] text-slate-400">{invoiceCurrencyLabel}</span>
+                        <div className="flex justify-between items-center mb-4 print:mb-0.5">
+                            <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">المجموع الفرعي</span>
+                            <span className="font-mono font-bold text-slate-800 text-lg print:text-[7px] flex items-center gap-2 print:gap-0.5">
+                                <span className="text-xs print:text-[5px] text-slate-400">{invoiceCurrencyLabel}</span>
                                 {fmtByCode((Number(invoiceOrder.subtotal) || 0) + (Number(invoiceOrder.discountAmount) || 0), currencyCode)}
                             </span>
                         </div>
 
                         {Number(invoiceOrder.discountAmount) > 0 && (
-                            <div className="flex justify-between items-center mb-4 text-rose-600 print:mb-1">
-                                <span className="font-bold text-sm print:text-[8px]">الخصم</span>
-                                <span className="font-mono font-bold text-lg print:text-[9px] flex items-center gap-2 print:gap-1">
-                                    <span className="text-xs print:text-[6px] opacity-70">{invoiceCurrencyLabel}</span>
+                            <div className="flex justify-between items-center mb-4 text-rose-600 print:mb-0.5">
+                                <span className="font-bold text-sm print:text-[5.5px]">الخصم</span>
+                                <span className="font-mono font-bold text-lg print:text-[7px] flex items-center gap-2 print:gap-0.5">
+                                    <span className="text-xs print:text-[5px] opacity-70">{invoiceCurrencyLabel}</span>
                                     -{fmtByCode(Number(invoiceOrder.discountAmount) || 0, currencyCode)}
                                 </span>
                             </div>
                         )}
 
                         {Number(invoiceOrder.deliveryFee) > 0 && (
-                            <div className="flex justify-between items-center mb-4 print:mb-1">
-                                <span className="text-slate-500 font-bold text-sm print:text-[8px]">رسوم التوصيل</span>
-                                <span className="font-mono font-bold text-slate-800 text-lg print:text-[9px] flex items-center gap-2 print:gap-1">
-                                    <span className="text-xs print:text-[6px] text-slate-400">{invoiceCurrencyLabel}</span>
+                            <div className="flex justify-between items-center mb-4 print:mb-0.5">
+                                <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">رسوم التوصيل</span>
+                                <span className="font-mono font-bold text-slate-800 text-lg print:text-[7px] flex items-center gap-2 print:gap-0.5">
+                                    <span className="text-xs print:text-[5px] text-slate-400">{invoiceCurrencyLabel}</span>
                                     {fmtByCode(invoiceOrder.deliveryFee, currencyCode)}
                                 </span>
                             </div>
                         )}
 
-                        <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-slate-200 border-dashed print:mb-1 print:pb-1 print:border-slate-300">
-                            <span className="text-slate-500 font-bold text-sm print:text-[8px] flex items-center gap-2">
+                        <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-slate-200 border-dashed print:mb-0.5 print:pb-0.5 print:border-slate-300">
+                            <span className="text-slate-500 font-bold text-sm print:text-[5.5px] flex items-center gap-2">
                                 ضريبة القيمة المضافة {(Number((invoiceOrder as any).taxRate) || 0)}%
                             </span>
-                            <span className="font-mono font-bold text-slate-800 text-lg print:text-[9px] flex items-center gap-2 print:gap-1">
-                                <span className="text-xs print:text-[6px] text-slate-400">{invoiceCurrencyLabel}</span>
+                            <span className="font-mono font-bold text-slate-800 text-lg print:text-[7px] flex items-center gap-2 print:gap-0.5">
+                                <span className="text-xs print:text-[5px] text-slate-400">{invoiceCurrencyLabel}</span>
                                 {formatMoney(taxAmount)}
                             </span>
                         </div>
 
-                        <div className="flex justify-between items-end mt-2 print:mt-1">
+                        <div className="flex justify-between items-end mt-2 print:mt-0.5">
                             <div className="flex flex-col">
-                                <span className="text-3xl print:text-base font-black text-slate-900 tracking-tight">الإجمالي</span>
-                                <span className="text-slate-400 font-bold text-base print:text-[7px] mt-1 print:mt-0">{invoiceCurrencyLabel}</span>
+                                <span className="text-3xl print:text-[9px] font-black text-slate-900 tracking-tight">الإجمالي</span>
+                                <span className="text-slate-400 font-bold text-base print:text-[5px] mt-1 print:mt-0">{invoiceCurrencyLabel}</span>
                             </div>
-                            <span className="font-mono text-5xl print:text-base font-black text-slate-900 tracking-tighter decoration-4 print:decoration-1">
+                            <span className="font-mono text-5xl print:text-[10px] font-black text-slate-900 tracking-tighter decoration-4 print:decoration-1">
                                 {fmtByCode(invoiceOrder.total, currencyCode)}
                             </span>
                         </div>
@@ -683,23 +687,23 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         <div className="credit-summary-box bg-white rounded-2xl border border-slate-200 p-6 shadow-sm print:rounded-none print:p-1 print:shadow-none print:border-slate-300 mt-4 print:mt-0.5">
                             {creditSummary ? (
                                 <>
-                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-1 print:pb-1">
-                                        <span className="text-slate-500 font-bold text-sm print:text-[8px]">الرصيد السابق للعميل</span>
-                                        <span className="font-mono font-bold text-slate-800 flex items-center gap-2 print:text-[8px] print:gap-1">
+                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-0.5 print:pb-0.5">
+                                        <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">الرصيد السابق للعميل</span>
+                                        <span className="font-mono font-bold text-slate-800 flex items-center gap-2 print:text-[6px] print:gap-0.5">
                                             <span className="text-[10px] print:text-[6px] text-slate-400">{currencyLabelAr(creditSummary.currencyCode)}</span>
                                             {formatMoney(Number(creditSummary.previousBalance || 0))}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-1 print:pb-1">
-                                        <span className="text-slate-500 font-bold text-sm print:text-[8px]">قيمة الفاتورة الحالية</span>
-                                        <span className="font-mono font-bold text-slate-800 flex items-center gap-2 print:text-[8px] print:gap-1">
+                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-0.5 print:pb-0.5">
+                                        <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">قيمة الفاتورة الحالية</span>
+                                        <span className="font-mono font-bold text-slate-800 flex items-center gap-2 print:text-[6px] print:gap-0.5">
                                             <span className="text-[10px] print:text-[6px] text-slate-400">{currencyLabelAr(creditSummary.currencyCode)}</span>
                                             {formatMoney(Number(creditSummary.invoiceAmount))}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center pt-2 print:pt-0">
-                                        <span className="text-slate-900 font-black text-base print:text-[9px]">الرصيد النهائي المستحق</span>
-                                        <span className="font-mono font-black text-slate-900 text-xl print:text-[10px] flex items-center gap-2 print:gap-1 bg-slate-100 px-3 py-1 rounded print:bg-transparent print:p-0">
+                                        <span className="text-slate-900 font-black text-base print:text-[7px]">الرصيد النهائي المستحق</span>
+                                        <span className="font-mono font-black text-slate-900 text-xl print:text-[8px] flex items-center gap-2 print:gap-0.5 bg-slate-100 px-3 py-1 rounded print:bg-transparent print:p-0">
                                             <span className="text-[10px] print:text-[6px] text-slate-500">{currencyLabelAr(creditSummary.currencyCode)}</span>
                                             {formatMoney(Number(creditSummary.newBalance))}
                                         </span>
@@ -707,16 +711,16 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                 </>
                             ) : ( // fallback to internal payments if available
                                 <>
-                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-1 print:pb-1">
-                                        <span className="text-slate-500 font-bold text-sm print:text-[8px]">المدفوع من الفاتورة</span>
-                                        <span className="font-mono font-bold text-emerald-600 flex items-center gap-2 print:text-[8px] print:gap-1">
+                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-0.5 print:pb-0.5">
+                                        <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">المدفوع من الفاتورة</span>
+                                        <span className="font-mono font-bold text-emerald-600 flex items-center gap-2 print:text-[6px] print:gap-0.5">
                                             <span className="text-[10px] print:text-[6px] opacity-70">{invoiceCurrencyLabel}</span>
                                             {formatMoney((invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'cash')?.amount ?? 0) + (invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'bank')?.amount ?? 0))}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center pt-2 print:pt-0">
-                                        <span className="text-slate-900 font-black text-base print:text-[9px]">المتبقي آجل</span>
-                                        <span className="font-mono font-black text-rose-600 text-xl print:text-[10px] flex items-center gap-2 print:gap-1 bg-rose-50 px-3 py-1 rounded print:bg-transparent print:p-0">
+                                        <span className="text-slate-900 font-black text-base print:text-[7px]">المتبقي آجل</span>
+                                        <span className="font-mono font-black text-rose-600 text-xl print:text-[8px] flex items-center gap-2 print:gap-0.5 bg-rose-50 px-3 py-1 rounded print:bg-transparent print:p-0">
                                             <span className="text-[10px] print:text-[6px] opacity-70">{invoiceCurrencyLabel}</span>
                                             {formatMoney(invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'ar')?.amount ?? 0)}
                                         </span>
@@ -728,7 +732,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* Print Footer Elements */}
-                <div className="hidden print:flex w-full mt-4 border-t border-slate-300 pt-1 justify-between items-center relative z-10 text-slate-400 font-mono text-[7px]" dir="ltr">
+                <div className="hidden print:flex w-full mt-2 border-t border-slate-300 pt-0.5 justify-between items-center relative z-10 text-slate-400 font-mono text-[5px]" dir="ltr">
                     <div>{new Date().toLocaleString('en-GB')}</div>
                     <div>طبع بواسطة: {printedBy}</div>
                     <div>SYS-REF: {invoiceOrder.id.slice(0, 16).toUpperCase()}</div>

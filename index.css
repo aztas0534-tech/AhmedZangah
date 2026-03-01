@@ -430,7 +430,6 @@ svg {
     background-color: white;
     box-sizing: border-box;
     direction: rtl !important;
-    /* Scale removed to allow full width flow */
   }
 
   /* Ensure content fits A4 width */
@@ -448,43 +447,13 @@ svg {
     box-shadow: none !important;
   }
 
-  #print-area .rounded-lg,
-  #print-area .rounded-xl {
-    border: 1px solid #ccc;
-    border-radius: 0 !important;
-  }
-
-  #print-area table,
-  #print-area th,
-  #print-area td {
-    border: 1px solid #ddd !important;
-  }
-
-  #print-area thead {
-    background-color: #f2f2f2 !important;
-    print-color-adjust: exact !important;
-    -webkit-print-color-adjust: exact !important;
-  }
-
   #print-area button {
     display: none !important;
   }
 
-  /* Scale down large headings for print */
-  #print-area .text-5xl {
-    font-size: 2rem !important;
-  }
-
-  #print-area .text-4xl {
-    font-size: 1.75rem !important;
-  }
-
-  #print-area .text-3xl {
-    font-size: 1.5rem !important;
-  }
-
-  #print-area .text-2xl {
-    font-size: 1.25rem !important;
+  /* Hide sub-text during print */
+  #print-area .print-hide-subtext {
+    display: none !important;
   }
 
   /* Ensure page breaks work */
