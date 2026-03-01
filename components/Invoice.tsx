@@ -584,51 +584,51 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* Footer Section: Totals, QR, Signatures */}
-                <div className="flex flex-col lg:flex-row print:flex-row justify-between gap-8 print:gap-4 mt-2 relative z-10">
+                <div className="flex flex-col lg:flex-row print:flex-row justify-between items-start gap-8 print:gap-4 mt-2 mb-4 print:mb-0 relative z-10 print:break-inside-avoid">
 
                     {/* Left Side: QR & Terms */}
-                    <div className="flex flex-col gap-6 w-full lg:w-1/2 print:w-1/2">
+                    <div className="flex flex-col gap-6 w-full lg:flex-1 print:flex-1">
                         {invoiceTerms === 'credit' ? (
                             <div className="border-2 border-slate-200 rounded-2xl p-6 bg-slate-50 print:bg-transparent print:border-[#cbd5e1] print:rounded-lg">
-                                <div className="text-sm print:text-xs font-bold text-slate-800 leading-loose">
+                                <div className="text-sm print:text-[11px] font-bold text-slate-800 leading-relaxed">
                                     أنا الموقع أدناه أقر باستلام البضاعة المذكورة أعلاه كاملة وسليمة وبحالة جيدة،
                                     وأتعهد بسداد قيمة هذه الفاتورة وفقًا لشروط الدفع المتفق عليها.
                                 </div>
-                                <div className="mt-8 grid grid-cols-2 gap-8">
-                                    <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs font-bold text-slate-500">
+                                <div className="mt-6 grid grid-cols-2 gap-4">
+                                    <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs print:text-[10px] font-bold text-slate-500">
                                         توقيع المستلم / العميل
                                     </div>
-                                    <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs font-bold text-slate-500">
+                                    <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs print:text-[10px] font-bold text-slate-500">
                                         توقيع المسؤول / البائع
                                     </div>
                                 </div>
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 gap-8 pt-8">
-                                <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs font-bold text-slate-500">
+                                <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs print:text-[10px] font-bold text-slate-500">
                                     المستلم
                                 </div>
-                                <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs font-bold text-slate-500">
+                                <div className="border-b-2 border-dashed border-slate-400 pb-2 text-center text-xs print:text-[10px] font-bold text-slate-500">
                                     البائع
                                 </div>
                             </div>
                         )}
 
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-4">
                             {qrUrl && (
-                                <div className="qr-section p-3 rounded-2xl shadow-sm border border-slate-200 bg-white">
-                                    <img src={qrUrl} alt="ZATCA QR" className="w-24 h-24 object-contain" />
+                                <div className="qr-section p-2 rounded-xl shadow-sm border border-slate-200 bg-white">
+                                    <img src={qrUrl} alt="ZATCA QR" className="w-16 h-16 object-contain print:w-14 print:h-14" />
                                 </div>
                             )}
-                            <div className="text-sm text-slate-500 font-medium leading-relaxed">
-                                <div className="font-black text-slate-800 mb-1 lg:text-lg">شكراً لثقتكم بنا.</div>
+                            <div className="text-sm print:text-xs text-slate-500 font-medium leading-relaxed">
+                                <div className="font-black text-slate-800 mb-0.5 lg:text-base print:text-sm">شكراً لثقتكم بنا.</div>
                                 نتطلع دائماً لتقديم الأفضل لكم.
                             </div>
                         </div>
                     </div>
 
                     {/* Right Side: Totals & Balances */}
-                    <div className="w-full lg:w-[450px] print:w-1/2 shrink-0 flex flex-col gap-4">
+                    <div className="w-full lg:w-[450px] print:w-[40%] shrink-0 flex flex-col gap-3">
                         {/* Main Totals Box */}
                         <div className="totals-box bg-slate-900 text-white rounded-3xl p-8 shadow-xl print:shadow-none print:rounded-xl">
                             <div className="flex justify-between items-center text-slate-300 font-bold mb-4">
