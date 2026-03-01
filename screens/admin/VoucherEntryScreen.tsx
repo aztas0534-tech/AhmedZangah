@@ -10,31 +10,7 @@ type AccountRow = { id: string; code: string; name: string; nameAr: string };
 type CostCenterRow = { id: string; name: string; code: string | null };
 type PartyRow = { id: string; name: string };
 
-const translateAccountName = (name: string): string => {
-  const n = name.trim().toLowerCase();
-  if (n === 'cash') return 'الصندوق (نقدية)';
-  if (n === 'bank') return 'البنك';
-  if (n === 'accounts receivable') return 'الذمم المدينة (العملاء)';
-  if (n === 'accounts payable') return 'الذمم الدائنة (الموردين)';
-  if (n === 'inventory') return 'الطب أو المخزون (Inventory)';
-  if (n === 'cost of goods sold') return 'تكلفة البضاعة المباعة';
-  if (n === 'sales revenue') return 'إيرادات المبيعات';
-  if (n === 'salary expense') return 'مصروفات الرواتب';
-  if (n === 'rent expense') return 'مصروفات الإيجار';
-  if (n === 'utilities expense') return 'مصروفات المنافع (كهرباء وماء)';
-  if (n === 'owner drawings') return 'مسحوبات المالك';
-  if (n === 'owner equity') return 'حقوق الملكية';
-  if (n === 'tax payable') return 'ضريبة مستحقة الدفع';
-  if (n === 'discount given') return 'خصم مسموح به';
-  if (n === 'discount received') return 'خصم مكتسب';
-  if (n === 'delivery revenue') return 'إيرادات التوصيل';
-  if (n === 'delivery expense') return 'مصروفات التوصيل';
-  if (n === 'purchase returns') return 'مردودات المشتريات';
-  if (n === 'sales returns') return 'مردودات المبيعات';
-  if (n === 'inventory adjustment') return 'تسويات المخزون (عجز/زيادة)';
-  if (n === 'cash shift discrepancy') return 'عجز/زيادة الصندوق (الورديات)';
-  return name;
-};
+import { translateAccountName } from '../../utils/accountUtils';
 
 const toDateTimeLocalInputValue = (d: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0');
