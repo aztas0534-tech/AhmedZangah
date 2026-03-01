@@ -123,6 +123,7 @@ const ShiftDetailsScreen: React.FC = () => {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [recognizedOrders, setRecognizedOrders] = useState<RecognizedOrderRow[]>([]);
   const [expectedCash, setExpectedCash] = useState<number | null>(null);
+  const [expectedCashJson, setExpectedCashJson] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState<string>('');
   const [resolvedShiftId, setResolvedShiftId] = useState<string | null>(shiftId || null);
   const [cashMoveOpen, setCashMoveOpen] = useState(false);
@@ -214,6 +215,7 @@ const ShiftDetailsScreen: React.FC = () => {
         setShift(null);
         setPayments([]);
         setExpectedCash(null);
+        setExpectedCashJson(null);
         setError('');
         setLoading(false);
         return;
@@ -340,6 +342,13 @@ const ShiftDetailsScreen: React.FC = () => {
         if (!expectedError) {
           const numeric = Number(expectedData);
           setExpectedCash(Number.isFinite(numeric) ? numeric : null);
+        }
+
+        const { data: expectedJsonData, error: expectedJsonError } = await supabase.rpc('calculate_cash_shift_expected_multicurrency', { p_shift_id: resolvedShiftId });
+        if (!expectedJsonError && expectedJsonData) {
+          setExpectedCashJson(expectedJsonData as Record<string, number>);
+        } else {
+          setExpectedCashJson(null);
         }
       } catch (err: any) {
         const localized = localizeSupabaseError(err);
@@ -733,7 +742,12 @@ const ShiftDetailsScreen: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <div className="text-sm text-gray-500 dark:text-gray-300">النقد المتوقع</div>
             <div className="mt-2 text-xl font-bold font-mono text-indigo-600">{formatNumber(expectedDisplay)} {baseCode || '—'}</div>
-            <div className="mt-1 text-xs text-gray-400">
+            {expectedCashJson && Object.keys(expectedCashJson).length > 0 && (
+              <div className="mt-1 text-xs text-indigo-500 dark:text-indigo-400 font-mono" dir="ltr">
+                {Object.entries(expectedCashJson).map(([c, v]) => `${Number(v).toFixed(2)} ${c}`).join(' • ')}
+              </div>
+            )}
+            <div className="mt-1 text-xs text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-1">
               داخل: {formatNumber(computed.cash.in)} {baseCode || '—'} — خارج: {formatNumber(computed.cash.out)} {baseCode || '—'}
             </div>
           </div>

@@ -8,9 +8,10 @@ interface CashShiftContextType {
     currentShift: CashShift | null;
     loading: boolean;
     startShift: (startAmount: number) => Promise<void>;
-    endShift: (endAmount: number, notes?: string) => Promise<void>;
+    endShift: (endAmount: number, notes?: string, tenderCounts?: Record<string, number>) => Promise<void>;
     refreshShift: () => Promise<void>;
     expectedCash: number;
+    expectedCashJson: Record<string, number>;
 }
 
 const CashShiftContext = createContext<CashShiftContextType | undefined>(undefined);
@@ -20,6 +21,7 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
     const [currentShift, setCurrentShift] = useState<CashShift | null>(null);
     const [loading, setLoading] = useState(true);
     const [expectedCash, setExpectedCash] = useState(0);
+    const [expectedCashJson, setExpectedCashJson] = useState<Record<string, number>>({});
 
     const supabase = getSupabaseClient();
 
@@ -71,6 +73,15 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
         return shift.startAmount;
     };
 
+    const calculateExpectedCashJson = async (shift: CashShift) => {
+        if (!shift || !supabase) return {};
+        const { data, error } = await supabase.rpc('calculate_cash_shift_expected_multicurrency', { p_shift_id: shift.id });
+        if (!error && data) {
+            return data as Record<string, number>;
+        }
+        return {};
+    };
+
     const refreshShift = async () => {
         if (!user || !supabase) {
             setCurrentShift(null);
@@ -111,9 +122,12 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
                 setCurrentShift(shift);
                 const expected = await calculateExpectedCash(shift);
                 setExpectedCash(expected);
+                const expectedJson = await calculateExpectedCashJson(shift);
+                setExpectedCashJson(expectedJson);
             } else {
                 setCurrentShift(null);
                 setExpectedCash(0);
+                setExpectedCashJson({});
             }
         } catch (err) {
             const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -141,6 +155,8 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
             try {
                 const expected = await calculateExpectedCash(currentShift);
                 if (!disposed) setExpectedCash(expected);
+                const expectedJson = await calculateExpectedCashJson(currentShift);
+                if (!disposed) setExpectedCashJson(expectedJson);
             } catch {
             }
         };
@@ -213,14 +229,14 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
             }
 
             logAudit('open_shift', `Shift opened with amount ${startAmount}`, { startAmount });
-            
+
             await refreshShift();
         } catch (err) {
             throw new Error(localizeSupabaseError(err));
         }
     };
 
-    const endShift = async (endAmount: number, notes?: string) => {
+    const endShift = async (endAmount: number, notes?: string, tenderCounts?: Record<string, number>) => {
         if (!currentShift || !supabase) return;
         if (!hasPermission('cashShifts.closeSelf') && !hasPermission('cashShifts.manage')) {
             throw new Error('ليس لديك صلاحية إغلاق الوردية.');
@@ -231,36 +247,30 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
             if (Math.abs(endAmount - expectedCash) > 0.01 && !forceReason) {
                 throw new Error('يرجى إدخال سبب عند وجود فرق في الجرد.');
             }
-            const argsV2: Record<string, any> = {
+            const argsV3: Record<string, any> = {
                 p_shift_id: currentShift.id,
                 p_end_amount: endAmount,
                 p_notes: notes ?? null,
                 p_forced_reason: forceReason,
                 p_denomination_counts: null,
-                p_tender_counts: null
+                p_tender_counts: tenderCounts ? { cash: tenderCounts } : null
             };
-            let { error: closeError } = await supabase.rpc('close_cash_shift_v2', argsV2);
+            let { error: closeError } = await supabase.rpc('close_cash_shift_v3', argsV3);
             if (closeError) {
                 const msg = String((closeError as any)?.message || '');
                 if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
-                    const { error: fallbackErr } = await supabase.rpc('close_cash_shift_v2', {
-                        p_shift_id: currentShift.id,
-                        p_end_amount: endAmount,
-                        p_notes: notes ?? null,
-                        p_forced_reason: forceReason,
-                        p_denomination_counts: null
-                    } as any);
+                    const { error: fallbackErr } = await supabase.rpc('close_cash_shift_v2', argsV3);
                     closeError = fallbackErr as any;
                 }
             }
             if (closeError) throw new Error(localizeSupabaseError(closeError));
 
             const diff = endAmount - expectedCash;
-            logAudit('close_shift', `Shift closed with amount ${endAmount}`, { 
-                endAmount, 
-                expectedCash, 
+            logAudit('close_shift', `Shift closed with amount ${endAmount}`, {
+                endAmount,
+                expectedCash,
                 difference: diff,
-                notes 
+                notes
             });
 
             await refreshShift();
@@ -270,7 +280,7 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <CashShiftContext.Provider value={{ currentShift, loading, startShift, endShift, refreshShift, expectedCash }}>
+        <CashShiftContext.Provider value={{ currentShift, loading, startShift, endShift, refreshShift, expectedCash, expectedCashJson }}>
             {children}
         </CashShiftContext.Provider>
     );
