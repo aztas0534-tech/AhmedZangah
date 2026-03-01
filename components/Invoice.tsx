@@ -584,10 +584,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* Footer Section: Totals, QR, Signatures */}
-                <div className="flex flex-col lg:flex-row justify-between gap-8 mt-2 relative z-10">
+                <div className="flex flex-col lg:flex-row print:flex-row justify-between gap-8 print:gap-4 mt-2 relative z-10">
 
                     {/* Left Side: QR & Terms */}
-                    <div className="flex flex-col gap-6 w-full lg:w-1/2">
+                    <div className="flex flex-col gap-6 w-full lg:w-1/2 print:w-1/2">
                         {invoiceTerms === 'credit' ? (
                             <div className="border-2 border-slate-200 rounded-2xl p-6 bg-slate-50 print:bg-transparent print:border-[#cbd5e1] print:rounded-lg">
                                 <div className="text-sm print:text-xs font-bold text-slate-800 leading-loose">
@@ -628,7 +628,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     </div>
 
                     {/* Right Side: Totals & Balances */}
-                    <div className="w-full lg:w-[450px] shrink-0 flex flex-col gap-4">
+                    <div className="w-full lg:w-[450px] print:w-1/2 shrink-0 flex flex-col gap-4">
                         {/* Main Totals Box */}
                         <div className="totals-box bg-slate-900 text-white rounded-3xl p-8 shadow-xl print:shadow-none print:rounded-xl">
                             <div className="flex justify-between items-center text-slate-300 font-bold mb-4">
