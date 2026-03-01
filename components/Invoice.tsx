@@ -275,12 +275,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         padding: 10mm 12mm !important;
                         box-sizing: border-box;
                         gap: 16px !important;
+                        display: block !important;
                     }
                     .invoice-header {
                         padding-bottom: 12px !important;
                         margin-bottom: 16px !important;
                         border-bottom-width: 3px !important;
                         border-color: #0f172a !important;
+                        page-break-inside: avoid;
                     }
                     .invoice-title {
                         font-size: 36px !important;
@@ -294,6 +296,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-meta {
                         gap: 16px !important;
                         margin-bottom: 16px !important;
+                        page-break-inside: avoid;
                     }
                     .meta-card {
                         padding: 12px !important;
@@ -307,6 +310,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     }
                     .invoice-items table {
                         font-size: 11px !important;
+                        page-break-inside: auto;
+                    }
+                    .invoice-items thead {
+                        display: table-header-group;
+                    }
+                    .invoice-items tr {
+                        page-break-inside: avoid;
+                        page-break-after: auto;
                     }
                     .invoice-items th {
                         background-color: #0f172a !important;
@@ -323,6 +334,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #0f172a !important;
                         border: 2px solid #0f172a !important;
                         padding: 16px !important;
+                        page-break-inside: avoid;
                     }
                     .totals-box .text-white {
                         color: #0f172a !important;
@@ -333,14 +345,16 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .credit-summary-box {
                         background-color: #fff !important;
                         border: 2px solid #e2e8f0 !important;
+                        page-break-inside: avoid;
                     }
                     .qr-section {
                         border: 1px solid #e2e8f0 !important;
                         background: #fff !important;
+                        page-break-inside: avoid;
                     }
                 }
             `}</style>
-            <div className={`invoice-container w-full mx-auto p-12 bg-white flex flex-col gap-6 h-full text-slate-900`} style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
+            <div className={`invoice-container w-full mx-auto p-12 bg-white flex flex-col gap-6 text-slate-900`} style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
                 {/* Watermark for Copy */}
                 {(isCopy || copyLabel) && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">

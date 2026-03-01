@@ -331,6 +331,7 @@ export interface CartItem extends MenuItem {
   quantity: number; // Number of units (pieces, bundles) or weight (kg)
   selectedAddons: Record<string, { addon: Addon; quantity: number }>;
   cartItemId: string;
+  notes?: string;
   lineDiscountType?: 'amount' | 'percent';
   lineDiscountValue?: number;
   lineType?: 'menu' | 'promotion';
