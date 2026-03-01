@@ -12,6 +12,8 @@ import type { Order } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 
+import { translateAccountName } from '../../utils/accountUtils';
+
 type ShiftRow = {
   id: string;
   cashier_id: string | null;
@@ -132,7 +134,7 @@ const ShiftDetailsScreen: React.FC = () => {
   const [cashMoveReason, setCashMoveReason] = useState('');
   const [cashMoveError, setCashMoveError] = useState('');
   const [cashMoveLoading, setCashMoveLoading] = useState(false);
-  const [accounts, setAccounts] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; name: string; code: string; nameAr: string }[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
 
   useEffect(() => {
@@ -162,10 +164,10 @@ const ShiftDetailsScreen: React.FC = () => {
             .order('code');
 
           if (allAssets) {
-            const cashBankOptions = allAssets.filter(a => a.code.startsWith('101') || a.code.startsWith('102') || a.code.startsWith('103'));
+            const cashBankOptions = allAssets.filter(a => a.code.startsWith('101') || a.code.startsWith('102') || a.code.startsWith('103')).map(a => ({ ...a, nameAr: translateAccountName(a.name) }));
             setAccounts(cashBankOptions);
           } else {
-            setAccounts(data);
+            setAccounts(data.map(a => ({ ...a, nameAr: translateAccountName(a.name) })));
           }
         }
       } catch (err) {
@@ -682,11 +684,14 @@ const ShiftDetailsScreen: React.FC = () => {
                   className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 >
                   <option value="">-- اختياري (الحساب الافتراضي للنظام) --</option>
-                  {accounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.code} - {acc.name}
-                    </option>
-                  ))}
+                  {accounts.map((acc) => {
+                    const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                    return (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.code} - {dispName}
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
 

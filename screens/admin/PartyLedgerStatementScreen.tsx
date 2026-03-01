@@ -9,6 +9,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { printContent } from '../../utils/printUtils';
 import PrintablePartyLedgerStatement from '../../components/admin/documents/PrintablePartyLedgerStatement';
 import { formatSourceRefAr, localizeOpenStatusAr } from '../../utils/displayLabels';
+import { translateAccountName } from '../../utils/accountUtils';
 
 type StatementRow = {
   occurred_at: string;
@@ -618,7 +619,11 @@ const PartyLedgerStatementScreen: React.FC = () => {
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
                       <div className="font-mono">{r.account_code}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{r.account_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {translateAccountName(r.account_name) !== r.account_name
+                          ? `${translateAccountName(r.account_name)} (${r.account_name})`
+                          : translateAccountName(r.account_name)}
+                      </div>
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
                       {r.direction === 'debit' ? (

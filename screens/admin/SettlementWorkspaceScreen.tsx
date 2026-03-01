@@ -5,6 +5,7 @@ import * as Icons from '../../components/icons';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { localizeSourceTableAr, shortId } from '../../utils/displayLabels';
+import { translateAccountName } from '../../utils/accountUtils';
 
 type PartyRow = { id: string; name: string; currency_preference?: string | null };
 
@@ -540,7 +541,11 @@ export default function SettlementWorkspaceScreen() {
                     <td className="p-3 border-r dark:border-gray-700">{d.item_type}</td>
                     <td className="p-3 border-r dark:border-gray-700">
                       <div className="font-mono">{d.account_code}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{d.account_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {translateAccountName(d.account_name) !== d.account_name
+                          ? `${translateAccountName(d.account_name)} (${d.account_name})`
+                          : translateAccountName(d.account_name)}
+                      </div>
                     </td>
                     <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">
                       {Number(d.open_base_amount || 0).toFixed(2)}
@@ -590,7 +595,11 @@ export default function SettlementWorkspaceScreen() {
                     <td className="p-3 border-r dark:border-gray-700">{d.item_type}</td>
                     <td className="p-3 border-r dark:border-gray-700">
                       <div className="font-mono">{d.account_code}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{d.account_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {translateAccountName(d.account_name) !== d.account_name
+                          ? `${translateAccountName(d.account_name)} (${d.account_name})`
+                          : translateAccountName(d.account_name)}
+                      </div>
                     </td>
                     <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">
                       {Number(d.open_base_amount || 0).toFixed(2)}

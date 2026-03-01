@@ -7,6 +7,7 @@ import { sharePdf, exportToXlsx, printPdfFromElement } from '../../../utils/expo
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import { printContent } from '../../../utils/printUtils';
 import { printJournalVoucherByEntryId } from '../../../utils/vouchers';
+import { translateAccountName } from '../../../utils/accountUtils';
 import { CostCenter } from '../../../types';
 import { useSettings } from '../../../contexts/SettingsContext';
 import LineChart from '../../../components/admin/charts/LineChart';
@@ -888,29 +889,35 @@ const FinancialReports: React.FC = () => {
       if (tbEntErr) throw tbEntErr;
       if (cbError) throw cbError;
 
-      setTrialBalance(((tbData as any[]) || []).map((r) => ({
-        account_code: String(r.account_code),
-        account_name: String(r.account_name),
-        account_type: String(r.account_type),
-        normal_balance: String(r.normal_balance),
-        debit: Number(r.debit) || 0,
-        credit: Number(r.credit) || 0,
-        balance: Number(r.balance) || 0,
-      })));
+      setTrialBalance(((tbData as any[]) || []).map((r) => {
+        const trName = translateAccountName(String(r.account_name));
+        return {
+          account_code: String(r.account_code),
+          account_name: trName !== String(r.account_name) ? `${trName} (${String(r.account_name)})` : trName,
+          account_type: String(r.account_type),
+          normal_balance: String(r.normal_balance),
+          debit: Number(r.debit) || 0,
+          credit: Number(r.credit) || 0,
+          balance: Number(r.balance) || 0,
+        };
+      }));
 
-      setCurrencyBalances(((cbData as any[]) || []).map((r) => ({
-        account_code: String(r.account_code),
-        account_name: String(r.account_name),
-        account_type: String(r.account_type),
-        normal_balance: String(r.normal_balance),
-        currency_code: String(r.currency_code).trim().toUpperCase(),
-        total_debit: Number(r.total_debit) || 0,
-        total_credit: Number(r.total_credit) || 0,
-        balance: Number(r.balance) || 0,
-        base_total_debit: Number(r.base_total_debit) || 0,
-        base_total_credit: Number(r.base_total_credit) || 0,
-        base_balance: Number(r.base_balance) || 0,
-      })));
+      setCurrencyBalances(((cbData as any[]) || []).map((r) => {
+        const trName = translateAccountName(String(r.account_name));
+        return {
+          account_code: String(r.account_code),
+          account_name: trName !== String(r.account_name) ? `${trName} (${String(r.account_name)})` : trName,
+          account_type: String(r.account_type),
+          normal_balance: String(r.normal_balance),
+          currency_code: String(r.currency_code).trim().toUpperCase(),
+          total_debit: Number(r.total_debit) || 0,
+          total_credit: Number(r.total_credit) || 0,
+          balance: Number(r.balance) || 0,
+          base_total_debit: Number(r.base_total_debit) || 0,
+          base_total_credit: Number(r.base_total_credit) || 0,
+          base_balance: Number(r.base_balance) || 0,
+        };
+      }));
 
       const isRow = ((isData as any[]) || [])[0];
       setIncomeStatement(isRow ? { income: Number(isRow.income) || 0, expenses: Number(isRow.expenses) || 0, net_profit: Number(isRow.net_profit) || 0 } : null);

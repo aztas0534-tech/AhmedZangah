@@ -5,9 +5,36 @@ import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { printJournalVoucherByEntryId, printPaymentVoucherByEntryId, printReceiptVoucherByEntryId } from '../../utils/vouchers';
 
-type AccountRow = { id: string; code: string; name: string };
+
+type AccountRow = { id: string; code: string; name: string; nameAr: string };
 type CostCenterRow = { id: string; name: string; code: string | null };
 type PartyRow = { id: string; name: string };
+
+const translateAccountName = (name: string): string => {
+  const n = name.trim().toLowerCase();
+  if (n === 'cash') return 'الصندوق (نقدية)';
+  if (n === 'bank') return 'البنك';
+  if (n === 'accounts receivable') return 'الذمم المدينة (العملاء)';
+  if (n === 'accounts payable') return 'الذمم الدائنة (الموردين)';
+  if (n === 'inventory') return 'الطب أو المخزون (Inventory)';
+  if (n === 'cost of goods sold') return 'تكلفة البضاعة المباعة';
+  if (n === 'sales revenue') return 'إيرادات المبيعات';
+  if (n === 'salary expense') return 'مصروفات الرواتب';
+  if (n === 'rent expense') return 'مصروفات الإيجار';
+  if (n === 'utilities expense') return 'مصروفات المنافع (كهرباء وماء)';
+  if (n === 'owner drawings') return 'مسحوبات المالك';
+  if (n === 'owner equity') return 'حقوق الملكية';
+  if (n === 'tax payable') return 'ضريبة مستحقة الدفع';
+  if (n === 'discount given') return 'خصم مسموح به';
+  if (n === 'discount received') return 'خصم مكتسب';
+  if (n === 'delivery revenue') return 'إيرادات التوصيل';
+  if (n === 'delivery expense') return 'مصروفات التوصيل';
+  if (n === 'purchase returns') return 'مردودات المشتريات';
+  if (n === 'sales returns') return 'مردودات المبيعات';
+  if (n === 'inventory adjustment') return 'تسويات المخزون (عجز/زيادة)';
+  if (n === 'cash shift discrepancy') return 'عجز/زيادة الصندوق (الورديات)';
+  return name;
+};
 
 const toDateTimeLocalInputValue = (d: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -76,7 +103,12 @@ export default function VoucherEntryScreen() {
           supabase.from('financial_parties').select('id,name').eq('is_active', true).order('created_at', { ascending: false }).limit(500),
           supabase.from('currencies').select('code').order('code', { ascending: true }).limit(500),
         ]);
-        setAccounts((Array.isArray(acc) ? acc : []).map((r: any) => ({ id: String(r.id), code: String(r.code || ''), name: String(r.name || '') })));
+        setAccounts((Array.isArray(acc) ? acc : []).map((r: any) => ({
+          id: String(r.id),
+          code: String(r.code || ''),
+          name: String(r.name || ''),
+          nameAr: translateAccountName(String(r.name || ''))
+        })));
         setCostCenters((Array.isArray(cc) ? cc : []).map((r: any) => ({ id: String(r.id), name: String(r.name || ''), code: r.code ? String(r.code) : null })));
         setParties((Array.isArray(ps) ? ps : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
         setCurrencyOptions(
@@ -346,7 +378,6 @@ export default function VoucherEntryScreen() {
     }
   };
 
-  const accountOptionsId = useMemo(() => 'voucher-account-options', []);
   const voucherTypeLabel = useMemo(() => {
     if (voucherType === 'receipt') return 'سند قبض';
     if (voucherType === 'payment') return 'سند صرف';
@@ -382,11 +413,7 @@ export default function VoucherEntryScreen() {
         </div>
       ) : null}
 
-      <datalist id={accountOptionsId}>
-        {accounts.map((a) => (
-          <option key={a.id} value={a.code}>{a.name}</option>
-        ))}
-      </datalist>
+      {/* Removed datalist */}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -491,7 +518,12 @@ export default function VoucherEntryScreen() {
             <div className="font-semibold dark:text-white">الطرف المدين</div>
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب (Debit)</div>
-              <input list={accountOptionsId} value={debitAccountCode} onChange={(e) => setDebitAccountCode(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" />
+              <select value={debitAccountCode} onChange={(e) => setDebitAccountCode(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono text-sm">
+                <option value="">— اختر החساب —</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.code}>{a.code} — {a.nameAr} {a.nameAr !== a.name ? `(${a.name})` : ''}</option>
+                ))}
+              </select>
             </div>
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">طرف مالي (اختياري)</div>
@@ -508,7 +540,12 @@ export default function VoucherEntryScreen() {
             <div className="font-semibold dark:text-white">الطرف الدائن</div>
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب (Credit)</div>
-              <input list={accountOptionsId} value={creditAccountCode} onChange={(e) => setCreditAccountCode(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" />
+              <select value={creditAccountCode} onChange={(e) => setCreditAccountCode(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono text-sm">
+                <option value="">— اختر החساب —</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.code}>{a.code} — {a.nameAr} {a.nameAr !== a.name ? `(${a.name})` : ''}</option>
+                ))}
+              </select>
             </div>
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">طرف مالي (اختياري)</div>

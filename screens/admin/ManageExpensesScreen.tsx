@@ -9,6 +9,8 @@ import NumberInput from '../../components/NumberInput';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { nextMonthStartYmd, toDateInputValue, toDateTimeLocalInputValue, toMonthInputValue, toUtcIsoAtMiddayFromYmd } from '../../utils/dateUtils';
 
+import { translateAccountName } from '../../utils/accountUtils';
+
 const ManageExpensesScreen: React.FC = () => {
     const { showNotification } = useToast();
     const { hasPermission } = useAuth();
@@ -43,7 +45,7 @@ const ManageExpensesScreen: React.FC = () => {
     const [formAdvancedAccounting, setFormAdvancedAccounting] = useState(false);
     const [formOverrideAccountId, setFormOverrideAccountId] = useState<string>('');
 
-    const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string; account_type?: string }>>([]);
+    const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string; nameAr: string; account_type?: string }>>([]);
     const [accountsError, setAccountsError] = useState<string>('');
 
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
@@ -140,6 +142,7 @@ const ManageExpensesScreen: React.FC = () => {
                         id: String(r?.id || ''),
                         code: String(r?.code || ''),
                         name: String(r?.name || ''),
+                        nameAr: translateAccountName(String(r?.name || '')),
                         account_type: typeof r?.account_type === 'string' ? r.account_type : undefined,
                     })).filter((r: any) => Boolean(r.id)));
                     return;
@@ -149,6 +152,7 @@ const ManageExpensesScreen: React.FC = () => {
                     id: String(r?.id || ''),
                     code: String(r?.code || ''),
                     name: String(r?.name || ''),
+                    nameAr: translateAccountName(String(r?.name || '')),
                     account_type: typeof r?.account_type === 'string' ? r.account_type : undefined,
                 })).filter((r: any) => Boolean(r.id)));
             } catch (e) {
@@ -414,50 +418,50 @@ const ManageExpensesScreen: React.FC = () => {
                 <div className="overflow-x-auto">
                     <table className="min-w-[700px] w-full text-right">
                         <thead className="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                            <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">التاريخ</th>
-                            <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العنوان</th>
-                            <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الفئة</th>
-                            <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المبلغ</th>
-                            <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300">الإجراءات</th>
-                        </tr>
+                            <tr>
+                                <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">التاريخ</th>
+                                <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العنوان</th>
+                                <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الفئة</th>
+                                <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المبلغ</th>
+                                <th className="p-2 sm:p-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300">الإجراءات</th>
+                            </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {loading ? (
-                            <tr><td colSpan={5} className="p-4 text-center">جاري التحميل...</td></tr>
-                        ) : expenses.length === 0 ? (
-                            <tr><td colSpan={5} className="p-4 text-center text-gray-500">لا توجد مصاريف لهذا الشهر.</td></tr>
-                        ) : (
-                            expenses.map(exp => (
-                                <tr key={exp.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
-                                    <td className="p-2 sm:p-3 text-xs sm:text-sm dark:text-gray-300 border-r dark:border-gray-700" dir="ltr">{exp.date}</td>
-                                    <td className="p-2 sm:p-3 text-xs sm:text-sm dark:text-gray-300 font-medium border-r dark:border-gray-700">
-                                        {exp.title}
-                                        {exp.notes && <div className="text-xs text-gray-500">{exp.notes}</div>}
-                                    </td>
-                                    <td className="p-2 sm:p-3 border-r dark:border-gray-700"><span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{categoryLabels[exp.category] || exp.category}</span></td>
-                                    <td className="p-2 sm:p-3 font-bold text-red-600 border-r dark:border-gray-700">
-                                        <CurrencyDualAmount
-                                            amount={Number((exp as any)?.amount || 0)}
-                                            currencyCode={normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER'}
-                                            baseAmount={(normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
-                                                ? (typeof (exp as any)?.base_amount === 'number'
-                                                    ? Number((exp as any).base_amount)
-                                                    : Number((exp as any)?.amount || 0) * Number((exp as any)?.fx_rate || 1))
-                                                : undefined}
-                                            fxRate={(normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
-                                                ? Number((exp as any)?.fx_rate || 1)
-                                                : undefined}
-                                            baseCurrencyCode={normalizeCurrencyCode(baseCode) || 'YER'}
-                                        />
-                                    </td>
-                                    <td className="p-2 sm:p-3">
-                                        <button onClick={() => openPaymentModal(exp)} className="text-primary-600 hover:text-primary-700 text_sm ml-3">دفع</button>
-                                        <button onClick={() => handleDelete(exp.id)} className="text-red-500 hover:text-red-700 text_sm">حذف</button>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
+                            {loading ? (
+                                <tr><td colSpan={5} className="p-4 text-center">جاري التحميل...</td></tr>
+                            ) : expenses.length === 0 ? (
+                                <tr><td colSpan={5} className="p-4 text-center text-gray-500">لا توجد مصاريف لهذا الشهر.</td></tr>
+                            ) : (
+                                expenses.map(exp => (
+                                    <tr key={exp.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+                                        <td className="p-2 sm:p-3 text-xs sm:text-sm dark:text-gray-300 border-r dark:border-gray-700" dir="ltr">{exp.date}</td>
+                                        <td className="p-2 sm:p-3 text-xs sm:text-sm dark:text-gray-300 font-medium border-r dark:border-gray-700">
+                                            {exp.title}
+                                            {exp.notes && <div className="text-xs text-gray-500">{exp.notes}</div>}
+                                        </td>
+                                        <td className="p-2 sm:p-3 border-r dark:border-gray-700"><span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{categoryLabels[exp.category] || exp.category}</span></td>
+                                        <td className="p-2 sm:p-3 font-bold text-red-600 border-r dark:border-gray-700">
+                                            <CurrencyDualAmount
+                                                amount={Number((exp as any)?.amount || 0)}
+                                                currencyCode={normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER'}
+                                                baseAmount={(normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
+                                                    ? (typeof (exp as any)?.base_amount === 'number'
+                                                        ? Number((exp as any).base_amount)
+                                                        : Number((exp as any)?.amount || 0) * Number((exp as any)?.fx_rate || 1))
+                                                    : undefined}
+                                                fxRate={(normalizeCurrencyCode(String((exp as any)?.currency || normalizeCurrencyCode(baseCode))) || 'YER') !== (normalizeCurrencyCode(baseCode) || 'YER')
+                                                    ? Number((exp as any)?.fx_rate || 1)
+                                                    : undefined}
+                                                baseCurrencyCode={normalizeCurrencyCode(baseCode) || 'YER'}
+                                            />
+                                        </td>
+                                        <td className="p-2 sm:p-3">
+                                            <button onClick={() => openPaymentModal(exp)} className="text-primary-600 hover:text-primary-700 text_sm ml-3">دفع</button>
+                                            <button onClick={() => handleDelete(exp.id)} className="text-red-500 hover:text-red-700 text_sm">حذف</button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -630,9 +634,12 @@ const ManageExpensesScreen: React.FC = () => {
                                                 className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60"
                                             >
                                                 <option value="">-- بدون --</option>
-                                                {accounts.map(a => (
-                                                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-                                                ))}
+                                                {accounts.map(a => {
+                                                    const dispName = a.nameAr !== a.name ? `${a.nameAr} (${a.name})` : a.nameAr;
+                                                    return (
+                                                        <option key={a.id} value={a.id}>{a.code} — {dispName}</option>
+                                                    );
+                                                })}
                                             </select>
                                             {accountsError && (
                                                 <div className="mt-1 text-xs text-red-600">{accountsError}</div>
@@ -727,9 +734,12 @@ const ManageExpensesScreen: React.FC = () => {
                                                 className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60"
                                             >
                                                 <option value="">-- بدون --</option>
-                                                {accounts.map(a => (
-                                                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-                                                ))}
+                                                {accounts.map(a => {
+                                                    const dispName = a.nameAr !== a.name ? `${a.nameAr} (${a.name})` : a.nameAr;
+                                                    return (
+                                                        <option key={a.id} value={a.id}>{a.code} — {dispName}</option>
+                                                    );
+                                                })}
                                             </select>
                                             {accountsError && (
                                                 <div className="mt-1 text-xs text-red-600">{accountsError}</div>

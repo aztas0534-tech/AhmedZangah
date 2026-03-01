@@ -4,6 +4,7 @@ import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { translateAccountName } from '../../utils/accountUtils';
 
 type PartyRow = { id: string; name: string; currency_preference?: string | null };
 
@@ -428,7 +429,11 @@ export default function AdvanceManagementScreen() {
                     <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{formatTime(x.occurred_at)}</td>
                     <td className="p-3 border-r dark:border-gray-700">
                       <div className="font-mono">{x.account_code}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{x.account_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {translateAccountName(x.account_name) !== x.account_name
+                          ? `${translateAccountName(x.account_name)} (${x.account_name})`
+                          : translateAccountName(x.account_name)}
+                      </div>
                     </td>
                     <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">
                       {Number(x.open_base_amount || 0).toFixed(2)}
@@ -468,7 +473,11 @@ export default function AdvanceManagementScreen() {
                     <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{formatTime(x.occurred_at)}</td>
                     <td className="p-3 border-r dark:border-gray-700">
                       <div className="font-mono">{x.account_code}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{x.account_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {translateAccountName(x.account_name) !== x.account_name
+                          ? `${translateAccountName(x.account_name)} (${x.account_name})`
+                          : translateAccountName(x.account_name)}
+                      </div>
                     </td>
                     <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">
                       {Number(x.open_base_amount || 0).toFixed(2)}

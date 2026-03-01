@@ -19,6 +19,7 @@ import * as Icons from '../../components/icons';
 import { Link } from 'react-router-dom';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
+import { translateAccountName } from '../../utils/accountUtils';
 
 const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -74,28 +75,30 @@ const SettingsScreen: React.FC = () => {
 
   useEffect(() => {
     const fetchAccounts = async () => {
-        const supabase = getSupabaseClient();
-        if(!supabase) return;
-        setAccountsError('');
-        try {
-          const { data, error } = await supabase
-            .from('chart_of_accounts')
-            .select('id,code,name,account_type,normal_balance,is_active')
-            .eq('is_active', true)
-            .order('code', { ascending: true });
-          if (error) {
-            setAccountsError(localizeSupabaseError(error));
-            const { data: rpcData, error: rpcError } = await supabase.rpc('list_active_accounts');
-            if (!rpcError && Array.isArray(rpcData)) {
-              setAccounts(rpcData as any[]);
-              setAccountsError('');
-            }
-            return;
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      setAccountsError('');
+      try {
+        const { data, error } = await supabase
+          .from('chart_of_accounts')
+          .select('id,code,name,account_type,normal_balance,is_active')
+          .eq('is_active', true)
+          .order('code', { ascending: true });
+        if (error) {
+          setAccountsError(localizeSupabaseError(error));
+          const { data: rpcData, error: rpcError } = await supabase.rpc('list_active_accounts');
+          if (!rpcError && Array.isArray(rpcData)) {
+            setAccounts(rpcData.map((a: any) => ({ ...a, nameAr: translateAccountName(a.name) })));
+            setAccountsError('');
           }
-          if (Array.isArray(data)) setAccounts(data as any[]);
-        } catch (e) {
-          setAccountsError(localizeSupabaseError(e));
+          return;
         }
+        if (Array.isArray(data)) {
+          setAccounts(data.map((a: any) => ({ ...a, nameAr: translateAccountName(a.name) })));
+        }
+      } catch (e) {
+        setAccountsError(localizeSupabaseError(e));
+      }
     };
     fetchAccounts();
   }, []);
@@ -200,7 +203,7 @@ const SettingsScreen: React.FC = () => {
           .maybeSingle();
         const wid = typeof data?.warehouse_id === 'string' ? data?.warehouse_id : '';
         if (mounted) setActiveWarehouseId(wid || '');
-      } catch {}
+      } catch { }
     };
     void loadActiveWarehouse();
     return () => {
@@ -221,12 +224,12 @@ const SettingsScreen: React.FC = () => {
     const paymentsDetail = paymentsOk
       ? 'مكتمل'
       : (!anyPaymentEnabled
-          ? 'فعّل طريقة دفع'
-          : (!kuraimiOk
-              ? 'أضف بنك'
-              : !networkOk
-                ? 'أضف مستلماً للحوالات'
-                : ''));
+        ? 'فعّل طريقة دفع'
+        : (!kuraimiOk
+          ? 'أضف بنك'
+          : !networkOk
+            ? 'أضف مستلماً للحوالات'
+            : ''));
 
     const zonesActiveCount = deliveryZones.filter(z => z.isActive).length;
     const zonesOk = zonesActiveCount > 0;
@@ -1000,7 +1003,7 @@ const SettingsScreen: React.FC = () => {
           }
         }
       }
-    } catch {}
+    } catch { }
     showNotification(enabled ? 'تم تفعيل وضع الصيانة فورًا' : 'تم إيقاف وضع الصيانة فورًا', 'success');
     setIsMaintenanceSaving(false);
   };
@@ -1536,7 +1539,7 @@ const SettingsScreen: React.FC = () => {
                           if (supabase) {
                             await supabase.from('currencies').upsert({ code, name: code, is_base: false }, { onConflict: 'code' });
                           }
-                        } catch {}
+                        } catch { }
                         try {
                           await updateSettings(nextState);
                           showNotification('تم حفظ العملات التشغيلية.', 'success');
@@ -1558,11 +1561,11 @@ const SettingsScreen: React.FC = () => {
                           return;
                         }
                         const supabase = getSupabaseClient();
-                          const baseCode = String(formState.baseCurrency || '').toUpperCase();
-                          if (!baseCode) {
-                            showNotification('اختر العملة الأساسية أولاً.', 'error');
-                            return;
-                          }
+                        const baseCode = String(formState.baseCurrency || '').toUpperCase();
+                        if (!baseCode) {
+                          showNotification('اختر العملة الأساسية أولاً.', 'error');
+                          return;
+                        }
                         if (supabase) {
                           const { error } = await supabase.rpc('set_base_currency', { p_code: baseCode });
                           if (error) throw error;
@@ -2118,26 +2121,29 @@ const SettingsScreen: React.FC = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-             {['sales', 'sales_returns', 'inventory', 'cogs', 'ar', 'ap', 'vat_payable', 'vat_recoverable', 'cash', 'bank', 'deposits', 'expenses', 'shrinkage', 'gain', 'delivery_income', 'sales_discounts', 'over_short'].map(key => (
-                 <div key={key}>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 capitalize">
-                        {accountingLabels[key] ?? key.replace(/_/g, ' ')}
-                     </label>
-                     <select
-                        name={`accounting_accounts.${key}`}
-                        value={formState.accounting_accounts?.[key as keyof typeof formState.accounting_accounts] || ''}
-                        onChange={handleChange}
-                        className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                     >
-                        <option value="">افتراضي</option>
-                        {accounts.map(acc => (
-                            <option key={acc.id} value={acc.id}>
-                                {acc.code} - {acc.name}
-                            </option>
-                        ))}
-                     </select>
-                 </div>
-             ))}
+            {['sales', 'sales_returns', 'inventory', 'cogs', 'ar', 'ap', 'vat_payable', 'vat_recoverable', 'cash', 'bank', 'deposits', 'expenses', 'shrinkage', 'gain', 'delivery_income', 'sales_discounts', 'over_short'].map(key => (
+              <div key={key}>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 capitalize">
+                  {accountingLabels[key] ?? key.replace(/_/g, ' ')}
+                </label>
+                <select
+                  name={`accounting_accounts.${key}`}
+                  value={formState.accounting_accounts?.[key as keyof typeof formState.accounting_accounts] || ''}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                >
+                  <option value="">افتراضي</option>
+                  {accounts.map(acc => {
+                    const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                    return (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.code} - {dispName}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            ))}
           </div>
         </section>
 
