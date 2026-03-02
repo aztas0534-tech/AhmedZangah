@@ -279,15 +279,17 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         display: flex !important;
                         flex-direction: column !important;
                         font-size: 7px !important;
+                        color: #1e293b !important;
                     }
 
-                    /* ═══ HEADER: Dark premium bar ═══ */
+                    /* ═══ HEADER: Navy & Gold Premium Base ═══ */
                     .invoice-header {
-                        background-color: #0f172a !important;
+                        background-color: #0c1120 !important;
                         color: white !important;
-                        padding: 6px 8px !important;
-                        margin-bottom: 0 !important;
+                        padding: 7px 10px !important;
+                        margin-bottom: 2px !important;
                         border: none !important;
+                        border-bottom: 1.5px solid #d4af37 !important; /* Elegant gold accent */
                         gap: 4px !important;
                         page-break-inside: avoid;
                     }
@@ -297,20 +299,22 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-header .text-slate-400,
                     .invoice-header .text-slate-500,
                     .invoice-header .text-slate-600 {
-                        color: #94a3b8 !important;
+                        color: #cbd5e1 !important;
+                        font-weight: 400 !important;
                     }
                     .invoice-title {
-                        font-size: 16px !important;
+                        font-size: 19px !important;
                         line-height: 1 !important;
-                        letter-spacing: -0.5px !important;
+                        letter-spacing: -0.2px !important;
+                        font-weight: 300 !important;
                     }
                     .brand-name {
-                        font-size: 13px !important;
+                        font-size: 14px !important;
                         line-height: 1.15 !important;
-                        letter-spacing: -0.3px !important;
+                        letter-spacing: 0.1px !important;
                     }
 
-                    /* ═══ META: Clean cards ═══ */
+                    /* ═══ META: Minimalist & Clean ═══ */
                     .invoice-meta {
                         gap: 3px !important;
                         margin-bottom: 2px !important;
@@ -318,19 +322,30 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         page-break-inside: avoid;
                     }
                     .meta-card {
-                        padding: 3px 5px !important;
-                        border: 0.7px solid #e2e8f0 !important;
-                        border-radius: 0 !important;
-                        border-right: 2.5px solid #0f172a !important;
-                        background-color: #f8fafc !important;
+                        padding: 4px 6px !important;
+                        border: 0.5px solid #e2e8f0 !important;
+                        border-radius: 2px !important;
+                        border-right: 2px solid #d4af37 !important;
+                        background-color: #fafaf9 !important; /* extremely light warm gray */
+                    }
+                    /* Refine meta labels to look luxurious */
+                    .meta-card .uppercase {
+                        letter-spacing: 0.5px !important;
+                        font-weight: 600 !important;
+                        color: #64748b !important;
+                    }
+                    .meta-card .font-black {
+                        font-weight: 800 !important;
+                        color: #0f172a !important;
                     }
 
-                    /* ═══ TABLE: Professional ═══ */
+                    /* ═══ TABLE: Fine lines & subtle spacing ═══ */
                     .invoice-container table {
                         font-size: 6.5px !important;
                         page-break-inside: auto;
                         border-collapse: collapse !important;
-                        border: 1px solid #0f172a !important;
+                        border: 0.5px solid #cbd5e1 !important;
+                        margin-top: 2px !important;
                     }
                     .invoice-container thead {
                         display: table-header-group;
@@ -339,71 +354,83 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         page-break-inside: avoid;
                     }
                     .invoice-container tbody tr:nth-child(even) {
-                        background-color: #f1f5f9 !important;
+                        background-color: #f8fafc !important;
                     }
                     .invoice-container th {
-                        background-color: #0f172a !important;
-                        color: white !important;
-                        padding: 3px 4px !important;
+                        background-color: #0c1120 !important;
+                        color: #f8fafc !important;
+                        padding: 3.5px 4px !important;
                         font-size: 6.5px !important;
                         line-height: 1.2 !important;
-                        letter-spacing: 0.3px !important;
+                        letter-spacing: 0.5px !important;
                         text-transform: uppercase !important;
                         border-left: 0.5px solid #334155 !important;
+                        font-weight: 500 !important;
                     }
                     .invoice-container td {
-                        padding: 2px 3px !important;
-                        border-bottom: 0.5px solid #cbd5e1 !important;
+                        padding: 2.5px 3px !important;
+                        border-bottom: 0.5px solid #e2e8f0 !important;
                         border-left: 0.5px solid #e2e8f0 !important;
                         font-size: 6.5px !important;
-                        line-height: 1.2 !important;
+                        line-height: 1.25 !important;
+                        font-weight: 500 !important;
+                        color: #1e293b !important;
                     }
                     .invoice-container tbody tr:last-child td {
-                        border-bottom: 2px solid #0f172a !important;
+                        border-bottom: 1.5px solid #0c1120 !important;
                     }
 
                     /* ═══ TOTALS: Bold & prominent ═══ */
                     .totals-box {
-                        background-color: #f8fafc !important;
+                        background-color: #fafaf9 !important;
                         color: #0f172a !important;
-                        border: 2px solid #0f172a !important;
-                        padding: 4px 6px !important;
+                        border: 1px solid #cbd5e1 !important;
+                        padding: 5px 7px !important;
                         page-break-inside: avoid;
-                        border-radius: 0 !important;
+                        border-radius: 2px !important;
+                        box-shadow: 2px 2px 0 0 #f1f5f9 !important;
                     }
                     /* Grand total row dark */
                     .totals-grand-total {
-                        background-color: #0f172a !important;
-                        color: white !important;
-                        margin: 3px -6px -4px -6px !important;
-                        padding: 4px 6px !important;
+                        background-color: #0c1120 !important;
+                        color: #d4af37 !important; /* Gold text for grand total */
+                        margin: 4px -7px -5px -7px !important;
+                        padding: 5px 7px !important;
+                        border-bottom-left-radius: 2px !important;
+                        border-bottom-right-radius: 2px !important;
                     }
                     .totals-grand-total * {
-                        color: white !important;
+                        color: #f8fafc !important;
+                    }
+                    .totals-grand-total .font-mono {
+                        color: #d4af37 !important; /* Gold total amount */
                     }
 
                     .credit-summary-box {
                         background-color: #fff !important;
-                        border: 1px solid #cbd5e1 !important;
-                        padding: 3px 5px !important;
+                        border: 1px solid #e2e8f0 !important;
+                        padding: 3.5px 5px !important;
                         page-break-inside: avoid;
+                        border-radius: 2px !important;
                     }
                     .qr-section {
-                        border: 0.7px solid #e2e8f0 !important;
+                        border: 1px solid #e2e8f0 !important;
                         background: #fff !important;
                         page-break-inside: avoid;
+                        border-radius: 4px !important;
+                        padding: 2px !important;
                     }
 
                     /* ═══ Footer bar ═══ */
                     .invoice-print-footer {
-                        background-color: #0f172a !important;
-                        color: white !important;
-                        padding: 2px 6px !important;
-                        margin-top: 4px !important;
-                        border: none !important;
+                        background-color: white !important;
+                        color: #64748b !important;
+                        padding: 3px 6px !important;
+                        margin-top: 5px !important;
+                        border-top: 1.5px solid #e2e8f0 !important;
                     }
                     .invoice-print-footer * {
-                        color: white !important;
+                        color: #64748b !important;
                     }
 
                     .print-hide-subtext {
@@ -415,7 +442,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* Watermark for Copy */}
                 {(isCopy || copyLabel) && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
-                        <div className="text-gray-100 font-black text-[10rem] print:text-[6rem] -rotate-45 select-none opacity-40 print:opacity-30" style={{ color: accentColor ? `${accentColor}1A` : undefined }}>
+                        <div className="text-gray-100 font-bold text-[10rem] print:text-[6rem] -rotate-45 select-none opacity-40 print:opacity-[0.15]" style={{ color: accentColor ? `${accentColor}1A` : undefined }}>
                             {copyLabel || 'نسخة'}
                         </div>
                     </div>
@@ -423,8 +450,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                 {/* Copy Label Badge */}
                 {copyLabel && (
-                    <div className="absolute top-0 left-0 bg-slate-100 px-6 py-2 print:px-2 print:py-0.5 rounded-br-2xl border-b-2 border-r-2 border-slate-200 z-20 print:border-[#cbd5e1] print:border-b print:border-r print:rounded-br-lg">
-                        <span className="font-extrabold text-sm print:text-[7px] uppercase tracking-widest" style={{ color: accentColor }}>{copyLabel}</span>
+                    <div className="absolute top-0 left-0 bg-slate-100 px-6 py-2 print:px-2 print:py-0.5 rounded-br-2xl border-b-2 border-r-2 border-slate-200 z-20 print:border-slate-200 print:border-b print:border-r print:bg-white print:rounded-br-lg print:shadow-sm">
+                        <span className="font-extrabold text-sm print:text-[6px] uppercase tracking-widest" style={{ color: accentColor }}>{copyLabel}</span>
                     </div>
                 )}
 
@@ -692,20 +719,20 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                 {/* Totals */}
                 <div className="order-1 md:order-2 space-y-4 print:space-y-0.5 relative z-10 w-full md:max-w-md ml-auto rtl:ml-0 rtl:mr-auto">
-                    <div className="totals-box bg-slate-50 rounded-3xl p-8 border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a] print:shadow-none print:rounded-none print:border print:p-1 print:border-slate-800">
+                    <div className="totals-box bg-slate-50 rounded-3xl p-8 border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a] print:shadow-none print:rounded-none mt-2 print:mt-0 print:border print:p-1 print:border-slate-800">
                         <div className="flex justify-between items-center mb-4 print:mb-1">
-                            <span className="text-slate-500 font-bold text-sm print:text-[7px]">المجموع الفرعي</span>
+                            <span className="text-slate-500 font-bold text-sm print:text-[6.5px] uppercase tracking-wide">المجموع الفرعي</span>
                             <span className="font-mono font-bold text-slate-800 text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                <span className="text-xs print:text-[6px] text-slate-400">{invoiceCurrencyLabel}</span>
+                                <span className="text-xs print:text-[5px] text-slate-400 font-sans">{invoiceCurrencyLabel}</span>
                                 {fmtByCode((Number(invoiceOrder.subtotal) || 0) + (Number(invoiceOrder.discountAmount) || 0), currencyCode)}
                             </span>
                         </div>
 
                         {Number(invoiceOrder.discountAmount) > 0 && (
                             <div className="flex justify-between items-center mb-4 text-rose-600 print:mb-1">
-                                <span className="font-bold text-sm print:text-[7px]">الخصم</span>
+                                <span className="font-bold text-sm print:text-[6.5px] uppercase tracking-wide">الخصم</span>
                                 <span className="font-mono font-bold text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                    <span className="text-xs print:text-[6px] opacity-70">{invoiceCurrencyLabel}</span>
+                                    <span className="text-xs print:text-[5px] opacity-70 font-sans">{invoiceCurrencyLabel}</span>
                                     -{fmtByCode(Number(invoiceOrder.discountAmount) || 0, currencyCode)}
                                 </span>
                             </div>
@@ -713,28 +740,28 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                         {Number(invoiceOrder.deliveryFee) > 0 && (
                             <div className="flex justify-between items-center mb-4 print:mb-1">
-                                <span className="text-slate-500 font-bold text-sm print:text-[7px]">رسوم التوصيل</span>
+                                <span className="text-slate-500 font-bold text-sm print:text-[6.5px] uppercase tracking-wide">رسوم التوصيل</span>
                                 <span className="font-mono font-bold text-slate-800 text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                    <span className="text-xs print:text-[6px] text-slate-400">{invoiceCurrencyLabel}</span>
+                                    <span className="text-xs print:text-[5px] text-slate-400 font-sans">{invoiceCurrencyLabel}</span>
                                     {fmtByCode(invoiceOrder.deliveryFee, currencyCode)}
                                 </span>
                             </div>
                         )}
 
-                        <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-slate-200 border-dashed print:mb-1 print:pb-1 print:border-slate-300">
-                            <span className="text-slate-500 font-bold text-sm print:text-[7px] flex items-center gap-2">
+                        <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-slate-200 border-dashed print:mb-1 print:pb-1.5 print:border-slate-300">
+                            <span className="text-slate-500 font-bold text-sm print:text-[6.5px] flex items-center gap-2 uppercase tracking-wide">
                                 ضريبة القيمة المضافة {(Number((invoiceOrder as any).taxRate) || 0)}%
                             </span>
                             <span className="font-mono font-bold text-slate-800 text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                <span className="text-xs print:text-[6px] text-slate-400">{invoiceCurrencyLabel}</span>
+                                <span className="text-xs print:text-[5px] text-slate-400 font-sans">{invoiceCurrencyLabel}</span>
                                 {formatMoney(taxAmount)}
                             </span>
                         </div>
 
                         <div className="totals-grand-total flex justify-between items-end mt-2 print:mt-1">
                             <div className="flex flex-col">
-                                <span className="text-3xl print:text-[12px] font-black text-slate-900 tracking-tight">الإجمالي</span>
-                                <span className="text-slate-400 font-bold text-base print:text-[6px] mt-1 print:mt-0">{invoiceCurrencyLabel}</span>
+                                <span className="text-3xl print:text-[11px] font-black text-slate-900 tracking-normal uppercase print:font-bold">الإجمالي</span>
+                                <span className="text-slate-400 font-bold text-base print:text-[5.5px] mt-1 print:mt-0 font-sans">{invoiceCurrencyLabel}</span>
                             </div>
                             <span className="font-mono text-5xl print:text-[14px] font-black text-slate-900 tracking-tighter decoration-4 print:decoration-1">
                                 {fmtByCode(invoiceOrder.total, currencyCode)}
