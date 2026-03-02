@@ -266,635 +266,419 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         <div ref={ref} className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
                 @media print {
-                    @page { size: A4; margin: 3mm 5mm; }
+                    @page { size: A4; margin: 0; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
                     * { box-sizing: border-box; }
 
                     .invoice-container { 
                         width: 100% !important; 
-                        max-width: none !important; 
-                        margin: 0 !important; 
-                        padding: 0 !important;
-                        gap: 0px !important;
+                        padding: 15mm 20mm !important;
                         display: flex !important;
                         flex-direction: column !important;
-                        font-size: 7px !important;
-                        color: #1e293b !important;
+                        font-size: 8px !important;
+                        font-family: 'Tajawal', 'Cairo', sans-serif !important;
+                        color: #111827 !important;
+                        line-height: 1.5 !important;
+                        position: relative !important;
+                        min-height: 296mm !important;
                     }
 
-                    /* ═══ GOLD ACCENT BAR (top) ═══ */
-                    .invoice-gold-bar {
-                        display: block !important;
-                        height: 4px !important;
-                        background-color: #d4af37 !important;
-                        width: 100% !important;
+                    /* ═══ THE CERTIFICATE FRAME (ULTRA LUXURY) ═══ */
+                    .invoice-container::before {
+                        content: '';
+                        position: absolute !important;
+                        top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
+                        border: 0.5pt solid #C5A059 !important;
+                        pointer-events: none !important;
+                        z-index: 50 !important;
+                    }
+                    .invoice-container::after {
+                        content: '';
+                        position: absolute !important;
+                        top: 7mm; bottom: 7mm; left: 7mm; right: 7mm;
+                        border: 0.25pt solid #E5E7EB !important;
+                        pointer-events: none !important;
+                        z-index: 50 !important;
                     }
 
-                    /* ═══ HEADER: Dark Navy Premium ═══ */
-                    .invoice-header {
-                        background-color: #0a0f1e !important;
-                        color: white !important;
-                        padding: 8px 12px !important;
-                        margin-bottom: 0 !important;
-                        border: none !important;
-                        gap: 4px !important;
-                        page-break-inside: avoid;
-                    }
-                    .invoice-header * {
-                        color: white !important;
-                    }
-                    .invoice-header .text-slate-400,
-                    .invoice-header .text-slate-500,
-                    .invoice-header .text-slate-600 {
-                        color: #94a3b8 !important;
-                    }
-                    .invoice-header .header-label {
-                        color: #d4af37 !important;
-                    }
-                    .invoice-title {
-                        font-size: 22px !important;
-                        line-height: 1 !important;
-                        letter-spacing: 1px !important;
-                        font-weight: 700 !important;
-                        color: #d4af37 !important;
-                    }
-                    .brand-name {
-                        font-size: 15px !important;
-                        line-height: 1.15 !important;
-                        letter-spacing: 0.2px !important;
-                    }
-                    /* Logo white circle on dark header */
-                    .invoice-header .logo-circle {
-                        background-color: white !important;
-                        border-radius: 50% !important;
-                        padding: 3px !important;
-                        width: 42px !important;
-                        height: 42px !important;
+                    /* ═══ Typography ═══ */
+                    .text-gold { color: #C5A059 !important; }
+                    .text-charcoal { color: #111827 !important; }
+                    .font-thin-label { font-weight: 300 !important; font-size: 6px !important; color: #6B7280 !important; }
+                    .font-bold-value { font-weight: 700 !important; font-size: 8px !important; color: #111827 !important; }
+
+                    /* ═══ HEADER ═══ */
+                    .luxury-header {
                         display: flex !important;
-                        align-items: center !important;
-                        justify-content: center !important;
+                        justify-content: space-between !important;
+                        align-items: flex-end !important;
+                        border-bottom: 0.5pt solid #111827 !important;
+                        padding-bottom: 8px !important;
+                        margin-bottom: 12px !important;
                     }
-                    .invoice-header .logo-circle img {
-                        max-height: 36px !important;
-                        max-width: 36px !important;
+                    .brand-name { font-size: 20px !important; font-weight: 800 !important; letter-spacing: -0.2px !important; line-height: 1.1 !important; color: #111827 !important; }
+                    .invoice-title { font-size: 24px !important; font-weight: 300 !important; letter-spacing: 4px !important; color: #C5A059 !important; line-height: 1 !important; margin-bottom: 2px !important; }
+                    
+                    /* ═══ INFO GRID ═══ */
+                    .info-grid {
+                        display: flex !important;
+                        justify-content: space-between !important;
+                        margin-bottom: 12px !important;
+                        gap: 15px !important;
                     }
-                    /* Invoice number badge */
-                    .inv-number-badge {
-                        border: 1.5px solid #d4af37 !important;
-                        padding: 2px 6px !important;
-                        border-radius: 2px !important;
-                        background: transparent !important;
+                    .info-section {
+                        border-right: 1.5pt solid #C5A059 !important;
+                        padding-right: 8px !important;
+                        flex: 1 !important;
                     }
-                    /* Tax badge in header */
-                    .tax-badge-print {
-                        background-color: #d4af37 !important;
-                        color: #0a0f1e !important;
-                        padding: 1px 5px !important;
-                        font-size: 5.5px !important;
-                        letter-spacing: 1px !important;
-                        font-weight: 700 !important;
-                    }
-                    .tax-badge-print * {
-                        color: #0a0f1e !important;
-                    }
-
-                    /* ═══ GOLD LINE under header ═══ */
-                    .invoice-gold-line {
-                        display: block !important;
-                        height: 1.5px !important;
-                        background-color: #d4af37 !important;
-                        width: 100% !important;
-                    }
-
-                    /* ═══ META: Elegant cards ═══ */
-                    .invoice-meta {
-                        gap: 3px !important;
+                    .info-row {
+                        display: flex !important;
                         margin-bottom: 2px !important;
-                        margin-top: 3px !important;
-                        page-break-inside: avoid;
+                        align-items: baseline !important;
                     }
-                    .meta-card {
-                        padding: 4px 6px !important;
-                        border: 0.5px solid #e2e8f0 !important;
-                        border-radius: 2px !important;
-                        border-right: 2.5px solid #d4af37 !important;
-                        background-color: #fafaf9 !important;
-                    }
-                    .meta-card .uppercase {
+                    .info-label {
+                        width: 50px !important;
+                        color: #6B7280 !important;
+                        font-size: 5.5px !important;
+                        text-transform: uppercase !important;
                         letter-spacing: 0.5px !important;
-                        font-weight: 600 !important;
-                        color: #64748b !important;
                     }
-                    .meta-card .font-black {
-                        font-weight: 800 !important;
-                        color: #0f172a !important;
+                    .info-val {
+                        font-weight: 600 !important;
+                        font-size: 7px !important;
+                        color: #111827 !important;
                     }
 
-                    /* ═══ TABLE: Professional ═══ */
-                    .invoice-container table {
-                        font-size: 6.5px !important;
-                        page-break-inside: auto;
+                    /* ═══ TABLE ═══ */
+                    .luxury-table {
+                        width: 100% !important;
                         border-collapse: collapse !important;
-                        border: 1px solid #0a0f1e !important;
-                        margin-top: 2px !important;
+                        margin-bottom: 15px !important;
                     }
-                    .invoice-container thead {
-                        display: table-header-group;
-                    }
-                    .invoice-container tr {
-                        page-break-inside: avoid;
-                    }
-                    .invoice-container tbody tr:nth-child(even) {
-                        background-color: #f8fafc !important;
-                    }
-                    .invoice-container th {
-                        background-color: #0a0f1e !important;
-                        color: #f8fafc !important;
-                        padding: 3.5px 4px !important;
-                        font-size: 6.5px !important;
-                        line-height: 1.2 !important;
-                        letter-spacing: 0.5px !important;
+                    .luxury-table th {
+                        border-top: 0.5pt solid #111827 !important;
+                        border-bottom: 0.5pt solid #111827 !important;
+                        padding: 4px 4px !important;
+                        font-weight: 500 !important;
+                        font-size: 6px !important;
+                        color: #4B5563 !important;
                         text-transform: uppercase !important;
-                        border-left: 0.5px solid #334155 !important;
-                        font-weight: 500 !important;
+                        letter-spacing: 0.5px !important;
                     }
-                    .invoice-container td {
-                        padding: 2.5px 3px !important;
-                        border-bottom: 0.5px solid #e2e8f0 !important;
-                        border-left: 0.5px solid #e2e8f0 !important;
-                        font-size: 6.5px !important;
-                        line-height: 1.25 !important;
+                    .luxury-table td {
+                        padding: 4px 4px !important;
+                        font-size: 7px !important;
                         font-weight: 500 !important;
-                        color: #1e293b !important;
+                        border-bottom: 0.5pt dashed #E5E7EB !important;
+                        color: #111827 !important;
                     }
-                    .invoice-container tbody tr:last-child td {
-                        border-bottom: 1.5px solid #0a0f1e !important;
+                    .luxury-table tr:hover td { background-color: transparent !important; }
+                    .luxury-table tr:last-child td {
+                        border-bottom: 0.5pt solid #111827 !important;
                     }
 
                     /* ═══ TOTALS ═══ */
-                    .totals-box {
-                        background-color: #fafaf9 !important;
-                        color: #0f172a !important;
-                        border: 1.5px solid #0a0f1e !important;
-                        padding: 5px 7px !important;
-                        page-break-inside: avoid;
-                        border-radius: 0 !important;
+                    .totals-wrapper {
+                        display: flex !important;
+                        justify-content: space-between !important;
+                        align-items: flex-start !important;
+                        page-break-inside: avoid !important;
                     }
-                    .totals-grand-total {
-                        background-color: #0a0f1e !important;
-                        color: #d4af37 !important;
-                        margin: 4px -7px -5px -7px !important;
-                        padding: 6px 8px !important;
+                    .luxury-totals {
+                        width: 55% !important;
                     }
-                    .totals-grand-total * {
-                        color: #f8fafc !important;
+                    .total-row {
+                        display: flex !important;
+                        justify-content: space-between !important;
+                        padding: 3px 0 !important;
                     }
-                    .totals-grand-total .font-mono {
-                        color: #d4af37 !important;
-                        font-size: 15px !important;
+                    .grand-total-row {
+                        border-top: 0.5pt solid #111827 !important;
+                        border-bottom: 1.5pt double #111827 !important;
+                        padding: 4px 0 !important;
+                        margin-top: 3px !important;
+                    }
+                    .grand-total-label { font-size: 9px !important; font-weight: 400 !important; color: #111827 !important; letter-spacing: 1px !important; }
+                    .grand-total-value { font-size: 13px !important; font-weight: 800 !important; color: #C5A059 !important; font-family: monospace !important; }
+
+                    /* ═══ FOOTER ═══ */
+                    .luxury-footer {
+                        margin-top: auto !important;
+                        text-align: center !important;
+                        font-size: 5px !important;
+                        color: #9CA3AF !important;
+                        border-top: 0.5pt solid #E5E7EB !important;
+                        padding-top: 5px !important;
+                        page-break-inside: avoid !important;
                     }
 
-                    /* ═══ Receipt confirmation ═══ */
-                    .receipt-confirm-box {
-                        border: 1px solid #cbd5e1 !important;
-                        border-top: 2px solid #d4af37 !important;
-                        padding: 4px 5px !important;
-                        page-break-inside: avoid;
-                    }
-
-                    .credit-summary-box {
-                        background-color: #fff !important;
-                        border: 1px solid #e2e8f0 !important;
-                        padding: 3.5px 5px !important;
-                        page-break-inside: avoid;
-                        border-radius: 0 !important;
-                    }
-                    .qr-section {
-                        border: 1px solid #e2e8f0 !important;
-                        background: #fff !important;
-                        page-break-inside: avoid;
-                        padding: 2px !important;
-                    }
-
-                    /* ═══ Footer ═══ */
-                    .invoice-print-footer {
-                        background-color: #0a0f1e !important;
-                        color: #94a3b8 !important;
-                        padding: 2.5px 8px !important;
-                        margin-top: 4px !important;
-                        border: none !important;
-                    }
-                    .invoice-print-footer * {
-                        color: #94a3b8 !important;
-                    }
-                    /* Gold bottom bar */
-                    .invoice-gold-bar-bottom {
-                        display: block !important;
-                        height: 3px !important;
-                        background-color: #d4af37 !important;
-                        width: 100% !important;
-                    }
-
-                    .print-hide-subtext {
-                        display: none !important;
-                    }
+                    .print-hide-subtext { display: none !important; }
                 }
-            `}</style>
-            <div className={`invoice-container w-full mx-auto p-12 bg-white flex flex-col gap-6 text-slate-900 print:p-0 print:pt-0 print:gap-1`} style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
-                {/* ▬▬▬ TOP GOLD ACCENT BAR ▬▬▬ */}
-                <div className="invoice-gold-bar hidden print:block" style={{ height: 4, backgroundColor: '#d4af37' }}></div>
+            `} </style>
+
+            <div className="invoice-container w-full mx-auto p-12 bg-white flex flex-col text-slate-900 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
 
                 {/* Watermark for Copy */}
                 {(isCopy || copyLabel) && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
-                        <div className="text-gray-100 font-bold text-[10rem] print:text-[6rem] -rotate-45 select-none opacity-40 print:opacity-[0.12]" style={{ color: accentColor ? `${accentColor}1A` : undefined }}>
-                            {copyLabel || 'نسخة'}
+                        <div className="text-gray-100 font-bold text-[10rem] print:font-light print:text-[5rem] -rotate-45 select-none opacity-40 print:opacity-[0.03]" style={{ color: accentColor ? accentColor + "1A" : undefined, letterSpacing: "0.2em" }}>
+                            {copyLabel || "نسخة"}
                         </div>
                     </div>
                 )}
 
-                {/* Copy Label Badge */}
-                {copyLabel && (
-                    <div className="absolute top-0 left-0 bg-slate-100 px-6 py-2 print:px-2 print:py-0.5 rounded-br-2xl border-b-2 border-r-2 border-slate-200 z-20 print:border-[#d4af37] print:border-b print:border-r print:bg-white print:rounded-none">
-                        <span className="font-extrabold text-sm print:text-[6px] uppercase tracking-widest" style={{ color: accentColor }}>{copyLabel}</span>
-                    </div>
-                )}
-
-                {/* Header Section */}
-                <div className="invoice-header relative z-10 border-b-4 border-slate-900 pb-6 mb-2 flex items-center justify-between gap-8 print:pb-0 print:mb-0 print:border-b-0 print:gap-2">
-                    {/* Brand Info */}
-                    <div className="flex items-center gap-6 print:gap-2">
+                {/* ▬▬▬ HEADER ▬▬▬ */}
+                <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
+                    <div className="flex items-center gap-6 print:gap-3">
                         {storeLogoUrl && (
-                            <div className="logo-circle bg-white p-2 rounded-xl border border-slate-100 shadow-sm print:rounded-full print:shadow-none">
-                                <img src={storeLogoUrl} alt="Logo" className="h-32 print:h-9 w-auto object-contain" />
+                            <div className="bg-white p-2 print:p-0">
+                                <img src={storeLogoUrl} alt="Logo" className="h-24 print:h-12 w-auto object-contain print:grayscale" />
                             </div>
                         )}
                         <div className="flex flex-col justify-center">
-                            <h1 className="brand-name text-4xl print:text-sm font-black text-slate-900 tracking-tight leading-tight">{systemName}</h1>
-                            <div className="text-sm print:text-[6px] font-bold text-slate-500 mt-1 print:mt-0 uppercase tracking-[0.2em]" dir="ltr">{systemKey}</div>
-
-                            <div className="mt-4 flex flex-col gap-1.5 text-sm print:text-[6.5px] text-slate-600 font-medium print:mt-0.5 print:gap-0">
-                                {showBranchName && (
-                                    <div className="flex items-center gap-2 print:gap-1">
-                                        <span className="text-slate-400 print:hidden">🏢</span>
-                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">الفرع:</span>
-                                        <span>{branchName}</span>
-                                    </div>
-                                )}
-                                {storeAddress && (
-                                    <div className="flex items-center gap-2 print:gap-1">
-                                        <span className="text-slate-400 print:hidden">📍</span>
-                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">العنوان:</span>
-                                        <span>{storeAddress}</span>
-                                    </div>
-                                )}
-                                {storeContactNumber && (
-                                    <div className="flex items-center gap-2 print:gap-1">
-                                        <span className="text-slate-400 print:hidden">📞</span>
-                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">الهاتف:</span>
-                                        <span dir="ltr" className="font-mono">{storeContactNumber}</span>
-                                    </div>
-                                )}
-                                {vatNumber && (
-                                    <div className="flex items-center gap-2 mt-1 print:mt-0 print:gap-1">
-                                        <span className="text-slate-400 print:hidden">🔢</span>
-                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">الرقم الضريبي:</span>
-                                        <span dir="ltr" className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded print:bg-transparent print:px-0 print:py-0">
-                                            {vatNumber}
-                                        </span>
-                                    </div>
-                                )}
+                            <h1 className="brand-name">
+                                {systemName}
+                                {showBranchName && <span className="text-sm font-normal text-slate-500 mr-2 print:text-[8px] font-sans">({branchName})</span>}
+                            </h1>
+                            {systemKey && <div className="text-sm print:text-[5px] text-slate-500 uppercase tracking-[0.3em] mt-1 print:mt-0" dir="ltr">{systemKey}</div>}
+                            <div className="mt-2 print:mt-1 flex gap-2 text-sm print:text-[5px] text-slate-500">
+                                {vatNumber && <span dir="ltr" className="bg-slate-50 print:bg-transparent px-2 py-0.5 rounded print:p-0">VAT: {vatNumber}</span>}
+                                {storeContactNumber && <span dir="ltr" className="bg-slate-50 print:bg-transparent px-2 py-0.5 rounded print:p-0">TEL: {storeContactNumber}</span>}
                             </div>
                         </div>
                     </div>
 
-                    {/* Invoice Title & Meta */}
-                    <div className="text-left rtl:text-left flex flex-col items-end">
-                        <h2 className="invoice-title text-5xl print:text-lg font-black text-slate-900 uppercase tracking-tighter">فاتورة</h2>
-                        <div className="tax-badge-print text-slate-500 text-sm print:text-[5.5px] font-extrabold tracking-[0.3em] mt-2 print:mt-0.5 uppercase bg-slate-100 px-3 py-1 print:px-1.5 print:py-0.5 border border-slate-200 rounded print:rounded-none print:border-0">فاتورة ضريبية</div>
-
-                        <div className="mt-8 flex gap-6 mt-auto border-t-2 border-slate-100 pt-4 print:mt-1 print:pt-1.5 print:gap-3 print:border-t-0">
-                            <div className="flex flex-col items-end">
-                                <span className="text-[11px] print:text-[5.5px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">تاريخ الإصدار</span>
-                                <span className="text-xl print:text-[9px] font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('en-GB')}</span>
-                            </div>
-                            <div className="w-px bg-slate-200 print:bg-[#334155]"></div>
-                            <div className="inv-number-badge flex flex-col items-end print:px-1.5 print:py-0.5">
-                                <span className="text-[11px] print:text-[5.5px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">رقم الفاتورة</span>
-                                <span className="text-2xl print:text-[11px] font-black font-mono text-slate-900" dir="ltr">#{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
-                            </div>
-                        </div>
+                    <div className="text-center md:text-left rtl:text-left flex flex-col items-center md:items-end flex-shrink-0">
+                        <h2 className="invoice-title tracking-widest uppercase">فاتورة</h2>
+                        <div className="font-bold tracking-[0.3em] uppercase print:text-[5px] text-slate-400">فاتورة ضريبية TAX INVOICE</div>
                     </div>
                 </div>
 
-                {/* ▬▬▬ GOLD LINE under header ▬▬▬ */}
-                <div className="invoice-gold-line hidden print:block" style={{ height: 1.5, backgroundColor: '#d4af37' }}></div>
+                {/* ▬▬▬ INFO SECTION ▬▬▬ */}
+                <div className="info-grid relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 print:flex print:gap-4 print:mb-4">
 
-                {/* Info Grid */}
-                <div className="invoice-meta grid grid-cols-12 gap-6 relative z-10 print:gap-1">
-                    {/* Bill To */}
-                    <div className="col-span-12 md:col-span-5 meta-card bg-slate-50 rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden print:shadow-none print:rounded-none print:p-1.5 print:border">
-                        <div className="absolute top-0 right-0 w-1.5 print:w-0.5 h-full bg-slate-800"></div>
-                        <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2 print:mb-0.5 print:pb-0.5">
-                            <span className="text-sm print:text-[7px] font-black text-slate-800 uppercase tracking-widest">إلى السادة / العميل</span>
+                    {/* Customer Info */}
+                    <div className="info-section">
+                        <div className="text-xs print:text-[5px] text-slate-400 uppercase tracking-widest mb-4 print:mb-1 font-bold">بيانات العميل Bill To</div>
+                        <div className="info-row">
+                            <span className="info-label">الاسم Name</span>
+                            <span className="info-val">{invoiceOrder.customerName}</span>
                         </div>
-                        <div className="space-y-2 print:space-y-0.5 relative z-10">
-                            <div className="text-2xl print:text-[9px] font-black text-slate-900">{invoiceOrder.customerName}</div>
-                            {invoiceOrder.phoneNumber && (
-                                <div className="text-base print:text-[7px] text-slate-600 font-mono font-medium flex items-center gap-2 mt-2 print:mt-0" dir="ltr">
-                                    <span className="text-slate-400 print:hidden text-lg">📱</span>
-                                    {invoiceOrder.phoneNumber}
-                                </div>
-                            )}
-                            {invoiceOrder.address && (
-                                <div className="text-sm text-slate-600 mt-2 flex items-start gap-2 leading-relaxed print:text-[6.5px] print:mt-0 print:leading-tight">
-                                    <span className="text-slate-400 mt-0.5 print:hidden text-lg">📍</span>
-                                    {invoiceOrder.address}
-                                </div>
-                            )}
-                        </div>
+                        {(invoiceOrder.address || storeAddress) && (
+                            <div className="info-row">
+                                <span className="info-label">العنوان Addr</span>
+                                <span className="info-val">{invoiceOrder.address || storeAddress}</span>
+                            </div>
+                        )}
+                        {invoiceOrder.phoneNumber && (
+                            <div className="info-row">
+                                <span className="info-label">الهاتف Tel</span>
+                                <span className="info-val font-mono" dir="ltr">{invoiceOrder.phoneNumber}</span>
+                            </div>
+                        )}
+                        {deliveryZone && (
+                            <div className="info-row">
+                                <span className="info-label">منطقة Zone</span>
+                                <span className="info-val">{deliveryZone.name?.[lang] || deliveryZone.name?.ar}</span>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Details */}
-                    <div className="col-span-12 md:col-span-7 meta-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm print:shadow-none print:rounded-none print:p-1.5 print:border">
-                        <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 pb-2 print:mb-0.5 print:pb-0.5">
-                            <span className="text-sm print:text-[7px] font-black text-slate-800 uppercase tracking-widest">تفاصيل الطلب والدفع</span>
+                    {/* Invoice Meta */}
+                    <div className="info-section">
+                        <div className="text-xs print:text-[5px] text-slate-400 uppercase tracking-widest mb-4 print:mb-1 font-bold">تفاصيل الفاتورة Details</div>
+                        <div className="info-row">
+                            <span className="info-label">رقم Invoice</span>
+                            <span className="info-val font-mono" dir="ltr">#{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-6 print:gap-y-1 print:gap-x-1 text-sm print:text-[6.5px]">
-                            <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                <span className="block text-[11px] print:text-[5.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">طريقة الدفع</span>
-                                <span className="font-black text-slate-900 text-base print:text-[7px] leading-tight">{getPaymentMethodName(invoiceOrder.paymentMethod)}</span>
-                            </div>
-                            <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                <span className="block text-[11px] print:text-[5.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">شروط الدفع</span>
-                                <span className="font-black text-slate-900 text-base print:text-[7px] leading-tight">{invoiceTermsLabel}</span>
-                            </div>
-                            {invoiceTerms === 'credit' && invoiceDueDate && (
-                                <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">تاريخ الاستحقاق</span>
-                                    <span className="font-bold text-slate-800 font-mono text-base print:text-[7px] leading-tight" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('en-GB')}</span>
-                                </div>
-                            )}
-                            {costCenterLabel && (
-                                <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">مركز التكلفة</span>
-                                    <span className="font-bold text-slate-800 text-sm print:text-[7px] leading-tight">{costCenterLabel}</span>
-                                </div>
-                            )}
-                            {invoiceOrder.orderSource && (
-                                <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
-                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">مصدر الطلب</span>
-                                    <span className="font-bold text-slate-800 text-sm print:text-[7px] leading-tight">{invoiceOrder.orderSource === 'in_store' ? 'داخل المتجر' : 'أونلاين'}</span>
-                                </div>
-                            )}
-                            {invoiceOrder.deliveryZoneId && (
-                                <div className="flex flex-col bg-slate-50 p-3 rounded-xl border border-slate-100 print:bg-transparent print:border-none print:p-0 md:col-span-2">
-                                    <span className="block text-[11px] print:text-[4.5px] text-slate-500 font-bold uppercase tracking-wider mb-1.5 print:mb-0">منطقة التوصيل</span>
-                                    <span className="font-bold text-slate-800 text-sm print:text-[7px] leading-tight">{(deliveryZone?.name?.[lang] || deliveryZone?.name?.ar || deliveryZone?.name?.en) || invoiceOrder.deliveryZoneId}</span>
-                                </div>
-                            )}
+                        <div className="info-row">
+                            <span className="info-label">تاريخ Date</span>
+                            <span className="info-val font-mono" dir="ltr">{new Date(invoiceDate).toLocaleDateString("en-GB")}</span>
                         </div>
+                        <div className="info-row">
+                            <span className="info-label">الدفع Terms</span>
+                            <span className="info-val text-gold">{getPaymentMethodName(invoiceOrder.paymentMethod)} - {invoiceTermsLabel}</span>
+                        </div>
+                        {invoiceDueDate && invoiceTerms === "credit" && (
+                            <div className="info-row">
+                                <span className="info-label">استحقاق Due</span>
+                                <span className="info-val font-mono text-rose-800" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString("en-GB")}</span>
+                            </div>
+                        )}
+                        {costCenterLabel && (
+                            <div className="info-row">
+                                <span className="info-label">مركز Cost C.</span>
+                                <span className="info-val">{costCenterLabel}</span>
+                            </div>
+                        )}
+                        {invoiceWarehouseName && (
+                            <div className="info-row">
+                                <span className="info-label">مستودع Whse</span>
+                                <span className="info-val">{invoiceWarehouseName}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
-            </div>
 
-            {/* Items Table */}
-            {/* eslint-disable-next-line */}
-            <div className="mt-8 border border-slate-200 rounded-2xl overflow-hidden shadow-sm relative z-10 print:mt-1 print:border-slate-300 print:rounded-none print:shadow-none">
-                <table className="w-full text-sm text-right">
-                    <thead className="bg-[#0f172a] text-[#f8fafc]">
-                        <tr>
-                            <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 w-16 text-center print:text-[7px]">م</th>
-                            <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 text-center print:text-[7px]">الرمز</th>
-                            <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 text-right print:text-[7px]">الصنف البيان</th>
-                            {invoiceWarehouseName && <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 text-center print:text-[7px]">المستودع</th>}
-                            <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 text-center print:text-[7px]">الوحدة</th>
-                            <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 text-center print:text-[7px]">الكمية</th>
-                            <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 text-center print:text-[7px]">السعر ({invoiceCurrencyLabel})</th>
-                            <th className="px-5 py-4 print:px-1.5 print:py-1 font-bold text-slate-300 text-center print:text-[7px]">الإجمالي ({invoiceCurrencyLabel})</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 print:divide-slate-200">
-                        {invoiceOrder.items.map((item: CartItem, index: number) => {
-                            const pricing = computeInvoiceLine(item, invoicePricingMode);
-                            const uomLabel = getSoldUnitLabelAr(item, pricing as any);
-                            const qtyText = getSoldQuantityTextAr(item, pricing as any);
-                            const rowStyle = { pageBreakInside: 'avoid' as any };
-                            const unitLabelText = String(item.unitType === 'kg' ? 'كجم' : item.unitType === 'gram' ? 'جم' : getUnitLabel((item as any)?._baseUnit || item.unitType, 'ar') || 'وحدة').trim();
-
-                            return (
-                                <tr key={index} className="hover:bg-slate-50 transition-colors bg-white print:bg-transparent" style={rowStyle}>
-                                    <td className="px-5 py-4 print:px-1.5 print:py-0.5 text-slate-500 text-center font-mono font-bold print:text-[7px]">{index + 1}</td>
-                                    <td className="px-5 py-4 print:px-1.5 print:py-0.5 text-center font-mono text-xs text-slate-500 print:text-[7px]">{getItemNumber(item)}</td>
-                                    <td className="px-5 py-4 print:px-1.5 print:py-0.5 font-bold text-slate-900 border-r border-slate-50 print:border-none print:text-[8px] leading-tight">
-                                        {item.name?.[lang] || item.name?.ar || item.name?.en || item.id}
-                                        {pricing.addonsArray.length > 0 && (
-                                            <div className="mt-1.5 flex flex-wrap gap-1.5 print:mt-0 print:gap-0.5">
-                                                {pricing.addonsArray.map((addon: any, idx: number) => (
-                                                    <span key={idx} className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-md font-medium border border-amber-100 print:text-[6px] print:bg-transparent print:border-amber-300 print:px-1 print:py-0">
-                                                        <span className="text-amber-500 font-bold">➕</span>
-                                                        {addon.addon.name?.[lang] || addon.addon.name?.ar} ({addon.quantity}x)
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </td>
-                                    {invoiceWarehouseName && <td className="px-5 py-4 print:px-1.5 print:py-0.5 text-center font-bold text-slate-700 whitespace-nowrap print:text-[7px]">{invoiceWarehouseName}</td>}
-                                    <td className="px-5 py-4 print:px-1.5 print:py-0.5 text-center font-bold text-slate-700 print:text-[7px]">{uomLabel}</td>
-                                    <td className="px-5 py-4 print:px-1.5 print:py-0.5 text-center font-black text-slate-900 print:text-[8px] bg-slate-50 print:bg-transparent border-x border-white print:border-none">{qtyText}</td>
-                                    <td className="px-5 py-4 print:px-1.5 print:py-0.5 text-center font-mono font-bold text-slate-700 print:text-[7px]">
-                                        <div className="flex flex-col items-center justify-center">
-                                            <div className="flex items-center gap-1 print:gap-0.5">
-                                                <span className="text-xs text-slate-400 print:text-[5px]">{currencyCode === 'YER' ? '﷼' : ''}</span>
-                                                <span>{fmtByCode(pricing.displayUnitPrice, currencyCode)}</span>
-                                            </div>
-                                            {currencyCode === 'YER' && (
-                                                <span className="text-[10px] text-slate-400 mt-0.5 print:mt-0 print:text-[5px] font-medium block w-full text-center print-hide-subtext">
-                                                    يعادل {fmtByCode(pricing.displayUnitPrice / (Number((invoiceOrder as any).fxRate) || 1), 'SAR')} سعودي
-                                                </span>
+                {/* ▬▬▬ TABLE ▬▬▬ */}
+                <div className="relative z-10 w-full overflow-hidden mb-8 print:mb-4">
+                    <table className="luxury-table text-right print:w-full">
+                        <thead>
+                            <tr>
+                                <th className="text-center w-12 print:w-6">م</th>
+                                <th className="text-center w-24 print:w-16">الرمز Item</th>
+                                <th className="text-right">البيان Description</th>
+                                <th className="text-center">الوحدة UOM</th>
+                                <th className="text-center">الكمية Qty</th>
+                                <th className="text-center">السعر Unit Price</th>
+                                <th className="text-center">الإجمالي Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {invoiceOrder.items.map((item: CartItem, index: number) => {
+                                const pricing = computeInvoiceLine(item, invoicePricingMode);
+                                const uomLabel = getSoldUnitLabelAr(item, pricing as any);
+                                const qtyText = getSoldQuantityTextAr(item, pricing as any);
+                                return (
+                                    <tr key={index} style={{ pageBreakInside: 'avoid' }}>
+                                        <td className="text-center font-mono font-thin-label text-slate-400">{index + 1}</td>
+                                        <td className="text-center font-mono font-thin-label text-slate-500">{getItemNumber(item)}</td>
+                                        <td className="font-bold-value text-slate-900">
+                                            {item.name?.[lang] || item.name?.ar || item.name?.en || item.id}
+                                            {pricing.addonsArray.length > 0 && (
+                                                <div className="font-thin-label mt-1 print:mt-0 text-[4px]">
+                                                    {pricing.addonsArray.map((addon: any, idx: number) => (
+                                                        <span key={idx} className="mr-1">
+                                                            + {addon.addon.name?.[lang] || addon.addon.name?.ar} ({addon.quantity}x)
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             )}
-                                            {invoicePricingMode === 'base_unit' && !pricing.isWeightBased && pricing.factor > 1 && (
-                                                <span className="text-[10px] text-emerald-600 mt-1 bg-emerald-50 px-2 py-0.5 rounded font-bold print:mt-0 print:text-[5px] print:bg-transparent print:px-0 print-hide-subtext">
-                                                    يعادل {pricing.factor} {unitLabelText}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-5 py-4 print:px-1.5 print:py-0.5 text-center font-mono font-black text-slate-900 bg-slate-50 print:bg-transparent border-l border-white print:border-none print:text-[8px]">
-                                        <div className="flex flex-col items-center justify-center">
-                                            <div className="flex items-center gap-1 print:gap-0.5">
-                                                <span className="text-xs text-slate-400 print:text-[5px]">{currencyCode === 'YER' ? '﷼' : ''}</span>
-                                                <span>{fmtByCode(pricing.lineTotal, currencyCode)}</span>
-                                            </div>
-                                            {currencyCode === 'YER' && (
-                                                <span className="text-[10px] text-slate-400 mt-0.5 print:mt-0 print:text-[5px] font-medium block w-full text-center print-hide-subtext">
-                                                    يعادل {fmtByCode(pricing.lineTotal / (Number((invoiceOrder as any).fxRate) || 1), 'SAR')} سعودي
-                                                </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+                                        </td>
+                                        <td className="text-center text-slate-600">{uomLabel}</td>
+                                        <td className="text-center font-bold-value text-slate-900">{qtyText}</td>
+                                        <td className="text-center font-mono text-slate-700">
+                                            {fmtByCode(pricing.displayUnitPrice, currencyCode)} <span className="font-thin-label text-[4px]">{currencyCode === 'YER' ? '﷼' : ''}</span>
+                                        </td>
+                                        <td className="text-center font-mono font-bold-value text-slate-900">
+                                            {fmtByCode(pricing.lineTotal, currencyCode)} <span className="font-thin-label text-[4px]">{currencyCode === 'YER' ? '﷼' : ''}</span>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
 
-            {/* Footer Section (Totals + Info) */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 print:mt-1 print:gap-1 break-inside-avoid print:break-inside-auto">
-                {/* Legal & Terms */}
-                <div className="order-2 md:order-1 flex flex-col gap-6 print:gap-1 text-slate-600 relative z-10">
-                    {/* Receipt Confirmation Box */}
-                    <div className="receipt-confirm-box bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-sm print:bg-transparent print:border print:border-slate-300 print:rounded-none print:p-1 print:shadow-none">
-                        <h4 className="font-bold text-sm text-slate-800 mb-2 print:text-[7px] print:mb-0.5 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 print:hidden"></span>
-                            إقرار استلام
-                        </h4>
-                        <p className="text-sm leading-relaxed print:text-[5.5px] print:leading-tight mb-6 print:mb-0.5 font-medium">
-                            أنا الموقع أدناه أقر باستلام البضاعة المذكورة أعلاه كاملة وسليمة وبحالة جيدة، وأتعهد بسداد قيمة هذه الفاتورة وفقاً لشروط الدفع المتفق عليها.
-                        </p>
-                        <div className="grid grid-cols-2 gap-8 print:gap-1 mt-8 print:mt-0">
-                            <div className="text-center">
-                                <div className="text-xs font-bold text-slate-500 mb-6 print:text-[5.5px] print:mb-1">توقيع المستلم / العميل</div>
-                                <div className="border-b-2 border-dashed border-slate-300 relative print:border-slate-400">
-                                    <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-slate-50 px-2 text-[10px] text-slate-300 print:hidden">✖</span>
-                                </div>
-                            </div>
-                            <div className="text-center">
-                                <div className="text-xs font-bold text-slate-500 mb-6 print:text-[5.5px] print:mb-1">توقيع المسئول / البائع</div>
-                                <div className="border-b-2 border-dashed border-slate-300 relative print:border-slate-400">
-                                    <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-slate-50 px-2 text-[10px] text-slate-300 print:hidden">✖</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                {/* ▬▬▬ TOTALS WRAPPER ▬▬▬ */}
+                <div className="totals-wrapper relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12 print:flex print:gap-4 print:mb-2">
 
-                    {/* QR Code and Footer Notes */}
-                    <div className="flex gap-6 items-center print:gap-2">
+                    {/* Left side / Footer Info (QR + Signature) */}
+                    <div className="flex-1 space-y-8 print:space-y-4 pt-4 print:pt-0">
                         {qrUrl && (
-                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100 flex-shrink-0 print:p-0.5 print:border-slate-300 print:shadow-none print:rounded-md">
-                                <img src={qrUrl} alt="ZATCA QR Code" className="w-24 h-24 print:w-10 print:h-10 object-contain" />
+                            <div className="flex gap-4 items-center">
+                                <img src={qrUrl} alt="QR Code" className="w-24 h-24 print:w-16 print:h-16 object-contain grayscale opacity-90" />
                             </div>
                         )}
-                        <div className="flex-1">
-                            <p className="text-xs font-bold text-slate-700 leading-relaxed print:text-[5.5px] print:leading-tight">
-                                شكراً لثقتكم بنا. <br />
-                                <span className="text-slate-500 font-medium">نتطلع دائماً لتقديم الأفضل لكم.</span>
-                            </p>
+                        <div className="pt-4 border-t border-slate-200 print:border-[0.5pt] print:pt-2 w-48 print:w-24 mt-8 print:mt-4">
+                            <div className="text-xs print:text-[5px] text-slate-400 font-bold uppercase tracking-widest text-center">التوقيع Signature</div>
                         </div>
                     </div>
-                </div>
 
-                {/* Totals */}
-                <div className="order-1 md:order-2 space-y-4 print:space-y-0.5 relative z-10 w-full md:max-w-md ml-auto rtl:ml-0 rtl:mr-auto">
-                    <div className="totals-box bg-slate-50 rounded-3xl p-8 border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a] print:shadow-none print:rounded-none mt-2 print:mt-0 print:border print:p-1 print:border-slate-800">
-                        <div className="flex justify-between items-center mb-4 print:mb-1">
-                            <span className="text-slate-500 font-bold text-sm print:text-[6.5px] uppercase tracking-wide">المجموع الفرعي</span>
-                            <span className="font-mono font-bold text-slate-800 text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                <span className="text-xs print:text-[5px] text-slate-400 font-sans">{invoiceCurrencyLabel}</span>
+                    {/* Right side / Totals Math */}
+                    <div className="luxury-totals">
+                        <div className="total-row">
+                            <span className="font-thin-label uppercase">المجموع الفرعي Subtotal</span>
+                            <span className="font-mono font-bold-value flex gap-2">
                                 {fmtByCode((Number(invoiceOrder.subtotal) || 0) + (Number(invoiceOrder.discountAmount) || 0), currencyCode)}
+                                <span className="font-thin-label">{invoiceCurrencyLabel}</span>
                             </span>
                         </div>
-
                         {Number(invoiceOrder.discountAmount) > 0 && (
-                            <div className="flex justify-between items-center mb-4 text-rose-600 print:mb-1">
-                                <span className="font-bold text-sm print:text-[6.5px] uppercase tracking-wide">الخصم</span>
-                                <span className="font-mono font-bold text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                    <span className="text-xs print:text-[5px] opacity-70 font-sans">{invoiceCurrencyLabel}</span>
+                            <div className="total-row text-rose-600">
+                                <span className="font-thin-label text-rose-500 uppercase">الخصم Discount</span>
+                                <span className="font-mono font-bold flex gap-2">
                                     -{fmtByCode(Number(invoiceOrder.discountAmount) || 0, currencyCode)}
+                                    <span className="font-thin-label text-rose-300">{invoiceCurrencyLabel}</span>
                                 </span>
                             </div>
                         )}
-
                         {Number(invoiceOrder.deliveryFee) > 0 && (
-                            <div className="flex justify-between items-center mb-4 print:mb-1">
-                                <span className="text-slate-500 font-bold text-sm print:text-[6.5px] uppercase tracking-wide">رسوم التوصيل</span>
-                                <span className="font-mono font-bold text-slate-800 text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                    <span className="text-xs print:text-[5px] text-slate-400 font-sans">{invoiceCurrencyLabel}</span>
+                            <div className="total-row">
+                                <span className="font-thin-label uppercase">التوصيل Delivery</span>
+                                <span className="font-mono font-bold-value flex gap-2">
                                     {fmtByCode(invoiceOrder.deliveryFee, currencyCode)}
+                                    <span className="font-thin-label">{invoiceCurrencyLabel}</span>
                                 </span>
                             </div>
                         )}
-
-                        <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-slate-200 border-dashed print:mb-1 print:pb-1.5 print:border-slate-300">
-                            <span className="text-slate-500 font-bold text-sm print:text-[6.5px] flex items-center gap-2 uppercase tracking-wide">
-                                ضريبة القيمة المضافة {(Number((invoiceOrder as any).taxRate) || 0)}%
-                            </span>
-                            <span className="font-mono font-bold text-slate-800 text-lg print:text-[8px] flex items-center gap-2 print:gap-0.5">
-                                <span className="text-xs print:text-[5px] text-slate-400 font-sans">{invoiceCurrencyLabel}</span>
+                        <div className="total-row pb-2 print:pb-1 mb-1 print:mb-0.5 border-b border-dashed border-slate-200 print:border-[0.5pt]">
+                            <span className="font-thin-label uppercase">ض.ق.م VAT ({(Number((invoiceOrder as any).taxRate) || 0)}%)</span>
+                            <span className="font-mono font-bold-value flex gap-2">
                                 {formatMoney(taxAmount)}
+                                <span className="font-thin-label">{invoiceCurrencyLabel}</span>
                             </span>
                         </div>
 
-                        <div className="totals-grand-total flex justify-between items-end mt-2 print:mt-1">
-                            <div className="flex flex-col">
-                                <span className="text-3xl print:text-[11px] font-black text-slate-900 tracking-normal uppercase print:font-bold">الإجمالي</span>
-                                <span className="text-slate-400 font-bold text-base print:text-[5.5px] mt-1 print:mt-0 font-sans">{invoiceCurrencyLabel}</span>
-                            </div>
-                            <span className="font-mono text-5xl print:text-[14px] font-black text-slate-900 tracking-tighter decoration-4 print:decoration-1">
+                        <div className="grand-total-row flex justify-between items-baseline mb-4 print:mb-2">
+                            <span className="grand-total-label uppercase tracking-widest">الإجمالي Total</span>
+                            <span className="grand-total-value font-mono flex gap-2 items-baseline">
                                 {fmtByCode(invoiceOrder.total, currencyCode)}
+                                <span className="font-thin-label text-gold font-sans">{invoiceCurrencyLabel}</span>
                             </span>
                         </div>
+
+                        {/* Credit Summary (if applicable) */}
+                        {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
+                            <div className="mt-4 pt-2 print:border-[0.5pt] print:border-t-0 print:border-r-0 print:border-l-0 print:border-slate-800">
+                                <div className="text-xs print:text-[5px] text-gold font-bold uppercase tracking-widest mb-2 print:mb-1">كشف الحساب Account</div>
+                                {creditSummary ? (
+                                    <>
+                                        <div className="total-row">
+                                            <span className="font-thin-label">رصيد سابق Prev</span>
+                                            <span className="font-mono font-bold-value text-slate-700 flex gap-1">
+                                                {formatMoney(Number(creditSummary.previousBalance || 0))} <span className="font-thin-label">{currencyLabelAr(creditSummary.currencyCode)}</span>
+                                            </span>
+                                        </div>
+                                        <div className="total-row">
+                                            <span className="font-bold-value">رصيد نهائي Balance</span>
+                                            <span className="font-mono font-black text-slate-900 flex gap-1 print:text-[6px]">
+                                                {formatMoney(Number(creditSummary.newBalance))} <span className="font-thin-label">{currencyLabelAr(creditSummary.currencyCode)}</span>
+                                            </span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="total-row">
+                                            <span className="font-thin-label">مدفوع Paid</span>
+                                            <span className="font-mono font-bold-value text-emerald-600 flex gap-1">
+                                                {formatMoney((invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'cash')?.amount ?? 0) + (invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'bank')?.amount ?? 0))}
+                                            </span>
+                                        </div>
+                                        <div className="total-row">
+                                            <span className="font-bold-value">متبقي Due</span>
+                                            <span className="font-mono font-black text-rose-600 flex gap-1 print:text-[6px]">
+                                                {formatMoney(invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'ar')?.amount ?? 0)}
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
                     </div>
-
-                    {/* Previous Balance Area */}
-                    {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
-                        <div className="credit-summary-box bg-white rounded-2xl border border-slate-200 p-6 shadow-sm print:rounded-none print:p-1 print:shadow-none print:border-slate-300 mt-4 print:mt-0.5">
-                            {creditSummary ? (
-                                <>
-                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-0.5 print:pb-0.5">
-                                        <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">الرصيد السابق للعميل</span>
-                                        <span className="font-mono font-bold text-slate-800 flex items-center gap-2 print:text-[6px] print:gap-0.5">
-                                            <span className="text-[10px] print:text-[6px] text-slate-400">{currencyLabelAr(creditSummary.currencyCode)}</span>
-                                            {formatMoney(Number(creditSummary.previousBalance || 0))}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-0.5 print:pb-0.5">
-                                        <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">قيمة الفاتورة الحالية</span>
-                                        <span className="font-mono font-bold text-slate-800 flex items-center gap-2 print:text-[6px] print:gap-0.5">
-                                            <span className="text-[10px] print:text-[6px] text-slate-400">{currencyLabelAr(creditSummary.currencyCode)}</span>
-                                            {formatMoney(Number(creditSummary.invoiceAmount))}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center pt-2 print:pt-0">
-                                        <span className="text-slate-900 font-black text-base print:text-[7px]">الرصيد النهائي المستحق</span>
-                                        <span className="font-mono font-black text-slate-900 text-xl print:text-[8px] flex items-center gap-2 print:gap-0.5 bg-slate-100 px-3 py-1 rounded print:bg-transparent print:p-0">
-                                            <span className="text-[10px] print:text-[6px] text-slate-500">{currencyLabelAr(creditSummary.currencyCode)}</span>
-                                            {formatMoney(Number(creditSummary.newBalance))}
-                                        </span>
-                                    </div>
-                                </>
-                            ) : ( // fallback to internal payments if available
-                                <>
-                                    <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-100 print:mb-0.5 print:pb-0.5">
-                                        <span className="text-slate-500 font-bold text-sm print:text-[5.5px]">المدفوع من الفاتورة</span>
-                                        <span className="font-mono font-bold text-emerald-600 flex items-center gap-2 print:text-[6px] print:gap-0.5">
-                                            <span className="text-[10px] print:text-[6px] opacity-70">{invoiceCurrencyLabel}</span>
-                                            {formatMoney((invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'cash')?.amount ?? 0) + (invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'bank')?.amount ?? 0))}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center pt-2 print:pt-0">
-                                        <span className="text-slate-900 font-black text-base print:text-[7px]">المتبقي آجل</span>
-                                        <span className="font-mono font-black text-rose-600 text-xl print:text-[8px] flex items-center gap-2 print:gap-0.5 bg-rose-50 px-3 py-1 rounded print:bg-transparent print:p-0">
-                                            <span className="text-[10px] print:text-[6px] opacity-70">{invoiceCurrencyLabel}</span>
-                                            {formatMoney(invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'ar')?.amount ?? 0)}
-                                        </span>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
                 </div>
 
-                {/* Print Footer Elements */}
-                <div className="invoice-print-footer hidden print:flex w-full mt-3 border-t border-slate-300 pt-1 justify-between items-center relative z-10 text-slate-400 font-mono text-[6.5px]" dir="ltr">
-                    <div>{new Date().toLocaleString('en-GB')}</div>
-                    <div>طبع بواسطة: {printedBy}</div>
-                    <div>SYS-REF: {invoiceOrder.id.slice(0, 16).toUpperCase()}</div>
+                {/* ▬▬▬ FOOTER ▬▬▬ */}
+                <div className="luxury-footer w-full font-mono mt-auto relative z-10">
+                    <div className="flex justify-center gap-6 print:gap-4 mb-2 print:mb-1">
+                        <span>{new Date().toLocaleString('en-GB')}</span>
+                        <span>طبع بواسطة: {printedBy}</span>
+                        <span>REF: {invoiceOrder.id.slice(0, 16).toUpperCase()}</span>
+                    </div>
+                    <div className="text-xs print:text-[4px] text-slate-400 font-sans tracking-widest text-[#C5A059] text-center">
+                        شكراً لثقتكم بنا — THANK YOU FOR YOUR BUSINESS
+                    </div>
                 </div>
-
-                {/* ▬▬▬ BOTTOM GOLD ACCENT BAR ▬▬▬ */}
-                <div className="invoice-gold-bar-bottom hidden print:block" style={{ height: 3, backgroundColor: '#d4af37' }}></div>
             </div>
         </div>
     );
