@@ -277,7 +277,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         display: flex !important;
                         flex-direction: column !important;
                         font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
-                        color: #111827 !important;
+                        color: #0F172A !important;
                         line-height: 1.5 !important;
                         position: relative !important;
                         min-height: 296mm !important;
@@ -305,7 +305,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         content: '';
                         position: absolute !important;
                         top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
-                        border: 2pt solid #111827 !important;
+                        border: 2pt solid #1E3A8A !important;
                         pointer-events: none !important;
                         z-index: 50 !important;
                     }
@@ -320,22 +320,22 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     /* ═══ Typography ═══ */
                     .text-gold { color: #D4AF37 !important; }
-                    .text-charcoal { color: #111827 !important; }
+                    .text-charcoal { color: #0F172A !important; }
                     .font-thin-label { font-weight: 300 !important; font-size: 5px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-                    .font-bold-value { font-weight: 800 !important; font-size: 7px !important; color: #111827 !important; }
+                    .font-bold-value { font-weight: 800 !important; font-size: 7px !important; color: #0F172A !important; }
 
                     /* ═══ HEADER ═══ */
                     .luxury-header {
                         display: flex !important;
                         justify-content: space-between !important;
                         align-items: center !important;
-                        border-bottom: 1.5pt solid #111827 !important;
+                        border-bottom: 1.5pt solid #1E3A8A !important;
                         padding-bottom: 8px !important;
                         margin-bottom: 15px !important;
                     }
-                    .brand-name { font-size: 18px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #111827 !important; margin-bottom: 2px !important; }
+                    .brand-name { font-size: 18px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
                     .invoice-title { font-size: 26px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-                    .title-sub { font-size: 5px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #111827 !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+                    .title-sub { font-size: 5px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
                     
                     /* ═══ INFO GRID ═══ */
                     .info-grid {
@@ -363,7 +363,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         margin-bottom: 15px !important;
                     }
                     .luxury-table th {
-                        background-color: #111827 !important;
+                        background-color: #0F172A !important;
                         color: #FFFFFF !important;
                         padding: 4px 6px !important;
                         font-weight: 600 !important;
@@ -377,10 +377,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         font-size: 7px !important;
                         font-weight: 600 !important;
                         border-bottom: 0.5pt solid #E5E7EB !important;
-                        color: #111827 !important;
+                        color: #0F172A !important;
                     }
                     .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
-                    .luxury-table tr:last-child td { border-bottom: 1.5pt solid #111827 !important; }
+                    .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
 
                     /* ═══ TOTALS ═══ */
                     .totals-wrapper {
@@ -406,7 +406,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         display: flex !important;
                         justify-content: space-between !important;
                         align-items: center !important;
-                        background-color: #111827 !important;
+                        background-color: #0F172A !important;
                         color: white !important;
                         padding: 6px 8px !important;
                         margin-top: 4px !important;
@@ -446,7 +446,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 }
             `} </style>
             
-            <div className="invoice-container w-full mx-auto p-12 bg-[#FAFAFA] flex flex-col text-slate-900 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
+            <div className="invoice-container w-full mx-auto p-12 bg-[#FAFAFA] flex flex-col text-blue-950 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
                 
                 <div className="luxury-watermark">{systemName}</div>
 
@@ -474,8 +474,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             </h1>
                             {systemKey && <div className="text-sm print:text-[5px] text-slate-500 uppercase tracking-[0.3em] font-mono print:mt-0" dir="ltr">{systemKey}</div>}
                             <div className="mt-2 print:mt-1 flex gap-3 text-sm print:text-[5px] text-slate-600 font-bold">
-                                {vatNumber && <span dir="ltr">VAT: <span className="font-mono text-slate-900">{vatNumber}</span></span>}
-                                {storeContactNumber && <span dir="ltr">TEL: <span className="font-mono text-slate-900">{storeContactNumber}</span></span>}
+                                {vatNumber && <span dir="ltr">VAT: <span className="font-mono text-blue-950">{vatNumber}</span></span>}
+                                {storeContactNumber && <span dir="ltr">TEL: <span className="font-mono text-blue-950">{storeContactNumber}</span></span>}
                             </div>
                         </div>
                     </div>
@@ -579,7 +579,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                     <tr key={index} style={{ pageBreakInside: 'avoid' }}>
                                         <td className="text-center font-mono font-thin-label text-slate-400">{index + 1}</td>
                                         <td className="text-center font-mono font-thin-label text-charcoal">{getItemNumber(item)}</td>
-                                        <td className="font-bold-value text-slate-900">
+                                        <td className="font-bold-value text-blue-950">
                                             {item.name?.[lang] || item.name?.ar || item.name?.en || item.id}
                                             {pricing.addonsArray.length > 0 && (
                                                 <div className="font-thin-label mt-1 print:mt-0 text-[4px] text-slate-500">
@@ -681,14 +681,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                     <>
                                         <div className="total-row">
                                             <span className="font-thin-label">رصيد سابق | Prev</span>
-                                            <span className="font-mono font-bold-value text-slate-700 flex gap-1 items-center">
+                                            <span className="font-mono font-bold-value text-blue-800 flex gap-1 items-center">
                                                 {formatMoney(Number(creditSummary.previousBalance || 0))} 
                                                 <span className="font-thin-label mt-[1px]">{currencyCode}</span>
                                             </span>
                                         </div>
                                         <div className="total-row border-t border-slate-200 mt-1 pt-1 print:border-[#E5E7EB]">
                                             <span className="font-bold-value text-[6px]">رصيد نهائي | Balance</span>
-                                            <span className="font-mono font-black text-slate-900 flex gap-1 print:text-[8px] bg-gold-50 items-center">
+                                            <span className="font-mono font-black text-blue-950 flex gap-1 print:text-[8px] bg-gold-50 items-center">
                                                 {formatMoney(Number(creditSummary.newBalance))}
                                                 <span className="font-thin-label text-[4px] mt-[1px]">{currencyCode}</span>
                                             </span>
@@ -721,9 +721,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 <div className="relative z-10 w-full mt-4 print:mt-1">
                     {/* Pledge for Credit / Unpaid Balance */}
                     {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
-                        <div className="border border-slate-800 print:border-slate-800 p-3 print:p-2.5 mb-6 print:mb-3 bg-white text-center">
-                            <p className="text-[8px] print:text-[6px.5] font-bold text-slate-900 leading-relaxed font-sans text-justify px-2">
-                                أنا الموقع أدناه المستلم / <span className="inline-block w-48 border-b-2 border-slate-400 print:border-slate-800 border-dotted"></span> بأنني استلمت البضاعة أعلاه كاملة وسليمة وأتعهد بسداد قيمتها كاملة وغير منقوصة لأمر <span className="font-black text-rose-700">{systemName}</span> إلى تاريخ الاستحقاق الموضح أعلاه وفي حال التأخر عن السداد أكون ملزماً بتسديد مبلغ الفاتورة ومصاريف التأخير حسب ما تقره المؤسسة ولها الحق الكامل بـ الاستيلاء على البضاعة المشتراة منها أو أي بضاعة أخرى أو على أي أموالنا بما يساوي مبلغ الدين والمصاريف.
+                        <div className="border border-blue-900 print:border-blue-900 p-3 print:p-2.5 mb-6 print:mb-3 bg-white text-center">
+                            <p className="text-[8px] print:text-[6px.5] font-bold text-blue-950 leading-relaxed font-sans text-justify px-2">
+                                أنا الموقع أدناه المستلم / <span className="inline-block w-48 border-b-2 border-slate-400 print:border-blue-900 border-dotted"></span> بأنني استلمت البضاعة أعلاه كاملة وسليمة وأتعهد بسداد قيمتها كاملة وغير منقوصة لأمر <span className="font-black text-rose-700">{systemName}</span> إلى تاريخ الاستحقاق الموضح أعلاه وفي حال التأخر عن السداد أكون ملزماً بتسديد مبلغ الفاتورة ومصاريف التأخير حسب ما تقره المؤسسة ولها الحق الكامل بـ الاستيلاء على البضاعة المشتراة منها أو أي بضاعة أخرى أو على أي أموالنا بما يساوي مبلغ الدين والمصاريف.
                             </p>
                             <div className="mt-4 print:mt-4 flex justify-between items-end px-4">
                                 <div className="text-center font-bold text-[8px] print:text-[6.5px]">
@@ -739,23 +739,23 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     {/* Official Signatures Row */}
                     <div className="flex justify-between items-end mt-8 print:mt-6 px-4 print:px-2">
                         <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
-                                <span className="font-thin-label block text-slate-900 font-bold">المستلم | Receiver</span>
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                                <span className="font-thin-label block text-blue-950 font-bold">المستلم | Receiver</span>
                             </div>
                         </div>
                         <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
-                                <span className="font-thin-label block text-slate-900 font-bold">أمين الصندوق | Cashier</span>
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                                <span className="font-thin-label block text-blue-950 font-bold">أمين الصندوق | Cashier</span>
                             </div>
                         </div>
                         <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
-                                <span className="font-thin-label block text-slate-900 font-bold">المحاسب | Accountant</span>
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                                <span className="font-thin-label block text-blue-950 font-bold">المحاسب | Accountant</span>
                             </div>
                         </div>
                         <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
-                                <span className="font-thin-label block text-slate-900 font-bold">المدير | Manager</span>
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                                <span className="font-thin-label block text-blue-950 font-bold">المدير | Manager</span>
                             </div>
                         </div>
                     </div>
