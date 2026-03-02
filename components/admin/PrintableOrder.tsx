@@ -47,34 +47,34 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
                     max-width: 210mm;
                     margin: 0 auto;
                     background: white;
-                    color: #1e293b;
+                    color: #1E3A8A;
                     line-height: 1.5;
                     padding: 40px;
-                    border-top: 5px solid #1e293b;
+                    border-top: 5px solid #1E3A8A;
                 }
                 .header-section {
                     display: flex;
                     justify-content: space-between;
                     align-items: flex-start;
                     margin-bottom: 40px;
-                    border-bottom: 2px solid #e2e8f0;
+                    border-bottom: 2pt solid #1E3A8A;
                     padding-bottom: 20px;
                 }
                 .company-info { text-align: right; }
-                .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0f172a; }
-                .company-info p { margin: 2px 0; font-size: 13px; color: #475569; }
+                .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }
+                .company-info p { margin: 2px 0; font-size: 13px; color: #1D4ED8; }
                 
                 .doc-title {
                     text-align: left;
                     background: #f8fafc;
                     padding: 15px 25px;
                     border-radius: 8px;
-                    border: 1px solid #e2e8f0;
+                    border: 1.5pt solid #1E3A8A;
                 }
                 .doc-title h2 {
                     font-size: 24px;
                     font-weight: 900;
-                    color: #0f172a;
+                    color: #0F172A;
                     margin: 0;
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
@@ -94,27 +94,27 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
                     background: #f8fafc;
                     padding: 20px;
                     border-radius: 8px;
-                    border: 1px solid #e2e8f0;
+                    border: 1.5pt solid #1E3A8A;
                 }
                 .info-item { display: flex; flex-direction: column; }
                 .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
-                .info-value { font-size: 14px; font-weight: 600; color: #0f172a; }
+                .info-value { font-size: 14px; font-weight: 600; color: #0F172A; }
                 .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
 
-                .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
+                .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1.5pt solid #1E3A8A; }
                 .lines-table th {
-                    background: #1e293b;
+                    background: #1E3A8A;
                     color: white;
                     font-weight: 700;
                     text-align: right;
                     padding: 12px;
-                    border-bottom: 2px solid #0f172a;
+                    border-bottom: 2px solid #0F172A;
                 }
                 .lines-table td {
                     padding: 12px;
-                    border-bottom: 1px solid #e2e8f0;
+                    border-bottom: 1pt solid #DBEAFE;
                     vertical-align: top;
-                    color: #334155;
+                    color: #1E40AF;
                 }
                 .lines-table tr:last-child td { border-bottom: none; }
                 .lines-table tr:nth-child(even) { background-color: #f8fafc; }
@@ -203,7 +203,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
                 </div>
             )}
 
-            <h3 style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#1e293b' }}>تفاصيل الأصناف</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#1E3A8A' }}>تفاصيل الأصناف</h3>
             <table className="lines-table">
                 <thead>
                     <tr>
@@ -223,7 +223,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
                             </td>
                             <td>
                                 {Object.values(item.selectedAddons).length > 0 ? (
-                                    <div style={{ fontSize: 12, color: '#475569' }}>
+                                    <div style={{ fontSize: 12, color: '#1D4ED8' }}>
                                         {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
                                             <div key={i} style={{ marginBottom: 2 }}>
                                                 <span style={{ color: '#16a34a', fontWeight: 'bold' }}>+</span>{' '}

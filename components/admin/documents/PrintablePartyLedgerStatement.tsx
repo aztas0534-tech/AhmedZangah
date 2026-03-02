@@ -111,33 +111,33 @@ export default function PrintablePartyLedgerStatement(props: {
           max-width: 210mm;
           margin: 0 auto;
           background: white;
-          color: #1e293b;
+          color: #1E3A8A;
           line-height: 1.5;
           padding: 40px;
-          border-top: 5px solid #1e293b;
+          border-top: 5px solid #1E3A8A;
         }
         .header-section {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
           margin-bottom: 24px;
-          border-bottom: 2px solid #e2e8f0;
+          border-bottom: 2pt solid #1E3A8A;
           padding-bottom: 16px;
         }
         .company-info { text-align: right; }
-        .company-info h1 { font-size: 22px; font-weight: 800; margin: 0 0 5px 0; color: #0f172a; }
-        .company-info p { margin: 2px 0; font-size: 13px; color: #475569; }
+        .company-info h1 { font-size: 22px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }
+        .company-info p { margin: 2px 0; font-size: 13px; color: #1D4ED8; }
         .doc-title {
           text-align: left;
           background: #f8fafc;
           padding: 12px 20px;
           border-radius: 8px;
-          border: 1px solid #e2e8f0;
+          border: 1.5pt solid #1E3A8A;
         }
         .doc-title h2 {
           font-size: 22px;
           font-weight: 900;
-          color: #0f172a;
+          color: #0F172A;
           margin: 0;
         }
         .doc-title .ref {
@@ -154,11 +154,11 @@ export default function PrintablePartyLedgerStatement(props: {
           background: #f8fafc;
           padding: 16px;
           border-radius: 8px;
-          border: 1px solid #e2e8f0;
+          border: 1.5pt solid #1E3A8A;
         }
         .info-item { display: flex; flex-direction: column; }
         .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
-        .info-value { font-size: 14px; font-weight: 600; color: #0f172a; }
+        .info-value { font-size: 14px; font-weight: 600; color: #0F172A; }
         .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; word-break: break-word; overflow-wrap: anywhere; }
         .summary {
           display: grid;
@@ -168,27 +168,27 @@ export default function PrintablePartyLedgerStatement(props: {
         }
         .summary-card {
           background: #f8fafc;
-          border: 1px solid #e2e8f0;
+          border: 1.5pt solid #1E3A8A;
           border-radius: 8px;
           padding: 12px;
         }
         .summary-card .label { font-size: 12px; color: #64748b; }
-        .summary-card .value { font-size: 18px; font-weight: 800; color: #0f172a; }
-        .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 18px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; table-layout: fixed; }
+        .summary-card .value { font-size: 18px; font-weight: 800; color: #0F172A; }
+        .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 18px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1.5pt solid #1E3A8A; table-layout: fixed; }
         .lines-table th {
-          background: #1e293b;
+          background: #1E3A8A;
           color: white;
           font-weight: 700;
           text-align: center;
           padding: 10px;
-          border-bottom: 2px solid #0f172a;
+          border-bottom: 2px solid #0F172A;
         }
         .lines-table th:first-child { text-align: right; }
         .lines-table td {
           padding: 10px;
-          border-bottom: 1px solid #e2e8f0;
+          border-bottom: 1pt solid #DBEAFE;
           vertical-align: top;
-          color: #334155;
+          color: #1E40AF;
           word-break: break-word;
           overflow-wrap: anywhere;
         }
@@ -210,7 +210,7 @@ export default function PrintablePartyLedgerStatement(props: {
           {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 120, marginBottom: 15 }} />}
           <h1>{AZTA_IDENTITY.tradeNameAr}</h1>
           {(brand?.name || brand?.branchName) && (
-             <p style={{ fontSize: 16, fontWeight: 'bold', color: '#334155', marginBottom: 5 }}>
+             <p style={{ fontSize: 16, fontWeight: 'bold', color: '#1E40AF', marginBottom: 5 }}>
                {brand?.name !== AZTA_IDENTITY.tradeNameAr ? brand?.name : brand?.branchName}
              </p>
           )}
@@ -295,13 +295,13 @@ export default function PrintablePartyLedgerStatement(props: {
           ) : filteredRows.map((r) => (
             <tr key={r.journal_line_id}>
               <td className="tabular" dir="ltr">{new Date(r.occurred_at).toLocaleString('en-GB')}</td>
-              <td className="tabular" dir="ltr" style={{ fontWeight: 700, color: '#475569' }}>{r.account_code}</td>
+              <td className="tabular" dir="ltr" style={{ fontWeight: 700, color: '#1D4ED8' }}>{r.account_code}</td>
               <td style={{ fontWeight: 600 }}>{r.account_name}</td>
-              <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'debit' ? '#0f172a' : '#cbd5e1' }}>
+              <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'debit' ? '#0F172A' : '#cbd5e1' }}>
                 {r.direction === 'debit' ? fmt(amountInRowCurrency(r)) : '—'}
                 <div style={{ fontSize: 10, color: '#64748b' }}>{String(r.currency_code || '').toUpperCase()}</div>
               </td>
-              <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'credit' ? '#0f172a' : '#cbd5e1' }}>
+              <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'credit' ? '#0F172A' : '#cbd5e1' }}>
                 {r.direction === 'credit' ? fmt(amountInRowCurrency(r)) : '—'}
                 <div style={{ fontSize: 10, color: '#64748b' }}>{String(r.currency_code || '').toUpperCase()}</div>
               </td>
