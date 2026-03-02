@@ -1,3 +1,4 @@
+import { numberToArabicWords } from '../utils/tafqeet';
 import { forwardRef, useEffect, useMemo, useState } from 'react';
 import { Order, AppSettings, CartItem } from '../types';
 import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
@@ -562,6 +563,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                 <th className="text-center w-8 print:w-4">م</th>
                                 <th className="text-center w-20 print:w-14">الرمز</th>
                                 <th className="text-right">البيان DESCRIPTION</th>
+                                <th className="text-center">المستودع WHS</th>
                                 <th className="text-center">الوحدة UOM</th>
                                 <th className="text-center">الكمية QTY</th>
                                 <th className="text-center">السعر PRICE</th>
@@ -589,6 +591,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                                 </div>
                                             )}
                                         </td>
+                                                                                <td className="text-center font-bold-value text-slate-600">{invoiceWarehouseName || "-"}</td>
                                         <td className="text-center text-slate-600">{uomLabel}</td>
                                         <td className="text-center font-bold-value text-charcoal">{qtyText}</td>
                                         <td className="text-center font-mono text-charcoal">
@@ -664,6 +667,11 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                 <span className="text-[5px] font-sans text-white uppercase tracking-widest">{invoiceCurrencyLabel}</span>
                             </span>
                         </div>
+                        <div className="bg-slate-50 border border-slate-200 print:border-[#E5E7EB] mt-1 p-1 text-center">
+                            <span className="font-bold-value text-charcoal print:text-[5.5px]">
+                                {numberToArabicWords(Number(invoiceOrder.total), currencyCode, 'هللة / فلس')}
+                            </span>
+                        </div>
 
                         {/* Credit Summary (if applicable) */}
                         {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
@@ -714,15 +722,16 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     {/* Pledge for Credit / Unpaid Balance */}
                     {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
                         <div className="border border-slate-800 print:border-slate-800 p-3 print:p-2.5 mb-6 print:mb-3 bg-white text-center">
-                            <p className="text-[8px] print:text-[6px] font-bold text-slate-900 leading-relaxed font-sans">
-                                أتعهد أنا الموقع أدناه بأنني استلمت البضاعة الموضحة أعلاه بحالة جيدة وكاملة، وأقر بأنني ملزم بسداد القيمة المتبقية وقدرها 
-                                <span className="font-mono mx-1 font-black text-[9px] print:text-[7px]">
-                                    {creditSummary ? formatMoney(Number(creditSummary.newBalance)) : formatMoney(invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'ar')?.amount ?? 0)} {currencyCode}
-                                </span>
-                                في موعدها المحدد، وفي حال التأخير يحق للشركة اتخاذ الإجراءات القانونية اللازمة.
+                            <p className="text-[8px] print:text-[6px.5] font-bold text-slate-900 leading-relaxed font-sans text-justify px-2">
+                                أنا الموقع أدناه المستلم / <span className="inline-block w-48 border-b-2 border-slate-400 print:border-slate-800 border-dotted"></span> بأنني استلمت البضاعة أعلاه كاملة وسليمة وأتعهد بسداد قيمتها كاملة وغير منقوصة لأمر <span className="font-black text-rose-700">{systemName}</span> إلى تاريخ الاستحقاق الموضح أعلاه وفي حال التأخر عن السداد أكون ملزماً بتسديد مبلغ الفاتورة ومصاريف التأخير حسب ما تقره المؤسسة ولها الحق الكامل بـ الاستيلاء على البضاعة المشتراة منها أو أي بضاعة أخرى أو على أي أموالنا بما يساوي مبلغ الدين والمصاريف.
                             </p>
-                            <div className="mt-4 print:mt-3 text-left w-full flex justify-end">
-                                <div className="text-[7px] print:text-[5px] font-bold text-slate-500 font-sans">اسم وتوقيع العميل / المقر بما فيه: ....................................................</div>
+                            <div className="mt-4 print:mt-4 flex justify-between items-end px-4">
+                                <div className="text-center font-bold text-[8px] print:text-[6.5px]">
+                                    <span>المستلم: ...............................</span>
+                                </div>
+                                <div className="text-center font-bold text-[8px] print:text-[6.5px]">
+                                    <span>التوقيع: ...............................</span>
+                                </div>
                             </div>
                         </div>
                     )}
