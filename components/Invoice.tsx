@@ -282,14 +282,21 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #1e293b !important;
                     }
 
-                    /* ═══ HEADER: Navy & Gold Premium Base ═══ */
+                    /* ═══ GOLD ACCENT BAR (top) ═══ */
+                    .invoice-gold-bar {
+                        display: block !important;
+                        height: 4px !important;
+                        background-color: #d4af37 !important;
+                        width: 100% !important;
+                    }
+
+                    /* ═══ HEADER: Dark Navy Premium ═══ */
                     .invoice-header {
-                        background-color: #0c1120 !important;
+                        background-color: #0a0f1e !important;
                         color: white !important;
-                        padding: 7px 10px !important;
-                        margin-bottom: 2px !important;
+                        padding: 8px 12px !important;
+                        margin-bottom: 0 !important;
                         border: none !important;
-                        border-bottom: 1.5px solid #d4af37 !important; /* Elegant gold accent */
                         gap: 4px !important;
                         page-break-inside: avoid;
                     }
@@ -299,22 +306,67 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-header .text-slate-400,
                     .invoice-header .text-slate-500,
                     .invoice-header .text-slate-600 {
-                        color: #cbd5e1 !important;
-                        font-weight: 400 !important;
+                        color: #94a3b8 !important;
+                    }
+                    .invoice-header .header-label {
+                        color: #d4af37 !important;
                     }
                     .invoice-title {
-                        font-size: 19px !important;
+                        font-size: 22px !important;
                         line-height: 1 !important;
-                        letter-spacing: -0.2px !important;
-                        font-weight: 300 !important;
+                        letter-spacing: 1px !important;
+                        font-weight: 700 !important;
+                        color: #d4af37 !important;
                     }
                     .brand-name {
-                        font-size: 14px !important;
+                        font-size: 15px !important;
                         line-height: 1.15 !important;
-                        letter-spacing: 0.1px !important;
+                        letter-spacing: 0.2px !important;
+                    }
+                    /* Logo white circle on dark header */
+                    .invoice-header .logo-circle {
+                        background-color: white !important;
+                        border-radius: 50% !important;
+                        padding: 3px !important;
+                        width: 42px !important;
+                        height: 42px !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                    }
+                    .invoice-header .logo-circle img {
+                        max-height: 36px !important;
+                        max-width: 36px !important;
+                    }
+                    /* Invoice number badge */
+                    .inv-number-badge {
+                        border: 1.5px solid #d4af37 !important;
+                        padding: 2px 6px !important;
+                        border-radius: 2px !important;
+                        background: transparent !important;
+                    }
+                    /* Tax badge in header */
+                    .tax-badge-print {
+                        background-color: #d4af37 !important;
+                        color: #0a0f1e !important;
+                        padding: 1px 5px !important;
+                        font-size: 5.5px !important;
+                        letter-spacing: 1px !important;
+                        font-weight: 700 !important;
+                    }
+                    .tax-badge-print * {
+                        color: #0a0f1e !important;
                     }
 
-                    /* ═══ META: Minimalist & Clean ═══ */
+                    /* ═══ GOLD LINE under header ═══ */
+                    .invoice-gold-line {
+                        display: block !important;
+                        height: 1.5px !important;
+                        background-color: #d4af37 !important;
+                        width: 100% !important;
+                    }
+
+                    /* ═══ META: Elegant cards ═══ */
                     .invoice-meta {
                         gap: 3px !important;
                         margin-bottom: 2px !important;
@@ -325,10 +377,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         padding: 4px 6px !important;
                         border: 0.5px solid #e2e8f0 !important;
                         border-radius: 2px !important;
-                        border-right: 2px solid #d4af37 !important;
-                        background-color: #fafaf9 !important; /* extremely light warm gray */
+                        border-right: 2.5px solid #d4af37 !important;
+                        background-color: #fafaf9 !important;
                     }
-                    /* Refine meta labels to look luxurious */
                     .meta-card .uppercase {
                         letter-spacing: 0.5px !important;
                         font-weight: 600 !important;
@@ -339,12 +390,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #0f172a !important;
                     }
 
-                    /* ═══ TABLE: Fine lines & subtle spacing ═══ */
+                    /* ═══ TABLE: Professional ═══ */
                     .invoice-container table {
                         font-size: 6.5px !important;
                         page-break-inside: auto;
                         border-collapse: collapse !important;
-                        border: 0.5px solid #cbd5e1 !important;
+                        border: 1px solid #0a0f1e !important;
                         margin-top: 2px !important;
                     }
                     .invoice-container thead {
@@ -357,7 +408,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         background-color: #f8fafc !important;
                     }
                     .invoice-container th {
-                        background-color: #0c1120 !important;
+                        background-color: #0a0f1e !important;
                         color: #f8fafc !important;
                         padding: 3.5px 4px !important;
                         font-size: 6.5px !important;
@@ -377,33 +428,38 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #1e293b !important;
                     }
                     .invoice-container tbody tr:last-child td {
-                        border-bottom: 1.5px solid #0c1120 !important;
+                        border-bottom: 1.5px solid #0a0f1e !important;
                     }
 
-                    /* ═══ TOTALS: Bold & prominent ═══ */
+                    /* ═══ TOTALS ═══ */
                     .totals-box {
                         background-color: #fafaf9 !important;
                         color: #0f172a !important;
-                        border: 1px solid #cbd5e1 !important;
+                        border: 1.5px solid #0a0f1e !important;
                         padding: 5px 7px !important;
                         page-break-inside: avoid;
-                        border-radius: 2px !important;
-                        box-shadow: 2px 2px 0 0 #f1f5f9 !important;
+                        border-radius: 0 !important;
                     }
-                    /* Grand total row dark */
                     .totals-grand-total {
-                        background-color: #0c1120 !important;
-                        color: #d4af37 !important; /* Gold text for grand total */
+                        background-color: #0a0f1e !important;
+                        color: #d4af37 !important;
                         margin: 4px -7px -5px -7px !important;
-                        padding: 5px 7px !important;
-                        border-bottom-left-radius: 2px !important;
-                        border-bottom-right-radius: 2px !important;
+                        padding: 6px 8px !important;
                     }
                     .totals-grand-total * {
                         color: #f8fafc !important;
                     }
                     .totals-grand-total .font-mono {
-                        color: #d4af37 !important; /* Gold total amount */
+                        color: #d4af37 !important;
+                        font-size: 15px !important;
+                    }
+
+                    /* ═══ Receipt confirmation ═══ */
+                    .receipt-confirm-box {
+                        border: 1px solid #cbd5e1 !important;
+                        border-top: 2px solid #d4af37 !important;
+                        padding: 4px 5px !important;
+                        page-break-inside: avoid;
                     }
 
                     .credit-summary-box {
@@ -411,26 +467,32 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         border: 1px solid #e2e8f0 !important;
                         padding: 3.5px 5px !important;
                         page-break-inside: avoid;
-                        border-radius: 2px !important;
+                        border-radius: 0 !important;
                     }
                     .qr-section {
                         border: 1px solid #e2e8f0 !important;
                         background: #fff !important;
                         page-break-inside: avoid;
-                        border-radius: 4px !important;
                         padding: 2px !important;
                     }
 
-                    /* ═══ Footer bar ═══ */
+                    /* ═══ Footer ═══ */
                     .invoice-print-footer {
-                        background-color: white !important;
-                        color: #64748b !important;
-                        padding: 3px 6px !important;
-                        margin-top: 5px !important;
-                        border-top: 1.5px solid #e2e8f0 !important;
+                        background-color: #0a0f1e !important;
+                        color: #94a3b8 !important;
+                        padding: 2.5px 8px !important;
+                        margin-top: 4px !important;
+                        border: none !important;
                     }
                     .invoice-print-footer * {
-                        color: #64748b !important;
+                        color: #94a3b8 !important;
+                    }
+                    /* Gold bottom bar */
+                    .invoice-gold-bar-bottom {
+                        display: block !important;
+                        height: 3px !important;
+                        background-color: #d4af37 !important;
+                        width: 100% !important;
                     }
 
                     .print-hide-subtext {
@@ -438,11 +500,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     }
                 }
             `}</style>
-            <div className={`invoice-container w-full mx-auto p-12 bg-white flex flex-col gap-6 text-slate-900 print:p-0 print:pt-2 print:gap-1`} style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
+            <div className={`invoice-container w-full mx-auto p-12 bg-white flex flex-col gap-6 text-slate-900 print:p-0 print:pt-0 print:gap-1`} style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
+                {/* ▬▬▬ TOP GOLD ACCENT BAR ▬▬▬ */}
+                <div className="invoice-gold-bar hidden print:block" style={{ height: 4, backgroundColor: '#d4af37' }}></div>
+
                 {/* Watermark for Copy */}
                 {(isCopy || copyLabel) && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
-                        <div className="text-gray-100 font-bold text-[10rem] print:text-[6rem] -rotate-45 select-none opacity-40 print:opacity-[0.15]" style={{ color: accentColor ? `${accentColor}1A` : undefined }}>
+                        <div className="text-gray-100 font-bold text-[10rem] print:text-[6rem] -rotate-45 select-none opacity-40 print:opacity-[0.12]" style={{ color: accentColor ? `${accentColor}1A` : undefined }}>
                             {copyLabel || 'نسخة'}
                         </div>
                     </div>
@@ -450,50 +515,50 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                 {/* Copy Label Badge */}
                 {copyLabel && (
-                    <div className="absolute top-0 left-0 bg-slate-100 px-6 py-2 print:px-2 print:py-0.5 rounded-br-2xl border-b-2 border-r-2 border-slate-200 z-20 print:border-slate-200 print:border-b print:border-r print:bg-white print:rounded-br-lg print:shadow-sm">
+                    <div className="absolute top-0 left-0 bg-slate-100 px-6 py-2 print:px-2 print:py-0.5 rounded-br-2xl border-b-2 border-r-2 border-slate-200 z-20 print:border-[#d4af37] print:border-b print:border-r print:bg-white print:rounded-none">
                         <span className="font-extrabold text-sm print:text-[6px] uppercase tracking-widest" style={{ color: accentColor }}>{copyLabel}</span>
                     </div>
                 )}
 
                 {/* Header Section */}
-                <div className="invoice-header relative z-10 border-b-4 border-slate-900 pb-6 mb-2 flex items-center justify-between gap-8 print:pb-1 print:mb-0 print:border-b-2 print:gap-2">
+                <div className="invoice-header relative z-10 border-b-4 border-slate-900 pb-6 mb-2 flex items-center justify-between gap-8 print:pb-0 print:mb-0 print:border-b-0 print:gap-2">
                     {/* Brand Info */}
                     <div className="flex items-center gap-6 print:gap-2">
                         {storeLogoUrl && (
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-sm print:border-none print:shadow-none print:p-0">
-                                <img src={storeLogoUrl} alt="Logo" className="h-32 print:h-12 w-auto object-contain" />
+                            <div className="logo-circle bg-white p-2 rounded-xl border border-slate-100 shadow-sm print:rounded-full print:shadow-none">
+                                <img src={storeLogoUrl} alt="Logo" className="h-32 print:h-9 w-auto object-contain" />
                             </div>
                         )}
                         <div className="flex flex-col justify-center">
                             <h1 className="brand-name text-4xl print:text-sm font-black text-slate-900 tracking-tight leading-tight">{systemName}</h1>
-                            <div className="text-sm print:text-[7px] font-bold text-slate-500 mt-1 print:mt-0 uppercase tracking-[0.2em]" dir="ltr">{systemKey}</div>
+                            <div className="text-sm print:text-[6px] font-bold text-slate-500 mt-1 print:mt-0 uppercase tracking-[0.2em]" dir="ltr">{systemKey}</div>
 
-                            <div className="mt-4 flex flex-col gap-1.5 text-sm print:text-[7px] text-slate-600 font-medium print:mt-0.5 print:gap-0">
+                            <div className="mt-4 flex flex-col gap-1.5 text-sm print:text-[6.5px] text-slate-600 font-medium print:mt-0.5 print:gap-0">
                                 {showBranchName && (
                                     <div className="flex items-center gap-2 print:gap-1">
                                         <span className="text-slate-400 print:hidden">🏢</span>
-                                        <span className="font-bold text-slate-800">الفرع:</span>
+                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">الفرع:</span>
                                         <span>{branchName}</span>
                                     </div>
                                 )}
                                 {storeAddress && (
                                     <div className="flex items-center gap-2 print:gap-1">
                                         <span className="text-slate-400 print:hidden">📍</span>
-                                        <span className="font-bold text-slate-800">العنوان:</span>
+                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">العنوان:</span>
                                         <span>{storeAddress}</span>
                                     </div>
                                 )}
                                 {storeContactNumber && (
                                     <div className="flex items-center gap-2 print:gap-1">
                                         <span className="text-slate-400 print:hidden">📞</span>
-                                        <span className="font-bold text-slate-800">الهاتف:</span>
+                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">الهاتف:</span>
                                         <span dir="ltr" className="font-mono">{storeContactNumber}</span>
                                     </div>
                                 )}
                                 {vatNumber && (
                                     <div className="flex items-center gap-2 mt-1 print:mt-0 print:gap-1">
                                         <span className="text-slate-400 print:hidden">🔢</span>
-                                        <span className="font-bold text-slate-800">الرقم الضريبي:</span>
+                                        <span className="header-label font-bold text-slate-800 print:text-[5.5px]">الرقم الضريبي:</span>
                                         <span dir="ltr" className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded print:bg-transparent print:px-0 print:py-0">
                                             {vatNumber}
                                         </span>
@@ -506,26 +571,29 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     {/* Invoice Title & Meta */}
                     <div className="text-left rtl:text-left flex flex-col items-end">
                         <h2 className="invoice-title text-5xl print:text-lg font-black text-slate-900 uppercase tracking-tighter">فاتورة</h2>
-                        <div className="text-slate-500 text-sm print:text-[6px] font-extrabold tracking-[0.3em] mt-2 print:mt-0.5 uppercase bg-slate-100 px-3 py-1 print:px-1 print:py-0 border border-slate-200 rounded print:bg-slate-100 print:border-slate-300">فاتورة ضريبية</div>
+                        <div className="tax-badge-print text-slate-500 text-sm print:text-[5.5px] font-extrabold tracking-[0.3em] mt-2 print:mt-0.5 uppercase bg-slate-100 px-3 py-1 print:px-1.5 print:py-0.5 border border-slate-200 rounded print:rounded-none print:border-0">فاتورة ضريبية</div>
 
-                        <div className="mt-8 flex gap-6 mt-auto border-t-2 border-slate-100 pt-4 print:mt-1 print:pt-1 print:gap-2 print:border-t">
+                        <div className="mt-8 flex gap-6 mt-auto border-t-2 border-slate-100 pt-4 print:mt-1 print:pt-1.5 print:gap-3 print:border-t-0">
                             <div className="flex flex-col items-end">
-                                <span className="text-[11px] print:text-[6px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">تاريخ الإصدار</span>
+                                <span className="text-[11px] print:text-[5.5px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">تاريخ الإصدار</span>
                                 <span className="text-xl print:text-[9px] font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('en-GB')}</span>
                             </div>
-                            <div className="w-px bg-slate-200"></div>
-                            <div className="flex flex-col items-end">
-                                <span className="text-[11px] print:text-[6px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">رقم الفاتورة</span>
-                                <span className="text-2xl print:text-[10px] font-black font-mono text-slate-900" dir="ltr">#{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
+                            <div className="w-px bg-slate-200 print:bg-[#334155]"></div>
+                            <div className="inv-number-badge flex flex-col items-end print:px-1.5 print:py-0.5">
+                                <span className="text-[11px] print:text-[5.5px] font-bold text-slate-400 uppercase tracking-widest mb-1 print:mb-0">رقم الفاتورة</span>
+                                <span className="text-2xl print:text-[11px] font-black font-mono text-slate-900" dir="ltr">#{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
+                {/* ▬▬▬ GOLD LINE under header ▬▬▬ */}
+                <div className="invoice-gold-line hidden print:block" style={{ height: 1.5, backgroundColor: '#d4af37' }}></div>
+
                 {/* Info Grid */}
                 <div className="invoice-meta grid grid-cols-12 gap-6 relative z-10 print:gap-1">
                     {/* Bill To */}
-                    <div className="col-span-12 md:col-span-5 meta-card bg-slate-50 rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden print:shadow-none print:rounded-md print:p-1.5 print:border">
+                    <div className="col-span-12 md:col-span-5 meta-card bg-slate-50 rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden print:shadow-none print:rounded-none print:p-1.5 print:border">
                         <div className="absolute top-0 right-0 w-1.5 print:w-0.5 h-full bg-slate-800"></div>
                         <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2 print:mb-0.5 print:pb-0.5">
                             <span className="text-sm print:text-[7px] font-black text-slate-800 uppercase tracking-widest">إلى السادة / العميل</span>
@@ -548,7 +616,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     </div>
 
                     {/* Details */}
-                    <div className="col-span-12 md:col-span-7 meta-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm print:shadow-none print:rounded-md print:p-1.5 print:border">
+                    <div className="col-span-12 md:col-span-7 meta-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm print:shadow-none print:rounded-none print:p-1.5 print:border">
                         <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 pb-2 print:mb-0.5 print:pb-0.5">
                             <span className="text-sm print:text-[7px] font-black text-slate-800 uppercase tracking-widest">تفاصيل الطلب والدفع</span>
                         </div>
@@ -677,7 +745,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* Legal & Terms */}
                 <div className="order-2 md:order-1 flex flex-col gap-6 print:gap-1 text-slate-600 relative z-10">
                     {/* Receipt Confirmation Box */}
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-sm print:bg-transparent print:border print:border-slate-300 print:rounded-none print:p-1 print:shadow-none">
+                    <div className="receipt-confirm-box bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-sm print:bg-transparent print:border print:border-slate-300 print:rounded-none print:p-1 print:shadow-none">
                         <h4 className="font-bold text-sm text-slate-800 mb-2 print:text-[7px] print:mb-0.5 flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-slate-400 print:hidden"></span>
                             إقرار استلام
@@ -819,11 +887,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* Print Footer Elements */}
-                <div className="invoice-print-footer hidden print:flex w-full mt-3 border-t border-slate-300 pt-1 justify-between items-center relative z-10 text-slate-400 font-mono text-[6px]" dir="ltr">
+                <div className="invoice-print-footer hidden print:flex w-full mt-3 border-t border-slate-300 pt-1 justify-between items-center relative z-10 text-slate-400 font-mono text-[6.5px]" dir="ltr">
                     <div>{new Date().toLocaleString('en-GB')}</div>
                     <div>طبع بواسطة: {printedBy}</div>
                     <div>SYS-REF: {invoiceOrder.id.slice(0, 16).toUpperCase()}</div>
                 </div>
+
+                {/* ▬▬▬ BOTTOM GOLD ACCENT BAR ▬▬▬ */}
+                <div className="invoice-gold-bar-bottom hidden print:block" style={{ height: 3, backgroundColor: '#d4af37' }}></div>
             </div>
         </div>
     );
