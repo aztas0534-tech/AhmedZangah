@@ -607,7 +607,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* ▬▬▬ TOTALS WRAPPER ▬▬▬ */}
                 <div className="totals-wrapper relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12 print:flex print:gap-4 print:mb-2 w-full">
                     
-                    {/* Left side / Footer Info (QR + Signature) */}
+                    {/* Left side / Footer Info (QR) */}
                     <div className="flex-1 flex flex-col justify-end pt-4 print:pt-0">
                         <div className="flex gap-4 items-end mb-4 print:mb-2">
                             {qrUrl && (
@@ -615,8 +615,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                     <img src={qrUrl} alt="QR Code" className="w-24 h-24 print:w-16 print:h-16 object-contain" />
                                 </div>
                             )}
-                            <div className="flex-1 border-t border-slate-300 print:border-[#E5E7EB] print:border-dashed pt-1 mt-auto">
-                                <div className="font-thin-label text-center">توقيع المستلم | Receiver Signature</div>
+                            {/* Official Entity Stamp space */}
+                            <div className="flex-1 flex justify-center items-center h-24 print:h-16 border border-slate-200 print:border-[#E5E7EB] border-dashed rounded-sm opacity-50">
+                                <div className="font-thin-label text-center text-slate-400">الختم الرسمي<br/>OFFICIAL STAMP</div>
                             </div>
                         </div>
                     </div>
@@ -705,6 +706,49 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                 )}
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {/* ▬▬▬ LEGAL & SIGNATURES ▬▬▬ */}
+                <div className="relative z-10 w-full mt-4 print:mt-1">
+                    {/* Pledge for Credit / Unpaid Balance */}
+                    {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
+                        <div className="border border-slate-800 print:border-slate-800 p-3 print:p-2.5 mb-6 print:mb-3 bg-white text-center">
+                            <p className="text-[8px] print:text-[6px] font-bold text-slate-900 leading-relaxed font-sans">
+                                أتعهد أنا الموقع أدناه بأنني استلمت البضاعة الموضحة أعلاه بحالة جيدة وكاملة، وأقر بأنني ملزم بسداد القيمة المتبقية وقدرها 
+                                <span className="font-mono mx-1 font-black text-[9px] print:text-[7px]">
+                                    {creditSummary ? formatMoney(Number(creditSummary.newBalance)) : formatMoney(invoiceOrder.paymentBreakdown?.find((p: any) => p.method === 'ar')?.amount ?? 0)} {currencyCode}
+                                </span>
+                                في موعدها المحدد، وفي حال التأخير يحق للشركة اتخاذ الإجراءات القانونية اللازمة.
+                            </p>
+                            <div className="mt-4 print:mt-3 text-left w-full flex justify-end">
+                                <div className="text-[7px] print:text-[5px] font-bold text-slate-500 font-sans">اسم وتوقيع العميل / المقر بما فيه: ....................................................</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Official Signatures Row */}
+                    <div className="flex justify-between items-end mt-8 print:mt-6 px-4 print:px-2">
+                        <div className="text-center w-32 print:w-20">
+                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
+                                <span className="font-thin-label block text-slate-900 font-bold">المستلم | Receiver</span>
+                            </div>
+                        </div>
+                        <div className="text-center w-32 print:w-20">
+                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
+                                <span className="font-thin-label block text-slate-900 font-bold">أمين الصندوق | Cashier</span>
+                            </div>
+                        </div>
+                        <div className="text-center w-32 print:w-20">
+                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
+                                <span className="font-thin-label block text-slate-900 font-bold">المحاسب | Accountant</span>
+                            </div>
+                        </div>
+                        <div className="text-center w-32 print:w-20">
+                            <div className="border-t border-slate-800 print:border-slate-800 pt-1.5">
+                                <span className="font-thin-label block text-slate-900 font-bold">المدير | Manager</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
