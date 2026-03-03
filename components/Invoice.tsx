@@ -273,12 +273,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     .invoice-container { 
                         width: 100% !important; 
-                        padding: 12mm 18mm !important;
+                        padding: 8mm 12mm !important;
                         display: flex !important;
                         flex-direction: column !important;
                         font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                         color: #0F172A !important;
-                        line-height: 1.5 !important;
+                        line-height: 1.35 !important;
                         position: relative !important;
                         min-height: 296mm !important;
                         background-color: #FAFAFA !important;
@@ -304,7 +304,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-container::before {
                         content: '';
                         position: absolute !important;
-                        top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
+                        top: 4mm; bottom: 4mm; left: 4mm; right: 4mm;
                         border: 2pt solid #1E3A8A !important;
                         pointer-events: none !important;
                         z-index: 50 !important;
@@ -312,7 +312,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-container::after {
                         content: '';
                         position: absolute !important;
-                        top: 7.5mm; bottom: 7.5mm; left: 7.5mm; right: 7.5mm;
+                        top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
                         border: 0.5pt solid #D4AF37 !important;
                         pointer-events: none !important;
                         z-index: 50 !important;
@@ -330,8 +330,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         justify-content: space-between !important;
                         align-items: center !important;
                         border-bottom: 1.5pt solid #1E3A8A !important;
-                        padding-bottom: 8px !important;
-                        margin-bottom: 15px !important;
+                        padding-bottom: 4px !important;
+                        margin-bottom: 8px !important;
                     }
                     .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
                     .invoice-title { font-size: 32px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
@@ -341,15 +341,15 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .info-grid {
                         display: flex !important;
                         justify-content: space-between !important;
-                        margin-bottom: 15px !important;
+                        margin-bottom: 6px !important;
                         background: #F3F4F6 !important;
                         border: 0.5pt solid #E5E7EB !important;
-                        padding: 8px 12px !important;
+                        padding: 4px 8px !important;
                     }
                     .info-group {
                         display: flex !important;
                         flex-direction: column !important;
-                        gap: 4px !important;
+                        gap: 2px !important;
                     }
                     .info-item {
                         display: flex !important;
@@ -360,12 +360,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .luxury-table {
                         width: 100% !important;
                         border-collapse: collapse !important;
-                        margin-bottom: 15px !important;
+                        margin-bottom: 6px !important;
                     }
                     .luxury-table th {
                         background-color: #0F172A !important;
                         color: #FFFFFF !important;
-                        padding: 6px 8px !important;
+                        padding: 4px 6px !important;
                         font-weight: 600 !important;
                         font-size: 11px !important;
                         text-transform: uppercase !important;
@@ -373,8 +373,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         border: none !important;
                     }
                     .luxury-table td {
-                        padding: 6px 8px !important;
-                        font-size: 12px !important;
+                        padding: 3px 4px !important;
+                        font-size: 11px !important;
                         font-weight: 600 !important;
                         border-bottom: 0.5pt solid #E5E7EB !important;
                         color: #0F172A !important;
@@ -408,8 +408,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         align-items: center !important;
                         background-color: #0F172A !important;
                         color: white !important;
-                        padding: 8px 10px !important;
-                        margin-top: 4px !important;
+                        padding: 4px 6px !important;
+                        margin-top: 2px !important;
                     }
                     .grand-total-label { font-size: 14px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
                     .grand-total-value { font-size: 20px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
@@ -418,8 +418,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .summary-box {
                         border: 0.5pt solid #E5E7EB !important;
                         background: #F9FAFB !important;
-                        padding: 6px !important;
-                        margin-top: 6px !important;
+                        padding: 4px !important;
+                        margin-top: 4px !important;
                     }
 
                     /* ═══ FOOTER ═══ */
@@ -428,7 +428,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         text-align: center !important;
                         font-size: 9px !important;
                         color: #4B5563 !important;
-                        padding-top: 8px !important;
+                        padding-top: 4px !important;
                         page-break-inside: avoid !important;
                         display: flex !important;
                         flex-direction: column !important;
