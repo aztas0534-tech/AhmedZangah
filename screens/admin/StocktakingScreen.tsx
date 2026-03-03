@@ -36,8 +36,7 @@ const StocktakingScreen: React.FC = () => {
                 .from('inventory_counts')
                 .select(`
           id, warehouse_id, status, created_by, started_at, completed_at, notes, created_at, updated_at,
-          warehouses (name),
-          auth_users:created_by (raw_user_meta_data)
+          warehouses (name)
         `)
                 .order('created_at', { ascending: false });
 
@@ -52,7 +51,7 @@ const StocktakingScreen: React.FC = () => {
                 warehouseName: row.warehouses?.name || '',
                 status: row.status,
                 createdBy: row.created_by,
-                createdByName: row.auth_users?.raw_user_meta_data?.name || row.created_by,
+                createdByName: row.created_by?.slice(0, 8) || '',
                 startedAt: row.started_at,
                 completedAt: row.completed_at,
                 notes: row.notes,
