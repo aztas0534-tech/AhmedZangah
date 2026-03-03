@@ -263,13 +263,19 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
         }
     };
 
+    const copyTitle = !isCopy || copyNumber === 1
+        ? 'فاتورة العميل'
+        : copyNumber === 2
+            ? 'فاتورة الصندوق'
+            : 'فاتورة المخازن';
+
     return (
         <div className="thermal-invoice" dir="rtl">
             <style>{`
                 .thermal-invoice {
                     font-family: 'Tahoma', 'Arial', sans-serif;
-                    font-size: 11px;
-                    line-height: 1.35;
+                    font-size: 12px;
+                    line-height: 1.4;
                     color: #000;
                     width: ${resolvedThermalPaperWidth};
                     max-width: ${resolvedThermalPaperWidth};
@@ -296,10 +302,10 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 .text-right { text-align: right; }
                 .text-left { text-align: left; }
                 .font-bold { font-weight: bold; }
-                .text-xs { font-size: 10px; }
-                .text-sm { font-size: 11px; }
-                .text-lg { font-size: 14px; }
-                .text-xl { font-size: 16px; }
+                .text-xs { font-size: 11px; }
+                .text-sm { font-size: 12px; }
+                .text-lg { font-size: 15px; }
+                .text-xl { font-size: 18px; }
                 .mb-1 { margin-bottom: 4px; }
                 .mb-2 { margin-bottom: 8px; }
                 .mt-1 { margin-top: 4px; }
@@ -312,10 +318,10 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; letter-spacing: -0.5px; }
                 .logo-img { height: 100px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
                 table { width: 100%; border-collapse: collapse; }
-                th { text-align: right; font-size: 10px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
+                th { text-align: right; font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
                 td { padding: 3px 0; vertical-align: top; }
                 .item-name { font-weight: bold; margin-bottom: 2px; }
-                .item-meta { font-size: 9px; color: #444; }
+                .item-meta { font-size: 10px; color: #444; }
                 .total-box { border: 2px solid #000; padding: 8px; margin-top: 10px; border-radius: 4px; }
                 .watermark { 
                     position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
@@ -324,7 +330,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             `}</style>
 
             {isCopy && (
-                <div className="watermark">نسخة</div>
+                <div className="watermark">{copyTitle}</div>
             )}
 
             <div className="text-center mb-2">
@@ -338,6 +344,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
             <div className="text-center border-y py-1 mb-2">
                 <div className="font-bold text-lg">فاتورة ضريبية</div>
+                <div className="inline-block border border-black rounded px-2 py-0.5 mt-1 text-sm font-bold bg-gray-100">{copyTitle}</div>
                 <div className="text-xs mt-1">نوع الفاتورة: {typeLabel}</div>
             </div>
 

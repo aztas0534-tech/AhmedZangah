@@ -321,8 +321,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     /* ═══ Typography ═══ */
                     .text-gold { color: #D4AF37 !important; }
                     .text-charcoal { color: #0F172A !important; }
-                    .font-thin-label { font-weight: 300 !important; font-size: 5px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-                    .font-bold-value { font-weight: 800 !important; font-size: 7px !important; color: #0F172A !important; }
+                    .font-thin-label { font-weight: 300 !important; font-size: 6px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+                    .font-bold-value { font-weight: 800 !important; font-size: 8.5px !important; color: #0F172A !important; }
 
                     /* ═══ HEADER ═══ */
                     .luxury-header {
@@ -367,14 +367,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #FFFFFF !important;
                         padding: 4px 6px !important;
                         font-weight: 600 !important;
-                        font-size: 6px !important;
+                        font-size: 7.5px !important;
                         text-transform: uppercase !important;
                         letter-spacing: 0.5px !important;
                         border: none !important;
                     }
                     .luxury-table td {
                         padding: 4px 6px !important;
-                        font-size: 7px !important;
+                        font-size: 8.5px !important;
                         font-weight: 600 !important;
                         border-bottom: 0.5pt solid #E5E7EB !important;
                         color: #0F172A !important;
@@ -411,8 +411,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         padding: 6px 8px !important;
                         margin-top: 4px !important;
                     }
-                    .grand-total-label { font-size: 9px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
-                    .grand-total-value { font-size: 14px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
+                    .grand-total-label { font-size: 11px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
+                    .grand-total-value { font-size: 16px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
 
                     /* ═══ SUMMARY BOXES ═══ */
                     .summary-box {
@@ -426,7 +426,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .luxury-footer {
                         margin-top: auto !important;
                         text-align: center !important;
-                        font-size: 4.5px !important;
+                        font-size: 5.5px !important;
                         color: #4B5563 !important;
                         padding-top: 8px !important;
                         page-break-inside: avoid !important;
@@ -445,9 +445,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .print-hide-subtext { display: none !important; }
                 }
             `} </style>
-            
+
             <div className="invoice-container w-full mx-auto p-12 bg-[#FAFAFA] flex flex-col text-blue-950 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
-                
+
                 <div className="luxury-watermark">{systemName}</div>
 
                 {/* Watermark for Copy */}
@@ -479,7 +479,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             </div>
                         </div>
                     </div>
-                    
+
                     <div className="text-center md:text-left rtl:text-left flex flex-col items-center flex-shrink-0 z-10">
                         <h2 className="invoice-title">فاتورة</h2>
                         <div className="title-sub">فاتورة ضريبية TAX INVOICE</div>
@@ -514,12 +514,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         </div>
                         <div className="info-item mb-2 print:mb-1">
                             <span className="font-thin-label">التاريخ | Date</span>
-                            <span className="font-bold-value font-mono" dir="ltr">{new Date(invoiceDate).toLocaleDateString("en-GB")} {new Date(invoiceDate).toLocaleTimeString("en-GB", {hour: '2-digit', minute:'2-digit'})}</span>
+                            <span className="font-bold-value font-mono" dir="ltr">{new Date(invoiceDate).toLocaleDateString("en-GB")} {new Date(invoiceDate).toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         <div className="info-item">
                             <span className="font-thin-label">شروط الدفع | Terms</span>
                             <span className="font-bold-value text-charcoal">
-                                {getPaymentMethodName(invoiceOrder.paymentMethod)} - {invoiceTermsLabel} 
+                                {getPaymentMethodName(invoiceOrder.paymentMethod)} - {invoiceTermsLabel}
                                 {invoiceOrder.orderSource && <span className="text-[5px] text-slate-500 mr-1 opacity-70">({invoiceOrder.orderSource === 'in_store' ? 'متجر' : 'تطبيق'})</span>}
                             </span>
                         </div>
@@ -591,7 +591,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                                 </div>
                                             )}
                                         </td>
-                                                                                <td className="text-center font-bold-value text-slate-600">{invoiceWarehouseName || "-"}</td>
+                                        <td className="text-center font-bold-value text-slate-600">{invoiceWarehouseName || "-"}</td>
                                         <td className="text-center text-slate-600">{uomLabel}</td>
                                         <td className="text-center font-bold-value text-charcoal">{qtyText}</td>
                                         <td className="text-center font-mono text-charcoal">
@@ -609,7 +609,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                 {/* ▬▬▬ TOTALS WRAPPER ▬▬▬ */}
                 <div className="totals-wrapper relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12 print:flex print:gap-4 print:mb-2 w-full">
-                    
+
                     {/* Left side / Footer Info (QR) */}
                     <div className="flex-1 flex flex-col justify-end pt-4 print:pt-0">
                         <div className="flex gap-4 items-end mb-4 print:mb-2">
@@ -620,7 +620,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             )}
                             {/* Official Entity Stamp space */}
                             <div className="flex-1 flex justify-center items-center h-24 print:h-16 border border-slate-200 print:border-[#E5E7EB] border-dashed rounded-sm opacity-50">
-                                <div className="font-thin-label text-center text-slate-400">الختم الرسمي<br/>OFFICIAL STAMP</div>
+                                <div className="font-thin-label text-center text-slate-400">الختم الرسمي<br />OFFICIAL STAMP</div>
                             </div>
                         </div>
                     </div>
@@ -659,7 +659,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                 <span className="font-thin-label text-charcoal mt-[1px]">{invoiceCurrencyLabel}</span>
                             </span>
                         </div>
-                        
+
                         <div className="grand-total-row">
                             <span className="grand-total-label">الإجمالي | TOTAL</span>
                             <span className="grand-total-value flex gap-2 items-center">
@@ -682,7 +682,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                         <div className="total-row">
                                             <span className="font-thin-label">رصيد سابق | Prev</span>
                                             <span className="font-mono font-bold-value text-blue-800 flex gap-1 items-center">
-                                                {formatMoney(Number(creditSummary.previousBalance || 0))} 
+                                                {formatMoney(Number(creditSummary.previousBalance || 0))}
                                                 <span className="font-thin-label mt-[1px]">{currencyCode}</span>
                                             </span>
                                         </div>
