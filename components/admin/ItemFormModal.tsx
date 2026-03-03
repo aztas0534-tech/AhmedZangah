@@ -131,7 +131,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         packSize: Number((itemToEdit as any).packSize ?? 0) || 0,
         cartonSize: Number((itemToEdit as any).cartonSize ?? 0) || 0,
         uomUnits,
-      });
+        shelf_life_days: Number((itemToEdit as any).shelf_life_days ?? 0) || 0,
+      } as any);
       setPriceDraft(String(Number(itemToEdit.price || 0) || 0));
     } else {
       setItem(getInitialFormState());
@@ -177,7 +178,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
       cancelled = true;
     };
   }, [itemToEdit?.id, hasPermission]);
-  
+
   useEffect(() => {
     const nameAr = (item.name?.ar || '').trim();
     const descAr = (item.description?.ar || '').trim();
@@ -671,13 +672,13 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الكمية المتوفرة</label>
-                      <NumberInput
+                    <NumberInput
                       id="availableStock"
                       name="availableStock"
                       value={item.availableStock || 0}
                       onChange={handleNumberChange}
                       min={0}
-                        step={(item.unitType === 'kg' || item.unitType === 'gram') ? 0.5 : 1}
+                      step={(item.unitType === 'kg' || item.unitType === 'gram') ? 0.5 : 1}
                     />
                   </div>
                   <div>
@@ -805,6 +806,18 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label htmlFor="shelf_life_days" className="block text-sm font-medium text-gray-700 dark:text-gray-300">العمر الافتراضي (بالأيام)</label>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">عند إدخال تاريخ الإنتاج أثناء الاستلام، يُحسب تاريخ الانتهاء تلقائياً</div>
+                    <NumberInput
+                      id="shelf_life_days"
+                      name="shelf_life_days"
+                      value={Number((item as any).shelf_life_days || 0)}
+                      onChange={handleNumberChange}
+                      min={0}
+                      step={1}
+                    />
                   </div>
                 </div>
 

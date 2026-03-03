@@ -13,6 +13,9 @@ import { useWarehouses } from '../../contexts/WarehouseContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 
 import RecordWastageModal from '../../components/admin/RecordWastageModal';
+import BatchLabel from '../../components/admin/documents/BatchLabel';
+import { renderToString } from 'react-dom/server';
+import { printContent } from '../../utils/printUtils';
 
 type StockRowProps = {
     item: MenuItem;
@@ -491,6 +494,28 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                             إفراج
                                                         </button>
                                                     )}
+                                                    <button
+                                                        type="button"
+                                                        title="طباعة ملصق الدفعة"
+                                                        onClick={() => {
+                                                            const itemName = (item as any)?.name?.ar || (item as any)?.name?.en || item?.name || '';
+                                                            const html = renderToString(
+                                                                <BatchLabel
+                                                                    itemName={typeof itemName === 'object' ? (itemName as any).ar || (itemName as any).en || '' : String(itemName)}
+                                                                    batchCode={String(b.batchId || '').slice(0, 8)}
+                                                                    productionDate={(b as any).productionDate || ''}
+                                                                    expiryDate={(b as any).expiryDate || ''}
+                                                                    quantity={Number(b.remainingQuantity || 0)}
+                                                                    unitLabel={String(item?.unitType || '')}
+                                                                    barcode={(item as any)?.barcode || ''}
+                                                                />
+                                                            );
+                                                            printContent(html, 'ملصق الدفعة');
+                                                        }}
+                                                        className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500"
+                                                    >
+                                                        🏷️ طباعة ملصق
+                                                    </button>
                                                 </div>
                                             </div>
                                             <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">

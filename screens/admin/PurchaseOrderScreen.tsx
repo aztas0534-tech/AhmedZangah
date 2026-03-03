@@ -1045,6 +1045,20 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     // Helper to update a row
+    const getShelfLifeDays = (itemId: string): number | null => {
+        const item = getItemById(itemId) || (menuItems || []).find((i) => i && i.id === itemId);
+        const days = (item as any)?.shelf_life_days ?? (item as any)?.shelfLifeDays;
+        return (typeof days === 'number' && days > 0) ? days : null;
+    };
+    const autoFillExpiry = (productionDate: string, itemId: string): string => {
+        if (!productionDate) return '';
+        const days = getShelfLifeDays(itemId);
+        if (!days) return '';
+        const d = new Date(productionDate);
+        if (isNaN(d.getTime())) return '';
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+    };
     const updateRow = (index: number, field: keyof OrderItemRow, value: any) => {
         const newRows = [...orderItems];
         const next = { ...newRows[index], [field]: value } as any;
@@ -1053,6 +1067,13 @@ const PurchaseOrderScreen: React.FC = () => {
             const baseCode = String(it?.unitType || 'piece');
             next.uomCode = baseCode;
             next.uomQtyInBase = 1;
+        }
+        // Auto-fill expiry when production date is entered
+        if (field === 'productionDate' && value) {
+            const calcExpiry = autoFillExpiry(String(value), next.itemId);
+            if (calcExpiry && !next.expiryDate) {
+                next.expiryDate = calcExpiry;
+            }
         }
         newRows[index] = next;
         setOrderItems(newRows);
@@ -1600,7 +1621,16 @@ const PurchaseOrderScreen: React.FC = () => {
     };
     const updateReceiveProduction = (index: number, value: string) => {
         const next = [...receiveRows];
-        next[index] = { ...next[index], productionDate: value || '' };
+        const row = next[index];
+        const updated = { ...row, productionDate: value || '' };
+        // Auto-fill expiry date from shelf_life_days if not already set
+        if (value && row.itemId) {
+            const calcExpiry = autoFillExpiry(value, row.itemId);
+            if (calcExpiry && !row.expiryDate) {
+                updated.expiryDate = calcExpiry;
+            }
+        }
+        next[index] = updated;
         setReceiveRows(next);
     };
     const updateReceiveExpiry = (index: number, value: string) => {
@@ -1657,6 +1687,13 @@ const PurchaseOrderScreen: React.FC = () => {
                 const item = getItemById(r.itemId);
                 const isFood = isFoodItem(r.itemId);
                 if (item && isFood) {
+                    // Mandatory production date for food items
+                    const prod = typeof r.productionDate === 'string' ? r.productionDate.trim() : '';
+                    if (!prod) {
+                        const nm = String(item?.name?.ar || item?.name?.en || r.itemName || r.itemId);
+                        alert(`يرجى إدخال تاريخ الإنتاج للصنف الغذائي: ${nm}`);
+                        return;
+                    }
                     const exp = typeof r.expiryDate === 'string' ? r.expiryDate.trim() : '';
                     if (!exp) {
                         const nm = String(item?.name?.ar || item?.name?.en || r.itemName || r.itemId);
