@@ -1209,6 +1209,37 @@ export interface Expense {
   createdAt: string;
 }
 
+export interface DocumentAttachment {
+  name: string;
+  url: string;
+}
+
+export interface InventoryCount {
+  id: string;
+  warehouseId: string;
+  warehouseName?: string;
+  status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
+  createdBy: string;
+  createdByName?: string;
+  startedAt?: string;
+  completedAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryCountItem {
+  id: string;
+  countId: string;
+  itemId: string;
+  itemName?: string;
+  expectedQuantity: number;
+  actualQuantity: number | null;
+  variance: number | null;
+  unitCost: number | null;
+  notes?: string;
+}
+
 export interface CostCenter {
   id: string;
   name: string;

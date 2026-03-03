@@ -83,6 +83,7 @@ const DatabaseExplorerScreen = lazy(() => import('./screens/admin/DatabaseExplor
 const WarehousesScreen = lazy(() => import('./screens/admin/WarehousesScreen'));
 const WarehouseTransfersScreen = lazy(() => import('./screens/admin/WarehouseTransfersScreen'));
 const PriceTiersScreen = lazy(() => import('./screens/admin/PriceTiersScreen'));
+const StocktakingScreen = lazy(() => import('./screens/admin/StocktakingScreen'));
 const SupplierContractsScreen = lazy(() => import('./screens/admin/SupplierContractsScreen'));
 const SupplierEvaluationsScreen = lazy(() => import('./screens/admin/SupplierEvaluationsScreen'));
 const SupplierCreditNotesScreen = lazy(() => import('./screens/admin/SupplierCreditNotesScreen'));
@@ -340,6 +341,7 @@ const App: React.FC = () => {
                       }
                     />
                     <Route path="wastage" element={<AdminProtectedRoute permissions={['stock.manage']}><WastageScreen /></AdminProtectedRoute>} />
+                    <Route path="stocktaking" element={<AdminProtectedRoute permissions={['stock.manage']}><StocktakingScreen /></AdminProtectedRoute>} />
                     <Route path="expiry-batches" element={<AdminProtectedRoute permissions={['stock.manage']}><ExpiryBatchesScreen /></AdminProtectedRoute>} />
                     <Route
                       path="wastage-expiry-reports"

@@ -112,6 +112,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'workspace', label: 'مركز العمل', icon: <Icons.Search />, permission: 'dashboard.view' },
   { to: 'dashboard', label: 'لوحة التحكم', icon: <Icons.DashboardIcon />, permission: 'dashboard.view' },
   { to: 'stock', label: 'إدارة المخزون', icon: <Icons.ListIcon />, permission: 'inventory.view' },
+  { to: 'stocktaking', label: 'جرد المخزون', icon: <Icons.Package />, permission: 'stock.manage' },
   { to: 'wastage', label: 'تسجيل هدر', icon: <Icons.ReportIcon />, permission: 'stock.manage' },
   { to: 'expiry-batches', label: 'دفعات منتهية', icon: <Icons.ClockIcon />, permission: 'stock.manage' },
   { to: 'wastage-expiry-reports', label: 'تقارير الهدر/الانتهاء', icon: <Icons.ReportIcon />, permission: 'inventory.movements.view' },
@@ -168,6 +169,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'workspace': 'dashboard.view',
   'dashboard': 'dashboard.view',
   'stock': 'inventory.view',
+  'stocktaking': 'stock.manage',
   'wastage': 'stock.manage',
   'expiry-batches': 'stock.manage',
   'wastage-expiry-reports': 'inventory.movements.view',
@@ -343,7 +345,7 @@ const AdminLayout: React.FC = () => {
   // Route Protection Logic
   useEffect(() => {
     if (loading) return;
-    
+
     if (!isAuthenticated) {
       navigate('/admin/login', { replace: true });
       return;
@@ -355,24 +357,24 @@ const AdminLayout: React.FC = () => {
     const currentRoute = pathSegments[1];
 
     if (currentRoute && routePermissions[currentRoute]) {
-        const requiredPermission = routePermissions[currentRoute];
-        const ok =
-          currentRoute === 'my-shift'
-            ? hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage')
-            : currentRoute === 'stock'
-              ? (hasPermission('inventory.view') || hasPermission('stock.manage'))
-              : currentRoute === 'import-shipments'
-                ? (hasPermission('shipments.view') || hasPermission('stock.manage'))
-                : currentRoute === 'wastage-expiry-reports'
-                  ? (hasPermission('inventory.movements.view') || hasPermission('reports.view') || hasPermission('stock.manage'))
-                  : hasPermission(requiredPermission);
-        if (!ok) {
-            // Redirect to dashboard or show unauthorized if already on dashboard (to avoid loop)
-            if (currentRoute !== 'dashboard') {
-                navigate('/admin/dashboard', { replace: true });
-                // Optional: Show notification "Access Denied"
-            }
+      const requiredPermission = routePermissions[currentRoute];
+      const ok =
+        currentRoute === 'my-shift'
+          ? hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage')
+          : currentRoute === 'stock'
+            ? (hasPermission('inventory.view') || hasPermission('stock.manage'))
+            : currentRoute === 'import-shipments'
+              ? (hasPermission('shipments.view') || hasPermission('stock.manage'))
+              : currentRoute === 'wastage-expiry-reports'
+                ? (hasPermission('inventory.movements.view') || hasPermission('reports.view') || hasPermission('stock.manage'))
+                : hasPermission(requiredPermission);
+      if (!ok) {
+        // Redirect to dashboard or show unauthorized if already on dashboard (to avoid loop)
+        if (currentRoute !== 'dashboard') {
+          navigate('/admin/dashboard', { replace: true });
+          // Optional: Show notification "Access Denied"
         }
+      }
     }
   }, [isAuthenticated, loading, navigate, location.pathname, hasPermission]);
 
@@ -491,11 +493,10 @@ const AdminLayout: React.FC = () => {
           <div className="flex-1" />
           <Link
             to="/admin/settings"
-            className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${
-              settings.maintenanceEnabled
+            className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${settings.maintenanceEnabled
                 ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
                 : 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800'
-            }`}
+              }`}
             title={settings.maintenanceEnabled ? (settings.maintenanceMessage || 'وضع الصيانة مفعل') : 'النظام يعمل بشكل طبيعي'}
           >
             {settings.maintenanceEnabled ? 'الصيانة: مفعّلة' : 'الصيانة: موقفة'}
