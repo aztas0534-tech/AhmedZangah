@@ -52,13 +52,13 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const { data: staffFlag } = await supabase.rpc('is_staff');
           isStaff = Boolean(staffFlag);
         }
-      } catch {}
+      } catch { }
 
       const source = isStaff ? 'menu_items' : 'v_sellable_products';
       const selectCols = isStaff
         ? (isSlow
-          ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, data'
-          : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, data')
+          ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, shelf_life_days, data'
+          : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, shelf_life_days, data')
         : (isSlow
           ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, data, available_quantity'
           : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, freshness_level, status, data, available_quantity');
@@ -87,7 +87,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const k = typeof (r as any)?.item_id === 'string' ? (r as any).item_id : '';
             if (k) stockMap[k] = { available_quantity: (r as any)?.available_quantity, reserved_quantity: (r as any)?.reserved_quantity };
           }
-        } catch {}
+        } catch { }
       }
       const items = (rows || [])
         .map((row: any) => {
@@ -153,6 +153,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             barcode: mergedBarcode || undefined,
             name: safeName,
             description: safeDescription,
+            shelf_life_days: Number(row?.shelf_life_days ?? (item as any)?.shelf_life_days ?? 0) || 0,
           };
         })
         .filter(Boolean) as MenuItem[];
@@ -270,6 +271,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           buying_price: Number(newItem.buyingPrice) || 0,
           transport_cost: Number(newItem.transportCost) || 0,
           supply_tax_cost: Number(newItem.supplyTaxCost) || 0,
+          shelf_life_days: Number((newItem as any).shelf_life_days || 0) || null,
           data: newItem,
         });
         if (error) throw error;
@@ -343,6 +345,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             buying_price: Number(normalizedItem.buyingPrice) || 0,
             transport_cost: Number(normalizedItem.transportCost) || 0,
             supply_tax_cost: Number(normalizedItem.supplyTaxCost) || 0,
+            shelf_life_days: Number((normalizedItem as any).shelf_life_days || 0) || null,
             data: normalizedItem,
           },
           { onConflict: 'id' }
