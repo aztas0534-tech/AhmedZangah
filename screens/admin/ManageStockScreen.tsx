@@ -21,7 +21,7 @@ type StockRowProps = {
     baseCode: string;
     getCategoryLabel: (categoryKey: string, language: 'ar' | 'en') => string;
     getUnitLabel: (unitKey: UnitType | undefined, language: 'ar' | 'en') => string;
-    handleUpdateStock: (itemId: string, newQuantity: number, unit: string, batchId?: string) => Promise<void>;
+    handleUpdateStock: (itemId: string, newQuantity: number, unit: string, batchId?: string, minStock?: number) => Promise<void>;
     toggleHistory: (itemId: string) => Promise<void>;
     expandedHistoryItemId: string | null;
     historyLoadingItemId: string | null;
@@ -38,11 +38,12 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const reserved = Number(stock?.reservedQuantity ?? 0);
     const available = currentStock - reserved;
     const unit = String(stock?.unit ?? item.unitType ?? 'piece');
-    const threshold = Number(stock?.lowStockThreshold ?? 5);
+    const threshold = Number(stock?.minimumStockLevel ?? stock?.lowStockThreshold ?? 5);
     const isLowStock = available <= threshold;
     const itemName = item.name?.['ar'] || item.name?.en || '';
 
     const [localStock, setLocalStock] = useState<string>(String(currentStock));
+    const [localMinStock, setLocalMinStock] = useState<string>(String(stock?.minimumStockLevel ?? ''));
     const [batches, setBatches] = useState<ItemBatch[]>([]);
     const [selectedBatchId, setSelectedBatchId] = useState<string>('');
     const canQc = hasPermission('qc.inspect') || hasPermission('qc.release');
@@ -60,6 +61,10 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     useEffect(() => {
         setLocalStock(String(currentStock));
     }, [currentStock]);
+
+    useEffect(() => {
+        setLocalMinStock(String(stock?.minimumStockLevel ?? ''));
+    }, [stock?.minimumStockLevel]);
 
     useEffect(() => {
         if (canQc || qcHold > 0) {
@@ -299,12 +304,30 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
         setLocalStock(e.target.value);
     };
 
+    const onMinStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setLocalMinStock(e.target.value);
+    };
+
     const onStockBlur = () => {
         const val = parseFloat(localStock);
+        const minVal = localMinStock ? parseFloat(localMinStock) : undefined;
         if (!Number.isNaN(val) && val !== currentStock) {
-            handleUpdateStock(item.id, val, unit, selectedBatchId || undefined);
+            handleUpdateStock(item.id, val, unit, selectedBatchId || undefined, Number.isNaN(minVal!) ? undefined : minVal);
         } else {
             setLocalStock(String(currentStock));
+        }
+    };
+
+    const onMinStockBlur = () => {
+        const minVal = localMinStock ? parseFloat(localMinStock) : undefined;
+        const currentMin = stock?.minimumStockLevel;
+        if (!Number.isNaN(minVal!) && minVal !== currentMin) {
+            handleUpdateStock(item.id, currentStock, unit, selectedBatchId || undefined, minVal);
+        } else if (localMinStock === '' && currentMin !== undefined) {
+            // they cleared it, we could pass null but we'll map undefined
+            handleUpdateStock(item.id, currentStock, unit, selectedBatchId || undefined, 0);
+        } else {
+            setLocalMinStock(String(currentMin ?? ''));
         }
     };
 
@@ -351,7 +374,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
             <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={() => handleUpdateStock(item.id, currentStock - 1, unit, selectedBatchId || undefined)}
+                        onClick={() => handleUpdateStock(item.id, currentStock - 1, unit, selectedBatchId || undefined, localMinStock ? parseFloat(localMinStock) : undefined)}
                         className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                     >
                         <MinusIcon />
@@ -367,11 +390,27 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         step={unit === 'kg' || unit === 'gram' ? '0.5' : '1'}
                     />
                     <button
-                        onClick={() => handleUpdateStock(item.id, currentStock + 1, unit, selectedBatchId || undefined)}
+                        onClick={() => handleUpdateStock(item.id, currentStock + 1, unit, selectedBatchId || undefined, localMinStock ? parseFloat(localMinStock) : undefined)}
                         className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                     >
                         <PlusIcon />
                     </button>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        الحد الأدنى للتنبيه:
+                    </label>
+                    <input
+                        type="number"
+                        value={localMinStock}
+                        onChange={onMinStockChange}
+                        onBlur={onMinStockBlur}
+                        onKeyDown={onStockKeyDown}
+                        placeholder={String(stock?.lowStockThreshold ?? 5)}
+                        className="w-20 px-2 py-1 text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        min="0"
+                        step={unit === 'kg' || unit === 'gram' ? '0.5' : '1'}
+                    />
                 </div>
                 <div className="mt-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -628,14 +667,14 @@ const ManageStockScreen: React.FC = () => {
         });
     }, [menuItems, searchTerm, selectedCategory, selectedGroup]);
 
-    const handleUpdateStock = async (itemId: string, newQuantity: number, unit: string, batchId?: string) => {
+    const handleUpdateStock = async (itemId: string, newQuantity: number, unit: string, batchId?: string, minStock?: number) => {
         if (newQuantity < 0) return;
         if (!reason.trim()) {
             showNotification('سبب تعديل المخزون مطلوب.', 'error');
             return;
         }
         try {
-            await updateStock(itemId, newQuantity, unit, reason, batchId);
+            await updateStock(itemId, newQuantity, unit, reason, batchId, minStock);
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
             const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تحديث المخزون';

@@ -12,7 +12,7 @@ interface StockContextType {
     stockItems: StockManagement[];
     loading: boolean;
     fetchStock: () => Promise<void>;
-    updateStock: (itemId: string, quantity: number, unit: string, reason: string, batchId?: string) => Promise<void>;
+    updateStock: (itemId: string, quantity: number, unit: string, reason: string, batchId?: string, minimumStockLevel?: number) => Promise<void>;
     recordWastage: (itemId: string, wastedQuantity: number, unit: string, reason: string, batchId?: string) => Promise<void>;
     reserveStock: (itemId: string, quantity: number, orderId?: string) => Promise<boolean>;
     releaseStock: (itemId: string, quantity: number, orderId?: string) => Promise<void>;
@@ -153,6 +153,9 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const lowStockThreshold = Number.isFinite(Number(row?.low_stock_threshold))
             ? Number(row.low_stock_threshold)
             : (Number.isFinite(Number((data as any).lowStockThreshold)) ? Number((data as any).lowStockThreshold) : 5);
+        const minimumStockLevel = Number.isFinite(Number(row?.minimum_stock_level))
+            ? Number(row.minimum_stock_level)
+            : undefined;
         const lastUpdated = typeof row?.last_updated === 'string'
             ? row.last_updated
             : (typeof (data as any).lastUpdated === 'string' ? (data as any).lastUpdated : new Date().toISOString());
@@ -170,6 +173,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             unit: unit as any,
             lastUpdated,
             lowStockThreshold,
+            minimumStockLevel,
             avgCost,
         };
     };
@@ -198,7 +202,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
             const { data: rows, error } = await supabase
                 .from('stock_management')
-                .select('item_id, warehouse_id, available_quantity, qc_hold_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, avg_cost, data')
+                .select('item_id, warehouse_id, available_quantity, qc_hold_quantity, reserved_quantity, unit, low_stock_threshold, minimum_stock_level, last_updated, avg_cost, data')
                 .eq('warehouse_id', warehouseId);
             if (error) throw error;
             const remoteStock = (rows || []).map(toStockFromRow).filter(Boolean) as StockManagement[];
@@ -240,7 +244,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
     }, [fetchStock]);
 
-    
+
 
     const initializeStockForItem = async (item: MenuItem) => {
         const supabase = getSupabaseClient();
@@ -300,7 +304,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             logger.error('Wastage failed: Supabase not configured');
             throw error;
         }
-        
+
         try {
             const currentStock = stockItems.find(s => s.itemId === itemId);
             const oldAvailable = currentStock?.availableQuantity ?? 0;
@@ -328,7 +332,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
     };
 
-    const updateStock = async (itemId: string, quantity: number, unit: string, reason: string, batchId?: string) => {
+    const updateStock = async (itemId: string, quantity: number, unit: string, reason: string, batchId?: string, minimumStockLevel?: number) => {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidRegex.test(itemId)) {
             const error = new Error(language === 'ar' ? `معرّف المنتج غير صالح: ${itemId}` : `Invalid item ID: ${itemId}`);
@@ -375,6 +379,9 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 p_reason: reason,
                 p_low_stock_threshold: 5
             };
+            if (minimumStockLevel !== undefined) {
+                payload.p_minimum_stock_level = minimumStockLevel;
+            }
             if (batchId) {
                 payload.p_batch_id = batchId;
             }
@@ -383,7 +390,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (error) throw error;
 
             await fetchStock();
-            
+
             showNotification(
                 language === 'ar'
                     ? `تم تحديث المخزون بنجاح: ${quantity} ${unit}`
@@ -392,7 +399,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             );
 
             const current = stockItems.find(s => s.itemId === itemId);
-            const threshold = Number(current?.lowStockThreshold ?? 5);
+            const threshold = Number(current?.minimumStockLevel ?? current?.lowStockThreshold ?? 5);
             if (quantity <= threshold) {
                 showNotification(`⚠️ ${t('lowStockAlert')}: ${quantity} ${unit}`, 'info');
             }
@@ -453,11 +460,11 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (!supabase) {
             throw new Error(language === 'ar' ? 'Supabase غير مهيأ.' : 'Supabase is not configured.');
         }
-        
+
         try {
-             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-             const safeOrderId = orderId && uuidRegex.test(orderId) ? orderId : null;
-             const resolveWarehouseId = async (): Promise<string> => {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const safeOrderId = orderId && uuidRegex.test(orderId) ? orderId : null;
+            const resolveWarehouseId = async (): Promise<string> => {
                 const tryOrder = safeOrderId ? await supabase.from('orders').select('warehouse_id,data').eq('id', safeOrderId).maybeSingle() : { data: null, error: null };
                 const orderRow: any = tryOrder?.data || null;
                 const byCol = typeof orderRow?.warehouse_id === 'string' ? orderRow?.warehouse_id : undefined;
@@ -469,10 +476,10 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 const { data: w } = await supabase.rpc('_resolve_default_admin_warehouse_id');
                 if (typeof w === 'string' && w.trim()) return w.trim();
                 throw new Error('warehouse_id is required');
-             };
-             const warehouseId = await resolveWarehouseId();
+            };
+            const warehouseId = await resolveWarehouseId();
 
-             const { error } = await supabase.rpc('release_reserved_stock_for_order', {
+            const { error } = await supabase.rpc('release_reserved_stock_for_order', {
                 p_items: [{ itemId, quantity }],
                 p_order_id: safeOrderId,
                 p_warehouse_id: warehouseId
@@ -545,7 +552,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             // This hook avoids calling processExpiredItems unless a flag is enabled
             // Default is false to prevent global item archiving
             enabled = false;
-        } catch {}
+        } catch { }
         if (enabled) {
             if (isAuthenticated && hasPermission('stock.manage')) {
                 processExpiredItems();

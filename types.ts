@@ -763,6 +763,7 @@ export interface StockManagement {
   reservedQuantity: number; // Reserved in active orders
   lastUpdated: string; // ISO string
   lowStockThreshold?: number; // Alert when stock is low
+  minimumStockLevel?: number; // Core DB minimum to trigger low stock alerts
   avgCost?: number;
   lastBatchId?: string;
 }
@@ -1245,6 +1246,7 @@ export interface WarehouseTransfer {
   transferDate: string;
   status: 'pending' | 'in_transit' | 'completed' | 'cancelled';
   notes?: string;
+  shippingCost?: number;
   createdBy?: string;
   approvedBy?: string;
   completedAt?: string;

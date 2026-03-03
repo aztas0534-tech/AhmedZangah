@@ -30,6 +30,7 @@ const WarehouseTransfersScreen: React.FC = () => {
         from_warehouse_id: '',
         to_warehouse_id: '',
         transfer_date: toYmdLocal(new Date()),
+        shipping_cost: 0,
         notes: '',
         items: [] as Array<{ itemId: string; quantity: number; notes: string }>,
     });
@@ -157,6 +158,7 @@ const WarehouseTransfersScreen: React.FC = () => {
             from_warehouse_id: '',
             to_warehouse_id: '',
             transfer_date: toYmdLocal(new Date()),
+            shipping_cost: 0,
             notes: '',
             items: [],
         });
@@ -213,7 +215,8 @@ const WarehouseTransfersScreen: React.FC = () => {
                 formData.to_warehouse_id,
                 formData.transfer_date,
                 formData.items,
-                formData.notes
+                formData.notes,
+                formData.shipping_cost > 0 ? formData.shipping_cost : undefined
             );
             showNotification('تم إنشاء عملية النقل بنجاح', 'success');
             setShowModal(false);
@@ -399,6 +402,15 @@ const WarehouseTransfersScreen: React.FC = () => {
                                 </div>
                             </div>
 
+                            {Number(transfer.shippingCost || 0) > 0 && (
+                                <div className="mb-4">
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded text-sm font-medium">
+                                        <Icons.DollarSign className="w-4 h-4" />
+                                        تكلفة الشحن/النقل: {Number(transfer.shippingCost).toLocaleString('en-US')}
+                                    </span>
+                                </div>
+                            )}
+
                             {/* Notes */}
                             {transfer.notes && (
                                 <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
@@ -491,15 +503,29 @@ const WarehouseTransfersScreen: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Notes */}
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">ملاحظات</label>
-                                    <textarea
-                                        value={formData.notes}
-                                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                        rows={2}
-                                    />
+                                {/* Shipping Cost & Notes */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">تكلفة الشحن/النقل (اختياري)</label>
+                                        <input
+                                            type="number"
+                                            value={formData.shipping_cost || ''}
+                                            onChange={(e) => setFormData({ ...formData, shipping_cost: parseFloat(e.target.value) || 0 })}
+                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">ملاحظات</label>
+                                        <textarea
+                                            value={formData.notes}
+                                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                            rows={2}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Items */}
