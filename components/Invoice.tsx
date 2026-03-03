@@ -483,6 +483,11 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <div className="text-center md:text-left rtl:text-left flex flex-col items-center flex-shrink-0 z-10">
                         <h2 className="invoice-title">فاتورة</h2>
                         <div className="title-sub">فاتورة ضريبية TAX INVOICE</div>
+                        {copyLabel && (
+                            <div className="mt-2 text-[12px] print:text-[14px] font-bold text-center border-2 border-[#D4AF37] text-[#D4AF37] bg-[#D4AF371A] px-3 py-1 rounded-md tracking-wider">
+                                {copyLabel}
+                            </div>
+                        )}
                     </div>
                 </div>
 
