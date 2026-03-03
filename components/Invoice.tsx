@@ -321,8 +321,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     /* ═══ Typography ═══ */
                     .text-gold { color: #D4AF37 !important; }
                     .text-charcoal { color: #0F172A !important; }
-                    .font-thin-label { font-weight: 300 !important; font-size: 6px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-                    .font-bold-value { font-weight: 800 !important; font-size: 8.5px !important; color: #0F172A !important; }
+                    .font-thin-label { font-weight: 300 !important; font-size: 10px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+                    .font-bold-value { font-weight: 800 !important; font-size: 13px !important; color: #0F172A !important; }
 
                     /* ═══ HEADER ═══ */
                     .luxury-header {
@@ -333,9 +333,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         padding-bottom: 8px !important;
                         margin-bottom: 15px !important;
                     }
-                    .brand-name { font-size: 18px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
-                    .invoice-title { font-size: 26px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-                    .title-sub { font-size: 5px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+                    .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
+                    .invoice-title { font-size: 32px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+                    .title-sub { font-size: 9px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
                     
                     /* ═══ INFO GRID ═══ */
                     .info-grid {
@@ -365,16 +365,16 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .luxury-table th {
                         background-color: #0F172A !important;
                         color: #FFFFFF !important;
-                        padding: 4px 6px !important;
+                        padding: 6px 8px !important;
                         font-weight: 600 !important;
-                        font-size: 7.5px !important;
+                        font-size: 11px !important;
                         text-transform: uppercase !important;
                         letter-spacing: 0.5px !important;
                         border: none !important;
                     }
                     .luxury-table td {
-                        padding: 4px 6px !important;
-                        font-size: 8.5px !important;
+                        padding: 6px 8px !important;
+                        font-size: 12px !important;
                         font-weight: 600 !important;
                         border-bottom: 0.5pt solid #E5E7EB !important;
                         color: #0F172A !important;
@@ -408,11 +408,11 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         align-items: center !important;
                         background-color: #0F172A !important;
                         color: white !important;
-                        padding: 6px 8px !important;
+                        padding: 8px 10px !important;
                         margin-top: 4px !important;
                     }
-                    .grand-total-label { font-size: 11px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
-                    .grand-total-value { font-size: 16px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
+                    .grand-total-label { font-size: 14px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
+                    .grand-total-value { font-size: 20px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
 
                     /* ═══ SUMMARY BOXES ═══ */
                     .summary-box {
@@ -426,7 +426,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .luxury-footer {
                         margin-top: auto !important;
                         text-align: center !important;
-                        font-size: 5.5px !important;
+                        font-size: 9px !important;
                         color: #4B5563 !important;
                         padding-top: 8px !important;
                         page-break-inside: avoid !important;
