@@ -55,6 +55,10 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const canRepairCost = hasPermission('accounting.manage');
     const [repairCostBusy, setRepairCostBusy] = useState(false);
     const [revalueBatchBusy, setRevalueBatchBusy] = useState(false);
+    const [editingDatesBatchId, setEditingDatesBatchId] = useState<string | null>(null);
+    const [editProdDate, setEditProdDate] = useState('');
+    const [editExpDate, setEditExpDate] = useState('');
+    const [dateSaveBusy, setDateSaveBusy] = useState(false);
     const getErrorMessage = (error: unknown, fallback: string) => {
         if (error instanceof Error && error.message) return error.message;
         const msg = String((error as any)?.message || '');
@@ -105,6 +109,8 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                     qcStatus: String(r.qc_status || ''),
                     lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
                     lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
+                    productionDate: r.production_date ? String(r.production_date) : undefined,
+                    expiryDate: r.expiry_date ? String(r.expiry_date) : undefined,
                 })) as ItemBatch[];
                 setBatches(mapped);
             } catch (_) {
@@ -150,6 +156,8 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                 qcStatus: String(r.qc_status || ''),
                 lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
                 lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
+                productionDate: r.production_date ? String(r.production_date) : undefined,
+                expiryDate: r.expiry_date ? String(r.expiry_date) : undefined,
             })) as ItemBatch[];
             setBatches(mapped);
         } catch (_) {
@@ -463,6 +471,61 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                     QC: {qcStatusLabel(String((b as any).qcStatus || ''))}
                                                     {(b as any).lastQcResult ? ` • آخر نتيجة: ${(b as any).lastQcResult === 'pass' ? 'نجح' : 'فشل'}` : ''}
                                                 </div>
+                                                {/* Date display */}
+                                                <div className="text-gray-500 dark:text-gray-400 mt-1">
+                                                    إنتاج: {(b as any).productionDate ? new Date((b as any).productionDate).toLocaleDateString('ar-SA-u-nu-latn') : '—'}
+                                                    {' • '}
+                                                    <span className={(b as any).expiryDate && new Date((b as any).expiryDate) < new Date() ? 'text-red-600 font-bold' : ''}>
+                                                        انتهاء: {(b as any).expiryDate ? new Date((b as any).expiryDate).toLocaleDateString('ar-SA-u-nu-latn') : '—'}
+                                                    </span>
+                                                </div>
+                                                {/* Inline date editing */}
+                                                {editingDatesBatchId === String(b.batchId) ? (
+                                                    <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-700 space-y-2">
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">تاريخ الإنتاج</label>
+                                                                <input type="date" value={editProdDate} onChange={(e) => setEditProdDate(e.target.value)} className="w-full px-2 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">تاريخ الانتهاء</label>
+                                                                <input type="date" value={editExpDate} onChange={(e) => setEditExpDate(e.target.value)} className="w-full px-2 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                type="button"
+                                                                disabled={dateSaveBusy}
+                                                                onClick={async () => {
+                                                                    setDateSaveBusy(true);
+                                                                    try {
+                                                                        const supabase = getSupabaseClient();
+                                                                        if (!supabase) throw new Error('Supabase not available');
+                                                                        const { error } = await supabase.rpc('update_batch_dates', {
+                                                                            p_batch_id: b.batchId,
+                                                                            p_production_date: editProdDate || null,
+                                                                            p_expiry_date: editExpDate || null,
+                                                                        } as any);
+                                                                        if (error) throw error;
+                                                                        showNotification('تم تحديث تواريخ الدفعة بنجاح', 'success');
+                                                                        setEditingDatesBatchId(null);
+                                                                        await refreshBatches();
+                                                                    } catch (err: any) {
+                                                                        showNotification(getErrorMessage(err, 'فشل تحديث التواريخ'), 'error');
+                                                                    } finally {
+                                                                        setDateSaveBusy(false);
+                                                                    }
+                                                                }}
+                                                                className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                                            >
+                                                                {dateSaveBusy ? 'جاري...' : 'حفظ'}
+                                                            </button>
+                                                            <button type="button" onClick={() => setEditingDatesBatchId(null)} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
+                                                                إلغاء
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
                                                 <div className="flex items-center gap-2 mt-2">
                                                     {(String((b as any).qcStatus || '') === 'pending' || String((b as any).qcStatus || '') === 'quarantined') && hasPermission('qc.inspect') && (
                                                         <>
@@ -494,6 +557,18 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                             إفراج
                                                         </button>
                                                     )}
+                                                    <button
+                                                        type="button"
+                                                        title="تعديل تواريخ الدفعة"
+                                                        onClick={() => {
+                                                            setEditingDatesBatchId(String(b.batchId));
+                                                            setEditProdDate((b as any).productionDate || '');
+                                                            setEditExpDate((b as any).expiryDate || '');
+                                                        }}
+                                                        className="px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                                                    >
+                                                        📅 تعديل التواريخ
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         title="طباعة ملصق الدفعة"
