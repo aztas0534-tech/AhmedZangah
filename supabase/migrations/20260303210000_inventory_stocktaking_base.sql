@@ -1,6 +1,6 @@
 -- Create the base table for Inventory Stocktaking Sessions
 create table if not exists public.inventory_counts (
-    id uuid primary key default uuid_generate_v4(),
+    id uuid primary key default gen_random_uuid(),
     warehouse_id uuid not null references public.warehouses(id) on delete restrict,
     status text not null check (status in ('draft', 'in_progress', 'completed', 'cancelled')) default 'draft',
     created_by uuid not null references auth.users(id),
@@ -25,7 +25,7 @@ using (public.can_manage_stock() or (auth.jwt()->>'role' in ('owner', 'manager')
 
 -- Create items table
 create table if not exists public.inventory_count_items (
-    id uuid primary key default uuid_generate_v4(),
+    id uuid primary key default gen_random_uuid(),
     count_id uuid not null references public.inventory_counts(id) on delete cascade,
     item_id text not null references public.menu_items(id) on delete restrict,
     expected_quantity numeric(12,4) not null default 0,
@@ -53,11 +53,11 @@ using (public.can_manage_stock() or (auth.jwt()->>'role' in ('owner', 'manager')
 -- Triggers for updated_at
 create trigger set_inventory_counts_updated_at
 before update on public.inventory_counts
-for each row execute function public.handle_updated_at();
+for each row execute function public.set_updated_at();
 
 create trigger set_inventory_count_items_updated_at
 before update on public.inventory_count_items
-for each row execute function public.handle_updated_at();
+for each row execute function public.set_updated_at();
 
 -- RPC to start a count (fetch current stock)
 create or replace function public.start_inventory_count(p_count_id uuid)

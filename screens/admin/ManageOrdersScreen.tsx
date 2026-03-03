@@ -2260,9 +2260,8 @@ const ManageOrdersScreen: React.FC = () => {
             setVoidOrderId(null);
             setVoidReason('');
         } catch (error) {
-            const raw = error instanceof Error ? error.message : '';
-            const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تنفيذ الإلغاء بعد التسليم.';
-            showNotification(message, 'error');
+            const raw = error instanceof Error ? error.message : (error as any)?.message || (error as any)?.details || JSON.stringify(error);
+            showNotification(raw || 'فشل تنفيذ الإلغاء بعد التسليم.', 'error');
         } finally {
             setIsVoidingOrder(false);
         }

@@ -671,35 +671,8 @@ $$;
 revoke all on function public.deduct_stock_on_delivery_v2(uuid, jsonb, uuid) from public;
 grant execute on function public.deduct_stock_on_delivery_v2(uuid, jsonb, uuid) to authenticated;
 
--- Next we will append `create_order_secure` using the 20260214180000 version as a base and overriding v_item_warehouse_id
+-- NOTE: create_order_secure is NOT modified in this migration.
+-- The line-level warehouseId is already passed through p_items jsonb from the frontend,
+-- and the existing create_order_secure already forwards it correctly to reserve_stock_for_order
+-- and deduct_stock_on_delivery_v2 which ARE updated above.
 
-
-create or replace function public.create_order_secure(
-    p_items jsonb,
-    p_delivery_zone_id uuid,
-    p_payment_method text,
-    p_notes text,
-    p_address text,
-    p_location jsonb,
-    p_customer_name text,
-    p_phone_number text,
-    p_is_scheduled boolean,
-    p_scheduled_at timestamptz,
-    p_coupon_code text default null,
-    p_points_redeemed_value numeric default 0,
-    p_explicit_customer_id uuid default null,
-    p_order_source text default 'online',
-    p_currency text default null,
-    p_warehouse_id uuid default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_user_id uuid;
-    v_item_warehouse_id uuid;
-
-revoke all on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text, uuid) from public;
-grant execute on function public.create_order_secure(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, uuid, text, text, uuid) to authenticated;
