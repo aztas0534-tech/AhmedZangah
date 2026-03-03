@@ -1104,6 +1104,18 @@ const PurchaseOrderScreen: React.FC = () => {
         if (compact.includes('غذ')) return true;
         if (compact.includes('food')) return true;
         if (compact.includes('grocery')) return true;
+        // If key is auto-generated (cat_xxx), lookup the category name from definitions
+        if (raw.startsWith('cat_')) {
+            try {
+                // Sync check from cached categories in the page
+                const el = document.querySelector('[data-categories]');
+                if (el) {
+                    const cats = JSON.parse(el.getAttribute('data-categories') || '[]');
+                    const cat = cats.find((c: any) => c.key === raw);
+                    if (cat) return isFoodCategoryValue(cat.name?.ar || cat.name?.en || '');
+                }
+            } catch { }
+        }
         return false;
     };
     const isFoodItem = (itemId: string) => {
