@@ -344,6 +344,7 @@ export interface CartItem extends MenuItem {
   uomCode?: string;
   uomQtyInBase?: number;
   forcedBatchId?: string;
+  warehouseId?: string;
 }
 
 export type OrderStatus = 'pending' | 'preparing' | 'out_for_delivery' | 'delivered' | 'scheduled' | 'cancelled';

@@ -476,7 +476,7 @@ const POSScreen: React.FC = () => {
     const isOnline = typeof navigator !== 'undefined' && navigator.onLine !== false;
     const supabase = isOnline ? getSupabaseClient() : null;
     const buildPricingKey = (warehouseId: string, item: CartItem, pricingQty: number) => {
-      return `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}:${String((item as any).forcedBatchId || '')}`;
+      return `${transactionCurrency}:${item.warehouseId || warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}:${String((item as any).forcedBatchId || '')}`;
     };
 
     if (!supabase) {
@@ -555,7 +555,7 @@ const POSScreen: React.FC = () => {
           const call = async () => {
             return await supabase.rpc('get_fefo_pricing', {
               p_item_id: item.id,
-              p_warehouse_id: warehouseId,
+              p_warehouse_id: item.warehouseId || warehouseId,
               p_quantity: pricingQty,
               p_customer_id: customerId,
               p_currency_code: transactionCurrency,
@@ -770,6 +770,7 @@ const POSScreen: React.FC = () => {
       price: basePrice,
       uomCode: String(item.unitType || 'piece'),
       uomQtyInBase: 1,
+      warehouseId: sessionScope.scope?.warehouseId,
     };
     (cartItem as any)._basePrice = basePrice;
     if (String(item.unitType || '') === 'gram') {
@@ -782,7 +783,7 @@ const POSScreen: React.FC = () => {
     setSelectedCartItemId(cartItem.cartItemId);
   };
 
-  const updateLine = (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; forcedBatchId?: string | null }) => {
+  const updateLine = (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; forcedBatchId?: string | null; warehouseId?: string }) => {
     if (pendingOrderId) return;
     setItems(prev => {
       const updated = prev.map(i => {
@@ -798,6 +799,7 @@ const POSScreen: React.FC = () => {
           uomCode: next.uomCode != null ? next.uomCode : i.uomCode,
           uomQtyInBase: next.uomQtyInBase != null ? next.uomQtyInBase : i.uomQtyInBase,
           forcedBatchId: typeof next.forcedBatchId === 'undefined' ? (i as any).forcedBatchId : (next.forcedBatchId || undefined),
+          warehouseId: next.warehouseId !== undefined ? String(next.warehouseId).trim() || undefined : i.warehouseId,
         };
       });
 
@@ -1066,6 +1068,7 @@ const POSScreen: React.FC = () => {
         weight: isWeight ? (i.weight || 0) : undefined,
         selectedAddons: addons,
         batchId: (i as any).forcedBatchId || undefined,
+        warehouseId: i.warehouseId || undefined,
       };
     });
     createInStorePendingOrder({
@@ -1321,6 +1324,7 @@ const POSScreen: React.FC = () => {
         weight: isWeight ? (i.weight || 0) : undefined,
         selectedAddons: addons,
         batchId: (i as any).forcedBatchId || undefined,
+        warehouseId: (i as any).warehouseId || undefined,
       };
     });
     if (pendingOrderId) {

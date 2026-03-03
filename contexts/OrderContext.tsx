@@ -2765,8 +2765,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const createInStorePendingOrder = async (input: {
     lines: Array<
-      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
-      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; warehouseId?: string }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any; warehouseId?: string }
     >;
     currency?: string;
     customerId?: string;
@@ -2786,13 +2786,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
     const baseCurrency = String((await getBaseCurrencyCode()) || '').toUpperCase().trim() || 'YER';
     const desiredCurrency = String((input as any).currency || baseCurrency || '').toUpperCase().trim() || baseCurrency;
-    const normalizedLines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons: Record<string, number> }> = (input.lines || [])
+    const normalizedLines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons: Record<string, number>; warehouseId?: string }> = (input.lines || [])
       .filter((l: any) => typeof l?.menuItemId === 'string' && Boolean(l.menuItemId))
       .map((l: any) => ({
         menuItemId: String(l.menuItemId),
         quantity: typeof l.quantity === 'number' ? l.quantity : undefined,
         weight: typeof l.weight === 'number' ? l.weight : undefined,
         selectedAddons: (l.selectedAddons && typeof l.selectedAddons === 'object') ? (l.selectedAddons as Record<string, number>) : {},
+        warehouseId: typeof l.warehouseId === 'string' && l.warehouseId.trim() ? String(l.warehouseId).trim() : undefined,
       }));
     if (!normalizedLines.length) {
       throw new Error('يجب إضافة صنف واحد على الأقل.');
@@ -2823,6 +2824,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         quantity,
         weight,
         selectedAddons: resolvedAddons,
+        warehouseId: line.warehouseId,
         cartItemId: crypto.randomUUID(),
       };
     });
@@ -2839,7 +2841,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         : item.quantity * uomFactor;
       const { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
-        p_warehouse_id: warehouseId,
+        p_warehouse_id: (item as any).warehouseId || warehouseId,
         p_currency_code: desiredCurrency,
         p_customer_id: input.customerId ? String(input.customerId) : null,
         p_quantity: pricingQty,
@@ -2967,6 +2969,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       .map((item) => ({
         itemId: item.id,
         quantity: getRequestedItemQuantity(item),
+        uomCode: String((item as any)?.uomCode || '').trim() || undefined,
+        uomQtyInBase: Number((item as any)?.uomQtyInBase) || 1,
+        batchId: (item as any)?._fefoBatchId || (item as any)?.forcedBatchId || undefined,
+        warehouseId: (item as any)?.warehouseId || undefined,
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     const sb3 = supabase!;

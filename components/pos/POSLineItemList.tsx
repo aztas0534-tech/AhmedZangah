@@ -6,11 +6,12 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
 import { getSupabaseClient } from '../../supabase';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useWarehouses } from '../../contexts/WarehouseContext';
 
 interface Props {
   items: CartItem[];
   currencyCode?: string;
-  onUpdate: (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; forcedBatchId?: string | null }) => void;
+  onUpdate: (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; forcedBatchId?: string | null; warehouseId?: string }) => void;
   onRemove: (cartItemId: string) => void;
   onEditAddons?: (cartItemId: string) => void;
   selectedCartItemId?: string | null;
@@ -51,6 +52,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
     </span>
   );
 
+  const { warehouses } = useWarehouses();
   const warehouseId = useMemo(() => String(sessionScope.scope?.warehouseId || '').trim(), [sessionScope.scope?.warehouseId]);
 
   const toggleBreakdown = async (itemId: string) => {
@@ -326,6 +328,20 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                       </span>
                     );
                   })()}
+                </div>
+              )}
+              {!isPromotionLine && (
+                <div className="mt-2 flex items-center gap-2 text-xs border-t border-gray-100 dark:border-gray-700 pt-2">
+                  <span className="text-gray-500 dark:text-gray-400 min-w-16 font-medium">{language === 'ar' ? 'المستودع:' : 'Warehouse:'}</span>
+                  <select
+                    value={item.warehouseId || sessionScope.scope?.warehouseId || ''}
+                    onChange={(e) => onUpdate(item.cartItemId, { warehouseId: e.target.value })}
+                    className="flex-1 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-xs py-1 px-2 dark:bg-gray-700 dark:text-gray-200"
+                  >
+                    {warehouses?.filter(w => w.isActive).map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
             </div>
