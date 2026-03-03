@@ -1631,8 +1631,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const createInStoreSale = async (input: {
     lines: Array<
-      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; batchId?: string; uomCode?: string; uomQtyInBase?: number }
-      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; batchId?: string; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any; warehouseId?: string }
     >;
     currency?: string;
     customerId?: string;
@@ -1699,6 +1699,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         selectedAddons: l.selectedAddons || {},
         uomCode: typeof l.uomCode === 'string' && l.uomCode.trim() ? l.uomCode.trim() : undefined,
         uomQtyInBase: typeof l.uomQtyInBase === 'number' && l.uomQtyInBase > 0 ? l.uomQtyInBase : 1,
+        warehouseId: typeof l.warehouseId === 'string' && l.warehouseId.trim() ? String(l.warehouseId).trim() : undefined,
       }));
     const normalizedPromoLines = rawLines
       .filter((l: any) => typeof l?.promotionId === 'string' && Boolean(l.promotionId))
@@ -1707,6 +1708,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         bundleQty: typeof l.bundleQty === 'number' ? l.bundleQty : undefined,
         promotionLineId: typeof l.promotionLineId === 'string' ? l.promotionLineId : undefined,
         promotionSnapshot: l.promotionSnapshot,
+        warehouseId: typeof l.warehouseId === 'string' && l.warehouseId.trim() ? String(l.warehouseId).trim() : undefined,
       }));
 
     if (!normalizedMenuLines.length && !normalizedPromoLines.length) {
@@ -1768,6 +1770,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         forcedBatchId: line.batchId,
         uomQtyInBase,
         uomCode,
+        warehouseId: line.warehouseId,
         cartItemId: crypto.randomUUID(),
       };
     });
@@ -1798,6 +1801,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           unitType: 'bundle',
           quantity: bundleQty,
           selectedAddons: {},
+          warehouseId: line.warehouseId,
           cartItemId: crypto.randomUUID(),
         } as any;
 
@@ -1861,7 +1865,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const call = async (customerId: string | null) => {
             return await supabaseForPricing!.rpc('get_fefo_pricing', {
               p_item_id: item.id,
-              p_warehouse_id: warehouseId,
+              p_warehouse_id: (item as any).warehouseId || warehouseId,
               p_quantity: pricingQty,
               p_customer_id: customerId,
               p_currency_code: desiredCurrency,
@@ -2258,6 +2262,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         uomCode: String((item as any)?.uomCode || '').trim() || undefined,
         uomQtyInBase: Number((item as any)?.uomQtyInBase) || 1,
         batchId: (item as any)?._fefoBatchId || (item as any)?.forcedBatchId || undefined,
+        warehouseId: (item as any)?.warehouseId || undefined,
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     if (shouldAttemptImmediatePayment && payloadItems.length === 0 && !hasPromoLines) {

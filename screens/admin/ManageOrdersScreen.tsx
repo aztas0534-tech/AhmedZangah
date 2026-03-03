@@ -29,6 +29,7 @@ import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
 import { getCurrencyDecimalsByCode as sharedGetCurrencyDecimals, initCurrencyDecimals } from '../../utils/currencyDecimals';
+import { Trash } from '../../components/icons';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -110,7 +111,7 @@ const ManageOrdersScreen: React.FC = () => {
     const { hasPermission, listAdminUsers, user: adminUser } = useAuth();
     const { currentShift } = useCashShift();
     const sessionScope = useSessionScope();
-    const { getWarehouseById } = useWarehouses();
+    const { warehouses, getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
     const { isWeightBasedUnit } = useItemMeta();
     const { guardPosting } = useGovernance();
@@ -179,7 +180,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreSelectedItemId, setInStoreSelectedItemId] = useState<string>('');
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
-    const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number }>>([]);
+    const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }>>([]);
     const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing' | 'party'>('walk_in');
     const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
     const [inStoreCustomerMatches, setInStoreCustomerMatches] = useState<Array<{ id: string; fullName?: string; phoneNumber?: string }>>([]);
@@ -1461,8 +1462,8 @@ const ManageOrdersScreen: React.FC = () => {
             return [
                 ...prev,
                 isWeightBased
-                    ? { menuItemId: id, weight: menuItem.minWeight || 1, selectedAddons: addonsToAdd }
-                    : { menuItemId: id, quantity: 1, selectedAddons: addonsToAdd, uomCode: String(menuItem.unitType || 'piece'), uomQtyInBase: 1 },
+                    ? { menuItemId: id, weight: menuItem.minWeight || 1, selectedAddons: addonsToAdd, warehouseId: sessionScope.scope?.warehouseId }
+                    : { menuItemId: id, quantity: 1, selectedAddons: addonsToAdd, uomCode: String(menuItem.unitType || 'piece'), uomQtyInBase: 1, warehouseId: sessionScope.scope?.warehouseId },
             ];
         });
         setInStoreSelectedItemId('');
@@ -1478,7 +1479,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
     }, [inStoreItemSearch, language, menuItems]);
 
-    const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number }) => {
+    const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }) => {
         setInStoreLines(prev => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
     };
 
@@ -4382,10 +4383,22 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => removeInStoreLine(index)}
-                                                    className="px-2 py-1 bg-red-100 text-red-600 rounded hover:bg-red-200 transition text-xs font-semibold dark:bg-red-900/30 dark:text-red-400"
+                                                    className="w-10 h-10 flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md shrink-0 transition"
                                                 >
-                                                    {language === 'ar' ? 'حذف' : 'Remove'}
+                                                    <Trash className="w-5 h-5" />
                                                 </button>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-xs mt-1 border-t border-gray-100 dark:border-gray-700 pt-1">
+                                                <span className="text-gray-500 dark:text-gray-400 min-w-16 ml-2 font-medium">{language === 'ar' ? 'المستودع:' : 'Warehouse:'}</span>
+                                                <select
+                                                    value={line.warehouseId || sessionScope.scope?.warehouseId || ''}
+                                                    onChange={(e) => updateInStoreLine(index, { warehouseId: e.target.value })}
+                                                    className="flex-1 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-xs py-1 px-2 dark:bg-gray-700 dark:text-gray-200"
+                                                >
+                                                    {warehouses?.filter(w => w.isActive).map(w => (
+                                                        <option key={w.id} value={w.id}>{w.name}</option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         </div>
                                     );
