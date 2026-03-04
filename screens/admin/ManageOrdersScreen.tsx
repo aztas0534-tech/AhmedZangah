@@ -2322,8 +2322,8 @@ const ManageOrdersScreen: React.FC = () => {
         const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
         const returnStatus = getReturnStatus(order);
         const isFullyReturned = returnStatus === 'full';
-        const canReturn = order.status === 'delivered' && paid > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned;
         const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+        const canReturn = order.status === 'delivered' && paid > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned && !isVoided;
         const items = Array.isArray((order as any)?.items) ? (order as any).items : [];
 
         return (
@@ -2338,6 +2338,11 @@ const ManageOrdersScreen: React.FC = () => {
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${adminStatusColors[order.status] || 'bg-gray-100 text-gray-800'}`}>
                             {statusTranslations[order.status] || order.status}
                         </span>
+                        {isVoided && (
+                            <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">
+                                ⛔ ملغي بعد التسليم
+                            </span>
+                        )}
                         {renderReturnBadge(order, 'pill')}
                         {order.isScheduled && order.scheduledAt && (
                             <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold" dir="ltr">
@@ -2553,7 +2558,7 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
-                    {order.status === 'delivered' && remaining > 1e-9 && String((order as any).returnStatus || '').toLowerCase() !== 'full' && (
+                    {order.status === 'delivered' && remaining > 1e-9 && !isVoided && String((order as any).returnStatus || '').toLowerCase() !== 'full' && (
                         <div className="col-span-2 flex gap-2">
                             <button
                                 onClick={() => openPartialPaymentModal(order.id)}
@@ -2762,14 +2767,17 @@ const ManageOrdersScreen: React.FC = () => {
                             ) : filteredAndSortedOrders.length > 0 ? (
                                 filteredAndSortedOrders.map(order => {
                                     const returnStatus = getReturnStatus(order);
+                                    const isVoidedDesktop = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
                                     const rowClass =
                                         order.id === highlightedOrderId
                                             ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                                            : returnStatus === 'full'
-                                                ? 'bg-red-50/70 dark:bg-red-900/10'
-                                                : returnStatus === 'partial'
-                                                    ? 'bg-amber-50/70 dark:bg-amber-900/10'
-                                                    : undefined;
+                                            : isVoidedDesktop
+                                                ? 'bg-purple-50/70 dark:bg-purple-900/10'
+                                                : returnStatus === 'full'
+                                                    ? 'bg-red-50/70 dark:bg-red-900/10'
+                                                    : returnStatus === 'partial'
+                                                        ? 'bg-amber-50/70 dark:bg-amber-900/10'
+                                                        : undefined;
                                     return (
                                         <tr key={order.id} data-order-id={order.id} className={rowClass}>
                                             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
@@ -2938,7 +2946,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                     const total = roundMoneyByCode(Number(order.total) || 0, currency);
                                                     const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
                                                     const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
-                                                    const showPaymentActions = order.status === 'delivered' && remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned;
+                                                    const isVoidedTbl = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                                                    const showPaymentActions = order.status === 'delivered' && remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned && !isVoidedTbl;
 
                                                     const paymentActions = showPaymentActions ? (
                                                         <div className="flex flex-col gap-2">
@@ -3105,6 +3114,13 @@ const ManageOrdersScreen: React.FC = () => {
                                                 })()}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
+                                                {Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt) && (
+                                                    <div className="mb-2">
+                                                        <span className="inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">
+                                                            ⛔ ملغي بعد التسليم
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 {renderReturnBadge(order, 'banner')}
                                                 <select
                                                     value={order.status}
@@ -3145,7 +3161,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                 {(() => {
                                                     const paid = Number(paidSumByOrderId[order.id]) || 0;
                                                     const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
-                                                    const canReturn = order.status === 'delivered' && paid > 0.01 && !isFullyReturned;
+                                                    const isVoidedRow = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                                                    const canReturn = order.status === 'delivered' && paid > 0.01 && !isFullyReturned && !isVoidedRow;
                                                     if (!canReturn) return null;
                                                     return (
                                                         <div className="mt-2 flex flex-col gap-2">

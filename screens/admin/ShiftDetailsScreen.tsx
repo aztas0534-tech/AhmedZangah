@@ -135,7 +135,10 @@ const ShiftDetailsScreen: React.FC = () => {
   const [cashMoveError, setCashMoveError] = useState('');
   const [cashMoveLoading, setCashMoveLoading] = useState(false);
   const [accounts, setAccounts] = useState<{ id: string; name: string; code: string; nameAr: string }[]>([]);
+  const [parties, setParties] = useState<{ id: string; code: string; name: string; type: string }[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [cashMoveCurrency, setCashMoveCurrency] = useState('');
+  const [cashMoveFxRate, setCashMoveFxRate] = useState('');
 
   useEffect(() => {
     void getBaseCurrencyCode().then((c) => {
@@ -147,31 +150,29 @@ const ShiftDetailsScreen: React.FC = () => {
       const supabaseObj = getSupabaseClient();
       if (!supabaseObj) return;
       try {
-        const { data, error } = await supabaseObj
+        const { data: allAccounts, error: accountsError } = await supabaseObj
           .from('chart_of_accounts')
-          .select('id, name, code')
-          .in('code', ['1010', '1020', '1011', '1021', '1012', '1022']) // Typical cash/bank codes, or more broadly fetching based on type
+          .select('id, name, code, account_type')
           .eq('is_active', true)
           .order('code');
 
-        if (!error && data) {
-          // Alternatively, fetch all assets then filter in memory if codes vary
-          const { data: allAssets } = await supabaseObj
-            .from('chart_of_accounts')
-            .select('id, name, code')
-            .eq('account_type', 'asset')
-            .eq('is_active', true)
-            .order('code');
-
-          if (allAssets) {
-            const cashBankOptions = allAssets.filter(a => a.code.startsWith('101') || a.code.startsWith('102') || a.code.startsWith('103')).map(a => ({ ...a, nameAr: translateAccountName(a.name) }));
-            setAccounts(cashBankOptions);
-          } else {
-            setAccounts(data.map(a => ({ ...a, nameAr: translateAccountName(a.name) })));
-          }
+        if (!accountsError && allAccounts) {
+          const formattedAccounts = allAccounts.map(a => ({ ...a, nameAr: translateAccountName(a.name) }));
+          setAccounts(formattedAccounts);
         }
+
+        const { data: allParties, error: partiesError } = await supabaseObj
+          .from('financial_parties')
+          .select('id, code, name, type')
+          .eq('status', 'active')
+          .order('name');
+
+        if (!partiesError && allParties) {
+          setParties(allParties);
+        }
+
       } catch (err) {
-        console.error('Failed to load accounts', err);
+        console.error('Failed to load accounts and parties', err);
       }
     };
     void loadAccounts();
@@ -386,6 +387,19 @@ const ShiftDetailsScreen: React.FC = () => {
       return;
     }
     setCashMoveLoading(true);
+
+    // Determine if selected ID is a party or an account
+    let destAccountId: string | null = selectedAccountId || null;
+    let destPartyId: string | null = null;
+
+    if (selectedAccountId) {
+      const isParty = parties.some(p => p.id === selectedAccountId);
+      if (isParty) {
+        destPartyId = selectedAccountId;
+        destAccountId = null;
+      }
+    }
+
     try {
       const { error } = await supabase.rpc('record_shift_cash_movement', {
         p_shift_id: resolvedShiftId,
@@ -393,7 +407,10 @@ const ShiftDetailsScreen: React.FC = () => {
         p_amount: amount,
         p_reason: cashMoveReason.trim() || null,
         p_occurred_at: null,
-        p_destination_account_id: selectedAccountId || null,
+        p_destination_account_id: destAccountId,
+        p_currency: cashMoveCurrency || null,
+        p_fx_rate: cashMoveFxRate ? Number(cashMoveFxRate) : null,
+        p_destination_party_id: destPartyId,
       });
       if (error) throw error;
 
@@ -631,6 +648,8 @@ const ShiftDetailsScreen: React.FC = () => {
                 setCashMoveAmount('');
                 setCashMoveReason('');
                 setSelectedAccountId('');
+                setCashMoveCurrency(baseCode || 'YER');
+                setCashMoveFxRate('1');
                 setCashMoveOpen(true);
               }}
               className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
@@ -677,26 +696,78 @@ const ShiftDetailsScreen: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب الوجهة (بنك / صندوق)</label>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">الطرف / الحساب (اختياري)</label>
                 <select
                   value={selectedAccountId}
                   onChange={(e) => setSelectedAccountId(e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 >
-                  <option value="">-- اختياري (الحساب الافتراضي للنظام) --</option>
-                  {accounts.map((acc) => {
-                    const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
-                    return (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.code} - {dispName}
+                  <option value="">-- اختياري (الحساب والدفتر الافتراضي) --</option>
+
+                  <optgroup label="الأطراف المالية (موردين، عملاء، موظفين...)">
+                    {parties.map((party) => (
+                      <option key={`p-${party.id}`} value={party.id}>
+                        {party.code || '-'} - {party.name} ({party.type})
                       </option>
-                    )
-                  })}
+                    ))}
+                  </optgroup>
+
+                  <optgroup label="حسابات الصندوق والبنك">
+                    {accounts.filter(a => a.code.startsWith('101') || a.code.startsWith('102') || a.code.startsWith('103')).map((acc) => {
+                      const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                      return (
+                        <option key={`a-cb-${acc.id}`} value={acc.id}>
+                          {acc.code} - {dispName}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+
+                  <optgroup label="حسابات أخرى (مصروفات، أصول...)">
+                    {accounts.filter(a => !a.code.startsWith('101') && !a.code.startsWith('102') && !a.code.startsWith('103')).map((acc) => {
+                      const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                      return (
+                        <option key={`a-o-${acc.id}`} value={acc.id}>
+                          {acc.code} - {dispName}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1 dark:text-gray-300">المبلغ</label>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">العملة</label>
+                    <select
+                      value={cashMoveCurrency}
+                      onChange={(e) => setCashMoveCurrency(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    >
+                      <option value="YER">YER (يمني)</option>
+                      <option value="SAR">SAR (سعودي)</option>
+                      <option value="USD">USD (دولار)</option>
+                    </select>
+                  </div>
+                  {cashMoveCurrency !== baseCode && (
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium mb-1 dark:text-gray-300">سعر الصرف</label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={cashMoveFxRate}
+                        onChange={(e) => setCashMoveFxRate(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        placeholder="1"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">المبلغ الأجنبي ({cashMoveCurrency})</label>
                 <input
                   type="number"
                   step="0.01"
@@ -705,6 +776,11 @@ const ShiftDetailsScreen: React.FC = () => {
                   className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   placeholder="0.00"
                 />
+                {cashMoveCurrency !== baseCode && cashMoveFxRate && cashMoveAmount && (
+                  <div className="mt-1 text-xs text-gray-500 font-mono">
+                    المبلغ بالعملة المحلية = {(Number(cashMoveAmount) * Number(cashMoveFxRate)).toFixed(2)} {baseCode}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1 dark:text-gray-300">
