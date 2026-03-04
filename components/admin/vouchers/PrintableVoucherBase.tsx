@@ -41,6 +41,9 @@ export type VoucherData = {
   fromAccount?: string | null;
   shiftId?: string | null;
   shiftNumber?: number | null;
+  foreignAmount?: number | null;
+  fxRate?: number | null;
+  baseCurrency?: string | null;
 };
 
 const fmt = (n: number) => {
@@ -335,6 +338,18 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <span className="info-value">
               {String(data.senderName || '').trim() || '—'}
               {data.senderPhone ? <span className="tabular" dir="ltr">{` — ${data.senderPhone}`}</span> : null}
+            </span>
+          </div>
+        ) : null}
+        {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && typeof data.foreignAmount === 'number' && data.foreignAmount > 0 && typeof data.fxRate === 'number' && data.fxRate > 0 ? (
+          <div className="info-item" style={{ gridColumn: 'span 4', borderTop: '1px dashed #DBEAFE', paddingTop: 10 }}>
+            <span className="info-label">تفاصيل العملة الأجنبية</span>
+            <span className="info-value tabular" dir="ltr">
+              {fmt(data.foreignAmount)} {currency}
+              {' × '}
+              {data.fxRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
+              {' = '}
+              {fmt(data.foreignAmount * data.fxRate)} {data.baseCurrency || '—'}
             </span>
           </div>
         ) : null}

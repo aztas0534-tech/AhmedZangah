@@ -9,6 +9,16 @@ import { printJournalVoucherByEntryId, printPaymentVoucherByEntryId, printReceip
 type AccountRow = { id: string; code: string; name: string; nameAr: string };
 type CostCenterRow = { id: string; name: string; code: string | null };
 type PartyRow = { id: string; name: string };
+type VoucherHistoryRow = {
+  id: string;
+  entryDate: string;
+  memo: string;
+  status: string;
+  sourceEvent: string;
+  documentNumber: string;
+  totalDebit: number;
+  createdBy: string;
+};
 
 import { translateAccountName } from '../../utils/accountUtils';
 
@@ -59,6 +69,12 @@ export default function VoucherEntryScreen() {
   const [lastEntryId, setLastEntryId] = useState<string>('');
   const [lastEntryStatus, setLastEntryStatus] = useState<string>('');
   const [lastEntryCreatedBy, setLastEntryCreatedBy] = useState<string>('');
+
+  // History list state
+  const [history, setHistory] = useState<VoucherHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'draft' | 'posted' | 'voided'>('all');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'receipt' | 'payment' | 'journal'>('all');
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -260,6 +276,108 @@ export default function VoucherEntryScreen() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const fetchHistory = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !canView) return;
+    setHistoryLoading(true);
+    try {
+      let query = supabase
+        .from('journal_entries')
+        .select('id,entry_date,memo,status,source_event,document_id,created_by')
+        .eq('source_table', 'manual')
+        .order('entry_date', { ascending: false })
+        .limit(50);
+      if (historyFilter !== 'all') query = query.eq('status', historyFilter);
+      if (historyTypeFilter !== 'all') query = query.eq('source_event', historyTypeFilter);
+      const { data: rows, error } = await query;
+      if (error) throw error;
+      const mapped: VoucherHistoryRow[] = (rows || []).map((r: any) => {
+        return {
+          id: String(r.id || ''),
+          entryDate: String(r.entry_date || ''),
+          memo: String(r.memo || ''),
+          status: String(r.status || ''),
+          sourceEvent: String(r.source_event || ''),
+          documentNumber: '',
+          totalDebit: 0,
+          createdBy: String(r.created_by || ''),
+        };
+      });
+      setHistory(mapped);
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر تحميل سجل السندات.'), 'error');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [canView, historyFilter, historyTypeFilter, showNotification]);
+
+  useEffect(() => { void fetchHistory(); }, [fetchHistory]);
+
+  const printHistoryEntry = async (entryId: string, type: string) => {
+    try {
+      const brand = {
+        name: String((settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '').trim(),
+        address: String((settings as any)?.address || '').trim(),
+        contactNumber: String((settings as any)?.contactNumber || '').trim(),
+        logoUrl: String((settings as any)?.logoUrl || '').trim(),
+      };
+      if (type === 'receipt') await printReceiptVoucherByEntryId(entryId, brand);
+      else if (type === 'payment') await printPaymentVoucherByEntryId(entryId, brand);
+      else await printJournalVoucherByEntryId(entryId, brand);
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر الطباعة.'), 'error');
+    }
+  };
+
+  const approveHistoryEntry = async (entryId: string) => {
+    if (!canApprove) { showNotification('ليس لديك صلاحية اعتماد السندات.', 'error'); return; }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.rpc('approve_journal_entry', { p_entry_id: entryId } as any);
+      if (error) throw error;
+      showNotification('تم اعتماد السند.', 'success');
+      void fetchHistory();
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر اعتماد السند.'), 'error');
+    }
+  };
+
+  const voidHistoryEntry = async (entryId: string) => {
+    if (!canVoid) { showNotification('ليس لديك صلاحية إبطال السندات.', 'error'); return; }
+    const reason = window.prompt('سبب الإبطال/العكس؟') || '';
+    if (!reason.trim()) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.rpc('void_journal_entry', { p_entry_id: entryId, p_reason: reason.trim() } as any);
+      if (error) throw error;
+      showNotification('تم إبطال/عكس السند.', 'success');
+      void fetchHistory();
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر إبطال/عكس السند.'), 'error');
+    }
+  };
+
+  const eventLabel = (e: string) => {
+    if (e === 'receipt') return 'قبض';
+    if (e === 'payment') return 'صرف';
+    if (e === 'journal') return 'قيد';
+    return e;
+  };
+  const statusLabel = (s: string) => {
+    if (s === 'draft') return 'مسودة';
+    if (s === 'posted') return 'مُرحّل';
+    if (s === 'voided') return 'مبطل';
+    return s;
+  };
+  const statusColor = (s: string) => {
+    if (s === 'draft') return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200';
+    if (s === 'posted') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200';
+    if (s === 'voided') return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200';
+    return 'bg-gray-100 text-gray-800';
   };
 
   const approveLast = async () => {
@@ -563,6 +681,87 @@ export default function VoucherEntryScreen() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Voucher History */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold dark:text-white">سجل السندات</h2>
+          <button type="button" onClick={() => void fetchHistory()} disabled={historyLoading} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-60">
+            {historyLoading ? 'جارٍ...' : 'تحديث'}
+          </button>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={historyFilter} onChange={(e) => setHistoryFilter(e.target.value as any)} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+            <option value="all">كل الحالات</option>
+            <option value="draft">مسودة</option>
+            <option value="posted">مُرحّل</option>
+            <option value="voided">مبطل</option>
+          </select>
+          <select value={historyTypeFilter} onChange={(e) => setHistoryTypeFilter(e.target.value as any)} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+            <option value="all">كل الأنواع</option>
+            <option value="receipt">سند قبض</option>
+            <option value="payment">سند صرف</option>
+            <option value="journal">قيد يومية</option>
+          </select>
+        </div>
+        {historyLoading ? (
+          <div className="text-xs text-gray-500 dark:text-gray-400 py-4 text-center">جاري تحميل السجل...</div>
+        ) : history.length === 0 ? (
+          <div className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">لا توجد سندات مسجلة.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b dark:border-gray-700 text-right">
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">المعرف</th>
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">النوع</th>
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">البيان</th>
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">الحالة</th>
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">عمليات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.id} className="border-b dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td className="py-2 px-2 font-mono text-xs" dir="ltr">{h.id.slice(-8)}</td>
+                    <td className="py-2 px-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${h.sourceEvent === 'receipt' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
+                        : h.sourceEvent === 'payment' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200'
+                          : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200'
+                        }`}>{eventLabel(h.sourceEvent)}</span>
+                    </td>
+                    <td className="py-2 px-2 font-mono text-xs" dir="ltr">
+                      {(() => { try { return new Date(h.entryDate).toLocaleDateString('ar-EG-u-nu-latn'); } catch { return h.entryDate; } })()}
+                    </td>
+                    <td className="py-2 px-2 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{h.memo || '—'}</td>
+                    <td className="py-2 px-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(h.status)}`}>{statusLabel(h.status)}</span>
+                    </td>
+                    <td className="py-2 px-2">
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => void printHistoryEntry(h.id, h.sourceEvent)} className="px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">
+                          طباعة
+                        </button>
+                        {h.status === 'draft' && canApprove ? (
+                          <button type="button" onClick={() => void approveHistoryEntry(h.id)} className="px-2 py-1 rounded text-xs bg-green-600 text-white hover:bg-green-700">
+                            اعتماد
+                          </button>
+                        ) : null}
+                        {(h.status === 'draft' || h.status === 'posted') && canVoid ? (
+                          <button type="button" onClick={() => void voidHistoryEntry(h.id)} className="px-2 py-1 rounded text-xs bg-red-600 text-white hover:bg-red-700">
+                            إبطال
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

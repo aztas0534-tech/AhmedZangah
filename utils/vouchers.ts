@@ -185,6 +185,25 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     }
   }
 
+  let foreignAmount: number | null = null;
+  let fxRate: number | null = null;
+  const rawLines = Array.isArray(lines) ? lines : [];
+  for (const l of rawLines) {
+    const fa = Number((l as any)?.foreign_amount || 0);
+    const fr = Number((l as any)?.fx_rate || 0);
+    if (fa > 0 && fr > 0) {
+      foreignAmount = fa;
+      fxRate = fr;
+      break;
+    }
+  }
+
+  let baseCurrency: string | null = null;
+  try {
+    const { data: baseCurRow } = await supabase.rpc('get_base_currency');
+    baseCurrency = baseCurRow ? String(baseCurRow).trim().toUpperCase() : null;
+  } catch { /* ignore */ }
+
   return {
     entry: entry as any,
     document: docRow as any,
@@ -203,6 +222,9 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     fromAccount: fromAccount || null,
     shiftId,
     shiftNumber,
+    foreignAmount,
+    fxRate,
+    baseCurrency,
   };
 };
 
@@ -239,6 +261,9 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
     fromAccount: (bundle as any).fromAccount || null,
     shiftId: (bundle as any).shiftId || null,
     shiftNumber: (bundle as any).shiftNumber ?? null,
+    foreignAmount: (bundle as any).foreignAmount ?? null,
+    fxRate: (bundle as any).fxRate ?? null,
+    baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
@@ -279,6 +304,9 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
     fromAccount: (bundle as any).fromAccount || null,
     shiftId: (bundle as any).shiftId || null,
     shiftNumber: (bundle as any).shiftNumber ?? null,
+    foreignAmount: (bundle as any).foreignAmount ?? null,
+    fxRate: (bundle as any).fxRate ?? null,
+    baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
@@ -339,6 +367,9 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
     fromAccount: (bundle as any).fromAccount || null,
     shiftId,
     shiftNumber,
+    foreignAmount: (bundle as any).foreignAmount ?? null,
+    fxRate: (bundle as any).fxRate ?? null,
+    baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
@@ -399,6 +430,9 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
     fromAccount: (bundle as any).fromAccount || null,
     shiftId,
     shiftNumber,
+    foreignAmount: (bundle as any).foreignAmount ?? null,
+    fxRate: (bundle as any).fxRate ?? null,
+    baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
