@@ -1,6 +1,3 @@
-
-
-
 import { AZTA_IDENTITY } from '../../../config/identity';
 
 type Brand = {
@@ -18,6 +15,13 @@ export type VoucherLine = {
   debit: number;
   credit: number;
   memo?: string | null;
+  currency?: string | null;
+  analyticalAccount?: string | null;
+  costCenterNo?: string | null;
+  referenceNo?: string | null;
+  foreignDebit?: number | null;
+  foreignCredit?: number | null;
+  recordNo?: string | number | null;
 };
 
 export type VoucherData = {
@@ -44,10 +48,13 @@ export type VoucherData = {
   foreignAmount?: number | null;
   fxRate?: number | null;
   baseCurrency?: string | null;
+  createdBy?: string | null;
+  attachmentsCount?: number | null;
 };
 
-const fmt = (n: number) => {
+const fmt = (n: number | null | undefined) => {
   const v = Number(n || 0);
+  if (v === 0) return '';
   try {
     return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   } catch {
@@ -57,10 +64,14 @@ const fmt = (n: number) => {
 
 export default function PrintableVoucherBase(props: { data: VoucherData; brand?: Brand }) {
   const { data, brand } = props;
+  const isJournal = data.title.includes('قيد يومية') || data.title.includes('JV');
+  const isReceipt = data.title.includes('سند قبض');
+  const isPayment = data.title.includes('سند صرف');
+
   const totalDebit = data.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
   const totalCredit = data.lines.reduce((s, l) => s + Number(l.credit || 0), 0);
 
-  // Format date safely to avoid RTL scrambling
+  // Format date safely
   const formattedDate = new Date(data.date).toLocaleDateString('en-GB');
   const formattedHijriDate = (() => {
     try {
@@ -69,18 +80,8 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
       return '';
     }
   })();
+
   const currency = data.currency?.toUpperCase() || '—';
-  const isPosted = (() => {
-    const s = String(data.status || '').trim().toLowerCase();
-    if (!s) return false;
-    return s === 'posted' || s.includes('posted') || s.includes('مُرحّل') || s.includes('مرحل');
-  })();
-  const costCenterLabel = (() => {
-    const name = String(brand?.branchName || '').trim();
-    const code = String(brand?.branchCode || '').trim();
-    if (!name && !code) return '';
-    return [name, code ? `(${code})` : ''].filter(Boolean).join(' ');
-  })();
   const shiftNo = (() => {
     const n = data.shiftNumber;
     if (typeof n === 'number' && Number.isFinite(n) && n > 0) return String(Math.trunc(n));
@@ -89,344 +90,274 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
     const compact = id.replace(/-/g, '').toUpperCase();
     return compact.slice(-6);
   })();
-  const referenceLabel = (() => {
-    const t = String(data.title || '');
-    if (t.includes('سند قبض') || t.includes('سند صرف')) return 'رقم المرجع';
-    return 'رقم العملية';
-  })();
-  const actorLabel = (() => {
-    const t = String(data.title || '');
-    if (t.includes('سند قبض')) return 'اسم الصندوق';
-    if (t.includes('سند صرف')) return 'الصارف';
-    return 'المستلم';
-  })();
-
   return (
-    <div className="voucher-container" dir="rtl">
+    <div className="voucher-container w-full bg-white text-black p-4 text-sm" dir="rtl" style={{ maxWidth: '210mm', margin: '0 auto', fontFamily: 'Tajawal, Cairo, sans-serif' }}>
       <style>{`
-            @media print {
-                @page { size: A4; margin: 0; }
-                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            }
-            .voucher-container {
-                font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                max-width: 210mm;
-                margin: 0 auto;
-                background: white;
-                color: #1E3A8A;
-                line-height: 1.5;
-                padding: 40px;
-                border-top: 5px solid #1E3A8A; /* Luxury top border */
-            }
-            .header-section {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 40px;
-                border-bottom: 2pt solid #1E3A8A;
-                padding-bottom: 20px;
-            }
-            .company-info { text-align: right; }
-            .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }
-            .company-info p { margin: 2px 0; font-size: 13px; color: #1D4ED8; }
-            
-            .doc-title {
-                text-align: left;
-                background: #f8fafc;
-                padding: 15px 25px;
-                border-radius: 8px;
-                border: 1.5pt solid #1E3A8A;
-            }
-            .doc-title h2 {
-                font-size: 24px;
-                font-weight: 900;
-                color: #0F172A;
-                margin: 0;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            .doc-title .ref-number {
-                font-size: 14px;
-                color: #64748b;
-                margin-top: 5px;
-                font-family: 'Courier New', monospace;
-            }
-            
-            .info-grid {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 20px;
-                margin-bottom: 30px;
-                background: #f8fafc;
-                padding: 20px;
-                border-radius: 8px;
-                border: 1.5pt solid #1E3A8A;
-            }
-            .info-item { display: flex; flex-direction: column; }
-            .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
-            .info-value { font-size: 14px; font-weight: 600; color: #0F172A; }
-            .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
-            
-            .amount-box {
-                grid-column: span 4;
-                background: #1E3A8A;
-                color: white;
-                padding: 15px;
-                border-radius: 6px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 30px;
-            }
-            .amount-box .label { font-size: 14px; font-weight: bold; }
-            .amount-box .value { font-size: 20px; font-weight: 800; font-family: 'Courier New', monospace; }
-            
-            .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1.5pt solid #1E3A8A; }
-            .lines-table th {
-                background: #1E3A8A;
-                color: white;
-                font-weight: 700;
-                text-align: center;
-                padding: 12px;
-                border-bottom: 2px solid #0F172A;
-            }
-            .lines-table th:first-child { text-align: right; }
-            .lines-table td {
-                padding: 12px;
-                border-bottom: 1pt solid #DBEAFE;
-                vertical-align: top;
-                color: #1E40AF;
-            }
-            .lines-table tr:last-child td { border-bottom: none; }
-            .lines-table tr:nth-child(even) { background-color: #f8fafc; }
-            .lines-table .total-row td {
-                background: #f8fafc;
-                font-weight: 800;
-                border-top: 2px solid #cbd5e1;
-                font-size: 14px;
-                color: #0F172A;
-            }
-            
-            .signatures-section {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 30px;
-                margin-top: 60px;
-            }
-            .signature-box {
-                border-top: 1px solid #cbd5e1;
-                padding-top: 10px;
-                text-align: center;
-            }
-            .signature-label { font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 40px; }
-            
-            .footer-meta {
-                margin-top: 40px;
-                border-top: 1px dashed #cbd5e1;
-                padding-top: 10px;
-                display: flex;
-                justify-content: space-between;
-                font-size: 10px;
-                color: #94a3b8;
-            }
-        `}</style>
+        @media print {
+          @page { size: A4; margin: 10mm; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white; }
+          .voucher-container { border: none !important; margin: 0 !important; width: 100% !important; padding: 0 !important; }
+        }
+        .outer-border { border: 2px solid black; padding: 4px; border-radius: 8px; }
+        .inner-border { border: 1px solid black; padding: 10px; border-radius: 4px; }
+        .table-borders th, .table-borders td { border: 1px solid black; padding: 4px 6px; text-align: center; font-size: 11px; }
+        .table-borders th { background-color: #f3f4f6; font-weight: bold; }
+        .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
+        .print-title { background-color: #e5e7eb; border: 1px solid black; border-radius: 20px; padding: 4px 30px; font-size: 18px; font-weight: bold; width: fit-content; margin: 0 auto; margin-top: -10px; }
+      `}</style>
 
-      <div className="header-section">
-        <div className="company-info">
-          {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 120, marginBottom: 15 }} />}
-          <h1>{AZTA_IDENTITY.tradeNameAr}</h1>
-          {(brand?.name || brand?.branchName) && (
-            <p style={{ fontSize: 16, fontWeight: 'bold', color: '#1E40AF', marginBottom: 5 }}>
-              {brand?.name !== AZTA_IDENTITY.tradeNameAr ? brand?.name : brand?.branchName}
-            </p>
+      <div className="outer-border">
+        <div className="inner-border min-h-[90vh] flex flex-col">
+
+          {/* Header */}
+          <div className="flex justify-between items-start border-b border-black pb-2 mb-4">
+            {/* Left - English Info */}
+            <div className="text-left" style={{ width: '30%', fontSize: '11px', lineHeight: '1.4' }}>
+              <div className="font-bold text-[13px]">{brand?.name || AZTA_IDENTITY.tradeNameAr}</div>
+              {brand?.address && <div>{brand.address}</div>}
+              {brand?.contactNumber && <div>{brand.contactNumber}</div>}
+            </div>
+
+            {/* Center - Logo */}
+            <div className="flex flex-col items-center justify-center" style={{ width: '40%' }}>
+              {brand?.logoUrl ? (
+                <img src={brand.logoUrl} alt="Logo" style={{ height: 60, objectFit: 'contain' }} />
+              ) : (
+                <div style={{ height: 60, width: 60, borderRadius: '50%', border: '1px solid black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 'bold' }}>
+                  A
+                </div>
+              )}
+            </div>
+
+            {/* Right - Arabic Info */}
+            <div className="text-right" style={{ width: '30%', fontSize: '11px', lineHeight: '1.4' }}>
+              <div className="font-bold text-[13px]">{AZTA_IDENTITY.tradeNameAr}</div>
+              {(brand?.name || brand?.branchName) && brand?.name !== AZTA_IDENTITY.tradeNameAr && (
+                <div className="font-bold">{brand?.name || brand?.branchName}</div>
+              )}
+              {brand?.address && <div>{brand.address}</div>}
+              {brand?.contactNumber && <div dir="ltr" className="text-right">{brand.contactNumber}</div>}
+            </div>
+          </div>
+
+          <div className="relative mb-6">
+            <div className="print-title">
+              {isJournal ? 'قيود اليومية' : (isReceipt ? 'سند قبض / نقداً' : (isPayment ? 'سند صرف / نقداً' : data.title))}
+            </div>
+          </div>
+
+          {/* Type specific top sections */}
+          {!isJournal ? (
+            // Receipt / Payment Top Section
+            <div className="flex justify-between items-start mb-4">
+              {/* Left Block */}
+              <div className="flex flex-col gap-1" style={{ width: '30%' }}>
+                <div className="flex">
+                  <div className="w-1/2 labelBoxStyles border border-black bg-gray-100 text-center text-[11px] font-bold py-1 px-2">رقم الصندوق</div>
+                  <div className="w-1/2 headerBoxStyles border border-black text-center text-[12px] font-bold py-1 px-2">{shiftNo || '1'}</div>
+                </div>
+                <div className="flex">
+                  <div className="w-1/2 labelBoxStyles border border-black bg-gray-100 text-center text-[11px] font-bold py-1 px-2">اسم الصندوق</div>
+                  <div className="w-1/2 headerBoxStyles border border-black text-center text-[12px] font-bold py-1 px-2">صندوق 1</div>
+                </div>
+              </div>
+
+              {/* Right Block */}
+              <div className="flex flex-col gap-1" style={{ width: '30%' }}>
+                <div className="flex">
+                  <div className="w-1/3 labelBoxStyles border border-black bg-gray-100 text-center text-[11px] font-bold py-1 px-2">رقم السند</div>
+                  <div className="w-2/3 headerBoxStyles border border-black text-center text-[12px] font-bold py-1 px-2 tabular">{data.voucherNumber}</div>
+                </div>
+                <div className="flex">
+                  <div className="w-1/3 labelBoxStyles border border-black bg-gray-100 text-center text-[11px] font-bold py-1 px-2">تاريخ السند</div>
+                  <div className="w-1/3 headerBoxStyles border border-black text-center text-[12px] font-bold py-1 px-2 tabular">{formattedHijriDate || '—'}</div>
+                  <div className="w-1/3 headerBoxStyles border border-black text-center text-[12px] font-bold py-1 px-2 tabular">{formattedDate}</div>
+                </div>
+                <div className="flex">
+                  <div className="w-1/3 labelBoxStyles border border-black bg-gray-100 text-center text-[11px] font-bold py-1 px-2">رقم المرجع</div>
+                  <div className="w-2/3 headerBoxStyles border border-black text-center text-[12px] font-bold py-1 px-2 tabular">{data.referenceId || '—'}</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            // Journal Top Section
+            <div className="grid grid-cols-4 gap-0 border border-black mb-4 bg-gray-50 text-[11px]">
+              <div className="col-span-1 border-l border-black flex items-center px-2 py-1">نوع الوثيقة: قيد يومية</div>
+              <div className="col-span-1 border-l border-black flex items-center px-2 py-1">رقم القيد: <span className="font-bold mr-2">{data.voucherNumber}</span></div>
+              <div className="col-span-1 border-l border-black flex items-center px-2 py-1">تاريخ السند: <span className="font-bold mr-2 tabular">{formattedDate}</span></div>
+              <div className="col-span-1 flex items-center px-2 py-1">رقم المرجع: <span className="font-bold mr-2 tabular">{data.referenceId || '—'}</span></div>
+
+              <div className="col-span-2 border-t border-l border-black flex items-center px-2 py-1 text-[11px]">المستفيد: <span className="mr-2">{data.partyName || '—'}</span></div>
+              <div className="col-span-1 border-t border-l border-black flex items-center px-2 py-1 text-[11px]">المستلم: <span className="mr-2">{data.receivedBy || '—'}</span></div>
+              <div className="col-span-1 border-t border-black flex items-center px-2 py-1 text-[11px]">عدد المرفقات: <span className="mr-2 tabular">{data.attachmentsCount || '0'}</span></div>
+            </div>
           )}
-          {brand?.address && <p>{brand.address}</p>}
-          {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
-        </div>
-        <div className="doc-title">
-          <h2>{data.title}</h2>
-          <div className="ref-number tabular" dir="ltr">#{data.voucherNumber}</div>
-          <div style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 'bold', background: isPosted ? '#dcfce7' : '#f1f5f9', color: isPosted ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
-              {data.status || 'DRAFT'}
-            </span>
-          </div>
-        </div>
-      </div>
 
-      <div className="info-grid">
-        <div className="info-item">
-          <span className="info-label">التاريخ</span>
-          <span className="info-value tabular" dir="ltr">{formattedDate}</span>
-        </div>
-        {formattedHijriDate ? (
-          <div className="info-item">
-            <span className="info-label">التاريخ الهجري</span>
-            <span className="info-value tabular" dir="ltr">{formattedHijriDate}</span>
-          </div>
-        ) : (
-          <div className="info-item">
-            <span className="info-label">التاريخ الهجري</span>
-            <span className="info-value">—</span>
-          </div>
-        )}
-        <div className="info-item">
-          <span className="info-label">المعرف المرجعي</span>
-          <span className="info-value tabular" dir="ltr">{data.referenceId || '—'}</span>
-        </div>
-        <div className="info-item" style={{ gridColumn: 'span 2' }}>
-          <span className="info-label">الوصف / البيان</span>
-          <span className="info-value">{data.memo || '—'}</span>
-        </div>
-        {costCenterLabel ? (
-          <div className="info-item" style={{ gridColumn: 'span 2' }}>
-            <span className="info-label">مركز التكلفة</span>
-            <span className="info-value">{costCenterLabel}</span>
-          </div>
-        ) : null}
-        {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && shiftNo ? (
-          <div className="info-item">
-            <span className="info-label">رقم الصندوق</span>
-            <span className="info-value tabular" dir="ltr">{shiftNo}</span>
-          </div>
-        ) : null}
-        {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && data.receivedBy ? (
-          <div className="info-item">
-            <span className="info-label">{actorLabel}</span>
-            <span className="info-value">{data.receivedBy}</span>
-          </div>
-        ) : null}
-        {data.partyName ? (
-          <div className="info-item" style={{ gridColumn: 'span 2' }}>
-            <span className="info-label">استلمنا من / الطرف</span>
-            <span className="info-value">{data.partyName}</span>
-          </div>
-        ) : null}
-        {data.paymentMethod ? (
-          <div className="info-item">
-            <span className="info-label">طريقة الدفع</span>
-            <span className="info-value">{data.paymentMethod}</span>
-          </div>
-        ) : null}
-        {data.paymentReferenceNumber ? (
-          <div className="info-item">
-            <span className="info-label">{referenceLabel}</span>
-            <span className="info-value tabular" dir="ltr">{data.paymentReferenceNumber}</span>
-          </div>
-        ) : null}
-        {(!data.title.includes('سند قبض') && !data.title.includes('سند صرف')) && data.receivedBy ? (
-          <div className="info-item" style={{ gridColumn: 'span 2' }}>
-            <span className="info-label">{actorLabel}</span>
-            <span className="info-value">{data.receivedBy}</span>
-          </div>
-        ) : null}
-        {data.toAccount ? (
-          <div className="info-item" style={{ gridColumn: 'span 2' }}>
-            <span className="info-label">إلى حساب</span>
-            <span className="info-value">{data.toAccount}</span>
-          </div>
-        ) : null}
-        {data.fromAccount ? (
-          <div className="info-item" style={{ gridColumn: 'span 2' }}>
-            <span className="info-label">من حساب (المقابل)</span>
-            <span className="info-value">{data.fromAccount}</span>
-          </div>
-        ) : null}
-        {(data.senderName || data.senderPhone) ? (
-          <div className="info-item" style={{ gridColumn: 'span 2' }}>
-            <span className="info-label">بيانات المحوّل</span>
-            <span className="info-value">
-              {String(data.senderName || '').trim() || '—'}
-              {data.senderPhone ? <span className="tabular" dir="ltr">{` — ${data.senderPhone}`}</span> : null}
-            </span>
-          </div>
-        ) : null}
-        {(data.title.includes('سند قبض') || data.title.includes('سند صرف')) && typeof data.foreignAmount === 'number' && data.foreignAmount > 0 && typeof data.fxRate === 'number' && data.fxRate > 0 ? (
-          <div className="info-item" style={{ gridColumn: 'span 4', borderTop: '1px dashed #DBEAFE', paddingTop: 10 }}>
-            <span className="info-label">تفاصيل العملة الأجنبية</span>
-            <span className="info-value tabular" dir="ltr">
-              {fmt(data.foreignAmount)} {currency}
-              {' × '}
-              {data.fxRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
-              {' = '}
-              {fmt(data.foreignAmount * data.fxRate)} {data.baseCurrency || '—'}
-            </span>
-          </div>
-        ) : null}
-      </div>
+          {/* Details (Receipt/Payment only) */}
+          {!isJournal && (
+            <div className="flex flex-col mb-4 text-[12px] border border-black bg-blue-50/20">
+              <div className="flex border-b border-black">
+                <div className="w-[15%] rightBox p-1 font-bold border-l border-black bg-gray-100">المحترم</div>
+                <div className="w-[85%] rightBox p-1">استلمنا من السيد / السادة: <span className="font-bold mr-2">{data.partyName || data.receivedBy || '—'}</span></div>
+              </div>
+              <div className="flex border-b border-black">
+                <div className="w-[15%] rightBox p-1 font-bold border-l border-black bg-blue-100 flex items-center justify-between px-2">
+                  <span className="tabular">{currency}</span>
+                  <span className="tabular">{fmt(data.amount)}</span>
+                </div>
+                <div className="w-[85%] rightBox p-1 bg-blue-50 flex items-center">
+                  <span className="ml-2">مبلغ وقدره:</span> <span className="font-bold">{data.amountWords || '—'}</span>
+                </div>
+              </div>
+              <div className="flex">
+                <div className="w-full rightBox p-1 font-bold">يقيد الى حساب: <span className="font-normal mr-2">{data.toAccount || data.lines[data.lines.length - 1]?.accountName || '—'}</span></div>
+              </div>
+            </div>
+          )}
 
-      {typeof data.amount === 'number' && (
-        <div className="amount-box">
-          <div>
-            <div className="label">المبلغ الإجمالي</div>
-            {data.amountWords ? <div style={{ fontSize: 11, fontWeight: 'normal', opacity: 0.85, marginTop: 4 }}>{`مبلغ وقدره: ${data.amountWords}`}</div> : null}
-          </div>
-          <div className="value" dir="ltr">
-            {fmt(data.amount)} <span style={{ fontSize: 12 }}>{currency}</span>
-          </div>
-        </div>
-      )}
-
-      {data.title.includes('قيد يومية') && (
-        <div className="table-container">
-          <table className="lines-table">
+          {/* Main Table */}
+          <table className="w-full table-borders mb-2">
             <thead>
-              <tr>
-                <th style={{ width: '15%' }}>رمز الحساب</th>
-                <th style={{ width: '35%' }}>اسم الحساب</th>
-                <th style={{ width: '25%' }}>البيان</th>
-                <th style={{ width: '12%' }}>مدين</th>
-                <th style={{ width: '12%' }}>دائن</th>
-              </tr>
+              {isJournal ? (
+                <>
+                  <tr>
+                    <th rowSpan={2} style={{ width: '8%' }}>رقم المركز</th>
+                    <th colSpan={2} style={{ width: '20%' }}>العملة الأجنبية</th>
+                    <th colSpan={2} style={{ width: '20%' }}>العملة المحلية</th>
+                    <th rowSpan={2} style={{ width: '18%' }}>البيان</th>
+                    <th rowSpan={2} style={{ width: '6%' }}>العملة</th>
+                    <th rowSpan={2} style={{ width: '15%' }}>اسم الحساب</th>
+                    <th rowSpan={2} style={{ width: '8%' }}>الحساب التحليلي</th>
+                    <th rowSpan={2} style={{ width: '8%' }}>رقم الحساب</th>
+                    <th rowSpan={2} style={{ width: '5%' }}>رقم السجل</th>
+                  </tr>
+                  <tr>
+                    <th className="bg-gray-50 border-t border-black">دائن</th>
+                    <th className="bg-gray-50 border-t border-black">مدين</th>
+                    <th className="bg-gray-50 border-t border-black">دائن</th>
+                    <th className="bg-gray-50 border-t border-black">مدين</th>
+                  </tr>
+                </>
+              ) : (
+                <tr>
+                  <th style={{ width: '10%' }}>رقم المرجع</th>
+                  <th style={{ width: '15%' }}>رقم المركز</th>
+                  <th style={{ width: '15%' }}>المبلغ</th>
+                  <th style={{ width: '25%' }}>البيان</th>
+                  <th style={{ width: '20%' }}>اسم الحساب</th>
+                  <th style={{ width: '8%' }}>الحساب التحليلي</th>
+                  <th style={{ width: '5%' }}>العملة</th>
+                  <th style={{ width: '10%' }}>رقم الحساب</th>
+                </tr>
+              )}
             </thead>
             <tbody>
               {data.lines.length === 0 ? (
-                <tr><td colSpan={5} className="text-center" style={{ padding: 40, color: '#94a3b8' }}>لا توجد قيود مسجلة</td></tr>
-              ) : data.lines.map((l, idx) => (
-                <tr key={`${l.accountCode}-${idx}`}>
-                  <td className="tabular" dir="ltr" style={{ fontWeight: 'bold', color: '#1D4ED8' }}>{l.accountCode}</td>
-                  <td style={{ fontWeight: 600 }}>{l.accountName}</td>
-                  <td style={{ color: '#64748b', fontSize: 11 }}>{l.memo || '—'}</td>
-                  <td className="tabular text-center" dir="ltr" style={{ color: Number(l.debit) > 0 ? '#0F172A' : '#cbd5e1' }}>{Number(l.debit) > 0 ? fmt(l.debit) : '—'}</td>
-                  <td className="tabular text-center" dir="ltr" style={{ color: Number(l.credit) > 0 ? '#0F172A' : '#cbd5e1' }}>{Number(l.credit) > 0 ? fmt(l.credit) : '—'}</td>
+                <tr>
+                  <td colSpan={isJournal ? 11 : 8} className="py-4 text-gray-400">لا توجد تفاصيل خطوط</td>
+                </tr>
+              ) : (
+                data.lines.map((l, idx) => (
+                  <tr key={idx}>
+                    {isJournal ? (
+                      <>
+                        <td className="tabular">{l.costCenterNo || '—'}</td>
+                        <td className="tabular">{fmt(l.foreignCredit)}</td>
+                        <td className="tabular">{fmt(l.foreignDebit)}</td>
+                        <td className="tabular font-bold">{fmt(l.credit)}</td>
+                        <td className="tabular font-bold">{fmt(l.debit)}</td>
+                        <td className="text-right text-[10px]">{l.memo || data.memo || '—'}</td>
+                        <td className="tabular">{l.currency || currency}</td>
+                        <td className="text-right">{l.accountName}</td>
+                        <td className="tabular">{l.analyticalAccount || '—'}</td>
+                        <td className="tabular font-bold">{l.accountCode}</td>
+                        <td className="tabular">{l.recordNo || (idx + 1)}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="tabular">{l.referenceNo || '—'}</td>
+                        <td className="tabular">{l.costCenterNo || brand?.branchCode || '—'}</td>
+                        <td className="tabular font-bold text-[12px]">{fmt(l.credit > 0 ? l.credit : l.debit)}</td>
+                        <td className="text-right text-[10px]">{l.memo || data.memo || '—'}</td>
+                        <td className="text-right">{l.accountName}</td>
+                        <td className="tabular">{l.analyticalAccount || '—'}</td>
+                        <td className="tabular">{l.currency || currency}</td>
+                        <td className="tabular font-bold">{l.accountCode}</td>
+                      </>
+                    )}
+                  </tr>
+                ))
+              )}
+              {/* Padding rows to make the table look full if lines are less than 5 */}
+              {Array.from({ length: Math.max(0, 5 - data.lines.length) }).map((_, idx) => (
+                <tr key={`fill-${idx}`}>
+                  {isJournal ? (
+                    <>
+                      <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+                    </>
+                  ) : (
+                    <>
+                      <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr className="total-row">
-                <td colSpan={3} style={{ textAlign: 'left', paddingLeft: 20 }}>الإجمالي Total</td>
-                <td className="tabular text-center" dir="ltr">{fmt(totalDebit)}</td>
-                <td className="tabular text-center" dir="ltr">{fmt(totalCredit)}</td>
-              </tr>
-            </tfoot>
+            {isJournal && (
+              <tfoot className="border-t-[2px] border-black text-[12px]">
+                <tr>
+                  <td colSpan={3} className="text-left font-bold text-[12px] p-2 bg-gray-100">الإجمالي:</td>
+                  <td className="font-bold text-[12px] tabular text-red-600">{fmt(totalCredit)}</td>
+                  <td className="font-bold text-[12px] tabular text-red-600">{fmt(totalDebit)}</td>
+                  <td colSpan={6} className="bg-gray-100"></td>
+                </tr>
+              </tfoot>
+            )}
+            {!isJournal && (
+              <tfoot className="border-t border-black">
+                {/* Only to close the table cleanly */}
+              </tfoot>
+            )}
           </table>
-        </div>
-      )}
 
-      <div className="signatures-section">
-        <div className="signature-box">
-          <div className="signature-label">
-            {data.title.includes('سند قبض')
-              ? 'الصندوق'
-              : data.title.includes('سند صرف')
-                ? 'الصارف'
-                : 'إعداد (Prepared By)'}
+          {/* Spacer to push footers down */}
+          <div className="flex-grow"></div>
+
+          {/* Footer Signatures */}
+          {isJournal ? (
+            <div className="flex justify-between mt-8 border-t border-black pt-4 text-[11px] font-bold text-center px-4">
+              <div className="flex-1 border-l border-black last:border-0 px-2 min-h-[40px] relative">
+                <div className="absolute top-[-14px] right-0 bg-white px-1 mr-2 text-gray-500 font-normal">المختص</div>
+              </div>
+              <div className="flex-1 border-l border-black last:border-0 px-2 min-h-[40px] relative">
+                <div className="absolute top-[-14px] right-0 bg-white px-1 mr-2 text-gray-500 font-normal">المحاسب</div>
+              </div>
+              <div className="flex-1 border-l border-black last:border-0 px-2 min-h-[40px] relative">
+                <div className="absolute top-[-14px] right-0 bg-white px-1 mr-2 text-gray-500 font-normal">المراجع</div>
+              </div>
+              <div className="flex-1 border-l border-black last:border-0 px-2 min-h-[40px] relative">
+                <div className="absolute top-[-14px] right-0 bg-white px-1 mr-2 text-gray-500 font-normal">المدير المالي</div>
+              </div>
+              <div className="flex-1 px-2 min-h-[40px] relative">
+                <div className="absolute top-[-14px] right-0 bg-white px-1 mr-2 text-gray-500 font-normal">المدير العام</div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-between border-t border-black pt-2 text-[11px] font-bold text-center mt-6">
+              <div className="w-1/3">المدير المالي<br /><br />______________________</div>
+              <div className="w-1/3">الصندوق<br /><br />______________________</div>
+              <div className="w-1/3">مدخل السجل : <span className="font-normal">{data.createdBy || data.receivedBy || brand?.name || AZTA_IDENTITY.tradeNameAr}</span></div>
+            </div>
+          )}
+
+          {/* bottom metadata */}
+          <div className="flex justify-between text-[9px] mt-4 text-gray-500 pt-1 border-t border-gray-300">
+            <div dir="ltr" className="tabular">{new Date().toLocaleString('en-US')} :تاريخ التقرير </div>
+            <div>{AZTA_IDENTITY.tradeNameAr} {(brand?.name && brand?.name !== AZTA_IDENTITY.tradeNameAr) ? ' - ' + brand?.name : ''}</div>
+            <div className="tabular">1 / 1</div>
+            <div>طبع بواسطة : <span className="font-bold">{data.createdBy || AZTA_IDENTITY.tradeNameAr}</span></div>
           </div>
-        </div>
-        <div className="signature-box">
-          <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير المالي' : 'مراجعة (Checked By)'}</div>
-        </div>
-        <div className="signature-box">
-          <div className="signature-label">{(data.title.includes('سند قبض') || data.title.includes('سند صرف')) ? 'المدير العام' : 'اعتماد (Approved By)'}</div>
-        </div>
-      </div>
 
-      <div className="footer-meta">
-        <div>
-          تمت الطباعة بواسطة النظام في <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span>
-        </div>
-        <div>
-          Generated by {brand?.name || 'AZTA ERP'}
         </div>
       </div>
     </div>
