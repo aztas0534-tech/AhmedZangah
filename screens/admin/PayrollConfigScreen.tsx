@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../../supabase';
 import PageLoader from '../../components/PageLoader';
 import { useToast } from '../../contexts/ToastContext';
 
-type RuleRow = { id: string; rule_type: 'allowance' | 'deduction' | string; name: string; amount_type: 'fixed' | 'percent' | string; amount_value: number; is_active: boolean; };
+type RuleRow = { id: string; rule_type: 'allowance' | 'deduction' | string; name: string; amount_type: 'fixed' | 'percent' | string; amount_value: number; is_active: boolean; currency?: string | null; };
 type TaxRow = { id: string; name: string; rate: number; applies_to: 'gross' | 'net' | string; is_active: boolean; };
 
 export default function PayrollConfigScreen() {
@@ -11,7 +11,7 @@ export default function PayrollConfigScreen() {
   const [loading, setLoading] = useState(true);
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [taxes, setTaxes] = useState<TaxRow[]>([]);
-  const [draftRule, setDraftRule] = useState({ rule_type: 'allowance', name: '', amount_type: 'fixed', amount_value: 0, is_active: true });
+  const [draftRule, setDraftRule] = useState({ rule_type: 'allowance', name: '', amount_type: 'fixed', amount_value: 0, is_active: true, currency: '' });
   const [draftTax, setDraftTax] = useState({ name: '', rate: 0, applies_to: 'gross', is_active: true });
 
   const supabase = getSupabaseClient();
@@ -19,13 +19,13 @@ export default function PayrollConfigScreen() {
   const loadAll = useCallback(async () => {
     if (!supabase) return;
     const [r1, r2] = await Promise.all([
-      supabase.from('payroll_rule_defs').select('id,rule_type,name,amount_type,amount_value,is_active').order('created_at', { ascending: true }),
+      supabase.from('payroll_rule_defs').select('id,rule_type,name,amount_type,amount_value,is_active,currency').order('created_at', { ascending: true }),
       supabase.from('payroll_tax_defs').select('id,name,rate,applies_to,is_active').order('created_at', { ascending: true }),
     ]);
     if (r1.error) throw r1.error;
     if (r2.error) throw r2.error;
     setRules((Array.isArray(r1.data) ? r1.data : []).map((x: any) => ({
-      id: String(x.id), rule_type: String(x.rule_type), name: String(x.name || ''), amount_type: String(x.amount_type), amount_value: Number(x.amount_value || 0), is_active: Boolean(x.is_active),
+      id: String(x.id), rule_type: String(x.rule_type), name: String(x.name || ''), amount_type: String(x.amount_type), amount_value: Number(x.amount_value || 0), is_active: Boolean(x.is_active), currency: x.currency ? String(x.currency) : null,
     })));
     setTaxes((Array.isArray(r2.data) ? r2.data : []).map((x: any) => ({
       id: String(x.id), name: String(x.name || ''), rate: Number(x.rate || 0), applies_to: String(x.applies_to), is_active: Boolean(x.is_active),
@@ -58,10 +58,11 @@ export default function PayrollConfigScreen() {
         amount_type: draftRule.amount_type,
         amount_value: draftRule.amount_value,
         is_active: draftRule.is_active,
+        currency: draftRule.currency?.trim()?.toUpperCase() || null,
       });
       if (error) throw error;
       showNotification('تم إضافة القاعدة.', 'success');
-      setDraftRule({ rule_type: 'allowance', name: '', amount_type: 'fixed', amount_value: 0, is_active: true });
+      setDraftRule({ rule_type: 'allowance', name: '', amount_type: 'fixed', amount_value: 0, is_active: true, currency: '' });
       await loadAll();
     } catch (e: any) {
       showNotification(String(e?.message || 'تعذر إضافة القاعدة'), 'error');
@@ -111,6 +112,7 @@ export default function PayrollConfigScreen() {
                 <option value="percent">نسبة من الإجمالي</option>
               </select>
               <input type="number" value={draftRule.amount_value} onChange={e => setDraftRule({ ...draftRule, amount_value: Number(e.target.value || 0) })} placeholder="القيمة" className="px-3 py-2 rounded border dark:bg-gray-700 dark:border-gray-600" />
+              <input value={draftRule.currency} onChange={e => setDraftRule({ ...draftRule, currency: e.target.value })} placeholder="العملة (اختياري)" className="px-3 py-2 rounded border dark:bg-gray-700 dark:border-gray-600 font-mono" />
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={draftRule.is_active} onChange={e => setDraftRule({ ...draftRule, is_active: e.target.checked })} />
                 فعّال
@@ -126,6 +128,7 @@ export default function PayrollConfigScreen() {
                   <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300">الاسم</th>
                   <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300">طريقة</th>
                   <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300">القيمة</th>
+                  <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300">العملة</th>
                   <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300">الحالة</th>
                 </tr>
               </thead>
@@ -136,11 +139,12 @@ export default function PayrollConfigScreen() {
                     <td className="p-2 text-sm">{r.name}</td>
                     <td className="p-2 text-sm">{r.amount_type === 'percent' ? 'نسبة' : 'مبلغ'}</td>
                     <td className="p-2 text-sm">{r.amount_value}</td>
+                    <td className="p-2 text-sm font-mono">{r.currency || '—'}</td>
                     <td className="p-2 text-xs">{r.is_active ? 'فعّال' : 'موقّف'}</td>
                   </tr>
                 ))}
                 {rules.length === 0 && (
-                  <tr><td colSpan={5} className="p-3 text-center text-sm text-gray-500 dark:text-gray-400">لا توجد قواعد.</td></tr>
+                  <tr><td colSpan={6} className="p-3 text-center text-sm text-gray-500 dark:text-gray-400">لا توجد قواعد.</td></tr>
                 )}
               </tbody>
             </table>

@@ -148,6 +148,8 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'expenses', label: 'إدارة المصاريف', icon: <Icons.ReportIcon />, permission: 'expenses.manage' },
   { to: 'accounting', label: 'المحاسبة', icon: <Icons.ReportIcon />, permission: 'accounting.view' },
   { to: 'payroll', label: 'الرواتب', icon: <Icons.ListIcon />, permission: 'expenses.manage' },
+  { to: 'attendance', label: 'الحضور والغياب', icon: <Icons.ClockIcon />, permission: 'expenses.manage' },
+  { to: 'leave-management', label: 'إدارة الإجازات', icon: <Icons.FileText />, permission: 'expenses.manage' },
   { to: 'printed-documents', label: 'المستندات المطبوعة', icon: <Icons.ListIcon />, permission: 'accounting.view' },
   { to: 'chart-of-accounts', label: 'دليل الحسابات', icon: <Icons.ListIcon />, permission: 'settings.manage' },
   { to: 'journals', label: 'دفاتر اليومية', icon: <Icons.ListIcon />, permission: 'accounting.manage' },
@@ -204,6 +206,8 @@ const routePermissions: Record<string, AdminPermission> = {
   'expenses': 'expenses.manage',
   'accounting': 'accounting.view',
   'payroll': 'expenses.manage',
+  'attendance': 'expenses.manage',
+  'leave-management': 'expenses.manage',
   'printed-documents': 'accounting.view',
   'chart-of-accounts': 'settings.manage',
   'journals': 'accounting.manage',
@@ -494,8 +498,8 @@ const AdminLayout: React.FC = () => {
           <Link
             to="/admin/settings"
             className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${settings.maintenanceEnabled
-                ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
-                : 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800'
+              ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+              : 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800'
               }`}
             title={settings.maintenanceEnabled ? (settings.maintenanceMessage || 'وضع الصيانة مفعل') : 'النظام يعمل بشكل طبيعي'}
           >

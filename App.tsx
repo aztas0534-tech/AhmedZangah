@@ -107,6 +107,8 @@ const PartyDocumentsScreen = lazy(() => import('./screens/admin/PartyDocumentsSc
 const SettlementWorkspaceScreen = lazy(() => import('./screens/admin/SettlementWorkspaceScreen'));
 const AdvanceManagementScreen = lazy(() => import('./screens/admin/AdvanceManagementScreen'));
 const VoucherEntryScreen = lazy(() => import('./screens/admin/VoucherEntryScreen'));
+const AttendanceScreen = lazy(() => import('./screens/admin/AttendanceScreen'));
+const LeaveManagementScreen = lazy(() => import('./screens/admin/LeaveManagementScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -392,6 +394,8 @@ const App: React.FC = () => {
                     <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
                     <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
                     <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
+                    <Route path="attendance" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendanceScreen /></AdminProtectedRoute>} />
+                    <Route path="leave-management" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><LeaveManagementScreen /></AdminProtectedRoute>} />
                     <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                     <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
                     <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
