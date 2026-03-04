@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CartItem } from '../../types';
 import NumericKeypadModal from './NumericKeypadModal';
 import { useStock } from '../../contexts/StockContext';
@@ -46,14 +46,52 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
   const [batchPickerItemId, setBatchPickerItemId] = useState<string>('');
   const code = String(currencyCode || '').toUpperCase() || '—';
 
+  // ── Warehouse FEFO alerts ──
+  type WarehouseAlert = { type: string; severity: 'error' | 'warning' | 'info' | 'success'; message: string; other_warehouse_id?: string; other_warehouse?: string;[k: string]: any };
+  const [alertsByCartItemId, setAlertsByCartItemId] = useState<Record<string, WarehouseAlert[]>>({});
+  const [alertsLoadingByCartItemId, setAlertsLoadingByCartItemId] = useState<Record<string, boolean>>({});
+
+  const { warehouses } = useWarehouses();
+  const warehouseId = useMemo(() => String(sessionScope.scope?.warehouseId || '').trim(), [sessionScope.scope?.warehouseId]);
+
+  const fetchAlerts = useCallback(async (cartItemId: string, itemId: string, whId: string, qty: number) => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !itemId || !whId) return;
+    setAlertsLoadingByCartItemId(prev => ({ ...prev, [cartItemId]: true }));
+    try {
+      const { data, error } = await supabase.rpc('get_warehouse_item_alerts', {
+        p_item_id: itemId, p_warehouse_id: whId, p_requested_qty: qty,
+      } as any);
+      if (error) throw error;
+      setAlertsByCartItemId(prev => ({ ...prev, [cartItemId]: Array.isArray(data) ? data : [] }));
+    } catch {
+      setAlertsByCartItemId(prev => ({ ...prev, [cartItemId]: [] }));
+    } finally {
+      setAlertsLoadingByCartItemId(prev => ({ ...prev, [cartItemId]: false }));
+    }
+  }, []);
+
+  // Auto-fetch alerts for all items on mount and when warehouseId changes
+  useEffect(() => {
+    items.forEach(item => {
+      const iid = String((item as any)?.id || (item as any)?.itemId || '').trim();
+      const wh = String(item.warehouseId || warehouseId || '').trim();
+      const isPromo = (item as any)?.lineType === 'promotion' || Boolean((item as any)?.promotionId);
+      if (!iid || !wh || isPromo) return;
+      const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
+      const qty = isWeight ? Number(item.weight || 0) : Number(item.quantity || 0);
+      const factor = Number((item as any).uomQtyInBase || 1) || 1;
+      void fetchAlerts(item.cartItemId, iid, wh, qty * factor);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouseId]);
+
   const InlineMoney = ({ amount, className }: { amount: number; className?: string }) => (
     <span dir="ltr" className={className || ''}>
       <span className="font-mono">{fmt(amount)}</span> <span className="text-xs">{code}</span>
     </span>
   );
 
-  const { warehouses } = useWarehouses();
-  const warehouseId = useMemo(() => String(sessionScope.scope?.warehouseId || '').trim(), [sessionScope.scope?.warehouseId]);
 
   const toggleBreakdown = async (itemId: string) => {
     const id = String(itemId || '').trim();
@@ -335,7 +373,15 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   <span className="text-gray-500 dark:text-gray-400 min-w-16 font-medium">{language === 'ar' ? 'المستودع:' : 'Warehouse:'}</span>
                   <select
                     value={item.warehouseId || sessionScope.scope?.warehouseId || ''}
-                    onChange={(e) => onUpdate(item.cartItemId, { warehouseId: e.target.value })}
+                    onChange={(e) => {
+                      const newWh = e.target.value;
+                      onUpdate(item.cartItemId, { warehouseId: newWh });
+                      const iid = String((item as any)?.id || (item as any)?.itemId || '').trim();
+                      const isW = item.unitType === 'kg' || item.unitType === 'gram';
+                      const q = isW ? Number(item.weight || 0) : Number(item.quantity || 0);
+                      const f = Number((item as any).uomQtyInBase || 1) || 1;
+                      void fetchAlerts(item.cartItemId, iid, newWh, q * f);
+                    }}
                     className="flex-1 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-xs py-1 px-2 dark:bg-gray-700 dark:text-gray-200"
                   >
                     {warehouses?.filter(w => w.isActive).map(w => (
@@ -344,6 +390,45 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   </select>
                 </div>
               )}
+              {/* ── Warehouse FEFO Alerts ── */}
+              {!isPromotionLine && (() => {
+                const alerts = alertsByCartItemId[item.cartItemId] || [];
+                const loading = alertsLoadingByCartItemId[item.cartItemId];
+                if (loading) return <div className="mt-1 text-[11px] text-gray-400 animate-pulse">جارِ فحص المستودع...</div>;
+                if (alerts.length === 0) return null;
+                return (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {alerts.map((a: WarehouseAlert, i: number) => {
+                      const colors = {
+                        error: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800',
+                        warning: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800',
+                        info: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800',
+                        success: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800',
+                      };
+                      const cls = colors[a.severity] || colors.info;
+                      return (
+                        <div key={i} className={`text-[11px] px-2 py-1 rounded-lg border font-medium ${cls}`}
+                          onClick={() => {
+                            if (a.other_warehouse_id) {
+                              if (window.confirm(`هل تريد التبديل إلى مستودع "${a.other_warehouse || ''}"؟`)) {
+                                onUpdate(item.cartItemId, { warehouseId: a.other_warehouse_id });
+                                const iid = String((item as any)?.id || (item as any)?.itemId || '').trim();
+                                const isW = item.unitType === 'kg' || item.unitType === 'gram';
+                                const q = isW ? Number(item.weight || 0) : Number(item.quantity || 0);
+                                const f = Number((item as any).uomQtyInBase || 1) || 1;
+                                void fetchAlerts(item.cartItemId, iid, a.other_warehouse_id, q * f);
+                              }
+                            }
+                          }}
+                          style={{ cursor: a.other_warehouse_id ? 'pointer' : 'default' }}
+                        >
+                          {a.message}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-2">
               {hasAddons && (

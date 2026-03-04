@@ -197,6 +197,44 @@ const ManageOrdersScreen: React.FC = () => {
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
 
+    // ── Warehouse FEFO alerts for In-Store Sale ──
+    type WarehouseAlert = { type: string; severity: 'error' | 'warning' | 'info' | 'success'; message: string; other_warehouse_id?: string; other_warehouse?: string;[k: string]: any };
+    const [inStoreAlertsByIndex, setInStoreAlertsByIndex] = useState<Record<number, WarehouseAlert[]>>({});
+    const [inStoreAlertsLoadingByIndex, setInStoreAlertsLoadingByIndex] = useState<Record<number, boolean>>({});
+
+    const fetchInStoreAlerts = useCallback(async (index: number, itemId: string, whId: string, qty: number) => {
+        const supabase = getSupabaseClient();
+        if (!supabase || !itemId || !whId) return;
+        setInStoreAlertsLoadingByIndex(prev => ({ ...prev, [index]: true }));
+        try {
+            const { data, error } = await supabase.rpc('get_warehouse_item_alerts', {
+                p_item_id: itemId, p_warehouse_id: whId, p_requested_qty: qty,
+            } as any);
+            if (error) throw error;
+            setInStoreAlertsByIndex(prev => ({ ...prev, [index]: Array.isArray(data) ? data : [] }));
+        } catch {
+            setInStoreAlertsByIndex(prev => ({ ...prev, [index]: [] }));
+        } finally {
+            setInStoreAlertsLoadingByIndex(prev => ({ ...prev, [index]: false }));
+        }
+    }, [getSupabaseClient]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        inStoreLines.forEach((line, index) => {
+            const iid = String(line.menuItemId || '').trim();
+            const wh = String(line.warehouseId || sessionScope.scope?.warehouseId || '').trim();
+            if (!iid || !wh) return;
+            const mi = allMenuItems.find(m => m.id === iid);
+            if (!mi) return;
+            const isWeight = mi.unitType === 'kg' || mi.unitType === 'gram';
+            const rawQty = isWeight ? Number(line.weight || 0) : Number(line.quantity || 0);
+            const factor = Number(line.uomQtyInBase || 1) || 1;
+            const qty = rawQty * factor;
+            void fetchInStoreAlerts(index, iid, wh, qty);
+        });
+    }, [inStoreLines, sessionScope.scope?.warehouseId, isInStoreSaleOpen, fetchInStoreAlerts, allMenuItems]);
+
     useEffect(() => {
         let active = true;
         const run = async () => {
@@ -4416,6 +4454,40 @@ const ManageOrdersScreen: React.FC = () => {
                                                     ))}
                                                 </select>
                                             </div>
+                                            {/* ── Warehouse FEFO Alerts ── */}
+                                            {(() => {
+                                                const alerts = inStoreAlertsByIndex[index] || [];
+                                                const loading = inStoreAlertsLoadingByIndex[index];
+                                                if (loading) return <div className="mt-1 text-[11px] text-gray-400 animate-pulse">جارِ فحص المستودع...</div>;
+                                                if (alerts.length === 0) return null;
+                                                return (
+                                                    <div className="mt-1 flex flex-wrap gap-1">
+                                                        {alerts.map((a: WarehouseAlert, i: number) => {
+                                                            const colors = {
+                                                                error: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800',
+                                                                warning: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800',
+                                                                info: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800',
+                                                                success: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800',
+                                                            };
+                                                            const cls = colors[a.severity] || colors.info;
+                                                            return (
+                                                                <div key={i} className={`text-[11px] px-2 py-1 rounded-lg border font-medium ${cls}`}
+                                                                    onClick={() => {
+                                                                        if (a.other_warehouse_id) {
+                                                                            if (window.confirm(`هل تريد التبديل إلى مستودع "${a.other_warehouse || ''}"؟`)) {
+                                                                                updateInStoreLine(index, { warehouseId: a.other_warehouse_id });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    style={{ cursor: a.other_warehouse_id ? 'pointer' : 'default' }}
+                                                                >
+                                                                    {a.message}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     );
                                 })}

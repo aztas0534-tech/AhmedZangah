@@ -70,6 +70,7 @@ const InventoryStockReportScreen = lazy(() => import('./screens/admin/reports/In
 const SupplierStockReportScreen = lazy(() => import('./screens/admin/reports/SupplierStockReportScreen'));
 const AdminProfileScreen = lazy(() => import('./screens/admin/AdminProfileScreen'));
 const SettingsScreen = lazy(() => import('./screens/admin/SettingsScreen'));
+const BackupSettingsScreen = lazy(() => import('./screens/admin/settings/BackupSettingsScreen'));
 const SuppliersScreen = lazy(() => import('./screens/admin/SuppliersScreen'));
 const ApprovalsScreen = lazy(() => import('./screens/admin/ApprovalsScreen'));
 const PrintedDocumentsScreen = lazy(() => import('./screens/admin/PrintedDocumentsScreen'));
@@ -108,6 +109,7 @@ const SettlementWorkspaceScreen = lazy(() => import('./screens/admin/SettlementW
 const AdvanceManagementScreen = lazy(() => import('./screens/admin/AdvanceManagementScreen'));
 const VoucherEntryScreen = lazy(() => import('./screens/admin/VoucherEntryScreen'));
 const AttendanceScreen = lazy(() => import('./screens/admin/AttendanceScreen'));
+const AttendancePunchScreen = lazy(() => import('./screens/admin/AttendancePunchScreen'));
 const LeaveManagementScreen = lazy(() => import('./screens/admin/LeaveManagementScreen'));
 
 const CustomerLayout: React.FC = () => {
@@ -395,6 +397,7 @@ const App: React.FC = () => {
                     <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
                     <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
                     <Route path="attendance" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendanceScreen /></AdminProtectedRoute>} />
+                    <Route path="attendance-punch" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendancePunchScreen /></AdminProtectedRoute>} />
                     <Route path="leave-management" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><LeaveManagementScreen /></AdminProtectedRoute>} />
                     <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                     <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
@@ -418,6 +421,7 @@ const App: React.FC = () => {
                     />
                     <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
                     <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
+                    <Route path="settings/backup" element={<AdminProtectedRoute permissions={['settings.manage']}><BackupSettingsScreen /></AdminProtectedRoute>} />
                     <Route path="approvals" element={<AdminProtectedRoute permissions={['approvals.manage']}><ApprovalsScreen /></AdminProtectedRoute>} />
                     <Route path="audit" element={<AdminProtectedRoute permissions={['settings.manage']}><SystemAuditScreen /></AdminProtectedRoute>} />
                     <Route path="database" element={<AdminProtectedRoute permissions={['settings.manage']}><DatabaseExplorerScreen /></AdminProtectedRoute>} />
@@ -446,6 +450,14 @@ const App: React.FC = () => {
                     element={
                       <AdminProtectedRoute permissions={['orders.updateStatus.all', 'orders.createInStore']} requireAllPermissions={false}>
                         <POSTestConsole />
+                      </AdminProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/attendance-punch"
+                    element={
+                      <AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}>
+                        <AttendancePunchScreen />
                       </AdminProtectedRoute>
                     }
                   />

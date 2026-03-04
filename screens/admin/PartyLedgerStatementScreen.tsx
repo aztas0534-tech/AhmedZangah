@@ -340,6 +340,27 @@ const PartyLedgerStatementScreen: React.FC = () => {
     }
   };
 
+  const canVoid = Boolean(hasPermission?.('accounting.void'));
+  const [voiding, setVoiding] = useState<string | null>(null);
+  const voidEntry = async (entryId: string) => {
+    if (!canVoid) { showNotification('ليس لديك صلاحية إبطال القيود.', 'error'); return; }
+    const reason = window.prompt('سبب الإبطال/العكس؟');
+    if (!reason?.trim()) return;
+    setVoiding(entryId);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { error } = await supabase.rpc('void_journal_entry', { p_entry_id: entryId, p_reason: reason.trim() } as any);
+      if (error) throw error;
+      showNotification('تم إبطال/عكس القيد بنجاح.', 'success');
+      await load();
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر إبطال القيد.'), 'error');
+    } finally {
+      setVoiding(null);
+    }
+  };
+
   useEffect(() => {
     const qs = new URLSearchParams(location.search);
     const auto = qs.get('print') === '1';
@@ -601,13 +622,14 @@ const PartyLedgerStatementScreen: React.FC = () => {
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العملة</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الرصيد</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">متبقي</th>
-                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المصدر</th>
+                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المصدر</th>
+                {canVoid && <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عمليات</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={canVoid ? 9 : 8} className="p-8 text-center text-gray-500 dark:text-gray-400">
                     لا توجد حركات. جرّب تعديل المرشحات (الفترة/العملة/الحساب) ثم اضغط "عرض".
                   </td>
                 </tr>
@@ -682,6 +704,22 @@ const PartyLedgerStatementScreen: React.FC = () => {
                     <td className="p-4 text-gray-700 dark:text-gray-200">
                       <div className="text-xs">{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
                     </td>
+                    {canVoid && (
+                      <td className="p-4">
+                        {r.source_event !== 'void' && r.source_event !== 'reversal' ? (
+                          <button
+                            type="button"
+                            onClick={() => void voidEntry(r.journal_entry_id)}
+                            disabled={voiding === r.journal_entry_id}
+                            className="px-2 py-1 rounded text-xs bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 whitespace-nowrap"
+                          >
+                            {voiding === r.journal_entry_id ? 'جارٍ...' : 'إبطال'}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

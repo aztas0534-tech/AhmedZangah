@@ -4,66 +4,90 @@ import path from 'path';
 
 let envStr = '';
 try {
-    const envPath = path.resolve('c:/nasrflash/AhmedZ/.env.local');
-    envStr = fs.readFileSync(envPath, 'utf8');
+  const envPath = path.resolve('c:/nasrflash/AhmedZ/.env.local');
+  envStr = fs.readFileSync(envPath, 'utf8');
 } catch (e) { process.exit(1); }
 
 let url = '', key = '';
 envStr.split('\n').forEach(line => {
-    const [k, ...v] = line.split('=');
-    const val = v.join('=').trim().replace(/"/g, '').replace(/'/g, '');
-    if (k === 'VITE_SUPABASE_URL') url = val;
-    if (k === 'VITE_SUPABASE_ANON_KEY') key = val;
+  const [k, ...v] = line.split('=');
+  const val = v.join('=').trim().replace(/"/g, '').replace(/'/g, '');
+  if (k === 'VITE_SUPABASE_URL') url = val;
+  if (k === 'VITE_SUPABASE_ANON_KEY') key = val;
 });
 
 const rpc = (q) => new Promise(resolve => {
-    const reqUrl = new URL(url + '/rest/v1/rpc/exec_debug_sql');
-    const options = {
-        hostname: reqUrl.hostname, path: reqUrl.pathname,
-        method: 'POST',
-        headers: { 'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' }
-    };
-    const req = https.request(options, res => {
-        let b = ''; res.on('data', d => b += d); res.on('end', () => resolve(b));
-    });
-    req.write(JSON.stringify({ q })); req.end();
+  const reqUrl = new URL(url + '/rest/v1/rpc/exec_debug_sql');
+  const options = {
+    hostname: reqUrl.hostname, path: reqUrl.pathname,
+    method: 'POST',
+    headers: { 'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' }
+  };
+  const req = https.request(options, res => {
+    let b = ''; res.on('data', d => b += d); res.on('end', () => resolve(b));
+  });
+  req.write(JSON.stringify({ q })); req.end();
 });
 
 async function run() {
-    // Verify flour item now has correct stock
-    const r1 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
-    SELECT sm.item_id, mi.name->>'ar' as name_ar,
-           sm.available_quantity, sm.qc_hold_quantity, sm.reserved_quantity,
-           w.name as warehouse_name
-    FROM stock_management sm
-    JOIN menu_items mi ON mi.id = sm.item_id
-    JOIN warehouses w ON w.id = sm.warehouse_id
-    WHERE mi.name->>'ar' LIKE '%دقيق القيم%'
+  // 1. payroll_attendance structure
+  const r1 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
+    SELECT column_name, data_type 
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'payroll_attendance'
+    ORDER BY ordinal_position
   ) t;`);
-    console.log('Flour stock after fix:', r1);
+  console.log('=== payroll_attendance ===');
+  console.log(r1);
 
-    // Check eggs too
-    const r2 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
-    SELECT sm.item_id, mi.name->>'ar' as name_ar,
-           sm.available_quantity, sm.qc_hold_quantity
-    FROM stock_management sm
-    JOIN menu_items mi ON mi.id = sm.item_id
-    WHERE mi.name->>'ar' LIKE '%بيض كبير%'
+  // 2. payroll_employees structure
+  const r2 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
+    SELECT column_name, data_type 
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'payroll_employees'
+    ORDER BY ordinal_position
   ) t;`);
-    console.log('Egg stock after fix:', r2);
+  console.log('=== payroll_employees ===');
+  console.log(r2);
 
-    // Count remaining mismatches
-    const r3 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
-    SELECT count(*) as still_mismatched
-    FROM stock_management sm
-    WHERE sm.available_quantity = 0
-      AND (SELECT coalesce(sum(greatest(
-        coalesce(b.quantity_received,0) - coalesce(b.quantity_consumed,0) - coalesce(b.quantity_transferred,0), 0)),0)
-       FROM batches b WHERE b.item_id = sm.item_id::text AND b.warehouse_id = sm.warehouse_id
-         AND coalesce(b.qc_status,'') = 'released'
-         AND coalesce(b.status,'active') = 'active') > 0
+  // 3. Count employees
+  const r3 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
+    SELECT count(*) as total,
+      count(*) FILTER (WHERE status = 'active') as active
+    FROM payroll_employees
   ) t;`);
-    console.log('Remaining mismatches:', r3);
+  console.log('=== employee count ===');
+  console.log(r3);
+
+  // 4. Sample attendance data
+  const r4 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
+    SELECT * FROM payroll_attendance
+    ORDER BY work_date DESC
+    LIMIT 5
+  ) t;`);
+  console.log('=== recent attendance ===');
+  console.log(r4);
+
+  // 5. Check auth users table
+  const r5 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
+    SELECT column_name, data_type 
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'admin_users'
+    ORDER BY ordinal_position
+  ) t;`);
+  console.log('=== admin_users ===');
+  console.log(r5);
+
+  // 6. Check roles/permissions
+  const r6 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND (table_name LIKE '%role%' OR table_name LIKE '%perm%' OR table_name LIKE '%admin%')
+    ORDER BY table_name
+  ) t;`);
+  console.log('=== role/permission tables ===');
+  console.log(r6);
 }
 
 run();

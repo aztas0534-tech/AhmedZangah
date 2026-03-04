@@ -1124,6 +1124,30 @@ const SettingsScreen: React.FC = () => {
           </div>
         </section>
 
+        <section className="bg-gradient-to-tr from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 p-6 rounded-xl border border-blue-200 dark:border-blue-700/50 relative overflow-hidden">
+          <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2 mb-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+                النسخ الاحتياطي وأمان البيانات
+              </h2>
+              <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed md:max-w-2xl">
+                ميزة مخصصة لحفظ نسخة كاملة من النظام (فواتير، حسابات، أصناف، إلخ) على جهازك الشخصي لضمان ملكيتك التامة لبياناتك وللرجوع إليها متى شئت.
+              </p>
+            </div>
+            <Link
+              to="/admin/settings/backup"
+              className="whitespace-nowrap px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              إدارة النسخ الاحتياطي
+            </Link>
+          </div>
+          <div className="absolute -left-10 -bottom-10 opacity-10">
+            <svg className="w-40 h-40 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v8h4v4h12v-4h4v-8c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 12v2H8v-4h8v2zm2-2v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z" /></svg>
+          </div>
+        </section>
+
         <section>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
             بيانات المتجر
