@@ -2692,7 +2692,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     {openRowDropdownId === order.id && (
                                                         <>
                                                             <div className="fixed inset-0 z-40" onClick={() => setOpenRowDropdownId(null)}></div>
-                                                            <div className="absolute right-0 top-10 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border border-gray-200 dark:border-gray-600 z-50 py-1 origin-top-right transition-all">
+                                                            <div className="absolute left-0 top-10 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border border-gray-200 dark:border-gray-600 z-50 py-1 origin-top-left transition-all">
                                                                 <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 dark:bg-gray-900/50 uppercase tracking-wide">الإجراءات</div>
                                                                 <button
                                                                     type="button"
