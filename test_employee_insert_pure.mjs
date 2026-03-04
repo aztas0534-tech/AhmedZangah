@@ -30,23 +30,40 @@ const rpc = (q) => new Promise(resolve => {
 });
 
 async function run() {
-    // Check second trigger definition
+    // Verify flour item now has correct stock
     const r1 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
-    SELECT p.proname, p.prosrc
-    FROM pg_proc p
-    JOIN pg_namespace n ON p.pronamespace = n.oid
-    WHERE n.nspname = 'public' AND p.proname = 'trg_forbid_update_posted_orders_amounts'
+    SELECT sm.item_id, mi.name->>'ar' as name_ar,
+           sm.available_quantity, sm.qc_hold_quantity, sm.reserved_quantity,
+           w.name as warehouse_name
+    FROM stock_management sm
+    JOIN menu_items mi ON mi.id = sm.item_id
+    JOIN warehouses w ON w.id = sm.warehouse_id
+    WHERE mi.name->>'ar' LIKE '%دقيق القيم%'
   ) t;`);
-    console.log('Second trigger:', r1);
+    console.log('Flour stock after fix:', r1);
 
-    // Check void_delivered_order function signature
+    // Check eggs too
     const r2 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
-    SELECT p.proname, pg_get_function_arguments(p.oid) as args
-    FROM pg_proc p
-    JOIN pg_namespace n ON p.pronamespace = n.oid
-    WHERE n.nspname = 'public' AND p.proname = 'void_delivered_order'
+    SELECT sm.item_id, mi.name->>'ar' as name_ar,
+           sm.available_quantity, sm.qc_hold_quantity
+    FROM stock_management sm
+    JOIN menu_items mi ON mi.id = sm.item_id
+    WHERE mi.name->>'ar' LIKE '%بيض كبير%'
   ) t;`);
-    console.log('void_delivered_order args:', r2);
+    console.log('Egg stock after fix:', r2);
+
+    // Count remaining mismatches
+    const r3 = await rpc(`SELECT jsonb_agg(row_to_json(t)) FROM (
+    SELECT count(*) as still_mismatched
+    FROM stock_management sm
+    WHERE sm.available_quantity = 0
+      AND (SELECT coalesce(sum(greatest(
+        coalesce(b.quantity_received,0) - coalesce(b.quantity_consumed,0) - coalesce(b.quantity_transferred,0), 0)),0)
+       FROM batches b WHERE b.item_id = sm.item_id::text AND b.warehouse_id = sm.warehouse_id
+         AND coalesce(b.qc_status,'') = 'released'
+         AND coalesce(b.status,'active') = 'active') > 0
+  ) t;`);
+    console.log('Remaining mismatches:', r3);
 }
 
 run();
