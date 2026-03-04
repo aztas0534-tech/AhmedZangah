@@ -70,6 +70,7 @@ const InventoryStockReportScreen = lazy(() => import('./screens/admin/reports/In
 const SupplierStockReportScreen = lazy(() => import('./screens/admin/reports/SupplierStockReportScreen'));
 const AdminProfileScreen = lazy(() => import('./screens/admin/AdminProfileScreen'));
 const SettingsScreen = lazy(() => import('./screens/admin/SettingsScreen'));
+const BackupSettingsScreen = lazy(() => import('./screens/admin/settings/BackupSettingsScreen'));
 const SuppliersScreen = lazy(() => import('./screens/admin/SuppliersScreen'));
 const ApprovalsScreen = lazy(() => import('./screens/admin/ApprovalsScreen'));
 const PrintedDocumentsScreen = lazy(() => import('./screens/admin/PrintedDocumentsScreen'));
@@ -420,6 +421,7 @@ const App: React.FC = () => {
                     />
                     <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
                     <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
+                    <Route path="settings/backup" element={<AdminProtectedRoute permissions={['settings.manage']}><BackupSettingsScreen /></AdminProtectedRoute>} />
                     <Route path="approvals" element={<AdminProtectedRoute permissions={['approvals.manage']}><ApprovalsScreen /></AdminProtectedRoute>} />
                     <Route path="audit" element={<AdminProtectedRoute permissions={['settings.manage']}><SystemAuditScreen /></AdminProtectedRoute>} />
                     <Route path="database" element={<AdminProtectedRoute permissions={['settings.manage']}><DatabaseExplorerScreen /></AdminProtectedRoute>} />
