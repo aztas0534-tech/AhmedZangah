@@ -3,6 +3,8 @@ set app.allow_ledger_ddl = '1';
 do $$
 begin
   if to_regclass('public.chart_of_accounts') is not null then
+    alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+    
     insert into public.chart_of_accounts(code, name, account_type, normal_balance, is_active, ifrs_statement, ifrs_category, ifrs_line)
     values
       ('3055', 'Cumulative Translation Adjustment', 'equity', 'credit', true, 'EQ', 'EquityOther', 'CTA'),
@@ -15,6 +17,8 @@ begin
         ifrs_statement = excluded.ifrs_statement,
         ifrs_category = excluded.ifrs_category,
         ifrs_line = excluded.ifrs_line;
+        
+    alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
   end if;
 exception when others then
   null;

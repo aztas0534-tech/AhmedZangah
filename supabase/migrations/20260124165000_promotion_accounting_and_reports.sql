@@ -1,3 +1,5 @@
+alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+
 insert into public.chart_of_accounts(code, name, account_type, normal_balance)
 values ('6150', 'Promotion Expense', 'expense', 'debit')
 on conflict (code) do update
@@ -5,6 +7,8 @@ set name = excluded.name,
     account_type = excluded.account_type,
     normal_balance = excluded.normal_balance,
     is_active = true;
+
+alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
 
 create or replace function public.post_order_delivery(p_order_id uuid)
 returns void

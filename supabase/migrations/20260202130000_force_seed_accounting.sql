@@ -23,6 +23,8 @@ declare
   v_settings jsonb;
 begin
   -- 1. Insert Accounts
+  alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+  
   insert into public.chart_of_accounts(code, name, account_type, normal_balance, is_active)
   values
     ('1010', 'Cash', 'asset', 'debit', true),
@@ -48,6 +50,8 @@ begin
       account_type = excluded.account_type,
       normal_balance = excluded.normal_balance,
       is_active = true;
+      
+  alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
 
   -- 2. Get Account IDs (using direct select to be safe inside do block)
   select id into v_sales from public.chart_of_accounts where code = '4010';

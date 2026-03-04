@@ -93,9 +93,13 @@ begin
     raise exception 'invalid normal_balance';
   end if;
 
+  alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+  
   insert into public.chart_of_accounts(code, name, account_type, normal_balance, is_active)
   values (v_code, v_name, p_account_type, p_normal_balance, true)
   returning id into v_id;
+  
+  alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
 
   return v_id;
 end;

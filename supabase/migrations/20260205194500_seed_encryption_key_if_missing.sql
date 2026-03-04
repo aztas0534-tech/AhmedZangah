@@ -16,7 +16,7 @@ begin
     where key_name = 'app.encryption_key'
   ) then
     insert into private.keys (key_name, key_value)
-    values ('app.encryption_key', encode(gen_random_bytes(32), 'hex'))
+    values ('app.encryption_key', encode(extensions.gen_random_bytes(32), 'hex'))
     on conflict (key_name) do nothing;
   end if;
 end $$;

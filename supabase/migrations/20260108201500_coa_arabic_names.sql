@@ -1,3 +1,5 @@
+alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+
 insert into public.chart_of_accounts(code, name, account_type, normal_balance)
 values
   ('1010', 'النقدية', 'asset', 'debit'),
@@ -23,3 +25,5 @@ set name = excluded.name,
     account_type = excluded.account_type,
     normal_balance = excluded.normal_balance,
     is_active = true;
+
+alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;

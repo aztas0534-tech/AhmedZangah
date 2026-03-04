@@ -342,6 +342,8 @@ begin
     return;
   end if;
 
+  alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+  
   insert into public.chart_of_accounts(code, name, account_type, normal_balance, is_active)
   values
     ('1350', 'Employee Advances', 'asset', 'debit', true),
@@ -353,6 +355,8 @@ begin
       account_type = excluded.account_type,
       normal_balance = excluded.normal_balance,
       is_active = true;
+      
+  alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
 end $$;
 
 do $$

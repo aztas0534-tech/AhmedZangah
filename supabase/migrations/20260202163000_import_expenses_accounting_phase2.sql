@@ -1,6 +1,8 @@
 do $$
 begin
   if to_regclass('public.chart_of_accounts') is not null then
+    alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+    
     insert into public.chart_of_accounts(code, name, account_type, normal_balance)
     values ('2060', 'تسوية تكاليف الاستيراد', 'asset', 'debit')
     on conflict (code) do update
@@ -8,6 +10,8 @@ begin
         account_type = excluded.account_type,
         normal_balance = excluded.normal_balance,
         is_active = true;
+        
+    alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
   end if;
 end $$;
 

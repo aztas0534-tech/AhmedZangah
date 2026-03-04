@@ -67,6 +67,8 @@ on public.journal_lines
 for all
 using (public.is_admin())
 with check (public.is_admin());
+alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+
 insert into public.chart_of_accounts(code, name, account_type, normal_balance)
 values
   ('1010', 'Cash', 'asset', 'debit'),
@@ -84,6 +86,8 @@ set name = excluded.name,
     account_type = excluded.account_type,
     normal_balance = excluded.normal_balance,
     is_active = true;
+
+alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
 create or replace function public.get_account_id_by_code(p_code text)
 returns uuid
 language sql

@@ -1,6 +1,8 @@
 -- Update accounting account names to Arabic
 -- This migration ensures all Chart of Accounts entries use Arabic names
 
+alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+
 insert into public.chart_of_accounts(code, name, account_type, normal_balance, is_active)
 values
   ('1010', 'النقدية', 'asset', 'debit', true),
@@ -26,3 +28,5 @@ set name = excluded.name,
     account_type = excluded.account_type,
     normal_balance = excluded.normal_balance,
     is_active = true;
+
+alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;

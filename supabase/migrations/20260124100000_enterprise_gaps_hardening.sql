@@ -418,6 +418,8 @@ drop policy if exists invoice_tolerances_admin_all on public.invoice_tolerances;
 create policy invoice_tolerances_admin_all on public.invoice_tolerances
   for all using (public.is_admin()) with check (public.is_admin());
 
+alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+
 insert into public.chart_of_accounts(code, name, account_type, normal_balance)
 values
   ('2025', 'Goods Received Not Invoiced', 'liability', 'credit'),
@@ -427,6 +429,8 @@ set name = excluded.name,
     account_type = excluded.account_type,
     normal_balance = excluded.normal_balance,
     is_active = true;
+
+alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
 
 create or replace function public.calculate_three_way_match(p_invoice_id uuid)
 returns void

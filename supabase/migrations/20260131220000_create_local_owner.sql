@@ -14,7 +14,7 @@ BEGIN
   SELECT id INTO v_user_id FROM auth.users WHERE email = 'owner@azta.com';
 
   IF v_user_id IS NULL THEN
-    v_encrypted_pw := crypt('Owner@123', gen_salt('bf'));
+    v_encrypted_pw := extensions.crypt('Owner@123', extensions.gen_salt('bf'));
 
     -- Insert with a minimal, cross-version column set
     INSERT INTO auth.users (

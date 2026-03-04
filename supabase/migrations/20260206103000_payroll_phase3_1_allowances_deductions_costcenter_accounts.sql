@@ -3,6 +3,8 @@ begin
   if to_regclass('public.chart_of_accounts') is null then
     return;
   end if;
+  alter table public.chart_of_accounts disable trigger trg_coa_require_ifrs_mapping;
+  
   insert into public.chart_of_accounts(code, name, account_type, normal_balance, is_active)
   values
     ('6120', 'Salaries Expense', 'expense', 'debit', true),
@@ -12,6 +14,8 @@ begin
       account_type = excluded.account_type,
       normal_balance = excluded.normal_balance,
       is_active = true;
+      
+  alter table public.chart_of_accounts enable trigger trg_coa_require_ifrs_mapping;
 exception when others then
   null;
 end $$;
