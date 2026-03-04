@@ -833,6 +833,53 @@ const PurchaseOrderScreen: React.FC = () => {
     const [warehouseId, setWarehouseId] = useState<string>('');
     const [paymentTerms, setPaymentTerms] = useState<'cash' | 'credit'>('cash');
     const [netDays, setNetDays] = useState<number>(0);
+
+    // ── UX Filters & Search ──
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [paymentFilter, setPaymentFilter] = useState('all');
+    const [isAdvancedActionsOpen, setIsAdvancedActionsOpen] = useState(false);
+    const [openRowDropdownId, setOpenRowDropdownId] = useState<string | null>(null);
+
+    const filteredPurchaseOrders = useMemo(() => {
+        return purchaseOrders.filter((order) => {
+            let matchSearch = true;
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const num = (order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`).toLowerCase();
+                const ref = (order.referenceNumber || '').toLowerCase();
+                const sup = (order.supplierName || '').toLowerCase();
+                matchSearch = num.includes(q) || ref.includes(q) || sup.includes(q);
+            }
+
+            let matchStatus = true;
+            if (statusFilter !== 'all') {
+                const eps = 0.000000001;
+                const items = Array.isArray(order.items) ? order.items : [];
+                const hasReceived = order.status === 'completed' || items.some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                const fullyReceived = order.status === 'completed' || (items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0)));
+
+                if (statusFilter === 'draft') matchStatus = order.status === 'draft' && !hasReceived;
+                else if (statusFilter === 'partial') matchStatus = hasReceived && !fullyReceived;
+                else if (statusFilter === 'received') matchStatus = fullyReceived;
+                else if (statusFilter === 'cancelled') matchStatus = order.status === 'cancelled';
+            }
+
+            let matchPayment = true;
+            if (paymentFilter !== 'all') {
+                const total = Number(order.totalAmount || 0);
+                const paid = Number(order.paidAmount || 0);
+                const remaining = total - paid;
+
+                if (paymentFilter === 'unpaid') matchPayment = remaining > 0.000000001 && paid <= 0;
+                else if (paymentFilter === 'partial') matchPayment = remaining > 0.000000001 && paid > 0;
+                else if (paymentFilter === 'paid') matchPayment = remaining <= 0.000000001 && total > 0;
+            }
+
+            return matchSearch && matchStatus && matchPayment;
+        });
+    }, [purchaseOrders, searchQuery, statusFilter, paymentFilter]);
+
     const [dueDate, setDueDate] = useState<string>(toDateInputValue());
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
@@ -2072,52 +2119,69 @@ const PurchaseOrderScreen: React.FC = () => {
                     أوامر الشراء (المخزون)
                 </h1>
                 <div className="flex items-center gap-2">
-                    {canReconcileAll ? (
-                        <>
+                    {canReconcileAll && (
+                        <div className="relative">
                             <button
-                                onClick={() => { void handleReconcileAllPurchaseOrders(); }}
-                                disabled={reconcilingAll}
-                                className="bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-900 shadow-lg"
+                                onClick={() => setIsAdvancedActionsOpen(!isAdvancedActionsOpen)}
+                                className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 shadow-sm border border-gray-200 dark:border-gray-700 transition"
                             >
                                 <Icons.SettingsIcon className="w-5 h-5" />
-                                <span>{reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}</span>
+                                <span className="hidden sm:inline">إجراءات متقدمة</span>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                             </button>
-                            {canManageAccounting ? (
-                                <button
-                                    onClick={() => { void handleRepairPurchaseInJournalsFromMovements(); }}
-                                    disabled={repairingPurchaseInJournals}
-                                    className="bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-800 shadow-lg"
-                                >
-                                    <Icons.SettingsIcon className="w-5 h-5" />
-                                    <span>{repairingPurchaseInJournals ? 'جاري إصلاح القيود...' : 'إصلاح قيود المشتريات'}</span>
-                                </button>
-                            ) : null}
-                            <button
-                                onClick={() => { void handleReportPartialPurchaseOrders(); }}
-                                disabled={reportingPartial}
-                                className="bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 shadow-lg"
-                            >
-                                <Icons.PrinterIcon className="w-5 h-5" />
-                                <span>{reportingPartial ? 'جاري إنشاء التقرير...' : 'تقرير النواقص'}</span>
-                            </button>
-                            <button
-                                onClick={() => { void handleFinalizeWithoutShortages(); }}
-                                disabled={finalizingNoShortages}
-                                className="bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-800 shadow-lg"
-                            >
-                                <Icons.CheckIcon className="w-5 h-5" />
-                                <span>{finalizingNoShortages ? 'جاري الإنهاء...' : 'إنهاء بدون نواقص'}</span>
-                            </button>
-                            <button
-                                onClick={() => { void handleForceCompleteStatusOnly(); }}
-                                disabled={forcingStatusOnly}
-                                className="bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-emerald-800 shadow-lg"
-                            >
-                                <Icons.CheckIcon className="w-5 h-5" />
-                                <span>{forcingStatusOnly ? 'جاري الإكمال...' : 'إكمال الحالة فقط'}</span>
-                            </button>
-                        </>
-                    ) : null}
+                            {isAdvancedActionsOpen && (
+                                <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                    <div className="py-1">
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleReconcileAllPurchaseOrders(); }}
+                                            disabled={reconcilingAll}
+                                            className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <Icons.SettingsIcon className="w-4 h-4 text-gray-400" />
+                                            {reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}
+                                        </button>
+                                        {canManageAccounting ? (
+                                            <button
+                                                onClick={() => { setIsAdvancedActionsOpen(false); void handleRepairPurchaseInJournalsFromMovements(); }}
+                                                disabled={repairingPurchaseInJournals}
+                                                className="w-full text-right px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 flex items-center gap-2 border-t border-gray-50 dark:border-gray-700/50"
+                                            >
+                                                <Icons.SettingsIcon className="w-4 h-4 opacity-70" />
+                                                {repairingPurchaseInJournals ? 'جاري إصلاح القيود...' : 'إصلاح قيود المشتريات'}
+                                            </button>
+                                        ) : null}
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleReportPartialPurchaseOrders(); }}
+                                            disabled={reportingPartial}
+                                            className="w-full text-right px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 flex items-center gap-2 border-t border-gray-50 dark:border-gray-700/50"
+                                        >
+                                            <Icons.PrinterIcon className="w-4 h-4 opacity-70" />
+                                            {reportingPartial ? 'جاري إنشاء التقرير...' : 'تقرير النواقص'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleFinalizeWithoutShortages(); }}
+                                            disabled={finalizingNoShortages}
+                                            className="w-full text-right px-4 py-2 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <Icons.CheckIcon className="w-4 h-4 opacity-70" />
+                                            {finalizingNoShortages ? 'جاري الإنهاء...' : 'إنهاء بدون نواقص'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleForceCompleteStatusOnly(); }}
+                                            disabled={forcingStatusOnly}
+                                            className="w-full text-right px-4 py-2 text-sm text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <Icons.CheckIcon className="w-4 h-4 opacity-70" />
+                                            {forcingStatusOnly ? 'جاري الإكمال...' : 'إكمال الحالة فقط'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {isAdvancedActionsOpen && (
+                                <div className="fixed inset-0 z-40" onClick={() => setIsAdvancedActionsOpen(false)}></div>
+                            )}
+                        </div>
+                    )}
                     <button
                         onClick={() => {
                             setIsModalOpen(true);
@@ -2155,14 +2219,51 @@ const PurchaseOrderScreen: React.FC = () => {
                 </div>
             ) : null}
 
+            {/* ── Search & Filters Bar ── */}
+            <div className="bg-white dark:bg-gray-800 text-sm p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-center">
+                <div className="relative flex-1 w-full">
+                    <Icons.Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="ابحث برقم الأمر، المورد، أو فاتورة المورد..."
+                        className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg pr-10 pl-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:text-gray-200 transaction"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+                <div className="flex gap-3 w-full md:w-auto">
+                    <select
+                        className="flex-1 md:w-40 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                        <option value="all">كل الحالات</option>
+                        <option value="draft">مسودة / غير مستلم</option>
+                        <option value="partial">مستلم جزئياً</option>
+                        <option value="received">مستلم بالكامل</option>
+                        <option value="cancelled">ملغي</option>
+                    </select>
+                    <select
+                        className="flex-1 md:w-40 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500"
+                        value={paymentFilter}
+                        onChange={(e) => setPaymentFilter(e.target.value)}
+                    >
+                        <option value="all">كل الدفعات</option>
+                        <option value="unpaid">غير مسدد</option>
+                        <option value="partial">مسدد جزئياً</option>
+                        <option value="paid">مسدد بالكامل</option>
+                    </select>
+                </div>
+            </div>
+
             {/* List of Orders */}
             <div className="md:hidden space-y-3">
-                {purchaseOrders.length === 0 ? (
+                {filteredPurchaseOrders.length === 0 ? (
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-6 text-center text-gray-500">
-                        لا توجد أوامر شراء سابقة.
+                        لا توجد أوامر شراء مطابقة للبحث.
                     </div>
                 ) : (
-                    purchaseOrders.map((order) => {
+                    filteredPurchaseOrders.map((order) => {
                         const eps = 0.000000001;
                         const total = Number(order.totalAmount || 0);
                         const paid = Number(order.paidAmount || 0);
@@ -2183,12 +2284,12 @@ const PurchaseOrderScreen: React.FC = () => {
                         const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                         const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
                         const statusClass = order.status === 'cancelled'
-                            ? 'bg-red-100 text-red-700'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
                             : fullyReceived
-                                ? 'bg-green-100 text-green-700'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : hasReceived
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-700';
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-gray-50 text-gray-700 border border-gray-200';
                         const statusLabel = order.status === 'cancelled'
                             ? 'ملغي'
                             : fullyReceived
@@ -2456,14 +2557,12 @@ const PurchaseOrderScreen: React.FC = () => {
                 <table className="min-w-[1400px] w-full text-right">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم أمر الشراء</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">فاتورة المورد</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الأمر / الفاتورة</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المورد</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المستودع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">النوع</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الاستحقاق</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عدد الأصناف (سطور/كمية)</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ / الاستحقاق</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الأصناف (سطور/كمية)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجمالي</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المدفوع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المتبقي</th>
@@ -2472,10 +2571,10 @@ const PurchaseOrderScreen: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {purchaseOrders.length === 0 ? (
-                            <tr><td colSpan={13} className="p-8 text-center text-gray-500">لا توجد أوامر شراء سابقة.</td></tr>
+                        {filteredPurchaseOrders.length === 0 ? (
+                            <tr><td colSpan={11} className="p-8 text-center text-gray-500">لا توجد أوامر شراء مطابقة للبحث.</td></tr>
                         ) : (
-                            purchaseOrders.map((order) => (
+                            filteredPurchaseOrders.map((order) => (
                                 (() => {
                                     const eps = 0.000000001;
                                     const items = Array.isArray(order.items) ? order.items : [];
@@ -2512,17 +2611,21 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : ''
                                             ].join(' ')}
                                         >
-                                            <td className="p-4 font-mono text-sm dark:text-gray-300">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</td>
-                                            <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
+                                            <td className="p-4">
+                                                <div className="font-mono text-sm dark:text-gray-300 font-bold">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</div>
+                                                <div className="text-xs text-gray-500 font-mono mt-0.5">{order.referenceNumber ? `فاتورة: ${order.referenceNumber}` : 'بلا فاتورة'}</div>
+                                            </td>
                                             <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
                                             <td className="p-4 text-sm dark:text-gray-300">{order.warehouseName || '-'}</td>
                                             <td className="p-4 text-sm dark:text-gray-300">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inferredTerms === 'credit' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>
+                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inferredTerms === 'credit' ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-emerald-100 text-emerald-900 border border-emerald-200'}`}>
                                                     {termsLabel}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-sm dark:text-gray-300">{dueLabel}</td>
-                                            <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <div>{formatPurchaseDate(order.purchaseDate)}</div>
+                                                {inferredTerms === 'credit' && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">يُستحق: {dueLabel}</div>}
+                                            </td>
                                             <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
                                             <td className="p-4 font-bold text-primary-600 dark:text-primary-400">
                                                 {(() => {
@@ -2575,173 +2678,172 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 ) : null}
                                             </td>
                                             <td className="p-4">
-                                                <div className="flex flex-wrap gap-2 justify-end">
+                                                <div className="relative flex justify-end">
                                                     <button
-                                                        type="button"
-                                                        onClick={() => { void handlePrintPo(order); }}
-                                                        disabled={order.status === 'cancelled'}
-                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        onClick={() => setOpenRowDropdownId(openRowDropdownId === order.id ? null : order.id)}
+                                                        className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                                     >
-                                                        طباعة PO
+                                                        <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                                        </svg>
                                                     </button>
-                                                    {hasReceived ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                void (async () => {
-                                                                    try {
-                                                                        const latest = await getLatestReceiptForOrder(order.id);
-                                                                        if (!latest?.id) {
-                                                                            showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
-                                                                            return;
-                                                                        }
-                                                                        await handlePrintGrn(latest.id, order);
-                                                                    } catch (e) {
-                                                                        alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.'));
-                                                                    }
-                                                                })();
-                                                            }}
-                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            طباعة الاستلام
-                                                        </button>
-                                                    ) : null}
-                                                    {hasReceived && hasPermission('accounting.manage') ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                void (async () => {
-                                                                    try {
-                                                                        const latest = await getLatestReceiptForOrder(order.id);
-                                                                        if (!latest?.id) {
-                                                                            showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
-                                                                            return;
-                                                                        }
-                                                                        if (latest.postingStatus === 'posted') {
-                                                                            showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
-                                                                            return;
-                                                                        }
-                                                                        const supabase = getSupabaseClient();
-                                                                        if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
-                                                                        const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
-                                                                        if (error) throw error;
-                                                                        const st = String((data as any)?.status || '');
-                                                                        if (st === 'failed') {
-                                                                            const details = String((data as any)?.error || latest.postingError || '');
-                                                                            alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
-                                                                            setReceiptPostingByOrderId((prev) => ({
-                                                                                ...prev,
-                                                                                [order.id]: { receiptId: latest.id, status: 'failed', error: details },
-                                                                            }));
-                                                                        } else {
-                                                                            showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
-                                                                            setReceiptPostingByOrderId((prev) => ({
-                                                                                ...prev,
-                                                                                [order.id]: { receiptId: latest.id, status: 'posted', error: '' },
-                                                                            }));
-                                                                            await fetchPurchaseOrders();
-                                                                        }
-                                                                    } catch (e) {
-                                                                        alert(getErrorMessage(e, localizeSupabaseError(e)));
-                                                                    }
-                                                                })();
-                                                            }}
-                                                            disabled={receiptPostingLoading || isReceiptPosted}
-                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
-                                                        </button>
-                                                    ) : null}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openReceiveModal(order)}
-                                                        disabled={order.status === 'cancelled' || order.status === 'completed' || fullyReceived}
-                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        {fullyReceived ? 'مستلم بالكامل' : 'استلام'}
-                                                    </button>
-                                                    {canManageImports ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => { void handleCreateOrUpdateShipmentFromOrder(order); }}
-                                                            disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
-                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            شحنة
-                                                        </button>
-                                                    ) : null}
-                                                    {canRepairReceipt ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRepairPurchaseOrder(order)}
-                                                            disabled={order.status === 'cancelled'}
-                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            إصلاح الاستلام
-                                                        </button>
-                                                    ) : null}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openReturnModal(order)}
-                                                        disabled={order.status === 'cancelled'}
-                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        مرتجع
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openPaymentModal(order)}
-                                                        disabled={!canPay}
-                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const ref = order.poNumber || order.referenceNumber || order.id;
-                                                            const current = order.referenceNumber || '';
-                                                            const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, current);
-                                                            if (next === null) return;
-                                                            updatePurchaseOrderInvoiceNumber(order.id, next)
-                                                                .catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
-                                                        }}
-                                                        disabled={order.status === 'cancelled'}
-                                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        فاتورة المورد
-                                                    </button>
-                                                    {canCancelOrder ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const ref = order.poNumber || order.referenceNumber || order.id;
-                                                                const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
-                                                                const ok = window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`);
-                                                                if (!ok) return;
-                                                                cancelPurchaseOrder(order.id, reason)
-                                                                    .catch((e) => alert(getErrorMessage(e, 'فشل إلغاء أمر الشراء.')));
-                                                            }}
-                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700"
-                                                        >
-                                                            إلغاء
-                                                        </button>
-                                                    ) : null}
-                                                    {canPurge ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const ref = order.poNumber || order.referenceNumber || order.id;
-                                                                const ok = window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`);
-                                                                if (!ok) return;
-                                                                deletePurchaseOrder(order.id)
-                                                                    .catch((e) => alert(getErrorMessage(e, 'فشل حذف أمر الشراء.')));
-                                                            }}
-                                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black"
-                                                        >
-                                                            حذف
-                                                        </button>
-                                                    ) : null}
+
+                                                    {openRowDropdownId === order.id && (
+                                                        <>
+                                                            <div className="fixed inset-0 z-30" onClick={() => setOpenRowDropdownId(null)}></div>
+                                                            <div className="absolute right-0 top-10 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 z-40 py-1 origin-top-right">
+                                                                <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 dark:bg-gray-900/50 uppercase tracking-wide">الإجراءات</div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); openReceiveModal(order); }}
+                                                                    disabled={order.status === 'cancelled' || order.status === 'completed' || fullyReceived}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-50"
+                                                                >
+                                                                    {fullyReceived ? 'مستلم بالكامل' : 'استلام'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); openPaymentModal(order); }}
+                                                                    disabled={!canPay}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50"
+                                                                >
+                                                                    {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
+                                                                </button>
+                                                                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); void handlePrintPo(order); }}
+                                                                    disabled={order.status === 'cancelled'}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50"
+                                                                >
+                                                                    طباعة PO
+                                                                </button>
+                                                                {hasReceived && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            void (async () => {
+                                                                                try {
+                                                                                    const latest = await getLatestReceiptForOrder(order.id);
+                                                                                    if (!latest?.id) return showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
+                                                                                    await handlePrintGrn(latest.id, order);
+                                                                                } catch (e) { alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.')); }
+                                                                            })();
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50"
+                                                                    >
+                                                                        طباعة الاستلام
+                                                                    </button>
+                                                                )}
+                                                                {hasReceived && hasPermission('accounting.manage') && (
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={receiptPostingLoading || isReceiptPosted}
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            void (async () => {
+                                                                                try {
+                                                                                    const latest = await getLatestReceiptForOrder(order.id);
+                                                                                    if (!latest?.id) return showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
+                                                                                    if (latest.postingStatus === 'posted') return showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
+                                                                                    const supabase = getSupabaseClient();
+                                                                                    if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
+                                                                                    const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
+                                                                                    if (error) throw error;
+                                                                                    const st = String((data as any)?.status || '');
+                                                                                    if (st === 'failed') {
+                                                                                        const details = String((data as any)?.error || latest.postingError || '');
+                                                                                        alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
+                                                                                        setReceiptPostingByOrderId((prev) => ({ ...prev, [order.id]: { receiptId: latest.id, status: 'failed', error: details } }));
+                                                                                    } else {
+                                                                                        showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                                                        setReceiptPostingByOrderId((prev) => ({ ...prev, [order.id]: { receiptId: latest.id, status: 'posted', error: '' } }));
+                                                                                        await fetchPurchaseOrders();
+                                                                                    }
+                                                                                } catch (e) { alert(getErrorMessage(e, localizeSupabaseError(e))); }
+                                                                            })();
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50"
+                                                                    >
+                                                                        {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); openReturnModal(order); }}
+                                                                    disabled={order.status === 'cancelled'}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                                                                >
+                                                                    مرتجع
+                                                                </button>
+                                                                {canManageImports && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { setOpenRowDropdownId(null); void handleCreateOrUpdateShipmentFromOrder(order); }}
+                                                                        disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 disabled:opacity-50"
+                                                                    >
+                                                                        شحنة
+                                                                    </button>
+                                                                )}
+                                                                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setOpenRowDropdownId(null);
+                                                                        const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                        const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, order.referenceNumber || '');
+                                                                        if (next === null) return;
+                                                                        updatePurchaseOrderInvoiceNumber(order.id, next).catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
+                                                                    }}
+                                                                    disabled={order.status === 'cancelled'}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50"
+                                                                >
+                                                                    تعديل رقم الفاتورة
+                                                                </button>
+                                                                {canCancelOrder && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                            const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
+                                                                            if (!window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`)) return;
+                                                                            cancelPurchaseOrder(order.id, reason).catch((e) => alert(getErrorMessage(e, 'فشل إلغاء أمر الشراء.')));
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                                    >
+                                                                        إلغاء الأمر
+                                                                    </button>
+                                                                )}
+                                                                {canPurge && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                            if (!window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`)) return;
+                                                                            deletePurchaseOrder(order.id).catch((e) => alert(getErrorMessage(e, 'فشل حذف أمر الشراء.')));
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                                                                    >
+                                                                        حذف نهائي
+                                                                    </button>
+                                                                )}
+                                                                {canRepairReceipt && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { setOpenRowDropdownId(null); handleRepairPurchaseOrder(order); }}
+                                                                        disabled={order.status === 'cancelled'}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 border-t border-gray-100 dark:border-gray-700"
+                                                                    >
+                                                                        إصلاح الاستلام
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
