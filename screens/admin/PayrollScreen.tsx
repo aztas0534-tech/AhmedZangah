@@ -26,6 +26,7 @@ type PayrollEmployee = {
   party_id?: string | null;
   auto_deduct_ar?: boolean;
   credit_limit_multiplier?: number;
+  pin?: string | null;
 };
 
 type PayrollRun = {
@@ -199,6 +200,7 @@ export default function PayrollScreen() {
     job_title: '',
     auto_deduct_ar: true,
     credit_limit_multiplier: 2,
+    pin: '',
   });
 
   const [runModalOpen, setRunModalOpen] = useState(false);
@@ -282,7 +284,7 @@ export default function PayrollScreen() {
     setLoading(true);
     try {
       const [{ data: emps, error: eErr }, { data: rs, error: rErr }, { data: cc, error: cErr }] = await Promise.all([
-        supabase.from('payroll_employees').select('id,full_name,employee_code,is_active,monthly_salary,currency,notes,hired_date,phone,national_id,bank_account,job_title,party_id,auto_deduct_ar,credit_limit_multiplier').order('full_name', { ascending: true }),
+        supabase.from('payroll_employees').select('id,full_name,employee_code,is_active,monthly_salary,currency,notes,hired_date,phone,national_id,bank_account,job_title,party_id,auto_deduct_ar,credit_limit_multiplier,pin').order('full_name', { ascending: true }),
         supabase.from('payroll_runs').select('*').order('period_ym', { ascending: false }).limit(120),
         supabase.from('cost_centers').select('id,name,code').order('name', { ascending: true }),
       ]);
@@ -305,6 +307,7 @@ export default function PayrollScreen() {
         party_id: e.party_id ? String(e.party_id) : null,
         auto_deduct_ar: e.auto_deduct_ar ?? true,
         credit_limit_multiplier: Number(e.credit_limit_multiplier ?? 2),
+        pin: e.pin ? String(e.pin) : null,
       })));
       setRuns((Array.isArray(rs) ? rs : []).map((r: any) => ({
         id: String(r.id),
@@ -448,10 +451,11 @@ export default function PayrollScreen() {
         job_title: String(emp.job_title || ''),
         auto_deduct_ar: emp.auto_deduct_ar ?? true,
         credit_limit_multiplier: Number(emp.credit_limit_multiplier ?? 2),
+        pin: String(emp.pin || ''),
       });
     } else {
       setEmployeeEditing(null);
-      setEmployeeForm({ full_name: '', employee_code: '', monthly_salary: 0, currency: 'YER', is_active: true, notes: '', hired_date: '', phone: '', national_id: '', bank_account: '', job_title: '', auto_deduct_ar: true, credit_limit_multiplier: 2 });
+      setEmployeeForm({ full_name: '', employee_code: '', monthly_salary: 0, currency: 'YER', is_active: true, notes: '', hired_date: '', phone: '', national_id: '', bank_account: '', job_title: '', auto_deduct_ar: true, credit_limit_multiplier: 2, pin: '' });
     }
     setEmployeeModalOpen(true);
   };
@@ -473,6 +477,7 @@ export default function PayrollScreen() {
       job_title: String(employeeForm.job_title || '').trim() || null,
       auto_deduct_ar: Boolean(employeeForm.auto_deduct_ar),
       credit_limit_multiplier: Number(employeeForm.credit_limit_multiplier || 2),
+      pin: String(employeeForm.pin || '').trim() || null,
     };
     if (!payload.full_name) {
       showNotification('يرجى إدخال اسم الموظف.', 'error');
@@ -1128,6 +1133,10 @@ export default function PayrollScreen() {
                 <div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب البنكي</div>
                   <input value={employeeForm.bank_account} onChange={(e) => setEmployeeForm(prev => ({ ...prev, bank_account: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" dir="ltr" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">رمز PIN للبصمة</div>
+                  <input type="text" inputMode="numeric" maxLength={6} value={employeeForm.pin} onChange={(e) => setEmployeeForm(prev => ({ ...prev, pin: e.target.value.replace(/\D/g, '') }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono tracking-widest" dir="ltr" placeholder="مثال: 1234" />
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مضاعف حد الائتمان للراتب</div>

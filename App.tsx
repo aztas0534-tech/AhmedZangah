@@ -108,6 +108,7 @@ const SettlementWorkspaceScreen = lazy(() => import('./screens/admin/SettlementW
 const AdvanceManagementScreen = lazy(() => import('./screens/admin/AdvanceManagementScreen'));
 const VoucherEntryScreen = lazy(() => import('./screens/admin/VoucherEntryScreen'));
 const AttendanceScreen = lazy(() => import('./screens/admin/AttendanceScreen'));
+const AttendancePunchScreen = lazy(() => import('./screens/admin/AttendancePunchScreen'));
 const LeaveManagementScreen = lazy(() => import('./screens/admin/LeaveManagementScreen'));
 
 const CustomerLayout: React.FC = () => {
@@ -395,6 +396,7 @@ const App: React.FC = () => {
                     <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
                     <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
                     <Route path="attendance" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendanceScreen /></AdminProtectedRoute>} />
+                    <Route path="attendance-punch" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendancePunchScreen /></AdminProtectedRoute>} />
                     <Route path="leave-management" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><LeaveManagementScreen /></AdminProtectedRoute>} />
                     <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                     <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
@@ -446,6 +448,14 @@ const App: React.FC = () => {
                     element={
                       <AdminProtectedRoute permissions={['orders.updateStatus.all', 'orders.createInStore']} requireAllPermissions={false}>
                         <POSTestConsole />
+                      </AdminProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/attendance-punch"
+                    element={
+                      <AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}>
+                        <AttendancePunchScreen />
                       </AdminProtectedRoute>
                     }
                   />
