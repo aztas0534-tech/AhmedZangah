@@ -20,7 +20,7 @@ envStr.split('\n').forEach(line => {
     if (k === 'VITE_SUPABASE_ANON_KEY') key = val;
 });
 
-const reqUrl = new URL(url + '/rest/v1/rpc/exec_debug_sql');
+const reqUrl = new URL(url + '/rest/v1/rpc/test_payroll_rls_error');
 const options = {
     hostname: reqUrl.hostname,
     port: reqUrl.port,
@@ -33,17 +33,11 @@ const options = {
     }
 };
 
-const postData = JSON.stringify({
-    q: `ALTER FUNCTION public.exec_debug_sql(text) SECURITY INVOKER;`
-});
-
 const req = https.request(options, (res) => {
     let body = '';
     res.on('data', d => body += d);
-    res.on('end', () => {
-        console.log('Response:', body);
-    });
+    res.on('end', () => console.log('Response:', res.statusCode, body));
 });
 
-req.write(postData);
+req.write('{}');
 req.end();
