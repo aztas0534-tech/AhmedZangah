@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
 import {
-    exportFullDatabaseAsJson,
+    exportFullSystemBackup,
     exportSummaryAsExcel,
-    importDatabaseFromJson,
+    importSystemBackup,
     downloadBlob,
     BackupProgress
 } from '../../../utils/backupUtils';
@@ -12,6 +12,7 @@ import * as Icons from '../../../components/icons';
 const BackupSettingsScreen: React.FC = () => {
     const { showNotification } = useToast();
     const [isBackingUp, setIsBackingUp] = useState(false);
+    const [restoreMode, setRestoreMode] = useState<'safe' | 'wipe'>('safe');
     const [backupType, setBackupType] = useState<'json' | 'excel' | null>(null);
     const [progress, setProgress] = useState<BackupProgress>({
         status: 'idle',
@@ -31,19 +32,24 @@ const BackupSettingsScreen: React.FC = () => {
         // Reset file input so same file can be selected again if needed
         if (fileInputRef.current) fileInputRef.current.value = '';
 
-        if (!file.name.endsWith('.abd')) {
-            showNotification('يرجى اختيار ملف بامتداد .abd فقط.', 'error');
+        if (!file.name.endsWith('.abd') && !file.name.endsWith('.abdz') && !file.name.endsWith('.zip')) {
+            showNotification('يرجى اختيار ملف متوافق (.abdz, .zip, .abd) فقط.', 'error');
             return;
         }
 
-        if (!window.confirm('هل أنت متأكد من رغبتك في استرداد هذا الملف؟ قد تستغرق العملية بضع دقائق.')) {
+        const isWipe = restoreMode === 'wipe';
+        const msg = isWipe
+            ? 'تنبيه خطير جداً: هذه العملية ستقوم بمسح جميع بيانات النظام الحالية (فواتير، أصناف، عملاء...) واستبدالها بالكامل من الملف المرفوع. هل أنت متأكد 100% أنك تريد الاستمرار؟'
+            : 'هل أنت متأكد من رغبتك في استرداد هذا الملف لملء النواقص في النظام؟';
+
+        if (!window.confirm(msg)) {
             return;
         }
 
         try {
             setIsBackingUp(true);
             setBackupType('json'); // Reusing json UI for restore progress
-            await importDatabaseFromJson(file, setProgress);
+            await importSystemBackup(file, isWipe, setProgress);
             showNotification('تم استرداد البيانات بنجاح!', 'success');
         } catch (error: any) {
             showNotification(error.message || 'حدث خطأ أثناء استرداد البيانات.', 'error');
@@ -58,10 +64,10 @@ const BackupSettingsScreen: React.FC = () => {
         try {
             setIsBackingUp(true);
             setBackupType('json');
-            const blob = await exportFullDatabaseAsJson(setProgress);
-            const filename = `AhmedZ_Full_Backup_${new Date().toISOString().replace(/[:.]/g, '-')}.abd`;
+            const blob = await exportFullSystemBackup(setProgress);
+            const filename = `AhmedZ_Full_Backup_${new Date().toISOString().replace(/[:.]/g, '-')}.abdz`;
             downloadBlob(blob, filename);
-            showNotification('تم اكتمال النسخ الاحتياطي (النسخة الشاملة) بنجاح!', 'success');
+            showNotification('تم اكتمال النسخ الاحتياطي (النسخة الشاملة مع المرفقات) بنجاح!', 'success');
         } catch (error: any) {
             showNotification(error.message || 'حدث خطأ أثناء سحب البيانات.', 'error');
             setProgress((p: BackupProgress) => ({ ...p, status: 'error', message: 'فشلت العملية' }));
@@ -177,9 +183,9 @@ const BackupSettingsScreen: React.FC = () => {
                         <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 w-14 h-14 rounded-2xl flex items-center justify-center mb-6">
                             <Icons.DatabaseIcon className="h-7 w-7" />
                         </div>
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">نسخة شاملة للنظام (.abd)</h2>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">نسخة شاملة للنظام (.abdz)</h2>
                         <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                            سحب كامل 100% لكل صغيرة وكبيرة في قاعدة البيانات (الهيكل والبيانات والمعرفات الفريدة UUID). هذا الملف يستخدم كنسخة أمان مطلقة، أو لرفعها مستقبلاً عند الانتقال لسيرفر/قاعدة بيانات أخرى واستئناف العمل دون فقدان شيء.
+                            سحب كامل 100% لكل صغيرة وكبيرة في قاعدة البيانات بما في ذلك <strong>الصور والمرفقات السحابية</strong>. هذا الملف يستخدم كنسخة أمان مطلقة للتعافي من الكوارث، ويمكن رفعه مستقبلاً عند الانتقال السيرفر.
                         </p>
                     </div>
                     <button
@@ -200,26 +206,36 @@ const BackupSettingsScreen: React.FC = () => {
                             <Icons.Trash className="w-6 h-6" /> {/* Using Trash temporarily or we can use Database */}
                             استرداد نظام متكامل (Restore)
                         </h3>
-                        <p className="text-red-700 dark:text-red-300 text-sm max-w-2xl leading-relaxed">
-                            <strong>تحذير:</strong> هذه الميزة تستخدم لاستعادة البيانات من ملف (.abd). لن تحذف البيانات الحالية، بل ستملأ النواقص وتستعيد ما يُطابق الملف المرفوع. يُفضل استخدامها في قاعدة بيانات جديدة أو بعد استشارة الدعم الفني.
+                        <p className="text-red-700 dark:text-red-300 text-sm max-w-2xl leading-relaxed mt-2">
+                            اختر نوع الاستعادة المناسب لك: <br />
+                            - <strong>استرداد آمن:</strong> يملأ النواقص ويصلح الجداول ولا يمسح البيانات الحديثة.<br />
+                            - <strong>استرداد شامل:</strong> (Wipe & Restore) يقوم بفرمتة جميع جداول النظام وإعادة بناءها بالكامل من النسخة المرفوعة لضمان تطابق بنسبة 100٪.
                         </p>
                     </div>
 
-                    <div className="w-full md:w-auto flex-shrink-0">
+                    <div className="w-full md:w-auto flex-shrink-0 flex flex-col gap-3">
                         <input
                             type="file"
-                            accept=".abd"
+                            accept=".abdz,.zip,.abd"
                             ref={fileInputRef}
                             onChange={handleRestoreInput}
                             className="hidden"
                             id="restore-file-input"
                         />
                         <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="w-full md:w-auto px-6 py-3 rounded-xl font-bold text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-300 dark:bg-red-900/40 dark:hover:bg-red-900/60 transition-all flex items-center justify-center gap-2 border border-red-200 dark:border-red-800"
+                            onClick={() => { setRestoreMode('safe'); fileInputRef.current?.click(); }}
+                            className="w-full px-6 py-3 rounded-xl font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 dark:text-blue-300 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 transition-all flex items-center justify-center gap-2 border border-blue-200 dark:border-blue-800"
                         >
                             <Icons.UploadIcon className="h-5 w-5" />
-                            استرداد نسخة (.abd)
+                            استرداد آمن (ترقيع النواقص)
+                        </button>
+
+                        <button
+                            onClick={() => { setRestoreMode('wipe'); fileInputRef.current?.click(); }}
+                            className="w-full px-6 py-3 rounded-xl font-bold text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-300 dark:bg-red-900/40 dark:hover:bg-red-900/60 transition-all flex items-center justify-center gap-2 border border-red-200 dark:border-red-800"
+                        >
+                            <Icons.Trash className="h-5 w-5" />
+                            استرداد شامل (Wipe & Restore)
                         </button>
                     </div>
                 </div>

@@ -1,5 +1,6 @@
 import * as xlsx from 'xlsx';
 import { getSupabaseClient } from '../supabase';
+import JSZip from 'jszip';
 
 export interface BackupProgress {
     status: 'idle' | 'fetching_schema' | 'fetching_data' | 'generating_file' | 'completed' | 'error';
@@ -10,7 +11,7 @@ export interface BackupProgress {
     message: string;
 }
 
-export const exportFullDatabaseAsJson = async (
+export const exportFullSystemBackup = async (
     onProgress: (progress: BackupProgress) => void
 ): Promise<Blob> => {
     const supabase = getSupabaseClient();
@@ -67,9 +68,37 @@ export const exportFullDatabaseAsJson = async (
     };
 
     const jsonString = JSON.stringify(finalObject);
-    const blob = new Blob([jsonString], { type: 'application/json' });
 
-    onProgress({ status: 'completed', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'اكتملت عملية النسخ الاحتياطي بنجاح' });
+    onProgress({ status: 'fetching_data', currentTable: '', tableProgress: 50, tablesCompleted: totalTables, totalTables, message: 'جاري حزم المرفقات والصور السحابية...' });
+
+    const zip = new JSZip();
+    zip.file('database.json', jsonString);
+
+    try {
+        const { data: buckets } = await supabase.storage.listBuckets();
+        if (buckets && buckets.length > 0) {
+            for (const bucket of buckets) {
+                const { data: files } = await supabase.storage.from(bucket.name).list();
+                if (files && files.length > 0) {
+                    for (const file of files) {
+                        if (file.name === '.emptyFolderPlaceholder') continue;
+                        const { data: fileData, error: downloadError } = await supabase.storage.from(bucket.name).download(file.name);
+                        if (fileData && !downloadError) {
+                            zip.file(`storage/${bucket.name}/${file.name}`, fileData);
+                        }
+                    }
+                }
+            }
+        }
+    } catch (storageError) {
+        console.warn('Failed to backup some storage files', storageError);
+    }
+
+    onProgress({ status: 'generating_file', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'جاري ضغط الملف النهائي للنسخة الاحتياطية...' });
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+
+    onProgress({ status: 'completed', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'اكتملت عملية النسخ الاحتياطي الشامل بنجاح' });
 
     return blob;
 };
@@ -149,102 +178,136 @@ export const downloadBlob = (blob: Blob, filename: string) => {
     URL.revokeObjectURL(url);
 };
 
-export const importDatabaseFromJson = async (
+export const importSystemBackup = async (
     file: File,
+    isWipeRestore: boolean,
     onProgress: (progress: BackupProgress) => void
 ): Promise<void> => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not initialized');
 
-    onProgress({ status: 'idle', currentTable: '', tableProgress: 0, tablesCompleted: 0, totalTables: 0, message: 'جاري قراءة الملف وتحليله...' });
+    onProgress({ status: 'idle', currentTable: '', tableProgress: 0, tablesCompleted: 0, totalTables: 0, message: 'جاري قراءة وفك ضغط الملف...' });
 
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const content = e.target?.result as string;
-                const parsed = JSON.parse(content);
+    try {
+        let content = '';
+        let zip: JSZip | null = null;
 
-                if (!parsed.version || !parsed.data) {
-                    throw new Error('الملف غير صالح للاسترداد أو أنه تالف.');
-                }
+        if (file.name.endsWith('.abdz') || file.name.endsWith('.zip')) {
+            zip = await JSZip.loadAsync(file);
+            const dbFile = zip.file('database.json');
+            if (!dbFile) throw new Error('الملف المضغوط لا يحتوي على قاعدة بيانات database.json صالحة.');
+            content = await dbFile.async('string');
+        } else {
+            // Legacy JSON support fallback (.abd)
+            content = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target?.result as string);
+                reader.onerror = () => reject(new Error('فشل قراءة الملف النصي.'));
+                reader.readAsText(file);
+            });
+        }
 
-                const tablesData = parsed.data;
+        const parsed = JSON.parse(content);
 
-                // Dependency Order (Parent tables first, then children)
-                const priorityOrder = [
-                    'organization_settings',
-                    'branches',
-                    'warehouses',
-                    'chart_of_accounts',
-                    'financial_parties',
-                    'categories',
-                    'items',
-                    'item_warehouses',
-                    'cash_shifts',
-                    'invoices',
-                    'invoice_items',
-                    'purchases',
-                    'purchase_items',
-                    'inventory_movements',
-                    'journal_entries',
-                    'journal_entry_lines',
-                    'pos_sessions',
-                    'vouchers',
-                    'employees',
-                    'roles',
-                ];
+        if (!parsed.version || !parsed.data) {
+            throw new Error('الملف غير صالح للاسترداد أو أنه تالف.');
+        }
 
-                const tables = Object.keys(tablesData);
-                const sortedTables = tables.sort((a, b) => {
-                    const idxA = priorityOrder.indexOf(a);
-                    const idxB = priorityOrder.indexOf(b);
-                    if (idxA === -1 && idxB === -1) return 0;
-                    if (idxA === -1) return 1;
-                    if (idxB === -1) return -1;
-                    return idxA - idxB;
+        if (isWipeRestore) {
+            onProgress({ status: 'idle', currentTable: 'WIPE', tableProgress: 0, tablesCompleted: 0, totalTables: 0, message: 'جاري التهيئة والمسح الشامل لقاعدة البيانات...' });
+            const { error: wipeError } = await supabase.rpc('admin_wipe_all_tables_for_restore');
+            if (wipeError) {
+                console.error("Wipe failed", wipeError);
+                throw new Error('فشل عملية مسح قاعدة البيانات للتهيئة: ' + wipeError.message);
+            }
+        }
+
+        const tablesData = parsed.data;
+
+        // Dependency Order (Parent tables first, then children)
+        const priorityOrder = [
+            'organization_settings',
+            'branches',
+            'warehouses',
+            'chart_of_accounts',
+            'financial_parties',
+            'categories',
+            'items',
+            'item_warehouses',
+            'cash_shifts',
+            'invoices',
+            'invoice_items',
+            'purchases',
+            'purchase_items',
+            'inventory_movements',
+            'journal_entries',
+            'journal_entry_lines',
+            'pos_sessions',
+            'vouchers',
+            'employees',
+            'roles',
+        ];
+
+        const tables = Object.keys(tablesData);
+        const sortedTables = tables.sort((a, b) => {
+            const idxA = priorityOrder.indexOf(a);
+            const idxB = priorityOrder.indexOf(b);
+            if (idxA === -1 && idxB === -1) return 0;
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+        });
+
+        const totalTables = sortedTables.length;
+
+        for (let i = 0; i < totalTables; i++) {
+            const table = sortedTables[i];
+            const dataArray = tablesData[table] || [];
+
+            if (!Array.isArray(dataArray) || dataArray.length === 0) {
+                onProgress({ status: 'fetching_data', currentTable: table, tableProgress: 100, tablesCompleted: i + 1, totalTables, message: `تجاوز جدول: ${table} (لا يحوي بيانات)` });
+                continue;
+            }
+
+            onProgress({ status: 'fetching_data', currentTable: table, tableProgress: 0, tablesCompleted: i, totalTables, message: `جاري استرداد جدول: ${table} (${dataArray.length} سجل)` });
+
+            // Chunking injection for large tables to not hit request limits
+            const chunkSize = 2000;
+            for (let j = 0; j < dataArray.length; j += chunkSize) {
+                const chunk = dataArray.slice(j, j + chunkSize);
+
+                const { data: res, error } = await supabase.rpc('admin_import_table_data', {
+                    p_table: table,
+                    p_data: chunk
                 });
 
-                const totalTables = sortedTables.length;
-
-                for (let i = 0; i < totalTables; i++) {
-                    const table = sortedTables[i];
-                    const dataArray = tablesData[table] || [];
-
-                    if (!Array.isArray(dataArray) || dataArray.length === 0) {
-                        onProgress({ status: 'fetching_data', currentTable: table, tableProgress: 100, tablesCompleted: i + 1, totalTables, message: `تجاوز جدول: ${table} (لا يحوي بيانات)` });
-                        continue;
-                    }
-
-                    onProgress({ status: 'fetching_data', currentTable: table, tableProgress: 0, tablesCompleted: i, totalTables, message: `جاري استرداد جدول: ${table} (${dataArray.length} سجل)` });
-
-                    // Chunking injection for large tables to not hit request limits
-                    const chunkSize = 2000;
-                    for (let j = 0; j < dataArray.length; j += chunkSize) {
-                        const chunk = dataArray.slice(j, j + chunkSize);
-
-                        const { data: res, error } = await supabase.rpc('admin_import_table_data', {
-                            p_table: table,
-                            p_data: chunk
-                        });
-
-                        if (error || (res && res.status === 'error')) {
-                            console.error(`Restore error on table ${table}:`, error || res);
-                            throw new Error(`تعذر استرداد جدول ${table}. التفاصيل: ${error?.message || res?.message}`);
-                        }
-
-                        onProgress({ status: 'fetching_data', currentTable: table, tableProgress: Math.min(100, ((j + chunkSize) / dataArray.length) * 100), tablesCompleted: i, totalTables, message: `جاري استرداد بيانات ${table} (${Math.min(dataArray.length, j + chunkSize)} / ${dataArray.length})` });
-                    }
+                if (error || (res && res.status === 'error')) {
+                    console.error(`Restore error on table ${table}:`, error || res);
+                    throw new Error(`تعذر استرداد جدول ${table}. التفاصيل: ${error?.message || res?.message}`);
                 }
 
-                onProgress({ status: 'completed', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'تمت عملية الاسترداد الشامل بنجاح!' });
-                resolve();
-
-            } catch (error: any) {
-                reject(error);
+                onProgress({ status: 'fetching_data', currentTable: table, tableProgress: Math.min(100, ((j + chunkSize) / dataArray.length) * 100), tablesCompleted: i, totalTables, message: `جاري استرداد بيانات ${table} (${Math.min(dataArray.length, j + chunkSize)} / ${dataArray.length})` });
             }
-        };
-        reader.onerror = () => reject(new Error('فشل قراءة الملف.'));
-        reader.readAsText(file);
-    });
+        }
+
+        if (zip) {
+            onProgress({ status: 'fetching_data', currentTable: 'المرفقات', tableProgress: 0, tablesCompleted: totalTables, totalTables, message: 'جاري استرداد الملفات والمرفقات السحابية...' });
+            const storageRegex = /^storage\/([^\/]+)\/(.*)$/;
+            for (const relativePath of Object.keys(zip.files)) {
+                const match = relativePath.match(storageRegex);
+                if (match && !zip.files[relativePath].dir) {
+                    const bucketName = match[1];
+                    const fileName = match[2];
+                    const fileData = await zip.files[relativePath].async('blob');
+                    await supabase.storage.from(bucketName).upload(fileName, fileData, {
+                        upsert: true
+                    });
+                }
+            }
+        }
+
+        onProgress({ status: 'completed', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'تمت عملية الاسترداد الشامل بنجاح!' });
+    } catch (error: any) {
+        throw error;
+    }
 };

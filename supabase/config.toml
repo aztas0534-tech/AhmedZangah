@@ -35,3 +35,14 @@ entrypoint = "./functions/delete-admin-user/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/reset-admin-password/index.ts"
+
+[functions.automated-backup]
+enabled = true
+verify_jwt = true
+import_map = "./functions/automated-backup/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/automated-backup/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/automated-backup/*.html" ]
