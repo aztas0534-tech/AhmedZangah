@@ -77,6 +77,12 @@ if (-not $status.DB_URL) { throw "missing DB_URL from 'supabase status -o env'" 
 if (-not $status.API_URL) { throw "missing API_URL from 'supabase status -o env'" }
 if (-not $status.ANON_KEY -or $status.ANON_KEY.Length -lt 20) { throw "missing ANON_KEY from 'supabase status -o env'" }
 
+$envFile = @"
+VITE_SUPABASE_URL=$($status.API_URL)
+VITE_SUPABASE_ANON_KEY=$($status.ANON_KEY)
+"@
+Set-Content -Path ".env.local" -Value $envFile -Encoding utf8
+
 if ($IncludeAll) {
   Invoke-Supabase db push --db-url $status.DB_URL --yes --include-all
 } else {
