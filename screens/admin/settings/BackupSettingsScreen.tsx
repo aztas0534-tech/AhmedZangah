@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     exportFullDatabaseAsJson,
     exportSummaryAsExcel,
+    importDatabaseFromJson,
     downloadBlob,
     BackupProgress
 } from '../../../utils/backupUtils';
@@ -20,6 +21,38 @@ const BackupSettingsScreen: React.FC = () => {
         totalTables: 0,
         message: ''
     });
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleRestoreInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // Reset file input so same file can be selected again if needed
+        if (fileInputRef.current) fileInputRef.current.value = '';
+
+        if (!file.name.endsWith('.abd')) {
+            showNotification('يرجى اختيار ملف بامتداد .abd فقط.', 'error');
+            return;
+        }
+
+        if (!window.confirm('هل أنت متأكد من رغبتك في استرداد هذا الملف؟ قد تستغرق العملية بضع دقائق.')) {
+            return;
+        }
+
+        try {
+            setIsBackingUp(true);
+            setBackupType('json'); // Reusing json UI for restore progress
+            await importDatabaseFromJson(file, setProgress);
+            showNotification('تم استرداد البيانات بنجاح!', 'success');
+        } catch (error: any) {
+            showNotification(error.message || 'حدث خطأ أثناء استرداد البيانات.', 'error');
+            setProgress((p: BackupProgress) => ({ ...p, status: 'error', message: 'فشلت عملية الاسترداد' }));
+        } finally {
+            setIsBackingUp(false);
+            setTimeout(() => setBackupType(null), 3000);
+        }
+    };
 
     const handleBackupJson = async () => {
         try {
@@ -156,6 +189,39 @@ const BackupSettingsScreen: React.FC = () => {
                         <Icons.DownloadIcon className="h-5 w-5" />
                         تحميل نسخة قاعدة البيانات الشاملة
                     </button>
+                </div>
+            </div>
+
+            {/* Restore Section */}
+            <div className={`mt-12 pt-8 border-t border-gray-200 dark:border-gray-800 ${isBackingUp ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className="bg-red-50 dark:bg-red-900/10 rounded-2xl p-6 border border-red-100 dark:border-red-900/30 flex flex-col md:flex-row items-center gap-6 justify-between">
+                    <div>
+                        <h3 className="text-xl font-bold text-red-900 dark:text-red-400 mb-2 flex items-center gap-2">
+                            <Icons.Trash className="w-6 h-6" /> {/* Using Trash temporarily or we can use Database */}
+                            استرداد نظام متكامل (Restore)
+                        </h3>
+                        <p className="text-red-700 dark:text-red-300 text-sm max-w-2xl leading-relaxed">
+                            <strong>تحذير:</strong> هذه الميزة تستخدم لاستعادة البيانات من ملف (.abd). لن تحذف البيانات الحالية، بل ستملأ النواقص وتستعيد ما يُطابق الملف المرفوع. يُفضل استخدامها في قاعدة بيانات جديدة أو بعد استشارة الدعم الفني.
+                        </p>
+                    </div>
+
+                    <div className="w-full md:w-auto flex-shrink-0">
+                        <input
+                            type="file"
+                            accept=".abd"
+                            ref={fileInputRef}
+                            onChange={handleRestoreInput}
+                            className="hidden"
+                            id="restore-file-input"
+                        />
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full md:w-auto px-6 py-3 rounded-xl font-bold text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-300 dark:bg-red-900/40 dark:hover:bg-red-900/60 transition-all flex items-center justify-center gap-2 border border-red-200 dark:border-red-800"
+                        >
+                            <Icons.UploadIcon className="h-5 w-5" />
+                            استرداد نسخة (.abd)
+                        </button>
+                    </div>
                 </div>
             </div>
 

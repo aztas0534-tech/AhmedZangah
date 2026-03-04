@@ -1,3 +1,4 @@
+import * as xlsx from 'xlsx';
 import { getSupabaseClient } from '../supabase';
 
 export interface BackupProgress {
@@ -146,4 +147,104 @@ export const downloadBlob = (blob: Blob, filename: string) => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+};
+
+export const importDatabaseFromJson = async (
+    file: File,
+    onProgress: (progress: BackupProgress) => void
+): Promise<void> => {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error('Supabase client not initialized');
+
+    onProgress({ status: 'idle', currentTable: '', tableProgress: 0, tablesCompleted: 0, totalTables: 0, message: 'جاري قراءة الملف وتحليله...' });
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const content = e.target?.result as string;
+                const parsed = JSON.parse(content);
+
+                if (!parsed.version || !parsed.data) {
+                    throw new Error('الملف غير صالح للاسترداد أو أنه تالف.');
+                }
+
+                const tablesData = parsed.data;
+
+                // Dependency Order (Parent tables first, then children)
+                const priorityOrder = [
+                    'organization_settings',
+                    'branches',
+                    'warehouses',
+                    'chart_of_accounts',
+                    'financial_parties',
+                    'categories',
+                    'items',
+                    'item_warehouses',
+                    'cash_shifts',
+                    'invoices',
+                    'invoice_items',
+                    'purchases',
+                    'purchase_items',
+                    'inventory_movements',
+                    'journal_entries',
+                    'journal_entry_lines',
+                    'pos_sessions',
+                    'vouchers',
+                    'employees',
+                    'roles',
+                ];
+
+                const tables = Object.keys(tablesData);
+                const sortedTables = tables.sort((a, b) => {
+                    const idxA = priorityOrder.indexOf(a);
+                    const idxB = priorityOrder.indexOf(b);
+                    if (idxA === -1 && idxB === -1) return 0;
+                    if (idxA === -1) return 1;
+                    if (idxB === -1) return -1;
+                    return idxA - idxB;
+                });
+
+                const totalTables = sortedTables.length;
+
+                for (let i = 0; i < totalTables; i++) {
+                    const table = sortedTables[i];
+                    const dataArray = tablesData[table] || [];
+
+                    if (!Array.isArray(dataArray) || dataArray.length === 0) {
+                        onProgress({ status: 'fetching_data', currentTable: table, tableProgress: 100, tablesCompleted: i + 1, totalTables, message: `تجاوز جدول: ${table} (لا يحوي بيانات)` });
+                        continue;
+                    }
+
+                    onProgress({ status: 'fetching_data', currentTable: table, tableProgress: 0, tablesCompleted: i, totalTables, message: `جاري استرداد جدول: ${table} (${dataArray.length} سجل)` });
+
+                    // Chunking injection for large tables to not hit request limits
+                    const chunkSize = 2000;
+                    for (let j = 0; j < dataArray.length; j += chunkSize) {
+                        const chunk = dataArray.slice(j, j + chunkSize);
+
+                        const { data: res, error } = await supabase.rpc('admin_import_table_data', {
+                            p_table: table,
+                            p_data: chunk
+                        });
+
+                        if (error || (res && res.status === 'error')) {
+                            console.error(`Restore error on table ${table}:`, error || res);
+                            throw new Error(`تعذر استرداد جدول ${table}. التفاصيل: ${error?.message || res?.message}`);
+                        }
+
+                        onProgress({ status: 'fetching_data', currentTable: table, tableProgress: Math.min(100, ((j + chunkSize) / dataArray.length) * 100), tablesCompleted: i, totalTables, message: `جاري استرداد بيانات ${table} (${Math.min(dataArray.length, j + chunkSize)} / ${dataArray.length})` });
+                    }
+                }
+
+                onProgress({ status: 'completed', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'تمت عملية الاسترداد الشامل بنجاح!' });
+                resolve();
+
+            } catch (error: any) {
+                reject(error);
+            }
+        };
+        reader.onerror = () => reject(new Error('فشل قراءة الملف.'));
+        reader.readAsText(file);
+    });
 };
