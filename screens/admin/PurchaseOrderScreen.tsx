@@ -2553,8 +2553,8 @@ const PurchaseOrderScreen: React.FC = () => {
                 )}
             </div>
 
-            <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-x-auto">
-                <table className="min-w-[1400px] w-full text-right">
+            <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-x-auto pb-48">
+                <table className="min-w-[1400px] w-full text-right" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الأمر / الفاتورة</th>
@@ -2608,7 +2608,8 @@ const PurchaseOrderScreen: React.FC = () => {
                                             id={`po-${order.id}`}
                                             className={[
                                                 'hover:bg-gray-50 dark:hover:bg-gray-700/30',
-                                                focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : ''
+                                                focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : '',
+                                                openRowDropdownId === order.id ? 'relative z-[999]' : 'relative z-0'
                                             ].join(' ')}
                                         >
                                             <td className="p-4">
@@ -2677,8 +2678,8 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     </span>
                                                 ) : null}
                                             </td>
-                                            <td className="p-4">
-                                                <div className="relative flex justify-end">
+                                            <td className="p-4 relative" style={{ zIndex: openRowDropdownId === order.id ? 9999 : 0 }}>
+                                                <div className="relative flex justify-end w-full">
                                                     <button
                                                         onClick={() => setOpenRowDropdownId(openRowDropdownId === order.id ? null : order.id)}
                                                         className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -2690,8 +2691,8 @@ const PurchaseOrderScreen: React.FC = () => {
 
                                                     {openRowDropdownId === order.id && (
                                                         <>
-                                                            <div className="fixed inset-0 z-30" onClick={() => setOpenRowDropdownId(null)}></div>
-                                                            <div className="absolute right-0 top-10 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 z-40 py-1 origin-top-right">
+                                                            <div className="fixed inset-0 z-40" onClick={() => setOpenRowDropdownId(null)}></div>
+                                                            <div className="absolute right-0 top-10 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border border-gray-200 dark:border-gray-600 z-50 py-1 origin-top-right transition-all">
                                                                 <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 dark:bg-gray-900/50 uppercase tracking-wide">الإجراءات</div>
                                                                 <button
                                                                     type="button"
