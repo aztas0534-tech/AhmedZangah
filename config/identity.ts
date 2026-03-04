@@ -11,6 +11,6 @@ export const AZTA_IDENTITY = {
     productionOrigin: 'https://ahmedzangah.pages.dev',
   },
   supabase: {
-    projectUrl: 'https://twcjjisnxmfpseksqnhb.supabase.co',
+    projectUrl: 'https://xqjpkdfjniwgxrutajsd.supabase.co',
   },
 } as const;
