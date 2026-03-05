@@ -83,18 +83,18 @@ const createPdfDataUriFromElement = async (
     let savedMaxWidth: string | null = null;
     let savedBoxSizing: string | null = null;
     if (!usePx) {
-        // A4 width = 210mm ≈ 794px at 96dpi. We use 760px to account for margins.
+        // A5 width = 148mm ≈ 559px at 96dpi. We use 520px to account for margins.
         savedWidth = element.style.width;
         savedMaxWidth = element.style.maxWidth;
         savedBoxSizing = element.style.boxSizing;
-        element.style.width = '760px';
-        element.style.maxWidth = '760px';
+        element.style.width = '520px';
+        element.style.maxWidth = '520px';
         element.style.boxSizing = 'border-box';
     }
 
     const canvas = await html2canvas(element, {
         scale,
-        width: !usePx ? 760 : undefined,
+        width: !usePx ? 520 : undefined,
         useCORS: true,
         logging: false,
         imageTimeout: 0,
@@ -154,14 +154,14 @@ const createPdfDataUriFromElement = async (
         pdf.text(footerLinePx, pageWidth / 2, pageHeight - 8, { align: 'center' as any });
         dataUri = pdf.output('datauristring');
     } else {
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a5' });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
         const headerMm = Math.max(0, options?.headerHeight ?? 10);
         const footerMm = Math.max(0, options?.footerHeight ?? 8);
         const contentHeightMm = Math.max(0.1, pageHeight - headerMm - footerMm);
 
-        // Add 10mm margin for A4 to avoid printer clipping
+        // Add 10mm margin for A5 to avoid printer clipping
         const sideMarginMm = 10;
         const printableWidthMm = pageWidth - (sideMarginMm * 2);
 

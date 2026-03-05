@@ -868,13 +868,13 @@ const SettingsScreen: React.FC = () => {
     }
     else if (name.startsWith('defaultInvoiceTemplateByRole.')) {
       const field = name.split('.')[1] as 'pos' | 'admin' | 'merchant';
-      const nextValue = value === 'thermal' ? 'thermal' : 'a4';
+      const nextValue = value === 'thermal' ? 'thermal' : 'a5';
       setFormState(prev => ({
         ...prev,
         defaultInvoiceTemplateByRole: {
-          pos: prev.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal',
-          admin: prev.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a4',
-          merchant: prev.defaultInvoiceTemplateByRole?.merchant === 'thermal' ? 'thermal' : 'a4',
+          pos: prev.defaultInvoiceTemplateByRole?.pos === 'a5' ? 'a5' : 'thermal',
+          admin: prev.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a5',
+          merchant: prev.defaultInvoiceTemplateByRole?.merchant === 'thermal' ? 'thermal' : 'a5',
           [field]: nextValue,
         },
       }));
@@ -1479,12 +1479,12 @@ const SettingsScreen: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القالب الافتراضي (POS)</label>
                 <select
                   name="defaultInvoiceTemplateByRole.pos"
-                  value={formState.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal'}
+                  value={formState.defaultInvoiceTemplateByRole?.pos === 'a5' ? 'a5' : 'thermal'}
                   onChange={handleChange}
                   className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
                 >
                   <option value="thermal">حراري</option>
-                  <option value="a4">A4</option>
+                  <option value="a5">A5</option>
                 </select>
               </div>
               <div>

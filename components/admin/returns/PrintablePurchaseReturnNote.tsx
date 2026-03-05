@@ -59,7 +59,7 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
     <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
       <style>{`
         @media print {
-            @page { size: A4 portrait; margin: 0; }
+            @page { size: A5 portrait; margin: 0; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
             * { box-sizing: border-box; }
 
@@ -72,7 +72,7 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
                 color: #0F172A !important;
                 line-height: 1.35 !important;
                 position: relative !important;
-                min-height: 296mm !important;
+                min-height: 209mm !important;
                 background-color: #FAFAFA !important;
             }
 

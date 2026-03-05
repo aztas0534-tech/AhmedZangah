@@ -34,8 +34,8 @@ const InvoiceScreen: React.FC = () => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isPrinting, setIsPrinting] = useState(false);
-    const [isPrintingA4, setIsPrintingA4] = useState(false);
-    const [isPrintingA4Pdf, setIsPrintingA4Pdf] = useState(false);
+    const [isPrintingA5, setIsPrintingA5] = useState(false);
+    const [isPrintingA5Pdf, setIsPrintingA5Pdf] = useState(false);
     const [invoiceAudit, setInvoiceAudit] = useState<any>(null);
     const { settings, language } = useSettings();
     const storeName = (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim();
@@ -48,17 +48,17 @@ const InvoiceScreen: React.FC = () => {
     const { getDeliveryZoneById } = useDeliveryZones();
     const [costCenterLabel, setCostCenterLabel] = useState<string>('');
     const [creditSummary, setCreditSummary] = useState<{ previousBalance: number; invoiceAmount: number; newBalance: number; currencyCode: string } | null>(null);
-    const [selectedTemplate, setSelectedTemplate] = useState<'thermal' | 'a4'>(() => {
+    const [selectedTemplate, setSelectedTemplate] = useState<'thermal' | 'a5'>(() => {
         if (adminUser?.role === 'cashier') {
-            return settings.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal';
+            return settings.defaultInvoiceTemplateByRole?.pos === 'a5' ? 'a5' : 'thermal';
         }
         if (isAdminInvoice) {
-            return settings.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a4';
+            return settings.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a5';
         }
-        return 'a4';
+        return 'a5';
     });
     const [previewOpen, setPreviewOpen] = useState(false);
-    const [previewKind, setPreviewKind] = useState<'thermal' | 'a4'>('thermal');
+    const [previewKind, setPreviewKind] = useState<'thermal' | 'a5'>('thermal');
     const [previewHtml, setPreviewHtml] = useState<string>('');
     const [previewTitle, setPreviewTitle] = useState<string>('معاينة الطباعة');
     const autoPrintRunKeyRef = useRef<string>('');
@@ -393,7 +393,7 @@ const InvoiceScreen: React.FC = () => {
         incrementInvoicePrintCount(order.id);
     };
 
-    const handlePrintA4 = () => {
+    const handlePrintA5 = () => {
         if (!order) return;
 
         const currentCount = typeof order.invoicePrintCount === 'number' ? order.invoicePrintCount : 0;
@@ -412,7 +412,7 @@ const InvoiceScreen: React.FC = () => {
         };
 
         if (Capacitor.isNativePlatform()) {
-            setIsPrintingA4(true);
+            setIsPrintingA5(true);
             sharePdf(
                 'print-area',
                 `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
@@ -425,7 +425,7 @@ const InvoiceScreen: React.FC = () => {
                 } else {
                     showNotification('تعذر إنشاء ملف PDF للطباعة', 'error');
                 }
-            }).finally(() => setIsPrintingA4(false));
+            }).finally(() => setIsPrintingA5(false));
             return;
         }
 
@@ -436,9 +436,9 @@ const InvoiceScreen: React.FC = () => {
         }
     };
 
-    const handlePrintA4WithPageNumbers = () => {
+    const handlePrintA5WithPageNumbers = () => {
         if (!order) return;
-        setIsPrintingA4Pdf(true);
+        setIsPrintingA5Pdf(true);
         const brand = resolveBranding();
         const brandSettings: any = {
             ...settings,
@@ -455,7 +455,7 @@ const InvoiceScreen: React.FC = () => {
             if (success) {
                 incrementInvoicePrintCount(order.id);
             }
-        }).finally(() => setIsPrintingA4Pdf(false));
+        }).finally(() => setIsPrintingA5Pdf(false));
     };
 
     const handlePrintDeliveryNote = () => {
@@ -480,7 +480,7 @@ const InvoiceScreen: React.FC = () => {
         if (selectedTemplate === 'thermal') {
             void handlePrint();
         } else {
-            handlePrintA4();
+            handlePrintA5();
         }
     };
 
@@ -488,7 +488,7 @@ const InvoiceScreen: React.FC = () => {
         void openPreview(selectedTemplate);
     };
 
-    const openPreview = async (kind: 'thermal' | 'a4') => {
+    const openPreview = async (kind: 'thermal' | 'a5') => {
         if (!order) return;
         setPreviewKind(kind);
         if (kind === 'thermal') {
@@ -533,7 +533,7 @@ const InvoiceScreen: React.FC = () => {
             setPreviewTitle('معاينة الطباعة الحرارية');
         } else {
             setPreviewHtml('');
-            setPreviewTitle('معاينة طباعة A4');
+            setPreviewTitle('معاينة طباعة A5');
         }
         setPreviewOpen(true);
     };
@@ -638,11 +638,11 @@ const InvoiceScreen: React.FC = () => {
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">القالب:</span>
                             <select
                                 value={selectedTemplate}
-                                onChange={(e) => setSelectedTemplate(e.target.value === 'thermal' ? 'thermal' : 'a4')}
+                                onChange={(e) => setSelectedTemplate(e.target.value === 'thermal' ? 'thermal' : 'a5')}
                                 className="text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-gray-800 dark:text-gray-200"
                             >
                                 <option value="thermal">حراري</option>
-                                <option value="a4">A4</option>
+                                <option value="a5">A5</option>
                             </select>
                         </div>
                     )}
@@ -652,7 +652,7 @@ const InvoiceScreen: React.FC = () => {
                             className="inline-flex items-center justify-center bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-indigo-700 transition-colors gap-2"
                         >
                             <PrinterIcon />
-                            طباعة ({selectedTemplate === 'thermal' ? 'حراري' : 'A4'})
+                            طباعة ({selectedTemplate === 'thermal' ? 'حراري' : 'A5'})
                         </button>
                     )}
                     {isAdminInvoice && (
@@ -680,26 +680,26 @@ const InvoiceScreen: React.FC = () => {
                         </button>
                     )}
                     <button
-                        onClick={handlePrintA4}
-                        disabled={isPrintingA4}
+                        onClick={handlePrintA5}
+                        disabled={isPrintingA5}
                         className="inline-flex items-center justify-center bg-gray-800 text-white font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-gray-900 transition-colors disabled:bg-gray-500 disabled:cursor-wait gap-2"
                     >
                         <PrinterIcon />
-                        {isPrintingA4 ? 'جاري التحميل...' : 'طباعة A4'}
+                        {isPrintingA5 ? 'جاري التحميل...' : 'طباعة A5'}
                     </button>
                     {isAdminInvoice && (
                         <button
-                            onClick={handlePrintA4WithPageNumbers}
-                            disabled={isPrintingA4Pdf}
+                            onClick={handlePrintA5WithPageNumbers}
+                            disabled={isPrintingA5Pdf}
                             className="inline-flex items-center justify-center bg-gray-50 text-gray-900 font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-gray-100 transition-colors disabled:bg-gray-200 disabled:cursor-wait gap-2 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
                         >
                             <PrinterIcon />
-                            {isPrintingA4Pdf ? 'جاري التحضير...' : 'A4 (ترقيم صفحات)'}
+                            {isPrintingA5Pdf ? 'جاري التحضير...' : 'A5 (ترقيم صفحات)'}
                         </button>
                     )}
                     {isAdminInvoice && (
                         <button
-                            onClick={() => openPreview('a4')}
+                            onClick={() => openPreview('a5')}
                             className="inline-flex items-center justify-center bg-gray-100 text-gray-900 font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-gray-200 transition-colors gap-2 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
                         >
                             معاينة
@@ -732,7 +732,7 @@ const InvoiceScreen: React.FC = () => {
                     if (previewKind === 'thermal') {
                         handlePrint();
                     } else {
-                        handlePrintA4();
+                        handlePrintA5();
                     }
                 }}
                 title={previewTitle}
@@ -750,7 +750,7 @@ const InvoiceScreen: React.FC = () => {
                     />
                 ) : (
                     <div className="bg-white p-4 rounded border border-gray-200">
-                        <div className="text-xs text-gray-500 mb-3">هذه معاينة A4 ضمن الواجهة. عند الطباعة قد تُطبّق قواعد @media print.</div>
+                        <div className="text-xs text-gray-500 mb-3">هذه معاينة A5 ضمن الواجهة. عند الطباعة قد تُطبّق قواعد @media print.</div>
                         {isAdminInvoice ? (
                             <TriplicateInvoice
                                 ref={invoiceRef}
@@ -777,7 +777,7 @@ const InvoiceScreen: React.FC = () => {
             </ConfirmationModal>
 
             <div id="print-area">
-                {isAdminInvoice && selectedTemplate === 'a4' ? (
+                {isAdminInvoice && selectedTemplate === 'a5' ? (
                     <TriplicateInvoice
                         ref={invoiceRef}
                         order={order}

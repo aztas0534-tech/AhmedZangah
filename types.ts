@@ -576,9 +576,9 @@ export interface AppSettings {
     logoUrl?: string;
   }>;
   defaultInvoiceTemplateByRole?: {
-    pos?: 'thermal' | 'a4';
-    admin?: 'thermal' | 'a4';
-    merchant?: 'thermal' | 'a4';
+    pos?: 'thermal' | 'a5';
+    admin?: 'thermal' | 'a5';
+    merchant?: 'thermal' | 'a5';
   };
   inventoryFlags?: {
     autoArchiveExpired?: boolean;
