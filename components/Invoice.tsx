@@ -280,8 +280,6 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #0F172A !important;
                         line-height: 1.2 !important;
                         position: relative !important;
-                        max-height: 210mm !important;
-                        overflow: hidden !important;
                         background-color: #FAFAFA !important;
                     }
 
@@ -421,6 +419,15 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         background: #F9FAFB !important;
                         padding: 2px !important;
                         margin-top: 2px !important;
+                        page-break-inside: avoid !important;
+                    }
+
+                    /* ═══ PLEDGE / LEGAL ═══ */
+                    .pledge-section {
+                        page-break-inside: avoid !important;
+                    }
+                    .signatures-section {
+                        page-break-inside: avoid !important;
                     }
 
                     /* ═══ FOOTER ═══ */
@@ -727,7 +734,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 <div className="relative z-10 w-full mt-4 print:mt-1">
                     {/* Pledge for Credit / Unpaid Balance */}
                     {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
-                        <div className="border border-blue-900 print:border-blue-900 p-3 print:p-1.5 mb-6 print:mb-2 bg-white text-center">
+                        <div className="pledge-section border border-blue-900 print:border-blue-900 p-3 print:p-1.5 mb-6 print:mb-2 bg-white text-center">
                             <p className="text-[8px] print:text-[5.5px] font-bold text-blue-950 leading-relaxed print:leading-snug font-sans text-justify px-2 print:px-1">
                                 أنا الموقع أدناه المستلم / <span className="inline-block w-48 print:w-24 border-b-2 border-slate-400 print:border-blue-900 border-dotted"></span> بأنني استلمت البضاعة أعلاه كاملة وسليمة وأتعهد بسداد قيمتها كاملة وغير منقوصة لأمر <span className="font-black text-rose-700">{systemName}</span> إلى تاريخ الاستحقاق الموضح أعلاه وفي حال التأخر عن السداد أكون ملزماً بتسديد مبلغ الفاتورة ومصاريف التأخير حسب ما تقره المؤسسة ولها الحق الكامل بـ الاستيلاء على البضاعة المشتراة منها أو أي بضاعة أخرى أو على أي أموالنا بما يساوي مبلغ الدين والمصاريف.
                             </p>
@@ -743,7 +750,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     )}
 
                     {/* Official Signatures Row */}
-                    <div className="flex justify-between items-end mt-8 print:mt-3 px-4 print:px-2">
+                    <div className="signatures-section flex justify-between items-end mt-8 print:mt-3 px-4 print:px-2">
                         <div className="text-center w-32 print:w-16">
                             <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                                 <span className="font-thin-label block text-blue-950 font-bold">المستلم | Receiver</span>
