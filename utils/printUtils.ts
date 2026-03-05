@@ -6,21 +6,22 @@
 /**
  * فتح نافذة الطباعة
  */
-export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A4' | 'auto' }) => {
-    const page = options?.page || 'A4';
-    const pageCss = page === 'A4'
-        ? `
+export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto' }) => {
+  const page = options?.page || 'A5';
+  const pageCss = page === 'A5'
+    ? `
           @page {
-            size: A4;
+            size: A5;
+            margin: 10mm;
             margin: 10mm;
           }
         `
-        : `
+    : `
           @page {
             margin: 10mm;
           }
         `;
-    return `
+  return `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
     <head>
@@ -133,104 +134,104 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
   `;
 };
 
-export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A4' | 'auto' }) => {
-    const html = buildPrintHtml(content, title, options);
+export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto' }) => {
+  const html = buildPrintHtml(content, title, options);
 
-    const openAndPrint = (targetWindow: Window, cleanup: () => void) => {
-        targetWindow.document.open();
-        targetWindow.document.write(html);
-        targetWindow.document.close();
+  const openAndPrint = (targetWindow: Window, cleanup: () => void) => {
+    targetWindow.document.open();
+    targetWindow.document.write(html);
+    targetWindow.document.close();
 
-        let didTrigger = false;
-        const triggerPrint = () => {
-            if (didTrigger) return;
-            didTrigger = true;
-            try {
-                targetWindow.focus();
-                const maybePromise = (targetWindow as any).print?.();
-                if (maybePromise && typeof maybePromise.then === 'function' && typeof maybePromise.catch === 'function') {
-                    maybePromise.catch(() => undefined);
-                }
-            } catch {
-                return;
-            }
+    let didTrigger = false;
+    const triggerPrint = () => {
+      if (didTrigger) return;
+      didTrigger = true;
+      try {
+        targetWindow.focus();
+        const maybePromise = (targetWindow as any).print?.();
+        if (maybePromise && typeof maybePromise.then === 'function' && typeof maybePromise.catch === 'function') {
+          maybePromise.catch(() => undefined);
+        }
+      } catch {
+        return;
+      }
 
-            targetWindow.addEventListener('afterprint', cleanup, { once: true });
-            setTimeout(cleanup, 60000);
-        };
-
-        targetWindow.addEventListener('load', () => setTimeout(triggerPrint, 50), { once: true });
-        setTimeout(triggerPrint, 250);
+      targetWindow.addEventListener('afterprint', cleanup, { once: true });
+      setTimeout(cleanup, 60000);
     };
 
-    const printWindow = window.open('about:blank', '_blank');
-    if (printWindow) {
-        openAndPrint(printWindow, () => {
-            try { printWindow.close(); } catch {}
-        });
-        return;
-    }
+    targetWindow.addEventListener('load', () => setTimeout(triggerPrint, 50), { once: true });
+    setTimeout(triggerPrint, 250);
+  };
 
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
-    document.body.appendChild(iframe);
+  const printWindow = window.open('about:blank', '_blank');
+  if (printWindow) {
+    openAndPrint(printWindow, () => {
+      try { printWindow.close(); } catch { }
+    });
+    return;
+  }
 
-    const iframeWindow = iframe.contentWindow;
-    if (!iframeWindow) {
-        document.body.removeChild(iframe);
-        alert('تعذر بدء الطباعة على هذا الجهاز');
-        return;
-    }
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.visibility = 'hidden';
+  document.body.appendChild(iframe);
 
-    const removeIframe = () => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    };
+  const iframeWindow = iframe.contentWindow;
+  if (!iframeWindow) {
+    document.body.removeChild(iframe);
+    alert('تعذر بدء الطباعة على هذا الجهاز');
+    return;
+  }
 
-    iframeWindow.addEventListener('afterprint', removeIframe, { once: true });
-    setTimeout(removeIframe, 60000);
+  const removeIframe = () => {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+  };
 
-    openAndPrint(iframeWindow, removeIframe);
+  iframeWindow.addEventListener('afterprint', removeIframe, { once: true });
+  setTimeout(removeIframe, 60000);
+
+  openAndPrint(iframeWindow, removeIframe);
 };
 
 /**
  * تنسيق التاريخ للطباعة
  */
 export const formatDateForPrint = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ar-EG-u-nu-latn', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ar-EG-u-nu-latn', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 /**
  * تنسيق الوقت فقط
  */
 export const formatTimeForPrint = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('ar-EG-u-nu-latn', {
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('ar-EG-u-nu-latn', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 /**
  * تنسيق التاريخ فقط
  */
 export const formatDateOnly = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ar-EG-u-nu-latn', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    });
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ar-EG-u-nu-latn', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 };

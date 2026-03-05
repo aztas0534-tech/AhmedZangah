@@ -39,12 +39,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
         <div className="order-container" dir="rtl">
             <style>{`
                 @media print {
-                    @page { size: A4; margin: 0; }
+                    @page { size: A5; margin: 0; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                 }
                 .order-container {
                     font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    max-width: 210mm;
+                    max-width: 148mm;
                     margin: 0 auto;
                     background: white;
                     color: #1E3A8A;

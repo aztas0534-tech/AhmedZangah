@@ -103,7 +103,7 @@ export default function PrintablePartyLedgerStatement(props: {
     <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
       <style>{`
         @media print {
-            @page { size: A4 portrait; margin: 0; }
+            @page { size: A5 portrait; margin: 0; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
             * { box-sizing: border-box; }
 

@@ -2381,7 +2381,10 @@ const ManageOrdersScreen: React.FC = () => {
         const returnStatus = getReturnStatus(order);
         const isFullyReturned = returnStatus === 'full';
         const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
-        const canReturn = order.status === 'delivered' && paid > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned && !isVoided;
+        const paymentMethod = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase();
+        const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
+        const isCreditSale = paymentMethod === 'ar' || hasArPayment;
+        const canReturn = order.status === 'delivered' && (isCreditSale || paid > Math.pow(10, -getCurrencyDecimalsByCode(currency))) && !isFullyReturned && !isVoided;
         const items = Array.isArray((order as any)?.items) ? (order as any).items : [];
 
         return (
@@ -3303,7 +3306,10 @@ const ManageOrdersScreen: React.FC = () => {
                                                     const paid = Number(paidSumByOrderId[order.id]) || 0;
                                                     const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
                                                     const isVoidedRow = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
-                                                    const canReturn = order.status === 'delivered' && paid > 0.01 && !isFullyReturned && !isVoidedRow;
+                                                    const paymentMethod = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase();
+                                                    const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
+                                                    const isCreditSale = paymentMethod === 'ar' || hasArPayment;
+                                                    const canReturn = order.status === 'delivered' && (isCreditSale || paid > 0.01) && !isFullyReturned && !isVoidedRow;
                                                     if (!canReturn) return null;
                                                     return (
                                                         <div className="mt-2 flex flex-col gap-2">

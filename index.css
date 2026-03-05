@@ -391,8 +391,8 @@ svg {
 
 @media print {
   @page {
-    size: A4;
-    margin: 0;
+    size: A5;
+    margin: 10mm;
   }
 
   html,
@@ -432,12 +432,34 @@ svg {
     direction: rtl !important;
   }
 
-  /* Ensure content fits A4 width */
-  #print-area > * {
+  /* Ensure content fits A5 width */
+  .print-A5 {
+    width: 148mm !important;
+    max-width: 148mm !important;
+  }
+
+  #print-area>* {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
     padding: 0 !important;
+    font-size: 85% !important;
+    /* Scale down fonts for A5 */
+  }
+
+  /* Make padding smaller on printed cards */
+  #print-area .p-4,
+  #print-area .p-5,
+  #print-area .p-6,
+  #print-area .p-8 {
+    padding: 10px !important;
+  }
+
+  /* Make text smaller on tables */
+  #print-area table th,
+  #print-area table td {
+    padding: 6px !important;
+    font-size: 11px !important;
   }
 
   /* Reset some styles for print */
