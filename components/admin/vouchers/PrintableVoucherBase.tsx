@@ -130,14 +130,15 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
             .voucher-container { 
                 width: 100% !important; 
-                padding: 6mm 10mm !important;
+                padding: 3mm 5mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important;
-                line-height: 1.3 !important;
+                line-height: 1.2 !important;
                 position: relative !important;
-                min-height: 148mm !important; /* A5 Landscape Height */
+                max-height: 148mm !important;
+                overflow: hidden !important;
                 background-color: #FAFAFA !important;
             }
 
@@ -147,7 +148,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 top: 50% !important;
                 left: 50% !important;
                 transform: translate(-50%, -50%) rotate(-30deg) !important;
-                font-size: 15rem !important;
+                font-size: 10rem !important;
                 font-weight: 900 !important;
                 color: #D4AF37 !important;
                 opacity: 0.03 !important;
@@ -157,19 +158,19 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 letter-spacing: -2px !important;
             }
 
-            /* ═══ THE CERTIFICATE FRAME (ULTRA LUXURY) ═══ */
+            /* ═══ THE CERTIFICATE FRAME ═══ */
             .voucher-container::before {
                 content: '';
                 position: absolute !important;
-                top: 4mm; bottom: 4mm; left: 4mm; right: 4mm;
-                border: 2pt solid #1E3A8A !important;
+                top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
+                border: 1.5pt solid #1E3A8A !important;
                 pointer-events: none !important;
                 z-index: 50 !important;
             }
             .voucher-container::after {
                 content: '';
                 position: absolute !important;
-                top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
+                top: 3mm; bottom: 3mm; left: 3mm; right: 3mm;
                 border: 0.5pt solid #D4AF37 !important;
                 pointer-events: none !important;
                 z-index: 50 !important;
@@ -179,8 +180,8 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             .text-gold { color: #D4AF37 !important; }
             .text-charcoal { color: #0F172A !important; }
             .bg-gold-50 { background-color: #fcf9f2 !important; }
-            .font-thin-label { font-weight: 300 !important; font-size: 10px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-            .font-bold-value { font-weight: 800 !important; font-size: 13px !important; color: #0F172A !important; }
+            .font-thin-label { font-weight: 300 !important; font-size: 8px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
+            .font-bold-value { font-weight: 700 !important; font-size: 10px !important; color: #0F172A !important; }
             .tabular { font-variant-numeric: tabular-nums; font-family: 'Arial', sans-serif; letter-spacing: 0.5px; }
 
             /* ═══ HEADER ═══ */
@@ -189,26 +190,26 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 justify-content: space-between !important;
                 align-items: center !important;
                 border-bottom: 1.5pt solid #1E3A8A !important;
-                padding-bottom: 4px !important;
-                margin-bottom: 8px !important;
+                padding-bottom: 2px !important;
+                margin-bottom: 4px !important;
             }
-            .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
-            .invoice-title { font-size: 32px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-            .title-sub { font-size: 9px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+            .brand-name { font-size: 18px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+            .invoice-title { font-size: 24px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+            .title-sub { font-size: 8px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
             
             /* ═══ INFO GRID ═══ */
             .info-grid {
                 display: flex !important;
                 justify-content: space-between !important;
-                margin-bottom: 6px !important;
+                margin-bottom: 3px !important;
                 background: #F3F4F6 !important;
                 border: 0.5pt solid #E5E7EB !important;
-                padding: 4px 8px !important;
+                padding: 2px 5px !important;
             }
             .info-group {
                 display: flex !important;
                 flex-direction: column !important;
-                gap: 2px !important;
+                gap: 1px !important;
             }
             .info-item {
                 display: flex !important;
@@ -219,28 +220,28 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             .luxury-table {
                 width: 100% !important;
                 border-collapse: collapse !important;
-                margin-bottom: 6px !important;
+                margin-bottom: 3px !important;
             }
             .luxury-table th {
                 background-color: #0F172A !important;
                 color: #FFFFFF !important;
-                padding: 4px 6px !important;
+                padding: 2px 4px !important;
                 font-weight: 600 !important;
-                font-size: 11px !important;
+                font-size: 9px !important;
                 text-transform: uppercase !important;
-                letter-spacing: 0.5px !important;
+                letter-spacing: 0.3px !important;
                 border: none !important;
             }
             .luxury-table td {
-                padding: 3px 4px !important;
-                font-size: 11px !important;
+                padding: 2px 4px !important;
+                font-size: 10px !important;
                 font-weight: 600 !important;
                 border-bottom: 0.5pt solid #E5E7EB !important;
                 color: #0F172A !important;
             }
             .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
             .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
-            .luxury-table tfoot td { background-color: #0F172A !important; color: white !important; font-size: 12px !important; font-weight: 800 !important; border-top: 1.5pt solid #D4AF37 !important; }
+            .luxury-table tfoot td { background-color: #0F172A !important; color: white !important; font-size: 10px !important; font-weight: 800 !important; border-top: 1.5pt solid #D4AF37 !important; }
 
             /* ═══ AMOUNT BOX ═══ */
             .amount-showcase {
@@ -248,33 +249,33 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 align-items: center !important;
                 background-color: #0F172A !important;
                 color: #FFFFFF !important;
-                padding: 6px 12px !important;
-                border-radius: 4px !important;
-                border-right: 4pt solid #D4AF37 !important;
-                margin-bottom: 6px !important;
+                padding: 3px 8px !important;
+                border-radius: 3px !important;
+                border-right: 3pt solid #D4AF37 !important;
+                margin-bottom: 3px !important;
                 page-break-inside: avoid !important;
             }
-            .amount-val { font-size: 20px !important; font-weight: 900 !important; color: #D4AF37 !important; letter-spacing: 1px !important; }
-            .amount-txt { font-size: 13px !important; font-weight: bold !important; flex: 1 !important; text-align: right !important; padding-right: 12px !important; color: #E2E8F0 !important; }
+            .amount-val { font-size: 16px !important; font-weight: 900 !important; color: #D4AF37 !important; letter-spacing: 0.5px !important; }
+            .amount-txt { font-size: 10px !important; font-weight: bold !important; flex: 1 !important; text-align: right !important; padding-right: 8px !important; color: #E2E8F0 !important; }
 
             /* ═══ FOOTER ═══ */
             .luxury-footer {
                 margin-top: auto !important;
                 text-align: center !important;
-                font-size: 9px !important;
+                font-size: 7px !important;
                 color: #4B5563 !important;
-                padding-top: 4px !important;
+                padding-top: 2px !important;
                 page-break-inside: avoid !important;
                 display: flex !important;
                 flex-direction: column !important;
                 align-items: center !important;
-                gap: 2px !important;
+                gap: 1px !important;
             }
             .footer-line {
-                width: 50px !important;
-                height: 1pt !important;
+                width: 40px !important;
+                height: 0.5pt !important;
                 background-color: #D4AF37 !important;
-                margin: 2px 0 !important;
+                margin: 1px 0 !important;
             }
         }
       `}</style>
@@ -287,8 +288,8 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
         <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
           <div className="flex items-center gap-6 print:gap-4">
             {brand?.logoUrl && (
-              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
-                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-12 w-auto object-contain print:grayscale" />
+              <div className="bg-white p-2 print:p-0.5 print:border print:border-slate-200 z-10">
+                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-10 w-auto object-contain print:grayscale" />
               </div>
             )}
             <div className="flex flex-col justify-center">
@@ -357,7 +358,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
         {/* ▬▬▬ AMOUNT SHOWCASE ▬▬▬ */}
         {!isJournal && (
-          <div className="amount-showcase relative z-10 w-full mb-8 print:mb-4">
+          <div className="amount-showcase relative z-10 w-full mb-8 print:mb-2">
             <div className="flex gap-2 items-center">
               <span className="font-thin-label text-slate-300 mt-1">{currency}</span>
               <span className="amount-val tabular">{fmt(data.amount)}</span>
@@ -460,20 +461,20 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
         </div>
 
         {/* ▬▬▬ LEGAL & SIGNATURES ▬▬▬ */}
-        <div className="relative z-10 w-full mt-8 print:mt-4">
-          <div className="flex justify-between items-end px-12 print:px-6">
-            <div className="text-center w-32 print:w-24">
-              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+        <div className="relative z-10 w-full mt-8 print:mt-2">
+          <div className="flex justify-between items-end px-12 print:px-4">
+            <div className="text-center w-32 print:w-20">
+              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                 <span className="font-thin-label block text-blue-950 font-bold">{isPayment ? 'المستلم | Receiver' : 'المقر بما فيه | Acknowledgement'}</span>
               </div>
             </div>
-            <div className="text-center w-32 print:w-24">
-              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+            <div className="text-center w-32 print:w-20">
+              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                 <span className="font-thin-label block text-blue-950 font-bold">المحاسب | Accountant</span>
               </div>
             </div>
-            <div className="text-center w-32 print:w-24">
-              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+            <div className="text-center w-32 print:w-20">
+              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                 <span className="font-thin-label block text-blue-950 font-bold">المدير المالي | Fin. Manager</span>
               </div>
             </div>
@@ -481,7 +482,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
         </div>
 
         {/* ▬▬▬ FOOTER ▬▬▬ */}
-        <div className="luxury-footer relative z-10 w-full font-mono mt-auto pt-4">
+        <div className="luxury-footer relative z-10 w-full font-mono mt-auto pt-2">
           <div className="footer-line"></div>
           <div className="font-bold-value text-gold mb-1 print:mb-0.5 mt-1 font-sans tracking-wide">نموذج نظام مرخص — LICENSED SYSTEM FORM</div>
           <div className="flex justify-center gap-4 text-slate-400 font-sans">
