@@ -127,6 +127,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             @page { size: A5 landscape; margin: 0; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
             * { box-sizing: border-box; }
+            img { max-height: 40px !important; max-width: 100px !important; height: auto !important; width: auto !important; object-fit: contain !important; }
 
             .voucher-container { 
                 width: 100% !important; 
@@ -196,6 +197,14 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             .brand-name { font-size: 18px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
             .invoice-title { font-size: 24px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
             .title-sub { font-size: 8px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
+
+            /* ═══ LOGO ═══ */
+            .voucher-logo-img {
+                max-height: 35px !important;
+                height: 35px !important;
+                width: auto !important;
+                object-fit: contain !important;
+            }
             
             /* ═══ INFO GRID ═══ */
             .info-grid {
@@ -289,7 +298,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
           <div className="flex items-center gap-6 print:gap-4">
             {brand?.logoUrl && (
               <div className="bg-white p-2 print:p-0.5 print:border print:border-slate-200 z-10">
-                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-10 w-auto object-contain print:grayscale" />
+                <img src={brand.logoUrl} alt="Logo" className="voucher-logo-img h-24 print:h-[35px] w-auto object-contain" style={{ maxHeight: 35, maxWidth: 80 }} />
               </div>
             )}
             <div className="flex flex-col justify-center">
