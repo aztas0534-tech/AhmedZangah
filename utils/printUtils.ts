@@ -12,13 +12,12 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
     ? `
           @page {
             size: A5;
-            margin: 10mm;
-            margin: 10mm;
+            margin: 0;
           }
         `
     : `
           @page {
-            margin: 10mm;
+            margin: 0;
           }
         `;
   return `
@@ -38,7 +37,8 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
         body {
           font-family: 'Cairo', 'Arial', sans-serif;
           direction: rtl;
-          padding: 20px;
+          padding: 0;
+          margin: 0;
         }
         
         @media print {

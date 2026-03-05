@@ -408,14 +408,22 @@ svg {
     background-color: white;
   }
 
-  /* Hide elements marked with no-print */
-  .no-print {
-    display: none !important;
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
   }
 
-  /* Ensure print area remains in normal flow */
+  /* Show only the print area and its children */
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+
+  /* Position print area at top-left */
   #print-area {
-    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -434,7 +442,7 @@ svg {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    /* Let each component control its own padding */
     font-size: 85% !important;
     /* Scale down fonts for A5 */
   }

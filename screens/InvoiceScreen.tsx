@@ -607,7 +607,7 @@ const InvoiceScreen: React.FC = () => {
     }, [order]);
 
     return (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 print:max-w-none print:w-full print:m-0 print:p-0">
             <div className="my-6 flex justify-between items-center gap-4">
                 <button onClick={() => navigate(-1)} className="flex items-center text-sm font-semibold text-gray-600 dark:text-gray-300 hover:text-orange-500 dark:hover:text-orange-400 transition-colors">
                     <BackArrowIcon />

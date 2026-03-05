@@ -48,7 +48,7 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
                 color: #0F172A !important;
                 line-height: 1.35 !important;
                 position: relative !important;
-                min-height: 202mm !important;
+                min-height: 296mm !important;
                 background-color: #FAFAFA !important;
             }
 

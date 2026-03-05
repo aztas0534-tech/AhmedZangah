@@ -280,7 +280,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #0F172A !important;
                         line-height: 1.35 !important;
                         position: relative !important;
-                        min-height: 202mm !important;
+                        min-height: 208mm !important;
                         background-color: #FAFAFA !important;
                     }
 
@@ -446,7 +446,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 }
             `} </style>
 
-            <div className="invoice-container w-full mx-auto p-12 bg-[#FAFAFA] flex flex-col text-blue-950 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
+            <div className="invoice-container w-full mx-auto p-6 md:p-12 bg-[#FAFAFA] flex flex-col text-blue-950 print:!p-[2mm] print:!m-0 print:!w-full print:!max-w-none" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id}>
 
                 <div className="luxury-watermark">{systemName}</div>
 
