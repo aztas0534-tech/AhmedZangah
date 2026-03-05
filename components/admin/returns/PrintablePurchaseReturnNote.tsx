@@ -65,14 +65,14 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
 
             .document-container { 
                 width: 100% !important; 
-                padding: 10mm 15mm !important;
+                padding: 2mm 5mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important;
                 line-height: 1.35 !important;
                 position: relative !important;
-                min-height: 209mm !important;
+                min-height: 202mm !important;
                 background-color: #FAFAFA !important;
             }
 
@@ -96,7 +96,7 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
             .document-container::before {
                 content: '';
                 position: absolute !important;
-                top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
+                top: 1mm; bottom: 1mm; left: 1mm; right: 1mm;
                 border: 2pt solid #1E3A8A !important;
                 pointer-events: none !important;
                 z-index: 50 !important;
@@ -104,7 +104,7 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
             .document-container::after {
                 content: '';
                 position: absolute !important;
-                top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
+                top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
                 border: 0.5pt solid #D4AF37 !important;
                 pointer-events: none !important;
                 z-index: 50 !important;

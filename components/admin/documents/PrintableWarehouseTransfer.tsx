@@ -39,14 +39,14 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
 
             .document-container { 
                 width: 100% !important; 
-                padding: 10mm 15mm !important;
+                padding: 2mm 5mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important;
                 line-height: 1.35 !important;
                 position: relative !important;
-                min-height: 296mm !important;
+                min-height: 202mm !important;
                 background-color: #FAFAFA !important;
             }
 

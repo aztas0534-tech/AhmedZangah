@@ -408,7 +408,7 @@ const AdminLayout: React.FC = () => {
       )}
 
       {/* Sidebar */}
-      <aside className={`absolute md:sticky md:top-0 inset-y-0 rtl:right-0 ltr:left-0 transform ${isSidebarOpen ? 'rtl:-translate-x-0 ltr:translate-x-0' : 'rtl:translate-x-full ltr:-translate-x-full'} md:rtl:translate-x-0 md:ltr:translate-x-0 w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col transition-transform duration-300 ease-in-out z-30 h-screen md:h-screen overflow-y-auto`}>
+      <aside className={`print:hidden absolute md:sticky md:top-0 inset-y-0 rtl:right-0 ltr:left-0 transform ${isSidebarOpen ? 'rtl:-translate-x-0 ltr:translate-x-0' : 'rtl:translate-x-full ltr:-translate-x-full'} md:rtl:translate-x-0 md:ltr:translate-x-0 w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col transition-transform duration-300 ease-in-out z-30 h-screen md:h-screen overflow-y-auto`}>
         <div className="p-4 border-b dark:border-gray-700 text-center flex-shrink-0">
           <img src={user?.avatarUrl || undefined} alt="Admin" className="w-20 h-20 rounded-full mx-auto mb-2 border-4 border-gold-500/50 p-1" />
           <h2 className="text-lg font-bold text-gray-800 dark:text-white truncate">{user?.fullName}</h2>
@@ -484,7 +484,7 @@ const AdminLayout: React.FC = () => {
 
       {/* Main Content */}
       <div className={`flex-1 flex flex-col min-w-0 min-h-0 transition-all duration-300 ${isSidebarOpen ? 'rtl:translate-x-0 ltr:translate-x-0' : ''}`}>
-        <header className="bg-white dark:bg-gray-800 shadow-sm p-4 border-b dark:border-gray-700 flex items-center space-x-4 rtl:space-x-reverse">
+        <header className="print:hidden bg-white dark:bg-gray-800 shadow-sm p-4 border-b dark:border-gray-700 flex items-center space-x-4 rtl:space-x-reverse">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden text-gray-600 dark:text-gray-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
             <Icons.MenuIcon />
           </button>
@@ -584,7 +584,7 @@ const AdminLayout: React.FC = () => {
         <main className="flex-1 min-h-0 overflow-x-auto overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
           <Outlet />
         </main>
-        <footer className="text-center p-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border-t dark:border-gray-700">
+        <footer className="print:hidden text-center p-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border-t dark:border-gray-700">
           <p>نصر البكري للبرامج والتطبيقات</p>
           <p className="mt-1" dir="ltr">
             <a href="tel:+967772519054" className="hover:text-gold-500">772519054</a>

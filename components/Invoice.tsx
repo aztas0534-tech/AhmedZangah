@@ -280,7 +280,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         color: #0F172A !important;
                         line-height: 1.35 !important;
                         position: relative !important;
-                        min-height: 208mm !important;
+                        min-height: 202mm !important;
                         background-color: #FAFAFA !important;
                     }
 

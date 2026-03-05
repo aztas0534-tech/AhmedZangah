@@ -49,12 +49,11 @@ export default function PrintablePayslip({ data }: { data: PayslipData }) {
         }
         .payslip-container {
           font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          max-width: 148mm;
-          margin: 0 auto;
+          width: 100%;
           background: white;
           color: #1E3A8A;
           line-height: 1.5;
-          padding: 20px;
+          padding: 10px;
           border-top: 5px solid #1E3A8A;
         }
 
@@ -63,9 +62,9 @@ export default function PrintablePayslip({ data }: { data: PayslipData }) {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          margin-bottom: 30px;
+          margin-bottom: 20px;
           border-bottom: 2pt solid #1E3A8A;
-          padding-bottom: 20px;
+          padding-bottom: 15px;
         }
         .ps-company h1 { font-size: 22px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }
         .ps-title {
