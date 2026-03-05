@@ -11,6 +11,7 @@ import { adminStatusColors } from '../../utils/orderUtils';
 import Spinner from '../../components/Spinner';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import PrintableOrder from '../../components/admin/PrintableOrder';
+import PrintableQuotation from '../../components/admin/documents/PrintableQuotation';
 import { useDeliveryZones } from '../../contexts/DeliveryZoneContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
@@ -1850,7 +1851,26 @@ const ManageOrdersScreen: React.FC = () => {
                 discountType: inStoreDiscountType,
                 discountValue: Number(inStoreDiscountValue) || 0,
             });
-            showNotification(`تم حفظ المسودة #${order.id.slice(-6).toUpperCase()}`, 'success');
+
+            const fallbackBrand = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const printHtml = renderToString(
+                <PrintableQuotation
+                    order={order}
+                    brand={fallbackBrand}
+                    language={language as 'ar' | 'en'}
+                    inStoreLines={inStoreLines}
+                    externalCustomerName={inStoreCustomerName}
+                    externalCustomerPhone={inStorePhoneNumber}
+                />
+            );
+            printContent(printHtml, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
+
+            showNotification(`تم حفظ عرض السعر #${order.id.slice(-6).toUpperCase()}`, 'success');
             setIsInStoreSaleOpen(false);
             setInStoreCustomerName('');
             setInStorePhoneNumber('');
@@ -2506,7 +2526,8 @@ const ManageOrdersScreen: React.FC = () => {
                                 order.status === 'cancelled' ||
                                 getEditableStatusesForOrder(order).length === 0 ||
                                 (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
-                                isFullyReturned
+                                isFullyReturned ||
+                                Boolean((order as any).isDraft)
                             }
                             className={`w-full p-2 border-none rounded-md text-sm font-semibold text-center focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                         >
@@ -2615,8 +2636,28 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Quotation Actions */}
+                    {Boolean((order as any).isDraft) && (
+                        <div className="col-span-2 flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => printQuotation(order)}
+                                className="flex-1 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition text-sm font-semibold"
+                            >
+                                طباعة عرض السعر
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => loadQuotationToCart(order)}
+                                className="flex-1 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition text-sm font-semibold text-gray-900"
+                            >
+                                اعتماد الفاتورة
+                            </button>
+                        </div>
+                    )}
+
                     {/* Invoice View */}
-                    {order.invoiceIssuedAt && canViewInvoice && (
+                    {order.invoiceIssuedAt && canViewInvoice && !Boolean((order as any).isDraft) && (
                         <button
                             onClick={() => navigate(`/admin/invoice/${order.id}`)}
                             className="col-span-2 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm font-semibold"
@@ -2694,6 +2735,43 @@ const ManageOrdersScreen: React.FC = () => {
                 </div>
             </div>
         );
+    };
+
+    const printQuotation = async (order: Order) => {
+        const fallbackBrand = {
+            name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+            address: (settings.address || '').trim(),
+            contactNumber: (settings.contactNumber || '').trim(),
+            logoUrl: (settings.logoUrl || '').trim(),
+        };
+        const componentStr = renderToString(
+            <PrintableQuotation
+                order={order}
+                brand={fallbackBrand}
+                language={language as 'ar' | 'en'}
+                externalCustomerName={order.customerName}
+                externalCustomerPhone={order.phoneNumber}
+            />
+        );
+        printContent(componentStr, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
+    };
+
+    const loadQuotationToCart = (order: Order) => {
+        const lines = (order.items || []).map((item: any) => ({
+            menuItemId: String(item.id || item.menuItemId || ''),
+            quantity: Number(item.quantity) || 1,
+            weight: Number(item.weight) || undefined,
+            selectedAddons: item.selectedAddons || {},
+            uomCode: item.uomCode,
+            uomQtyInBase: item.uomQtyInBase,
+            warehouseId: (order as any).warehouseId || sessionScope.scope?.warehouseId || ''
+        }));
+        setInStoreLines(lines);
+        setInStoreCustomerName(order.customerName || '');
+        setInStorePhoneNumber(order.phoneNumber || '');
+        setInStoreCustomerMode('walk_in');
+        setInStoreNotes(`محول من عرض السعر #${order.id.slice(-6).toUpperCase()}\n${order.notes || ''}`.trim());
+        setIsInStoreSaleOpen(true);
     };
 
     return (
@@ -2806,16 +2884,19 @@ const ManageOrdersScreen: React.FC = () => {
                                 filteredAndSortedOrders.map(order => {
                                     const returnStatus = getReturnStatus(order);
                                     const isVoidedDesktop = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                                    const isDraft = Boolean((order as any).isDraft);
                                     const rowClass =
                                         order.id === highlightedOrderId
                                             ? 'bg-yellow-50 dark:bg-yellow-900/20'
                                             : isVoidedDesktop
                                                 ? 'bg-purple-50/70 dark:bg-purple-900/10'
-                                                : returnStatus === 'full'
-                                                    ? 'bg-red-50/70 dark:bg-red-900/10'
-                                                    : returnStatus === 'partial'
-                                                        ? 'bg-amber-50/70 dark:bg-amber-900/10'
-                                                        : undefined;
+                                                : isDraft
+                                                    ? 'bg-indigo-50/70 dark:bg-indigo-900/10'
+                                                    : returnStatus === 'full'
+                                                        ? 'bg-red-50/70 dark:bg-red-900/10'
+                                                        : returnStatus === 'partial'
+                                                            ? 'bg-amber-50/70 dark:bg-amber-900/10'
+                                                            : undefined;
                                     return (
                                         <tr key={order.id} data-order-id={order.id} className={rowClass}>
                                             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
@@ -3006,6 +3087,27 @@ const ManageOrdersScreen: React.FC = () => {
                                                         </div>
                                                     ) : null;
 
+                                                    if (Boolean((order as any).isDraft)) {
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => printQuotation(order)}
+                                                                    className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition text-xs font-semibold"
+                                                                >
+                                                                    طباعة عرض السعر
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => loadQuotationToCart(order)}
+                                                                    className="px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 transition text-xs font-semibold text-gray-900"
+                                                                >
+                                                                    اعتماد كفاتورة
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+
                                                     if (order.invoiceIssuedAt) {
                                                         return (
                                                             <div className="flex flex-col gap-2">
@@ -3168,7 +3270,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                         order.status === 'cancelled' ||
                                                         getEditableStatusesForOrder(order).length === 0 ||
                                                         (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
-                                                        String((order as any).returnStatus || '').toLowerCase() === 'full'
+                                                        String((order as any).returnStatus || '').toLowerCase() === 'full' ||
+                                                        Boolean((order as any).isDraft)
                                                     }
                                                     className={`w-full p-2 border-none rounded-md text-sm focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                                                 >
@@ -4525,12 +4628,12 @@ const ManageOrdersScreen: React.FC = () => {
                             type="button"
                             onClick={saveInStoreDraftQuotation}
                             disabled={isInStoreCreating || inStoreLines.length === 0}
-                            className="px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-gray-900 transition text-sm font-semibold disabled:opacity-60"
+                            className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition text-sm font-semibold disabled:opacity-50"
                         >
-                            حفظ كمسودة (Quotation)
+                            حفظ كعرض سعر وطباعة
                         </button>
                         <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                            المسودة لا تحجز المخزون. الحجز يتم عند الإتمام.
+                            العرض لا يحجز المخزون.
                         </div>
                     </div>
                 </div >

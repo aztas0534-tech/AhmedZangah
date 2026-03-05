@@ -22,11 +22,14 @@ import ConfirmationModal from '../components/admin/ConfirmationModal';
 import { usePromotions } from '../contexts/PromotionContext';
 import { useSessionScope } from '../contexts/SessionScopeContext';
 import { useWarehouses } from '../contexts/WarehouseContext';
+import PrintableQuotation from '../components/admin/documents/PrintableQuotation';
+import { printContent } from '../utils/printUtils';
+import { renderToString } from 'react-dom/server';
 
 const POSScreen: React.FC = () => {
   const { showNotification } = useToast();
   const navigate = useNavigate();
-  const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder, fetchRemoteOrderById } = useOrders();
+  const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder, fetchRemoteOrderById, createInStoreDraftQuotation } = useOrders();
   const { currentShift } = useCashShift();
   const { customers, fetchCustomers } = useUserAuth();
   const { user: adminUser, hasPermission } = useAuth();
@@ -1291,6 +1294,65 @@ const POSScreen: React.FC = () => {
     focusSearch();
   };
 
+  const [isSavingQuotation, setIsSavingQuotation] = useState(false);
+
+  const handleSaveQuotation = async () => {
+    if (pendingOrderId) return;
+    if (items.length === 0) {
+      showNotification('يرجى إضافة أصناف أولاً.', 'error');
+      return;
+    }
+    if (items.some(i => isPromotionLine(i))) {
+      showNotification('لا يمكن حفظ عرض سعر يحتوي على عروض ترويجية حالياً.', 'error');
+      return;
+    }
+    setIsSavingQuotation(true);
+    try {
+      const lines = items.map((i: any) => {
+        const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
+        const addons: Record<string, number> = {};
+        Object.entries(i.selectedAddons || {}).forEach(([id, entry]) => {
+          const quantity = Number((entry as any)?.quantity) || 0;
+          if (quantity > 0) addons[id] = quantity;
+        });
+        return {
+          menuItemId: i.id,
+          quantity: isWeight ? undefined : i.quantity,
+          weight: isWeight ? (i.weight || 0) : undefined,
+          selectedAddons: addons,
+          warehouseId: (i as any).warehouseId || undefined,
+        };
+      });
+
+      const order = await createInStoreDraftQuotation({
+        lines,
+        customerId: selectedCustomerId || undefined,
+        customerName: customerName.trim() || undefined,
+        phoneNumber: phoneNumber.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
+
+      const componentStr = renderToString(
+        <PrintableQuotation order={order} brand={(settings as any)?.brand || { name: { ar: 'متجرنا', en: 'Our Store' } }} />
+      );
+      printContent(componentStr, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
+      showNotification(`تم حفظ عرض السعر #${order.id.slice(-6).toUpperCase()}`, 'success');
+
+      setItems([]);
+      resetCustomerFields();
+      setNotes('');
+      setDiscountType('amount');
+      setDiscountValue(0);
+      setDraftInvoice(null);
+      setPendingSelectedId(null);
+      searchInputRef.current?.focus();
+    } catch (e: any) {
+      showNotification(localizeSupabaseError(e) || e.message || 'فشل حفظ عرض السعر', 'error');
+    } finally {
+      setIsSavingQuotation(false);
+    }
+  };
+
   const handleFinalize = (payload: { paymentMethod: string; paymentBreakdown: Array<{ method: string; amount: number; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; cashReceived?: number; }> }) => {
     if (items.length === 0) return;
     const breakdown = (payload.paymentBreakdown || []).filter(p => (Number(p.amount) || 0) > 0);
@@ -1693,6 +1755,7 @@ const POSScreen: React.FC = () => {
                 onFinalize={handleFinalize}
                 pendingOrderId={pendingOrderId}
                 onCancelHold={handleCancelHold}
+                onQuotation={!pendingOrderId && !isSavingQuotation ? handleSaveQuotation : undefined}
                 touchMode={touchMode}
               />
             </div>

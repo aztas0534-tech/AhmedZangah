@@ -23,6 +23,7 @@ interface Props {
   onFinalize: (payload: { paymentMethod: string; paymentBreakdown: PaymentLine[] }) => void;
   pendingOrderId: string | null;
   onCancelHold?: () => void;
+  onQuotation?: () => void;
   touchMode?: boolean;
 }
 
@@ -33,7 +34,7 @@ type KeypadTarget =
   | { kind: 'cash_multi'; index: number }
   | { kind: 'declared_multi'; index: number };
 
-const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, touchMode }) => {
+const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, onQuotation, touchMode }) => {
   const { settings } = useSettings();
   const code = String(currencyCode || '').toUpperCase() || '—';
   const currencyDecimals = useMemo(() => getCurrencyDecimalsByCode(code), [code]);
@@ -703,29 +704,41 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
       {!validation.ok && validation.message && (
         <div className="text-xs text-red-600 dark:text-red-400">{validation.message}</div>
       )}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onHold}
-          disabled={!canFinalize}
-          className={`flex-1 rounded-lg border dark:border-gray-700 disabled:opacity-50 font-semibold ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
-        >
-          تعليق
-        </button>
-        {pendingOrderId && (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-3">
           <button
-            onClick={onCancelHold}
-            className={`rounded-lg border dark:border-gray-700 font-semibold ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
+            onClick={onHold}
+            disabled={!canFinalize}
+            className={`flex-1 rounded-lg border dark:border-gray-700 disabled:opacity-50 font-semibold ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
           >
-            إلغاء التعليق
+            تعليق
+          </button>
+          {pendingOrderId && (
+            <button
+              onClick={onCancelHold}
+              className={`rounded-lg border dark:border-gray-700 font-semibold ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
+            >
+              إلغاء التعليق
+            </button>
+          )}
+          <button
+            onClick={finalize}
+            disabled={!canSubmit}
+            className={`flex-1 rounded-lg bg-primary-500 text-white disabled:opacity-50 font-semibold ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
+          >
+            إتمام
+          </button>
+        </div>
+        {onQuotation && (
+          <button
+            type="button"
+            onClick={onQuotation}
+            disabled={!canFinalize}
+            className={`w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 font-semibold transition ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
+          >
+            حفظ كعرض سعر وطباعة
           </button>
         )}
-        <button
-          onClick={finalize}
-          disabled={!canSubmit}
-          className={`flex-1 rounded-lg bg-primary-500 text-white disabled:opacity-50 font-semibold ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
-        >
-          إتمام
-        </button>
       </div>
       <NumericKeypadModal
         isOpen={Boolean(keypadTarget)}
