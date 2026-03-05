@@ -100,7 +100,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
 
   const { data: lines, error: lErr } = await supabase
     .from('journal_lines')
-    .select('debit,credit,line_memo,currency_code,fx_rate,foreign_amount,account_id,chart_of_accounts(code,name)')
+    .select('debit,credit,line_memo,currency_code,fx_rate,foreign_amount,account_id,party_id,chart_of_accounts(code,name),financial_parties(name)')
     .eq('journal_entry_id', entryId)
     .order('id', { ascending: true });
   if (lErr) throw lErr;
@@ -125,6 +125,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     .filter(Boolean);
   const currency = currencyCandidates.length ? currencyCandidates[0] : null;
 
+  // Resolve party name: first from party_ledger_entries, then from journal_lines.party_id
   let partyName: string | null = null;
   try {
     const { data: ple, error: pleErr } = await supabase
@@ -139,6 +140,17 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
       partyName = typeof n === 'string' ? n.trim() : null;
     }
   } catch {
+  }
+  // Fallback: resolve party from journal_lines directly (works for draft vouchers)
+  if (!partyName) {
+    const rawLines = Array.isArray(lines) ? lines : [];
+    for (const l of rawLines) {
+      const pName = (l as any)?.financial_parties?.name;
+      if (typeof pName === 'string' && pName.trim()) {
+        partyName = pName.trim();
+        break;
+      }
+    }
   }
 
   let paymentMethod: string | null = null;
@@ -240,8 +252,11 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
   const docType = String((bundle as any)?.document?.document_type || '').toLowerCase();
   if (docType !== 'receipt') throw new Error('هذا القيد ليس سند قبض.');
 
-  const amount = bundle.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+  const baseAmount = bundle.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
   const currency = bundle.currency || 'YER';
+  // If foreign amount exists, display it (the transaction currency amount), not the base amount
+  const displayAmount = (bundle.foreignAmount && bundle.foreignAmount > 0) ? bundle.foreignAmount : baseAmount;
+  const currencyLabel = currency === 'YER' ? 'ريال يمني' : currency === 'SAR' ? 'ريال' : currency === 'USD' ? 'دولار' : 'عملة';
   const data = {
     voucherNumber: bundle.documentNumber,
     status: bundle.statusLabel,
@@ -249,8 +264,8 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
     date: fmtTime(String(bundle.entry.entry_date || '')),
     memo: String(bundle.entry.memo || '').trim() || null,
     currency,
-    amount,
-    amountWords: amountToArabicWords(amount, currency === 'YER' ? 'ريال' : 'عملة'),
+    amount: displayAmount,
+    amountWords: amountToArabicWords(displayAmount, currencyLabel),
     lines: bundle.lines,
     partyName: (bundle as any).partyName || null,
     paymentMethod: (bundle as any).paymentMethod || null,
@@ -284,8 +299,11 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
   const docType = String((bundle as any)?.document?.document_type || '').toLowerCase();
   if (docType !== 'payment') throw new Error('هذا القيد ليس سند صرف.');
 
-  const amount = bundle.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+  const baseAmount = bundle.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
   const currency = bundle.currency || 'YER';
+  // If foreign amount exists, display it (the transaction currency amount), not the base amount
+  const displayAmount = (bundle.foreignAmount && bundle.foreignAmount > 0) ? bundle.foreignAmount : baseAmount;
+  const currencyLabel = currency === 'YER' ? 'ريال يمني' : currency === 'SAR' ? 'ريال' : currency === 'USD' ? 'دولار' : 'عملة';
   const data = {
     voucherNumber: bundle.documentNumber,
     status: bundle.statusLabel,
@@ -293,8 +311,8 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
     date: fmtTime(String(bundle.entry.entry_date || '')),
     memo: String(bundle.entry.memo || '').trim() || null,
     currency,
-    amount,
-    amountWords: amountToArabicWords(amount, currency === 'YER' ? 'ريال' : 'عملة'),
+    amount: displayAmount,
+    amountWords: amountToArabicWords(displayAmount, currencyLabel),
     lines: bundle.lines,
     partyName: (bundle as any).partyName || null,
     paymentMethod: (bundle as any).paymentMethod || null,
