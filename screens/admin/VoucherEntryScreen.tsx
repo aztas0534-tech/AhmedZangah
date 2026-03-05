@@ -285,7 +285,7 @@ export default function VoucherEntryScreen() {
     try {
       let query = supabase
         .from('journal_entries')
-        .select('id,entry_date,memo,status,source_event,document_id,created_by')
+        .select('id,entry_date,memo,status,source_event,document_id,created_by,journal_lines(line_memo)')
         .eq('source_table', 'manual')
         .order('entry_date', { ascending: false })
         .limit(50);
@@ -297,7 +297,22 @@ export default function VoucherEntryScreen() {
         return {
           id: String(r.id || ''),
           entryDate: String(r.entry_date || ''),
-          memo: String(r.memo || ''),
+          memo: (() => {
+            const rawMemo = String(r.memo || '').trim();
+            if (rawMemo && !rawMemo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i)) return rawMemo; // return if valid text not UUID
+
+            const lines = Array.isArray(r.journal_lines) ? r.journal_lines : [];
+            for (const l of lines) {
+              const lm = String(l.line_memo || '').trim();
+              if (lm && !lm.startsWith('CV: ') && !lm.startsWith('DV: ')) return lm.replace(/^[CD]V:\s*/i, '');
+            }
+            // fallback
+            for (const l of lines) {
+              const lm = String(l.line_memo || '').trim();
+              if (lm) return lm.replace(/^[CD]V:\s*/i, '');
+            }
+            return 'بدون بيان';
+          })(),
           status: String(r.status || ''),
           sourceEvent: String(r.source_event || ''),
           documentNumber: '',
@@ -611,7 +626,7 @@ export default function VoucherEntryScreen() {
           <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3 border border-gray-100 dark:border-gray-700 space-y-2">
             <div className="font-semibold dark:text-white">الطرف المدين</div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب (Debit)</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">حساب الأستاذ العام</div>
               <select value={debitAccountCode} onChange={(e) => setDebitAccountCode(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono text-sm">
                 <option value="">— اختر החساب —</option>
                 {accounts.map((a) => (
@@ -620,7 +635,7 @@ export default function VoucherEntryScreen() {
               </select>
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">طرف مالي (اختياري)</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">اسم الجهة/العميل (اختياري)</div>
               <select value={debitPartyId} onChange={(e) => setDebitPartyId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <option value="">—</option>
                 {parties.map((p) => (
@@ -633,7 +648,7 @@ export default function VoucherEntryScreen() {
           <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3 border border-gray-100 dark:border-gray-700 space-y-2">
             <div className="font-semibold dark:text-white">الطرف الدائن</div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب (Credit)</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">حساب الأستاذ العام</div>
               <select value={creditAccountCode} onChange={(e) => setCreditAccountCode(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono text-sm">
                 <option value="">— اختر החساب —</option>
                 {accounts.map((a) => (
@@ -642,7 +657,7 @@ export default function VoucherEntryScreen() {
               </select>
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">طرف مالي (اختياري)</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">اسم الجهة/العميل (اختياري)</div>
               <select value={creditPartyId} onChange={(e) => setCreditPartyId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <option value="">—</option>
                 {parties.map((p) => (
