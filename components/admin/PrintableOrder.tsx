@@ -44,21 +44,20 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
                 }
                 .order-container {
                     font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    max-width: 148mm;
-                    margin: 0 auto;
+                    width: 100%;
                     background: white;
                     color: #1E3A8A;
                     line-height: 1.5;
-                    padding: 40px;
+                    padding: 10px;
                     border-top: 5px solid #1E3A8A;
                 }
                 .header-section {
                     display: flex;
                     justify-content: space-between;
                     align-items: flex-start;
-                    margin-bottom: 40px;
+                    margin-bottom: 20px;
                     border-bottom: 2pt solid #1E3A8A;
-                    padding-bottom: 20px;
+                    padding-bottom: 15px;
                 }
                 .company-info { text-align: right; }
                 .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }

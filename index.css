@@ -392,7 +392,7 @@ svg {
 @media print {
   @page {
     size: A5;
-    margin: 10mm;
+    margin: 0;
   }
 
   html,
@@ -432,10 +432,10 @@ svg {
     direction: rtl !important;
   }
 
-  /* Ensure content fits A5 width */
+  /* Let content flow naturally within the print area */
   .print-A5 {
-    width: 148mm !important;
-    max-width: 148mm !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   #print-area>* {

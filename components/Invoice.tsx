@@ -273,7 +273,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     .invoice-container { 
                         width: 100% !important; 
-                        padding: 8mm 12mm !important;
+                        padding: 2mm 2mm !important;
                         display: flex !important;
                         flex-direction: column !important;
                         font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
@@ -304,7 +304,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-container::before {
                         content: '';
                         position: absolute !important;
-                        top: 4mm; bottom: 4mm; left: 4mm; right: 4mm;
+                        top: 1mm; bottom: 1mm; left: 1mm; right: 1mm;
                         border: 2pt solid #1E3A8A !important;
                         pointer-events: none !important;
                         z-index: 50 !important;
@@ -312,7 +312,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .invoice-container::after {
                         content: '';
                         position: absolute !important;
-                        top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
+                        top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
                         border: 0.5pt solid #D4AF37 !important;
                         pointer-events: none !important;
                         z-index: 50 !important;

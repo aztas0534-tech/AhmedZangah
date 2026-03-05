@@ -50,7 +50,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
 
             .document-container { 
                 width: 100% !important; 
-                padding: 10mm 15mm !important;
+                padding: 2mm 5mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
