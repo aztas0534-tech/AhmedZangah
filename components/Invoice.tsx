@@ -273,14 +273,15 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     .invoice-container { 
                         width: 100% !important; 
-                        padding: 2mm 2mm !important;
+                        padding: 3mm 3mm 2mm 3mm !important;
                         display: flex !important;
                         flex-direction: column !important;
                         font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                         color: #0F172A !important;
-                        line-height: 1.35 !important;
+                        line-height: 1.2 !important;
                         position: relative !important;
-                        min-height: 208mm !important;
+                        max-height: 210mm !important;
+                        overflow: hidden !important;
                         background-color: #FAFAFA !important;
                     }
 
@@ -290,7 +291,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         top: 50% !important;
                         left: 50% !important;
                         transform: translate(-50%, -50%) rotate(-30deg) !important;
-                        font-size: 15rem !important;
+                        font-size: 12rem !important;
                         font-weight: 900 !important;
                         color: #D4AF37 !important;
                         opacity: 0.03 !important;
@@ -300,12 +301,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         letter-spacing: -2px !important;
                     }
 
-                    /* ═══ THE CERTIFICATE FRAME (ULTRA LUXURY) ═══ */
+                    /* ═══ THE CERTIFICATE FRAME ═══ */
                     .invoice-container::before {
                         content: '';
                         position: absolute !important;
                         top: 1mm; bottom: 1mm; left: 1mm; right: 1mm;
-                        border: 2pt solid #1E3A8A !important;
+                        border: 1.5pt solid #1E3A8A !important;
                         pointer-events: none !important;
                         z-index: 50 !important;
                     }
@@ -321,8 +322,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     /* ═══ Typography ═══ */
                     .text-gold { color: #D4AF37 !important; }
                     .text-charcoal { color: #0F172A !important; }
-                    .font-thin-label { font-weight: 300 !important; font-size: 10px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-                    .font-bold-value { font-weight: 800 !important; font-size: 13px !important; color: #0F172A !important; }
+                    .font-thin-label { font-weight: 300 !important; font-size: 7px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
+                    .font-bold-value { font-weight: 700 !important; font-size: 9px !important; color: #0F172A !important; }
 
                     /* ═══ HEADER ═══ */
                     .luxury-header {
@@ -330,26 +331,26 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         justify-content: space-between !important;
                         align-items: center !important;
                         border-bottom: 1.5pt solid #1E3A8A !important;
-                        padding-bottom: 4px !important;
-                        margin-bottom: 8px !important;
+                        padding-bottom: 2px !important;
+                        margin-bottom: 3px !important;
                     }
-                    .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
-                    .invoice-title { font-size: 32px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-                    .title-sub { font-size: 9px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+                    .brand-name { font-size: 16px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+                    .invoice-title { font-size: 22px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+                    .title-sub { font-size: 7px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
                     
                     /* ═══ INFO GRID ═══ */
                     .info-grid {
                         display: flex !important;
                         justify-content: space-between !important;
-                        margin-bottom: 6px !important;
+                        margin-bottom: 3px !important;
                         background: #F3F4F6 !important;
                         border: 0.5pt solid #E5E7EB !important;
-                        padding: 4px 8px !important;
+                        padding: 2px 5px !important;
                     }
                     .info-group {
                         display: flex !important;
                         flex-direction: column !important;
-                        gap: 2px !important;
+                        gap: 1px !important;
                     }
                     .info-item {
                         display: flex !important;
@@ -360,21 +361,21 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .luxury-table {
                         width: 100% !important;
                         border-collapse: collapse !important;
-                        margin-bottom: 6px !important;
+                        margin-bottom: 3px !important;
                     }
                     .luxury-table th {
                         background-color: #0F172A !important;
                         color: #FFFFFF !important;
-                        padding: 4px 6px !important;
+                        padding: 2px 3px !important;
                         font-weight: 600 !important;
-                        font-size: 11px !important;
+                        font-size: 8px !important;
                         text-transform: uppercase !important;
-                        letter-spacing: 0.5px !important;
+                        letter-spacing: 0.3px !important;
                         border: none !important;
                     }
                     .luxury-table td {
-                        padding: 3px 4px !important;
-                        font-size: 11px !important;
+                        padding: 1.5px 3px !important;
+                        font-size: 9px !important;
                         font-weight: 600 !important;
                         border-bottom: 0.5pt solid #E5E7EB !important;
                         color: #0F172A !important;
@@ -391,7 +392,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     }
                     .qr-section {
                         border: 0.5pt solid #D4AF37 !important;
-                        padding: 4px !important;
+                        padding: 2px !important;
                         background: white !important;
                     }
                     .luxury-totals {
@@ -400,7 +401,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .total-row {
                         display: flex !important;
                         justify-content: space-between !important;
-                        padding: 2.5px 4px !important;
+                        padding: 1.5px 3px !important;
                     }
                     .grand-total-row {
                         display: flex !important;
@@ -408,38 +409,38 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         align-items: center !important;
                         background-color: #0F172A !important;
                         color: white !important;
-                        padding: 4px 6px !important;
-                        margin-top: 2px !important;
+                        padding: 3px 5px !important;
+                        margin-top: 1px !important;
                     }
-                    .grand-total-label { font-size: 14px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
-                    .grand-total-value { font-size: 20px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
+                    .grand-total-label { font-size: 11px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 0.5px !important; }
+                    .grand-total-value { font-size: 15px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
 
                     /* ═══ SUMMARY BOXES ═══ */
                     .summary-box {
                         border: 0.5pt solid #E5E7EB !important;
                         background: #F9FAFB !important;
-                        padding: 4px !important;
-                        margin-top: 4px !important;
+                        padding: 2px !important;
+                        margin-top: 2px !important;
                     }
 
                     /* ═══ FOOTER ═══ */
                     .luxury-footer {
                         margin-top: auto !important;
                         text-align: center !important;
-                        font-size: 9px !important;
+                        font-size: 7px !important;
                         color: #4B5563 !important;
-                        padding-top: 4px !important;
+                        padding-top: 2px !important;
                         page-break-inside: avoid !important;
                         display: flex !important;
                         flex-direction: column !important;
                         align-items: center !important;
-                        gap: 2px !important;
+                        gap: 1px !important;
                     }
                     .footer-line {
-                        width: 50px !important;
-                        height: 1pt !important;
+                        width: 40px !important;
+                        height: 0.5pt !important;
                         background-color: #D4AF37 !important;
-                        margin: 2px 0 !important;
+                        margin: 1px 0 !important;
                     }
 
                     .print-hide-subtext { display: none !important; }
@@ -617,14 +618,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     {/* Left side / Footer Info (QR) */}
                     <div className="flex-1 flex flex-col justify-end pt-4 print:pt-0">
-                        <div className="flex gap-4 items-end mb-4 print:mb-2">
+                        <div className="flex gap-4 items-end mb-4 print:mb-1 print:gap-2">
                             {qrUrl && (
                                 <div className="qr-section">
-                                    <img src={qrUrl} alt="QR Code" className="w-24 h-24 print:w-16 print:h-16 object-contain" />
+                                    <img src={qrUrl} alt="QR Code" className="w-24 h-24 print:w-12 print:h-12 object-contain" />
                                 </div>
                             )}
                             {/* Official Entity Stamp space */}
-                            <div className="flex-1 flex justify-center items-center h-24 print:h-16 border border-slate-200 print:border-[#E5E7EB] border-dashed rounded-sm opacity-50">
+                            <div className="flex-1 flex justify-center items-center h-24 print:h-12 border border-slate-200 print:border-[#E5E7EB] border-dashed rounded-sm opacity-50">
                                 <div className="font-thin-label text-center text-slate-400">الختم الرسمي<br />OFFICIAL STAMP</div>
                             </div>
                         </div>
@@ -726,15 +727,15 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 <div className="relative z-10 w-full mt-4 print:mt-1">
                     {/* Pledge for Credit / Unpaid Balance */}
                     {(creditSummary || (invoiceTerms === 'credit' && invoiceOrder.paymentBreakdown)) && (
-                        <div className="border border-blue-900 print:border-blue-900 p-3 print:p-2.5 mb-6 print:mb-3 bg-white text-center">
-                            <p className="text-[8px] print:text-[6px.5] font-bold text-blue-950 leading-relaxed font-sans text-justify px-2">
-                                أنا الموقع أدناه المستلم / <span className="inline-block w-48 border-b-2 border-slate-400 print:border-blue-900 border-dotted"></span> بأنني استلمت البضاعة أعلاه كاملة وسليمة وأتعهد بسداد قيمتها كاملة وغير منقوصة لأمر <span className="font-black text-rose-700">{systemName}</span> إلى تاريخ الاستحقاق الموضح أعلاه وفي حال التأخر عن السداد أكون ملزماً بتسديد مبلغ الفاتورة ومصاريف التأخير حسب ما تقره المؤسسة ولها الحق الكامل بـ الاستيلاء على البضاعة المشتراة منها أو أي بضاعة أخرى أو على أي أموالنا بما يساوي مبلغ الدين والمصاريف.
+                        <div className="border border-blue-900 print:border-blue-900 p-3 print:p-1.5 mb-6 print:mb-2 bg-white text-center">
+                            <p className="text-[8px] print:text-[5.5px] font-bold text-blue-950 leading-relaxed print:leading-snug font-sans text-justify px-2 print:px-1">
+                                أنا الموقع أدناه المستلم / <span className="inline-block w-48 print:w-24 border-b-2 border-slate-400 print:border-blue-900 border-dotted"></span> بأنني استلمت البضاعة أعلاه كاملة وسليمة وأتعهد بسداد قيمتها كاملة وغير منقوصة لأمر <span className="font-black text-rose-700">{systemName}</span> إلى تاريخ الاستحقاق الموضح أعلاه وفي حال التأخر عن السداد أكون ملزماً بتسديد مبلغ الفاتورة ومصاريف التأخير حسب ما تقره المؤسسة ولها الحق الكامل بـ الاستيلاء على البضاعة المشتراة منها أو أي بضاعة أخرى أو على أي أموالنا بما يساوي مبلغ الدين والمصاريف.
                             </p>
-                            <div className="mt-4 print:mt-4 flex justify-between items-end px-4">
-                                <div className="text-center font-bold text-[8px] print:text-[6.5px]">
+                            <div className="mt-4 print:mt-2 flex justify-between items-end px-4">
+                                <div className="text-center font-bold text-[8px] print:text-[5.5px]">
                                     <span>المستلم: ...............................</span>
                                 </div>
-                                <div className="text-center font-bold text-[8px] print:text-[6.5px]">
+                                <div className="text-center font-bold text-[8px] print:text-[5.5px]">
                                     <span>التوقيع: ...............................</span>
                                 </div>
                             </div>
@@ -742,24 +743,24 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     )}
 
                     {/* Official Signatures Row */}
-                    <div className="flex justify-between items-end mt-8 print:mt-6 px-4 print:px-2">
-                        <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                    <div className="flex justify-between items-end mt-8 print:mt-3 px-4 print:px-2">
+                        <div className="text-center w-32 print:w-16">
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                                 <span className="font-thin-label block text-blue-950 font-bold">المستلم | Receiver</span>
                             </div>
                         </div>
-                        <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                        <div className="text-center w-32 print:w-16">
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                                 <span className="font-thin-label block text-blue-950 font-bold">أمين الصندوق | Cashier</span>
                             </div>
                         </div>
-                        <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                        <div className="text-center w-32 print:w-16">
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                                 <span className="font-thin-label block text-blue-950 font-bold">المحاسب | Accountant</span>
                             </div>
                         </div>
-                        <div className="text-center w-32 print:w-20">
-                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                        <div className="text-center w-32 print:w-16">
+                            <div className="border-t border-blue-900 print:border-blue-900 pt-1.5 print:pt-0.5">
                                 <span className="font-thin-label block text-blue-950 font-bold">المدير | Manager</span>
                             </div>
                         </div>

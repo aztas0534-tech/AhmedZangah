@@ -442,24 +442,7 @@ svg {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    /* Let each component control its own padding */
-    font-size: 85% !important;
-    /* Scale down fonts for A5 */
-  }
-
-  /* Make padding smaller on printed cards */
-  #print-area .p-4,
-  #print-area .p-5,
-  #print-area .p-6,
-  #print-area .p-8 {
-    padding: 10px !important;
-  }
-
-  /* Make text smaller on tables */
-  #print-area table th,
-  #print-area table td {
-    padding: 6px !important;
-    font-size: 11px !important;
+    /* Let each component control its own padding and font-size */
   }
 
   /* Reset some styles for print */
