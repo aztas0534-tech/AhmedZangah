@@ -267,7 +267,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         <div ref={ref} className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
             <style>{`
                 @media print {
-                    @page { size: A5; margin: 0; }
+                    @page { size: A5 portrait; margin: 0; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
                     * { box-sizing: border-box; }
 
@@ -361,6 +361,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         border-collapse: collapse !important;
                         margin-bottom: 3px !important;
                     }
+                    .luxury-table thead {
+                        display: table-header-group !important;
+                    }
+                    .luxury-table tfoot {
+                        display: table-footer-group !important;
+                    }
                     .luxury-table th {
                         background-color: #0F172A !important;
                         color: #FFFFFF !important;
@@ -378,8 +384,33 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         border-bottom: 0.5pt solid #E5E7EB !important;
                         color: #0F172A !important;
                     }
+                    .luxury-table tr {
+                        page-break-inside: avoid !important;
+                    }
                     .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
                     .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
+
+                    /* Identification row that repeats on every page */
+                    .invoice-id-row td {
+                        background-color: #EFF6FF !important;
+                        border-bottom: 1pt solid #1E3A8A !important;
+                        padding: 1px 4px !important;
+                        font-size: 7px !important;
+                        font-weight: 700 !important;
+                        color: #1E3A8A !important;
+                    }
+
+                    /* Continuation footer */
+                    .luxury-table tfoot td {
+                        background-color: #F9FAFB !important;
+                        border-top: 0.5pt dashed #9CA3AF !important;
+                        border-bottom: none !important;
+                        padding: 1px 4px !important;
+                        font-size: 6px !important;
+                        color: #9CA3AF !important;
+                        text-align: center !important;
+                        font-style: italic !important;
+                    }
 
                     /* ═══ TOTALS ═══ */
                     .totals-wrapper {
@@ -451,6 +482,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     }
 
                     .print-hide-subtext { display: none !important; }
+                }
+
+                /* Hide print-only elements on screen */
+                @media screen {
+                    .invoice-id-row { display: none; }
+                    .luxury-table tfoot { display: none; }
                 }
             `} </style>
 
@@ -569,9 +606,18 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* ▬▬▬ TABLE ▬▬▬ */}
-                <div className="relative z-10 w-full overflow-hidden mb-8 print:mb-3">
+                <div className="relative z-10 w-full mb-8 print:mb-3">
                     <table className="luxury-table text-right print:w-full">
                         <thead>
+                            {/* Identification row - repeats on every printed page */}
+                            <tr className="invoice-id-row">
+                                <td colSpan={4} style={{ textAlign: 'right' }}>
+                                    فاتورة رقم: #{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()} | العميل: {invoiceOrder.customerName}
+                                </td>
+                                <td colSpan={4} style={{ textAlign: 'left' }} dir="ltr">
+                                    {new Date(invoiceDate).toLocaleDateString('en-GB')} {copyLabel ? `| ${copyLabel}` : ''}
+                                </td>
+                            </tr>
                             <tr>
                                 <th className="text-center w-8 print:w-4">م</th>
                                 <th className="text-center w-20 print:w-14">الرمز</th>
@@ -583,6 +629,11 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                 <th className="text-center">المجموع TOTAL</th>
                             </tr>
                         </thead>
+                        <tfoot>
+                            <tr>
+                                <td colSpan={8}>يتبع في الصفحة التالية... | Continued on next page</td>
+                            </tr>
+                        </tfoot>
                         <tbody>
                             {invoiceOrder.items.map((item: CartItem, index: number) => {
                                 const pricing = computeInvoiceLine(item, invoicePricingMode);
