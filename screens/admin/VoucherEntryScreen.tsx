@@ -713,7 +713,7 @@ export default function VoucherEntryScreen() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b dark:border-gray-700 text-right">
+                <tr className="border-b dark:border-gray-700 text-center">
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">المعرف</th>
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">النوع</th>
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
@@ -724,7 +724,7 @@ export default function VoucherEntryScreen() {
               </thead>
               <tbody>
                 {history.map((h) => (
-                  <tr key={h.id} className="border-b dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                  <tr key={h.id} className="border-b dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 text-center">
                     <td className="py-2 px-2 font-mono text-xs" dir="ltr">{h.id.slice(-8)}</td>
                     <td className="py-2 px-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${h.sourceEvent === 'receipt' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
@@ -733,14 +733,19 @@ export default function VoucherEntryScreen() {
                         }`}>{eventLabel(h.sourceEvent)}</span>
                     </td>
                     <td className="py-2 px-2 font-mono text-xs" dir="ltr">
-                      {(() => { try { return new Date(h.entryDate).toLocaleDateString('ar-EG-u-nu-latn'); } catch { return h.entryDate; } })()}
+                      {(() => {
+                        try {
+                          const d = new Date(h.entryDate);
+                          return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+                        } catch { return h.entryDate; }
+                      })()}
                     </td>
-                    <td className="py-2 px-2 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{h.memo || '—'}</td>
+                    <td className="py-2 px-2 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{h.memo && h.memo.length > 3 ? h.memo : '—'}</td>
                     <td className="py-2 px-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(h.status)}`}>{statusLabel(h.status)}</span>
                     </td>
                     <td className="py-2 px-2">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center gap-1">
                         <button type="button" onClick={() => void printHistoryEntry(h.id, h.sourceEvent)} className="px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">
                           طباعة
                         </button>
