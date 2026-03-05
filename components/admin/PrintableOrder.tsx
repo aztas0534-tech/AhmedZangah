@@ -44,106 +44,50 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
                 }
                 .order-container {
                     font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    width: 100%;
-                    background: white;
-                    color: #1E3A8A;
-                    line-height: 1.5;
-                    padding: 10px;
-                    border-top: 5px solid #1E3A8A;
+                    width: 100%; background: white; color: #1E3A8A;
+                    line-height: 1.2; padding: 3mm;
+                    border-top: 3px solid #1E3A8A;
+                    max-height: 210mm; overflow: hidden;
                 }
                 .header-section {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: flex-start;
-                    margin-bottom: 20px;
-                    border-bottom: 2pt solid #1E3A8A;
-                    padding-bottom: 15px;
+                    display: flex; justify-content: space-between; align-items: flex-start;
+                    margin-bottom: 6px; border-bottom: 1.5pt solid #1E3A8A; padding-bottom: 4px;
                 }
                 .company-info { text-align: right; }
-                .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }
-                .company-info p { margin: 2px 0; font-size: 13px; color: #1D4ED8; }
+                .company-info h1 { font-size: 14px; font-weight: 800; margin: 0 0 2px 0; color: #0F172A; }
+                .company-info p { margin: 1px 0; font-size: 8px; color: #1D4ED8; }
                 
                 .doc-title {
-                    text-align: left;
-                    background: #f8fafc;
-                    padding: 15px 25px;
-                    border-radius: 8px;
-                    border: 1.5pt solid #1E3A8A;
+                    text-align: left; background: #f8fafc;
+                    padding: 6px 12px; border-radius: 4px; border: 1pt solid #1E3A8A;
                 }
-                .doc-title h2 {
-                    font-size: 24px;
-                    font-weight: 900;
-                    color: #0F172A;
-                    margin: 0;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                }
-                .doc-title .ref-number {
-                    font-size: 14px;
-                    color: #64748b;
-                    margin-top: 5px;
-                    font-family: 'Courier New', monospace;
-                }
+                .doc-title h2 { font-size: 14px; font-weight: 900; color: #0F172A; margin: 0; text-transform: uppercase; letter-spacing: 0.3px; }
+                .doc-title .ref-number { font-size: 9px; color: #64748b; margin-top: 2px; font-family: 'Courier New', monospace; }
 
                 .info-grid {
-                    display: grid;
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 20px;
-                    margin-bottom: 30px;
-                    background: #f8fafc;
-                    padding: 20px;
-                    border-radius: 8px;
-                    border: 1.5pt solid #1E3A8A;
+                    display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;
+                    margin-bottom: 6px; background: #f8fafc; padding: 4px 6px;
+                    border-radius: 4px; border: 1pt solid #1E3A8A;
                 }
                 .info-item { display: flex; flex-direction: column; }
-                .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
-                .info-value { font-size: 14px; font-weight: 600; color: #0F172A; }
+                .info-label { font-size: 7px; color: #64748b; font-weight: bold; margin-bottom: 1px; }
+                .info-value { font-size: 9px; font-weight: 600; color: #0F172A; }
                 .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
 
-                .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1.5pt solid #1E3A8A; }
-                .lines-table th {
-                    background: #1E3A8A;
-                    color: white;
-                    font-weight: 700;
-                    text-align: right;
-                    padding: 12px;
-                    border-bottom: 2px solid #0F172A;
-                }
-                .lines-table td {
-                    padding: 12px;
-                    border-bottom: 1pt solid #DBEAFE;
-                    vertical-align: top;
-                    color: #1E40AF;
-                }
+                .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 6px; font-size: 9px; border-radius: 4px; overflow: hidden; border: 1pt solid #1E3A8A; }
+                .lines-table th { background: #1E3A8A; color: white; font-weight: 700; text-align: right; padding: 3px 4px; border-bottom: 1px solid #0F172A; font-size: 8px; }
+                .lines-table td { padding: 3px 4px; border-bottom: 0.5pt solid #DBEAFE; vertical-align: top; color: #1E40AF; font-size: 9px; }
                 .lines-table tr:last-child td { border-bottom: none; }
                 .lines-table tr:nth-child(even) { background-color: #f8fafc; }
-                .qty-badge {
-                    background: #e2e8f0;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-family: 'Courier New', monospace;
-                }
+                .qty-badge { background: #e2e8f0; padding: 2px 4px; border-radius: 3px; font-weight: bold; font-family: 'Courier New', monospace; }
 
-                .notes-box {
-                    background: #fef2f2;
-                    border: 2px solid #ef4444;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin-bottom: 30px;
-                    color: #b91c1c;
-                }
-                .notes-title { font-weight: bold; margin-bottom: 5px; display: flex; align-items: center; gap: 5px; }
+                .notes-box { background: #fef2f2; border: 1px solid #ef4444; border-radius: 4px; padding: 4px 6px; margin-bottom: 6px; color: #b91c1c; font-size: 9px; }
+                .notes-title { font-weight: bold; margin-bottom: 2px; display: flex; align-items: center; gap: 3px; font-size: 8px; }
                 
                 .footer-meta {
-                    margin-top: 50px;
-                    text-align: center;
-                    font-size: 10px;
-                    color: #94a3b8;
-                    border-top: 1px dashed #cbd5e1;
-                    padding-top: 10px;
-                    display: flex;
-                    justify-content: space-between;
+                    margin-top: 10px; text-align: center; font-size: 7px; color: #94a3b8;
+                    border-top: 1px dashed #cbd5e1; padding-top: 4px;
+                    display: flex; justify-content: space-between;
                 }
             `}</style>
 

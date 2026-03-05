@@ -52,116 +52,60 @@ export default function PrintablePayslip({ data }: { data: PayslipData }) {
           width: 100%;
           background: white;
           color: #1E3A8A;
-          line-height: 1.5;
-          padding: 10px;
-          border-top: 5px solid #1E3A8A;
+          line-height: 1.2;
+          padding: 3mm;
+          border-top: 3px solid #1E3A8A;
+          max-height: 210mm;
+          overflow: hidden;
         }
 
-        /* Header */
         .ps-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 20px;
-          border-bottom: 2pt solid #1E3A8A;
-          padding-bottom: 15px;
+          display: flex; justify-content: space-between; align-items: flex-start;
+          margin-bottom: 6px; border-bottom: 1.5pt solid #1E3A8A; padding-bottom: 4px;
         }
-        .ps-company h1 { font-size: 22px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }
-        .ps-title {
-          text-align: left;
-          background: #1E3A8A;
-          color: white;
-          padding: 15px 30px;
-          border-radius: 8px;
-        }
-        .ps-title h2 { font-size: 22px; font-weight: 900; margin: 0; }
-        .ps-title .ps-period { font-size: 14px; opacity: 0.85; margin-top: 5px; font-family: 'Courier New', monospace; }
+        .ps-company h1 { font-size: 14px; font-weight: 800; margin: 0 0 2px 0; color: #0F172A; }
+        .ps-title { text-align: left; background: #1E3A8A; color: white; padding: 6px 14px; border-radius: 4px; }
+        .ps-title h2 { font-size: 14px; font-weight: 900; margin: 0; }
+        .ps-title .ps-period { font-size: 9px; opacity: 0.85; margin-top: 2px; font-family: 'Courier New', monospace; }
 
-        /* Employee Info */
         .ps-info-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 15px;
-          margin-bottom: 25px;
-          background: #f8fafc;
-          padding: 20px;
-          border-radius: 8px;
-          border: 1.5pt solid #1E3A8A;
+          display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+          margin-bottom: 6px; background: #f8fafc; padding: 4px 6px;
+          border-radius: 4px; border: 1pt solid #1E3A8A;
         }
         .ps-info-item { display: flex; flex-direction: column; }
-        .ps-info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 3px; }
-        .ps-info-value { font-size: 14px; font-weight: 600; color: #0F172A; }
+        .ps-info-label { font-size: 7px; color: #64748b; font-weight: bold; margin-bottom: 1px; }
+        .ps-info-value { font-size: 9px; font-weight: 600; color: #0F172A; }
         .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
 
-        /* Breakdown Table */
-        .ps-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 20px; border-radius: 8px; overflow: hidden; border: 1.5pt solid #1E3A8A; }
-        .ps-table th {
-          background: #1E3A8A;
-          color: white;
-          font-weight: 700;
-          text-align: center;
-          padding: 12px 16px;
-          font-size: 13px;
-        }
+        .ps-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 6px; border-radius: 4px; overflow: hidden; border: 1pt solid #1E3A8A; }
+        .ps-table th { background: #1E3A8A; color: white; font-weight: 700; text-align: center; padding: 3px 4px; font-size: 8px; }
         .ps-table th:first-child { text-align: right; }
-        .ps-table td {
-          padding: 12px 16px;
-          border-bottom: 1pt solid #DBEAFE;
-          vertical-align: middle;
-          color: #1E40AF;
-          font-size: 14px;
-        }
+        .ps-table td { padding: 3px 4px; border-bottom: 0.5pt solid #DBEAFE; vertical-align: middle; color: #1E40AF; font-size: 9px; }
         .ps-table tr:last-child td { border-bottom: none; }
         .ps-table tr:nth-child(even) { background-color: #f8fafc; }
         .ps-table .ps-positive { color: #059669; font-weight: 700; }
         .ps-table .ps-negative { color: #DC2626; font-weight: 700; }
 
-        /* Net Box */
         .ps-net-box {
-          background: #1E3A8A;
-          color: white;
-          padding: 20px 30px;
-          border-radius: 8px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 30px;
+          background: #1E3A8A; color: white; padding: 6px 10px; border-radius: 4px;
+          display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
         }
-        .ps-net-box .ps-net-label { font-size: 18px; font-weight: 800; }
-        .ps-net-box .ps-net-value { font-size: 26px; font-weight: 900; font-family: 'Courier New', monospace; }
+        .ps-net-box .ps-net-label { font-size: 11px; font-weight: 800; }
+        .ps-net-box .ps-net-value { font-size: 16px; font-weight: 900; font-family: 'Courier New', monospace; }
 
-        /* Foreign Currency */
         .ps-fx-box {
-          background: #f0f9ff;
-          border: 1.5pt solid #1E3A8A;
-          padding: 12px 20px;
-          border-radius: 8px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 30px;
-          font-size: 14px;
+          background: #f0f9ff; border: 1pt solid #1E3A8A; padding: 4px 8px; border-radius: 4px;
+          display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 9px;
         }
 
-        /* Signatures */
-        .ps-signatures {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 30px;
-          margin-top: 50px;
-        }
-        .ps-sig-box { border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: center; }
-        .ps-sig-label { font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 40px; }
+        .ps-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+        .ps-sig-box { border-top: 1px solid #cbd5e1; padding-top: 4px; text-align: center; }
+        .ps-sig-label { font-size: 8px; font-weight: bold; color: #64748b; margin-bottom: 15px; }
 
-        /* Footer */
         .ps-footer {
-          margin-top: 40px;
-          border-top: 1px dashed #cbd5e1;
-          padding-top: 10px;
-          display: flex;
-          justify-content: space-between;
-          font-size: 10px;
-          color: #94a3b8;
+          margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 4px;
+          display: flex; justify-content: space-between; font-size: 7px; color: #94a3b8;
         }
       `}</style>
 

@@ -41,136 +41,81 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
 
             .document-container { 
                 width: 100% !important; 
-                padding: 2mm 5mm !important;
-                display: flex !important;
-                flex-direction: column !important;
+                padding: 3mm 3mm 2mm 3mm !important;
+                display: flex !important; flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
-                color: #0F172A !important;
-                line-height: 1.35 !important;
+                color: #0F172A !important; line-height: 1.2 !important;
                 position: relative !important;
-                min-height: 296mm !important;
+                max-height: 210mm !important; overflow: hidden !important;
                 background-color: #FAFAFA !important;
             }
 
-            /* ═══ WATERMARK ═══ */
             .luxury-watermark {
-                position: absolute !important;
-                top: 50% !important;
-                left: 50% !important;
+                position: absolute !important; top: 50% !important; left: 50% !important;
                 transform: translate(-50%, -50%) rotate(-30deg) !important;
-                font-size: 14rem !important;
-                font-weight: 900 !important;
-                color: #D4AF37 !important;
-                opacity: 0.03 !important;
-                white-space: nowrap !important;
-                pointer-events: none !important;
-                z-index: 1 !important;
-                letter-spacing: -2px !important;
+                font-size: 10rem !important; font-weight: 900 !important;
+                color: #D4AF37 !important; opacity: 0.03 !important;
+                white-space: nowrap !important; pointer-events: none !important;
+                z-index: 1 !important; letter-spacing: -2px !important;
             }
 
-            /* ═══ THE CERTIFICATE FRAME (ULTRA LUXURY) ═══ */
             .document-container::before {
-                content: '';
-                position: absolute !important;
-                top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
-                border: 2pt solid #1E3A8A !important;
-                pointer-events: none !important;
-                z-index: 50 !important;
+                content: ''; position: absolute !important;
+                top: 1mm; bottom: 1mm; left: 1mm; right: 1mm;
+                border: 1.5pt solid #1E3A8A !important;
+                pointer-events: none !important; z-index: 50 !important;
             }
             .document-container::after {
-                content: '';
-                position: absolute !important;
-                top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
+                content: ''; position: absolute !important;
+                top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
                 border: 0.5pt solid #D4AF37 !important;
-                pointer-events: none !important;
-                z-index: 50 !important;
+                pointer-events: none !important; z-index: 50 !important;
             }
 
-            /* ═══ Typography ═══ */
             .text-gold { color: #D4AF37 !important; }
             .text-charcoal { color: #0F172A !important; }
             .bg-gold-50 { background-color: #fcf9f2 !important; }
-            .font-thin-label { font-weight: 300 !important; font-size: 10px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-            .font-bold-value { font-weight: 800 !important; font-size: 13px !important; color: #0F172A !important; }
+            .font-thin-label { font-weight: 300 !important; font-size: 7px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
+            .font-bold-value { font-weight: 700 !important; font-size: 9px !important; color: #0F172A !important; }
             .tabular { font-variant-numeric: tabular-nums; font-family: 'Arial', sans-serif; letter-spacing: 0.5px; }
 
-            /* ═══ HEADER ═══ */
             .luxury-header {
-                display: flex !important;
-                justify-content: space-between !important;
-                align-items: center !important;
-                border-bottom: 1.5pt solid #1E3A8A !important;
-                padding-bottom: 6px !important;
-                margin-bottom: 12px !important;
+                display: flex !important; justify-content: space-between !important;
+                align-items: center !important; border-bottom: 1.5pt solid #1E3A8A !important;
+                padding-bottom: 2px !important; margin-bottom: 3px !important;
             }
-            .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
-            .doc-title { font-size: 28px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-            .title-sub { font-size: 9px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+            .brand-name { font-size: 16px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+            .doc-title { font-size: 20px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+            .title-sub { font-size: 7px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
             
-            /* ═══ INFO GRID ═══ */
             .info-grid {
-                display: flex !important;
-                justify-content: space-between !important;
-                margin-bottom: 10px !important;
-                background: #F3F4F6 !important;
-                border: 0.5pt solid #E5E7EB !important;
-                padding: 6px 12px !important;
+                display: flex !important; justify-content: space-between !important;
+                margin-bottom: 3px !important; background: #F3F4F6 !important;
+                border: 0.5pt solid #E5E7EB !important; padding: 2px 5px !important;
             }
-            .info-group {
-                display: flex !important;
-                flex-direction: column !important;
-                gap: 4px !important;
-            }
-            .info-item {
-                display: flex !important;
-                flex-direction: column !important;
-            }
+            .info-group { display: flex !important; flex-direction: column !important; gap: 1px !important; }
+            .info-item { display: flex !important; flex-direction: column !important; }
 
-            /* ═══ TABLE ═══ */
-            .luxury-table {
-                width: 100% !important;
-                border-collapse: collapse !important;
-                margin-bottom: 10px !important;
-            }
+            .luxury-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 3px !important; }
             .luxury-table th {
-                background-color: #0F172A !important;
-                color: #FFFFFF !important;
-                padding: 6px 8px !important;
-                font-weight: 600 !important;
-                font-size: 12px !important;
-                text-transform: uppercase !important;
-                letter-spacing: 0.5px !important;
-                border: none !important;
+                background-color: #0F172A !important; color: #FFFFFF !important;
+                padding: 2px 3px !important; font-weight: 600 !important; font-size: 8px !important;
+                text-transform: uppercase !important; letter-spacing: 0.3px !important; border: none !important;
             }
             .luxury-table td {
-                padding: 4px 6px !important;
-                font-size: 12px !important;
-                font-weight: 600 !important;
-                border-bottom: 0.5pt solid #E5E7EB !important;
-                color: #0F172A !important;
+                padding: 1.5px 3px !important; font-size: 9px !important; font-weight: 600 !important;
+                border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
             }
             .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
             .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
 
-            /* ═══ FOOTER ═══ */
             .luxury-footer {
-                margin-top: auto !important;
-                text-align: center !important;
-                font-size: 9px !important;
-                color: #4B5563 !important;
-                padding-top: 6px !important;
-                page-break-inside: avoid !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                gap: 2px !important;
+                margin-top: auto !important; text-align: center !important;
+                font-size: 7px !important; color: #4B5563 !important; padding-top: 2px !important;
+                page-break-inside: avoid !important; display: flex !important;
+                flex-direction: column !important; align-items: center !important; gap: 1px !important;
             }
-            .footer-line {
-                width: 60px !important;
-                height: 1pt !important;
-                background-color: #D4AF37 !important;
-                margin: 4px 0 !important;
-            }
+            .footer-line { width: 40px !important; height: 0.5pt !important; background-color: #D4AF37 !important; margin: 1px 0 !important; }
         }
       `}</style>
 
