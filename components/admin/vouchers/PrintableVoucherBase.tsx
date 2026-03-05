@@ -564,7 +564,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                       <td className="tabular">{fmt(l.credit)}</td>
                       <td className="tabular">{fmt(l.debit)}</td>
                       <td style={{ textAlign: 'right' }}>{l.memo || data.memo || '—'}</td>
-                      <td className="tabular">{l.currency || currency}</td>
+                      <td className="tabular">{l.currency || data.baseCurrency || 'SAR'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700 }}>{l.accountName}</td>
                       <td className="tabular" style={{ fontFamily: 'monospace' }}>{l.accountCode}</td>
                       <td className="tabular" style={{ color: '#9CA3AF' }}>{l.recordNo || (idx + 1)}</td>
@@ -572,11 +572,13 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                   ) : (
                     <>
                       <td className="tabular" style={{ fontFamily: 'monospace' }}>{l.accountCode}</td>
-                      <td className="tabular">{l.currency || currency}</td>
+                      <td className="tabular">{l.currency || data.baseCurrency || 'SAR'}</td>
                       <td className="tabular">{l.analyticalAccount || l.costCenterNo || '—'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700 }}>{l.accountName}</td>
                       <td style={{ textAlign: 'right' }}>{l.memo || data.memo || '—'}</td>
-                      <td className="tabular" style={{ fontWeight: 800 }}>{fmt(l.credit > 0 ? l.credit : l.debit)}</td>
+                      <td className="tabular" style={{ fontWeight: 800 }}>
+                        {fmt((l.credit > 0 ? l.foreignCredit : l.foreignDebit) || (l.credit > 0 ? l.credit : l.debit))}
+                      </td>
                       <td className="tabular">{l.costCenterNo || brand?.branchCode || '—'}</td>
                       <td className="tabular">{l.referenceNo || '—'}</td>
                     </>

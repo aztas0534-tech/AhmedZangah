@@ -105,13 +105,19 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     .order('id', { ascending: true });
   if (lErr) throw lErr;
 
-  const mappedLines: VoucherLine[] = (Array.isArray(lines) ? lines : []).map((l: any) => ({
-    accountCode: String(l?.chart_of_accounts?.code || ''),
-    accountName: String(l?.chart_of_accounts?.name || ''),
-    debit: Number(l?.debit || 0),
-    credit: Number(l?.credit || 0),
-    memo: l?.line_memo ?? null,
-  }));
+  const mappedLines: VoucherLine[] = (Array.isArray(lines) ? lines : []).map((l: any) => {
+    const cur = String(l?.currency_code || '').trim().toUpperCase();
+    return {
+      accountCode: String(l?.chart_of_accounts?.code || ''),
+      accountName: String(l?.chart_of_accounts?.name || ''),
+      debit: Number(l?.debit || 0),
+      credit: Number(l?.credit || 0),
+      foreignDebit: Number(l?.debit || 0) > 0 ? Number(l?.foreign_amount || 0) : null,
+      foreignCredit: Number(l?.credit || 0) > 0 ? Number(l?.foreign_amount || 0) : null,
+      currency: cur || null,
+      memo: l?.line_memo ?? null,
+    };
+  });
 
   const debitLine = mappedLines.find((l) => Number(l.debit || 0) > 0);
   const creditLine = mappedLines.find((l) => Number(l.credit || 0) > 0);
