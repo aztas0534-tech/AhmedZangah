@@ -124,20 +124,20 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
     <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
       <style>{`
         @media print {
-            @page { size: A4; margin: 0; }
+            @page { size: A5 landscape; margin: 0; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
             * { box-sizing: border-box; }
 
             .voucher-container { 
                 width: 100% !important; 
-                padding: 8mm 12mm !important;
+                padding: 6mm 10mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important;
-                line-height: 1.35 !important;
+                line-height: 1.3 !important;
                 position: relative !important;
-                min-height: 296mm !important;
+                min-height: 148mm !important; /* A5 Landscape Height */
                 background-color: #FAFAFA !important;
             }
 

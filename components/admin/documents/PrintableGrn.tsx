@@ -38,216 +38,307 @@ export type PrintableGrnData = {
 export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Brand; language?: 'ar' | 'en'; audit?: DocumentAuditInfo | null }) {
   const { data, brand, language = 'ar', audit } = props;
 
-  return (
-    <div className="grn-container" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-      <style>{`
-            @media print {
-                @page { size: A4; margin: 0; }
-                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            }
-            .grn-container {
-                font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                max-width: 210mm;
-                margin: 0 auto;
-                background: white;
-                color: #1E3A8A;
-                line-height: 1.5;
-                padding: 40px;
-                border-top: 5px solid #1E3A8A;
-            }
-            .header-section {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 40px;
-                border-bottom: 2pt solid #1E3A8A;
-                padding-bottom: 20px;
-            }
-            .company-info { text-align: ${language === 'ar' ? 'right' : 'left'}; }
-            .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0F172A; }
-            .company-info p { margin: 2px 0; font-size: 13px; color: #1D4ED8; }
-            
-            .doc-title {
-                text-align: ${language === 'ar' ? 'left' : 'right'};
-                background: #f8fafc;
-                padding: 15px 25px;
-                border-radius: 8px;
-                border: 1.5pt solid #1E3A8A;
-            }
-            .doc-title h2 {
-                font-size: 24px;
-                font-weight: 900;
-                color: #0F172A;
-                margin: 0;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            .doc-title .ref-number {
-                font-size: 14px;
-                color: #64748b;
-                margin-top: 5px;
-                font-family: 'Courier New', monospace;
-            }
-            
-            .info-grid {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 20px;
-                margin-bottom: 30px;
-                background: #f8fafc;
-                padding: 20px;
-                border-radius: 8px;
-                border: 1.5pt solid #1E3A8A;
-            }
-            .info-item { display: flex; flex-direction: column; }
-            .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
-            .info-value { font-size: 14px; font-weight: 600; color: #0F172A; }
-            .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
-            
-            .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1.5pt solid #1E3A8A; }
-            .lines-table th {
-                background: #1E3A8A;
-                color: white;
-                font-weight: 700;
-                text-align: center;
-                padding: 12px;
-                border-bottom: 2px solid #0F172A;
-            }
-            .lines-table th:first-child { text-align: ${language === 'ar' ? 'right' : 'left'}; }
-            .lines-table td {
-                padding: 12px;
-                border-bottom: 1pt solid #DBEAFE;
-                vertical-align: top;
-                color: #1E40AF;
-            }
-            .lines-table tr:last-child td { border-bottom: none; }
-            .lines-table tr:nth-child(even) { background-color: #f8fafc; }
-            .lines-table .total-row td {
-                background: #f8fafc;
-                font-weight: 800;
-                border-top: 2px solid #cbd5e1;
-                font-size: 14px;
-                color: #0F172A;
-            }
-            
-            .signatures-section {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                gap: 50px;
-                margin-top: 60px;
-            }
-            .signature-box {
-                border-top: 1px solid #cbd5e1;
-                padding-top: 10px;
-                text-align: center;
-            }
-            .signature-label { font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 40px; }
-            
-            .footer-meta {
-                margin-top: 40px;
-                border-top: 1px dashed #cbd5e1;
-                padding-top: 10px;
-                display: flex;
-                justify-content: space-between;
-                font-size: 10px;
-                color: #94a3b8;
-            }
-        `}</style>
+  const isArabic = language === 'ar';
 
-      <div className="header-section">
-        <div className="company-info">
-          {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 120, marginBottom: 15 }} />}
-          <h1>{language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn}</h1>
-          {(brand?.name || brand?.branchName) && (
-             <p style={{ fontSize: 16, fontWeight: 'bold', color: '#1E40AF', marginBottom: 5 }}>
-               {brand?.name !== (language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn) ? brand?.name : brand?.branchName}
-             </p>
-          )}
-          {brand?.address && <p>{brand.address}</p>}
-          {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
-          {brand?.vatNumber && <p>{language === 'en' ? 'VAT No:' : 'الرقم الضريبي:'} <span dir="ltr" className="tabular">{brand.vatNumber}</span></p>}
-        </div>
-        <div className="doc-title">
-          <h2>{language === 'en' ? 'Goods Receipt Note' : 'إشعار استلام بضائع'}</h2>
-          <div className="ref-number tabular" dir="ltr">#{data.grnNumber}</div>
-          <div style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 'bold', background: data.documentStatus === 'posted' ? '#dcfce7' : '#f1f5f9', color: data.documentStatus === 'posted' ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
-              {language === 'ar' ? localizeDocStatusAr(data.documentStatus) : (data.documentStatus || 'DRAFT')}
-            </span>
+  return (
+    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir={isArabic ? 'rtl' : 'ltr'}>
+      <style>{`
+        @media print {
+            @page { size: A4 portrait; margin: 0; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+            * { box-sizing: border-box; }
+
+            .document-container { 
+                width: 100% !important; 
+                padding: 10mm 15mm !important;
+                display: flex !important;
+                flex-direction: column !important;
+                font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
+                color: #0F172A !important;
+                line-height: 1.35 !important;
+                position: relative !important;
+                min-height: 296mm !important;
+                background-color: #FAFAFA !important;
+            }
+
+            /* ═══ WATERMARK ═══ */
+            .luxury-watermark {
+                position: absolute !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) rotate(-30deg) !important;
+                font-size: 12rem !important;
+                font-weight: 900 !important;
+                color: #D4AF37 !important;
+                opacity: 0.03 !important;
+                white-space: nowrap !important;
+                pointer-events: none !important;
+                z-index: 1 !important;
+                letter-spacing: -2px !important;
+            }
+
+            /* ═══ THE CERTIFICATE FRAME (ULTRA LUXURY) ═══ */
+            .document-container::before {
+                content: '';
+                position: absolute !important;
+                top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
+                border: 2pt solid #1E3A8A !important;
+                pointer-events: none !important;
+                z-index: 50 !important;
+            }
+            .document-container::after {
+                content: '';
+                position: absolute !important;
+                top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
+                border: 0.5pt solid #D4AF37 !important;
+                pointer-events: none !important;
+                z-index: 50 !important;
+            }
+
+            /* ═══ Typography ═══ */
+            .text-gold { color: #D4AF37 !important; }
+            .text-charcoal { color: #0F172A !important; }
+            .bg-gold-50 { background-color: #fcf9f2 !important; }
+            .font-thin-label { font-weight: 300 !important; font-size: 10px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+            .font-bold-value { font-weight: 800 !important; font-size: 13px !important; color: #0F172A !important; }
+            .tabular { font-variant-numeric: tabular-nums; font-family: 'Arial', sans-serif; letter-spacing: 0.5px; }
+
+            /* ═══ HEADER ═══ */
+            .luxury-header {
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                border-bottom: 1.5pt solid #1E3A8A !important;
+                padding-bottom: 6px !important;
+                margin-bottom: 12px !important;
+            }
+            .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
+            .doc-title { font-size: 28px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+            .title-sub { font-size: 9px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+            
+            /* ═══ INFO GRID ═══ */
+            .info-grid {
+                display: flex !important;
+                justify-content: space-between !important;
+                margin-bottom: 10px !important;
+                background: #F3F4F6 !important;
+                border: 0.5pt solid #E5E7EB !important;
+                padding: 6px 12px !important;
+            }
+            .info-group {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 4px !important;
+            }
+            .info-item {
+                display: flex !important;
+                flex-direction: column !important;
+            }
+
+            /* ═══ TABLE ═══ */
+            .luxury-table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                margin-bottom: 10px !important;
+            }
+            .luxury-table th {
+                background-color: #0F172A !important;
+                color: #FFFFFF !important;
+                padding: 6px 8px !important;
+                font-weight: 600 !important;
+                font-size: 12px !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.5px !important;
+                border: none !important;
+            }
+            .luxury-table td {
+                padding: 4px 6px !important;
+                font-size: 12px !important;
+                font-weight: 600 !important;
+                border-bottom: 0.5pt solid #E5E7EB !important;
+                color: #0F172A !important;
+            }
+            .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
+            .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
+
+            /* ═══ FOOTER ═══ */
+            .luxury-footer {
+                margin-top: auto !important;
+                text-align: center !important;
+                font-size: 9px !important;
+                color: #4B5563 !important;
+                padding-top: 6px !important;
+                page-break-inside: avoid !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                gap: 2px !important;
+            }
+            .footer-line {
+                width: 60px !important;
+                height: 1pt !important;
+                background-color: #D4AF37 !important;
+                margin: 4px 0 !important;
+            }
+        }
+      `}</style>
+
+      <div className="document-container w-full mx-auto p-12 bg-[#FAFAFA] flex flex-col text-blue-950 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+
+        <div className="luxury-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
+
+        {/* ▬▬▬ HEADER ▬▬▬ */}
+        <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
+          <div className="flex items-center gap-6 print:gap-4">
+            {brand?.logoUrl && (
+              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
+                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-16 w-auto object-contain print:grayscale" />
+              </div>
+            )}
+            <div className="flex flex-col justify-center">
+              <h1 className="brand-name">
+                {brand?.name || (isArabic ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn)}
+                {(brand?.name || brand?.branchName) && brand?.name !== (isArabic ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn) && (
+                  <span className="text-sm font-normal text-slate-500 mr-2 print:text-[8px] font-sans">({brand?.name || brand?.branchName})</span>
+                )}
+              </h1>
+              <div className="mt-2 print:mt-1 flex gap-3 text-sm print:text-[6px] text-slate-600 font-bold">
+                {brand?.address && <span dir="ltr">Add: <span className="font-mono text-blue-950">{brand.address}</span></span>}
+                {brand?.contactNumber && <span dir="ltr">TEL: <span className="font-mono text-blue-950">{brand.contactNumber}</span></span>}
+                {brand?.vatNumber && <span dir="ltr">VAT: <span className="font-mono text-blue-950">{brand.vatNumber}</span></span>}
+              </div>
+            </div>
+          </div>
+
+          <div className={`text-center flex flex-col items-center flex-shrink-0 z-10 ${isArabic ? 'md:text-left rtl:text-left' : 'md:text-right rtl:text-right'}`}>
+            <h2 className="doc-title">{isArabic ? 'إشعار استلام بضائع' : 'Goods Receipt Note'}</h2>
+            <div className="title-sub">G.R.N DOCUMENT</div>
+            {data.documentStatus && (
+              <div className="mt-2 text-[10px] print:text-[11px] font-bold text-center border-2 px-3 py-1 rounded-md tracking-wider" style={{ borderColor: data.documentStatus === 'posted' ? '#166534' : '#64748b', color: data.documentStatus === 'posted' ? '#166534' : '#64748b', backgroundColor: data.documentStatus === 'posted' ? '#dcfce7' : '#f1f5f9' }}>
+                {isArabic ? localizeDocStatusAr(data.documentStatus) : (data.documentStatus || 'DRAFT')}
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      <div className="info-grid">
-        <div className="info-item">
-          <span className="info-label">{language === 'en' ? 'Date' : 'التاريخ'}</span>
-          <span className="info-value tabular" dir="ltr">{new Date(data.receivedAt).toLocaleDateString('en-GB')}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">{language === 'en' ? 'Reference' : 'المرجع'}</span>
-          <span className="info-value tabular" dir="ltr">{data.referenceId ? shortId(data.referenceId) : '—'}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">{language === 'en' ? 'PO Number' : 'رقم أمر الشراء'}</span>
-          <span className="info-value tabular" dir="ltr">{data.purchaseOrderNumber || '—'}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">{language === 'en' ? 'Supplier' : 'المورد'}</span>
-          <span className="info-value">{data.supplierName || '—'}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">{language === 'en' ? 'Warehouse' : 'المستودع'}</span>
-          <span className="info-value">{data.warehouseName || '—'}</span>
-        </div>
-      </div>
+        {/* ▬▬▬ INFO SECTION ▬▬▬ */}
+        <div className="info-grid relative z-10 mb-8 print:mb-4">
+          <div className="info-group">
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">{isArabic ? 'المورد | Supplier' : 'Supplier'}</span>
+              <span className="font-bold-value text-gold">{data.supplierName || '—'}</span>
+            </div>
+            <div className="info-item">
+              <span className="font-thin-label">{isArabic ? 'المستودع | Warehouse' : 'Warehouse'}</span>
+              <span className="font-bold-value text-charcoal">{data.warehouseName || '—'}</span>
+            </div>
+          </div>
 
-      <table className="lines-table">
-        <thead>
-          <tr>
-            <th style={{ width: '55%' }}>{language === 'en' ? 'Item' : 'الصنف'}</th>
-            <th style={{ width: '20%' }}>{language === 'en' ? 'Qty' : 'الكمية'}</th>
-            <th style={{ width: '25%' }}>{language === 'en' ? 'Expiry' : 'الانتهاء'}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.items.length === 0 ? (
-            <tr><td colSpan={3} className="text-center" style={{ padding: 30, color: '#94a3b8' }}>{language === 'en' ? 'No items' : 'لا توجد أصناف'}</td></tr>
-          ) : data.items.map((it, idx) => {
-            const qty = Number(it.quantity || 0);
-            return (
-              <tr key={`${it.itemId}-${idx}`}>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{it.itemName || it.itemId}</div>
-                  {it.productionDate && <div style={{ fontSize: 10, color: '#64748b' }}>Prod: <span dir="ltr">{formatDateOnly(it.productionDate)}</span></div>}
-                </td>
-                <td className="text-center tabular font-bold" dir="ltr">{qty}</td>
-                <td className="text-center tabular" dir="ltr">{it.expiryDate ? formatDateOnly(it.expiryDate) : '—'}</td>
+          <div className="info-group border-x border-slate-300 px-4 print:border-[#E5E7EB]">
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">{isArabic ? 'رقم الإشعار | GRN No.' : 'GRN No.'}</span>
+              <span className="font-bold-value font-mono text-charcoal" dir="ltr">#{data.grnNumber}</span>
+            </div>
+            <div className="info-item">
+              <span className="font-thin-label">{isArabic ? 'التاريخ | Date' : 'Date'}</span>
+              <span className="font-bold-value font-mono tabular" dir="ltr">{new Date(data.receivedAt).toLocaleDateString('en-GB')} {new Date(data.receivedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </div>
+
+          <div className="info-group">
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">{isArabic ? 'رقم أمر الشراء | PO No.' : 'PO Number'}</span>
+              <span className="font-bold-value font-mono text-charcoal" dir="ltr">{data.purchaseOrderNumber || '—'}</span>
+            </div>
+            <div className="info-item">
+              <span className="font-thin-label">{isArabic ? 'المرجع | Reference' : 'Reference'}</span>
+              <span className="font-bold-value font-mono text-charcoal tabular" dir="ltr">{data.referenceId ? shortId(data.referenceId) : '—'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ▬▬▬ TABLE ▬▬▬ */}
+        <div className="relative z-10 w-full overflow-hidden mb-8 print:mb-4">
+          <table className={`luxury-table print:w-full ${isArabic ? 'text-right' : 'text-left'}`}>
+            <thead>
+              <tr>
+                <th className="w-8 text-center">م</th>
+                <th className={isArabic ? 'text-right' : 'text-left'}>{isArabic ? 'الصنف | Item Description' : 'Item Description'}</th>
+                <th className="text-center w-24">الكمية QTY</th>
+                <th className="text-center w-32">الصلاحية EXPIRY</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {data.items.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
+                </tr>
+              ) : (
+                data.items.map((it, idx) => {
+                  const qty = Number(it.quantity || 0);
+                  return (
+                    <tr key={`${it.itemId}-${idx}`} style={{ pageBreakInside: 'avoid' }}>
+                      <td className="text-center tabular font-thin-label text-slate-600">{idx + 1}</td>
+                      <td>
+                        <div className="font-bold-value text-blue-950">{it.itemName || it.itemId}</div>
+                        {it.productionDate && (
+                          <div className="font-thin-label mt-1 text-[8px] text-slate-500 flex gap-1">
+                            <span>{isArabic ? 'الإنتاج PROD:' : 'PROD:'}</span>
+                            <span dir="ltr">{formatDateOnly(it.productionDate)}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{qty}</td>
+                      <td className="text-center tabular font-thin-label text-charcoal" dir="ltr">{it.expiryDate ? formatDateOnly(it.expiryDate) : '—'}</td>
+                    </tr>
+                  );
+                })
+              )}
+              {Array.from({ length: Math.max(0, 5 - data.items.length) }).map((_, idx) => (
+                <tr key={`fill-${idx}`}>
+                  <td></td><td></td><td></td><td></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      {data.notes && (
-        <div style={{ padding: 15, background: '#fefce8', border: '1px solid #fef08a', borderRadius: 6, marginBottom: 30 }}>
-          <div style={{ fontWeight: 'bold', fontSize: 12, color: '#854d0e', marginBottom: 5 }}>{language === 'en' ? 'Notes' : 'ملاحظات'}</div>
-          <div style={{ fontSize: 13, color: '#713f12' }}>{data.notes}</div>
-        </div>
-      )}
+        {/* ▬▬▬ NOTES ▬▬▬ */}
+        {data.notes && (
+          <div className="relative z-10 w-full mb-8 print:mb-4 bg-gold-50 border border-gold-500 p-4 print:p-3 rounded-sm">
+            <div className="font-thin-label mb-1 text-gold">{isArabic ? 'ملاحظات | Notes' : 'Notes'}</div>
+            <div className="font-bold-value text-charcoal">{data.notes}</div>
+          </div>
+        )}
 
-      <div className="signatures-section">
-        <div className="signature-box">
-          <div className="signature-label">{language === 'en' ? 'Storekeeper' : 'أمين المخزن'}</div>
+        {/* ▬▬▬ LEGAL & SIGNATURES ▬▬▬ */}
+        <div className="relative z-10 w-full mt-8 print:mt-6">
+          <div className="flex justify-around items-end px-12 print:px-8">
+            <div className="text-center w-32 print:w-28">
+              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                <span className="font-thin-label block text-blue-950 font-bold">{isArabic ? 'أمين المخزن | Storekeeper' : 'Storekeeper'}</span>
+              </div>
+            </div>
+            <div className="text-center w-32 print:w-28">
+              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
+                <span className="font-thin-label block text-blue-950 font-bold">{isArabic ? 'المستلم | Receiver' : 'Receiver'}</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="signature-box">
-          <div className="signature-label">{language === 'en' ? 'Receiver' : 'المستلم'}</div>
+
+        {/* ▬▬▬ FOOTER ▬▬▬ */}
+        <div className="luxury-footer relative z-10 w-full font-mono mt-auto pt-6">
+          <div className="footer-line"></div>
+          <div className="font-bold-value text-gold mb-1 print:mb-0.5 mt-1 font-sans tracking-wide">نموذج نظام مرخص — LICENSED SYSTEM FORM</div>
+
+          <DocumentAuditFooter
+            audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || AZTA_IDENTITY.tradeNameAr, ...(audit || {}) }}
+            extraRight={<div className="font-sans text-slate-400">{brand?.name || AZTA_IDENTITY.tradeNameAr}</div>}
+          />
         </div>
+
       </div>
-
-      <DocumentAuditFooter
-        audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || 'AZTA ERP', ...(audit || {}) }}
-        extraRight={<div>{brand?.name || 'AZTA ERP'}</div>}
-      />
     </div>
   );
 }

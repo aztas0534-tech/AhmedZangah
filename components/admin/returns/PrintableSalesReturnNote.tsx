@@ -72,129 +72,376 @@ const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; b
   const invoice = data.invoiceNumber ? String(data.invoiceNumber) : null;
 
   return (
-    <div dir="rtl" className="bg-white text-black">
+    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
       <style>{`
         @media print {
-          @page { size: A4; margin: 10mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: A4 portrait; margin: 0; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+            * { box-sizing: border-box; }
+
+            .document-container { 
+                width: 100% !important; 
+                padding: 10mm 15mm !important;
+                display: flex !important;
+                flex-direction: column !important;
+                font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
+                color: #0F172A !important;
+                line-height: 1.35 !important;
+                position: relative !important;
+                min-height: 296mm !important;
+                background-color: #FAFAFA !important;
+            }
+
+            /* ═══ WATERMARK ═══ */
+            .luxury-watermark {
+                position: absolute !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) rotate(-30deg) !important;
+                font-size: 14rem !important;
+                font-weight: 900 !important;
+                color: #D4AF37 !important;
+                opacity: 0.03 !important;
+                white-space: nowrap !important;
+                pointer-events: none !important;
+                z-index: 1 !important;
+                letter-spacing: -2px !important;
+            }
+
+            /* ═══ THE CERTIFICATE FRAME (ULTRA LUXURY) ═══ */
+            .document-container::before {
+                content: '';
+                position: absolute !important;
+                top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
+                border: 2pt solid #1E3A8A !important;
+                pointer-events: none !important;
+                z-index: 50 !important;
+            }
+            .document-container::after {
+                content: '';
+                position: absolute !important;
+                top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
+                border: 0.5pt solid #D4AF37 !important;
+                pointer-events: none !important;
+                z-index: 50 !important;
+            }
+
+            /* ═══ Typography ═══ */
+            .text-gold { color: #D4AF37 !important; }
+            .text-charcoal { color: #0F172A !important; }
+            .bg-gold-50 { background-color: #fcf9f2 !important; }
+            .font-thin-label { font-weight: 300 !important; font-size: 10px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+            .font-bold-value { font-weight: 800 !important; font-size: 13px !important; color: #0F172A !important; }
+            .tabular { font-variant-numeric: tabular-nums; font-family: 'Arial', sans-serif; letter-spacing: 0.5px; }
+
+            /* ═══ HEADER ═══ */
+            .luxury-header {
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                border-bottom: 1.5pt solid #1E3A8A !important;
+                padding-bottom: 6px !important;
+                margin-bottom: 12px !important;
+            }
+            .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
+            .doc-title { font-size: 28px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+            .title-sub { font-size: 9px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+            
+            /* ═══ INFO GRID ═══ */
+            .info-grid {
+                display: flex !important;
+                justify-content: space-between !important;
+                margin-bottom: 10px !important;
+                background: #F3F4F6 !important;
+                border: 0.5pt solid #E5E7EB !important;
+                padding: 6px 12px !important;
+            }
+            .info-group {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 4px !important;
+            }
+            .info-item {
+                display: flex !important;
+                flex-direction: column !important;
+            }
+
+            /* ═══ TABLE ═══ */
+            .luxury-table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                margin-bottom: 10px !important;
+                table-layout: fixed !important;
+            }
+            .luxury-table th {
+                background-color: #0F172A !important;
+                color: #FFFFFF !important;
+                padding: 6px 8px !important;
+                font-weight: 600 !important;
+                font-size: 11px !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.5px !important;
+                border: none !important;
+            }
+            .luxury-table td {
+                padding: 4px 6px !important;
+                font-size: 11px !important;
+                font-weight: 600 !important;
+                border-bottom: 0.5pt solid #E5E7EB !important;
+                color: #0F172A !important;
+                word-break: break-word !important;
+                overflow-wrap: anywhere !important;
+            }
+            .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
+            .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
+
+             /* ═══ TOTALS ═══ */
+            .totals-section {
+                display: flex !important;
+                justify-content: flex-end !important;
+                margin-bottom: 12px !important;
+            }
+            .totals-box {
+                width: 250px !important;
+                background: #F3F4F6 !important;
+                border: 0.5pt solid #E5E7EB !important;
+                border-top: 2pt solid #1E3A8A !important;
+                padding: 8px !important;
+            }
+            .totals-row {
+                display: flex !important;
+                justify-content: space-between !important;
+                margin-bottom: 4px !important;
+                font-size: 11px !important;
+                color: #4B5563 !important;
+            }
+            .totals-row.grand-total {
+                margin-top: 6px !important;
+                padding-top: 6px !important;
+                border-top: 0.5pt solid #D1D5DB !important;
+                font-size: 14px !important;
+                font-weight: 900 !important;
+                color: #1E3A8A !important;
+            }
+
+            /* ═══ SIGNATURES ═══ */
+            .signatures {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr !important;
+                gap: 16px !important;
+                margin-top: 12px !important;
+            }
+            .signature-box {
+                border: 0.5pt dashed #9CA3AF !important;
+                background: #FFFFFF !important;
+                padding: 8px !important;
+                height: 60px !important;
+                position: relative !important;
+                display: flex !important;
+                align-items: flex-end !important;
+                justify-content: center !important;
+            }
+            .signature-label {
+                position: absolute !important;
+                top: 4px !important;
+                right: 8px !important;
+                font-size: 9px !important;
+                color: #6B7280 !important;
+                font-weight: 600 !important;
+            }
+
+            /* ═══ FOOTER ═══ */
+            .luxury-footer {
+                margin-top: auto !important;
+                text-align: center !important;
+                font-size: 9px !important;
+                color: #4B5563 !important;
+                padding-top: 6px !important;
+                page-break-inside: avoid !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                gap: 2px !important;
+            }
+            .footer-line {
+                width: 60px !important;
+                height: 1pt !important;
+                background-color: #D4AF37 !important;
+                margin: 4px 0 !important;
+            }
         }
-        .wrap { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans Arabic", sans-serif; }
-        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; }
-        th { background: #f3f4f6; text-align: right; }
       `}</style>
 
-      <div className="wrap">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            {brand?.logoUrl ? <img src={brand.logoUrl} alt="" style={{ width: 56, height: 56, objectFit: 'contain' }} /> : null}
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{brand?.name || ''}</div>
-              {brand?.branchName ? <div style={{ fontSize: 12, color: '#374151' }}>{brand.branchName}{brand.branchCode ? ` (${brand.branchCode})` : ''}</div> : null}
-              {brand?.address ? <div style={{ fontSize: 12, color: '#374151' }}>{brand.address}</div> : null}
-              {brand?.contactNumber ? <div style={{ fontSize: 12, color: '#374151' }}>{brand.contactNumber}</div> : null}
+      <div className="document-container w-full mx-auto p-12 bg-[#FAFAFA] flex flex-col text-blue-950 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+
+        <div className="luxury-watermark">{brand?.name || 'AZTA ERP'}</div>
+
+        {/* ▬▬▬ HEADER ▬▬▬ */}
+        <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
+          <div className="flex items-center gap-6 print:gap-4">
+            {brand?.logoUrl && (
+              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
+                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-16 w-auto object-contain print:grayscale" />
+              </div>
+            )}
+            <div className="flex flex-col justify-center">
+              <h1 className="brand-name">
+                {brand?.name || 'AZTA ERP'}
+                {(brand?.branchName) && (
+                  <span className="text-sm font-normal text-slate-500 mr-2 print:text-[8px] font-sans">({brand?.branchName})</span>
+                )}
+              </h1>
+              <div className="mt-2 print:mt-1 flex gap-3 text-sm print:text-[6px] text-slate-600 font-bold">
+                {brand?.address && <span dir="ltr">Add: <span className="font-mono text-blue-950">{brand.address}</span></span>}
+                {brand?.contactNumber && <span dir="ltr">TEL: <span className="font-mono text-blue-950">{brand.contactNumber}</span></span>}
+              </div>
             </div>
           </div>
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>{title}</div>
-            <div style={{ fontSize: 12, color: '#374151' }}>
-              رقم الإشعار: <span className="mono">{idShort}</span>
+
+          <div className="text-center flex flex-col items-center flex-shrink-0 z-10 md:text-left rtl:text-left">
+            <h2 className="doc-title">{title}</h2>
+            <div className="title-sub">CREDIT NOTE</div>
+          </div>
+        </div>
+
+        {/* ▬▬▬ INFO SECTION ▬▬▬ */}
+        <div className="info-grid relative z-10 mb-6 print:mb-3">
+          <div className="info-group">
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">اسم العميل | Customer Name</span>
+              <span className="font-bold-value text-gold">{data.customerName || '—'}</span>
             </div>
-            <div style={{ fontSize: 12, color: '#374151' }}>
-              التاريخ: <span className="mono">{fmtTime(data.returnDate)}</span>
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">الهاتف | Phone</span>
+              <span className="font-bold-value text-charcoal tabular font-mono" dir="ltr">{data.customerPhone || '—'}</span>
+            </div>
+            <div className="info-item">
+              <span className="font-thin-label">طريقة الإرجاع | Refund Method</span>
+              <span className="font-bold-value text-charcoal">{methodLabel(data.refundMethod)}</span>
+            </div>
+          </div>
+
+          <div className="info-group border-r border-slate-300 pr-4 print:border-[#E5E7EB]">
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">رقم الإشعار | Note Number</span>
+              <span className="font-bold-value font-mono text-charcoal" dir="ltr">{idShort}</span>
             </div>
             {invoice ? (
-              <div style={{ fontSize: 12, color: '#374151' }}>
-                رقم الفاتورة: <span className="mono">{invoice}</span>
+              <div className="info-item mb-2 print:mb-1">
+                <span className="font-thin-label">رقم الفاتورة الأصلية | Original Invoice</span>
+                <span className="font-bold-value font-mono text-charcoal" dir="ltr">{invoice}</span>
               </div>
             ) : null}
-            <div style={{ fontSize: 12, color: '#374151' }}>
-              مرجع: <span className="mono" dir="ltr">{String(data.returnId || '').trim() || '—'}</span>
+            <div className="info-item">
+              <span className="font-thin-label">التاريخ | Date</span>
+              <span className="font-bold-value font-mono tabular" dir="ltr">{fmtTime(data.returnDate)}</span>
+            </div>
+          </div>
+
+          <div className="info-group border-r border-slate-300 pr-4 print:border-[#E5E7EB]">
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">السبب | Reason</span>
+              <span className="font-bold-value text-charcoal">{data.reason || '—'}</span>
+            </div>
+            <div className="info-item mb-2 print:mb-1">
+              <span className="font-thin-label">الحالة | Status</span>
+              <span className="font-bold-value text-charcoal">{data.status || '—'}</span>
+            </div>
+            <div className="info-item">
+              <span className="font-thin-label">الطلب المرتبط | Order Ref</span>
+              <span className="font-bold-value font-mono tabular" dir="ltr">{String(data.orderId || '').slice(-8)}</span>
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>بيانات العميل</div>
-            <div style={{ fontSize: 12 }}>الاسم: {data.customerName || '—'}</div>
-            <div style={{ fontSize: 12 }}>الهاتف: <span className="mono">{data.customerPhone || '—'}</span></div>
-            <div style={{ fontSize: 12 }}>الطلب: <span className="mono">{String(data.orderId || '').slice(-8)}</span></div>
-          </div>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>بيانات المرتجع</div>
-            <div style={{ fontSize: 12 }}>الحالة: {data.status || '—'}</div>
-            <div style={{ fontSize: 12 }}>طريقة الإرجاع: {methodLabel(data.refundMethod)}</div>
-            <div style={{ fontSize: 12 }}>السبب: {data.reason || '—'}</div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <table>
+        {/* ▬▬▬ TABLE ▬▬▬ */}
+        <div className="relative z-10 w-full overflow-hidden mb-4 print:mb-2">
+          <table className="luxury-table print:w-full text-right">
             <thead>
               <tr>
-                <th style={{ width: '18%' }}>كود</th>
-                <th>الصنف</th>
-                <th style={{ width: '16%' }}>الكمية (البيع)</th>
-                <th style={{ width: '14%' }}>الكمية (الأساس)</th>
-                <th style={{ width: '18%' }}>سعر (وحدة أساس)</th>
-                <th style={{ width: '18%' }}>الإجمالي</th>
+                <th style={{ width: '15%' }}>الرمز</th>
+                <th style={{ width: '40%' }}>الصنف</th>
+                <th style={{ width: '15%' }} className="text-center">الكمية المسترجعة</th>
+                <th style={{ width: '15%' }} className="text-center">سعر الوحدة</th>
+                <th style={{ width: '15%' }} className="text-center">الإجمالي</th>
               </tr>
             </thead>
             <tbody>
-              {data.items.map((it, idx) => (
-                <tr key={`${it.itemId}-${idx}`}>
-                  <td className="mono" dir="ltr">{String(it.itemId || '').replace(/-/g, '').slice(-6).toUpperCase()}</td>
-                  <td>{it.itemName || '—'}</td>
-                  <td className="mono" dir="ltr">
-                    {it.salesUnitQty != null && Number.isFinite(Number(it.salesUnitQty))
-                      ? `${String(Number(it.salesUnitQty || 0))} ${String(it.uomCode || '').trim() || ''}`.trim()
-                      : '—'}
-                  </td>
-                  <td className="mono" dir="ltr">{String(Number(it.quantityBase || 0))}</td>
-                  <td className="mono" dir="ltr">{fmtAmount(Number(it.unitPrice || 0))} {cur}</td>
-                  <td className="mono" dir="ltr">{fmtAmount(Number(it.total || 0))} {cur}</td>
+              {data.items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-slate-400">لا توجد أصناف</td>
                 </tr>
-              ))}
+              ) : (
+                data.items.map((it, idx) => (
+                  <tr key={`${it.itemId}-${idx}`} style={{ pageBreakInside: 'avoid' }}>
+                    <td className="tabular font-thin-label text-slate-600" dir="ltr">{String(it.itemId || '').replace(/-/g, '').slice(-6).toUpperCase()}</td>
+                    <td>
+                      <div className="font-bold-value text-charcoal">{it.itemName || '—'}</div>
+                      <div className="font-thin-label text-[8px] mt-0.5 text-slate-500">
+                        {it.salesUnitQty != null && Number.isFinite(Number(it.salesUnitQty))
+                          ? `كمية البيع: ${String(Number(it.salesUnitQty || 0))} ${String(it.uomCode || '').trim() || ''}`.trim()
+                          : `كمية الأساس: ${String(Number(it.quantityBase || 0))}`}
+                      </div>
+                    </td>
+                    <td className="text-center tabular font-mono font-bold text-blue-950" dir="ltr">
+                      {String(Number(it.quantityBase || 0))}
+                    </td>
+                    <td className="text-center tabular font-mono" dir="ltr">
+                      <div className="text-slate-700">{fmtAmount(Number(it.unitPrice || 0))}</div>
+                    </td>
+                    <td className="text-center tabular font-bold-value text-gold font-mono" dir="ltr">
+                      {fmtAmount(Number(it.total || 0))}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-          <div style={{ width: 320, border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
-              <div>قيمة المرتجع (بدون ضريبة)</div>
-              <div className="mono" dir="ltr">{fmtAmount(Number(data.returnSubtotal || 0))} {cur}</div>
+        {/* ▬▬▬ TOTALS ▬▬▬ */}
+        <div className="totals-section relative z-10">
+          <div className="totals-box">
+            <div className="totals-row">
+              <span>قيمة المرتجع (بدون ضريبة) | Subtotal</span>
+              <span className="tabular font-mono" dir="ltr">{fmtAmount(Number(data.returnSubtotal || 0))} {cur}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, marginTop: 6 }}>
-              <div>ضريبة مسترجعة</div>
-              <div className="mono" dir="ltr">{fmtAmount(Number(data.taxRefund || 0))} {cur}</div>
+            <div className="totals-row">
+              <span>ضريبة مسترجعة | Tax Refund</span>
+              <span className="tabular font-mono text-red-600" dir="ltr">{fmtAmount(Number(data.taxRefund || 0))} {cur}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, marginTop: 10, fontWeight: 800 }}>
-              <div>الإجمالي المسترد</div>
-              <div className="mono" dir="ltr">{fmtAmount(Number(data.totalRefund || 0))} {cur}</div>
+            <div className="totals-row grand-total">
+              <span>الإجمالي المسترد | Total Refund</span>
+              <span className="tabular font-mono" dir="ltr">{fmtAmount(Number(data.totalRefund || 0))} {cur}</span>
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div style={{ border: '1px dashed #9ca3af', borderRadius: 8, padding: 12, height: 80 }}>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>توقيع العميل</div>
+        {/* ▬▬▬ SIGNATURES ▬▬▬ */}
+        <div className="signatures relative z-10 w-full mb-2">
+          <div className="signature-box">
+            <span className="signature-label">توقيع الموظف | Employee Sign</span>
           </div>
-          <div style={{ border: '1px dashed #9ca3af', borderRadius: 8, padding: 12, height: 80 }}>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>توقيع المسؤول</div>
+          <div className="signature-box">
+            <span className="signature-label">توقيع العميل | Customer Sign</span>
           </div>
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 11, color: '#6b7280' }}>
-          هذا المستند صادر إلكترونياً ولا يحتاج ختم.
+        <div className="relative z-10 font-thin-label text-center mt-2 print:mt-1">
+          هذا المستند صادر إلكترونياً ولا يحتاج إلى ختم — This document is electronically generated and does not require a stamp
         </div>
 
-        <DocumentAuditFooter
-          audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || 'AZTA ERP', ...(audit || {}) }}
-          extraRight={<div>{brand?.name || 'AZTA ERP'}</div>}
-        />
+        {/* ▬▬▬ FOOTER ▬▬▬ */}
+        <div className="luxury-footer relative z-10 w-full font-mono mt-auto pt-6">
+          <div className="footer-line"></div>
+          <div className="font-bold-value text-gold mb-1 print:mb-0.5 mt-1 font-sans tracking-wide">نموذج نظام مرخص — LICENSED SYSTEM FORM</div>
+
+          <DocumentAuditFooter
+            audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || 'AZTA ERP', ...(audit || {}) }}
+            extraRight={<div className="font-sans text-slate-400">{brand?.name || 'AZTA ERP'}</div>}
+          />
+        </div>
+
       </div>
     </div>
   );
