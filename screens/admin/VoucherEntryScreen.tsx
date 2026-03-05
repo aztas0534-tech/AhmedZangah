@@ -345,7 +345,7 @@ export default function VoucherEntryScreen() {
     try {
       let query = supabase
         .from('journal_entries')
-        .select('id,entry_date,memo,status,source_event,document_id,created_by,journal_lines(debit,credit,currency_code),accounting_documents(document_number)')
+        .select('id,entry_date,memo,status,source_event,document_id,created_by,journal_lines(debit,credit,currency_code,foreign_amount),accounting_documents(document_number)')
         .eq('source_table', 'manual')
         .order('entry_date', { ascending: false })
         .limit(50);
@@ -355,8 +355,18 @@ export default function VoucherEntryScreen() {
       if (error) throw error;
       const mapped: VoucherHistoryRow[] = (rows || []).map((r: any) => {
         const jlines = Array.isArray(r.journal_lines) ? r.journal_lines : [];
-        const tDebit = jlines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
-        const cur = jlines.find((l: any) => l.currency_code)?.currency_code || '';
+        const tDebitBase = jlines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+        let cur = '';
+        let foreignAmt = 0;
+        for (const l of jlines) {
+          if (l.currency_code && Number(l.foreign_amount) > 0) {
+            cur = l.currency_code;
+            foreignAmt = Number(l.foreign_amount);
+            break;
+          }
+        }
+        if (!cur) cur = jlines[0]?.currency_code || '';
+        const tDebit = foreignAmt > 0 ? foreignAmt : tDebitBase;
         const docNum = Array.isArray(r.accounting_documents)
           ? (r.accounting_documents[0]?.document_number || '')
           : ((r.accounting_documents as any)?.document_number || '');
