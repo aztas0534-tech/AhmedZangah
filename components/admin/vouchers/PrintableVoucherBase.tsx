@@ -279,14 +279,11 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 </>
               ) : (
                 <tr>
-                  <th style={{ width: '12%' }}>رقم الحساب</th>
-                  <th style={{ width: '6%' }}>العملة</th>
-                  <th style={{ width: '8%' }}>الحساب التحليلي</th>
-                  <th style={{ width: '20%' }}>اسم الحساب</th>
-                  <th style={{ width: '25%' }}>البيان</th>
+                  <th style={{ width: '10%' }}>م</th>
+                  <th style={{ width: '45%' }}>البيان</th>
                   <th style={{ width: '15%' }}>المبلغ</th>
                   <th style={{ width: '15%' }}>رقم المركز</th>
-                  <th style={{ width: '12%' }}>رقم المرجع</th>
+                  <th style={{ width: '15%' }}>رقم المرجع</th>
                 </tr>
               )}
             </thead>
@@ -314,11 +311,8 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                       </>
                     ) : (
                       <>
-                        <td className="tabular">{l.accountCode}</td>
-                        <td className="tabular">{l.currency || currency}</td>
-                        <td className="tabular">{l.analyticalAccount || '—'}</td>
-                        <td className="text-right text-[12px] font-bold">{l.accountName}</td>
-                        <td className="text-right text-[11px] font-normal">{l.memo || data.memo || '—'}</td>
+                        <td className="tabular">{idx + 1}</td>
+                        <td className="text-right text-[12px] font-bold">{l.memo || data.memo || '—'}</td>
                         <td className="tabular tabular-nums font-bold">{fmt(l.credit > 0 ? l.credit : l.debit)}</td>
                         <td className="tabular">{l.costCenterNo || brand?.branchCode || '—'}</td>
                         <td className="tabular">{l.referenceNo || '—'}</td>
@@ -333,7 +327,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                   {isJournal ? (
                     <><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></>
                   ) : (
-                    <><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></>
+                    <><td></td><td></td><td></td><td></td><td></td></>
                   )}
                 </tr>
               ))}
