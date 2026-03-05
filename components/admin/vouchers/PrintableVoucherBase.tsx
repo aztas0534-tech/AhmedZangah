@@ -45,6 +45,7 @@ export type VoucherData = {
   fromAccount?: string | null;
   shiftId?: string | null;
   shiftNumber?: number | null;
+  shiftName?: string | null;
   foreignAmount?: number | null;
   fxRate?: number | null;
   baseCurrency?: string | null;
@@ -207,7 +208,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
               </div>
               <div className="grid-header">
                 <div className="grid-cell label">اسم الصندوق</div>
-                <div className="grid-cell value tabular">صندوق 1</div>
+                <div className="grid-cell value tabular">{data.shiftName || 'الصندوق الرئيسي'}</div>
               </div>
             </div>
 
@@ -319,7 +320,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                         <td className="text-right text-[12px] font-bold">{l.accountName}</td>
                         <td className="text-right text-[11px] font-normal">{l.memo || data.memo || '—'}</td>
                         <td className="tabular tabular-nums font-bold">{fmt(l.credit > 0 ? l.credit : l.debit)}</td>
-                        <td className="tabular">{l.costCenterNo || brand?.branchCode || 'المركز 01001 الرئيسي'}</td>
+                        <td className="tabular">{l.costCenterNo || brand?.branchCode || '—'}</td>
                         <td className="tabular">{l.referenceNo || '—'}</td>
                       </>
                     )}

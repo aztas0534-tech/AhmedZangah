@@ -56,23 +56,24 @@ const resolveAdminDisplayName = async (userId: string) => {
   }
 };
 
-const resolveShiftNumber = async (shiftId: string | null | undefined): Promise<number | null> => {
+const resolveShiftInfo = async (shiftId: string | null | undefined): Promise<{ number: number | null, name: string | null }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return null;
+  if (!supabase) return { number: null, name: null };
   const id = String(shiftId || '').trim();
-  if (!id) return null;
+  if (!id) return { number: null, name: null };
   try {
     const { data, error } = await supabase
       .from('cash_shifts')
-      .select('shift_number')
+      .select('shift_number, closed_by')
       .eq('id', id)
       .maybeSingle();
-    if (error) return null;
+    if (error) return { number: null, name: null };
     const n = (data as any)?.shift_number;
     const v = n === null || n === undefined ? null : Number(n);
-    return Number.isFinite(v as any) && (v as number) > 0 ? Math.trunc(v as number) : null;
+    const num = Number.isFinite(v as any) && (v as number) > 0 ? Math.trunc(v as number) : null;
+    return { number: num, name: num ? `صندوق ${num}` : null };
   } catch {
-    return null;
+    return { number: null, name: null };
   }
 };
 
@@ -151,6 +152,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
   let receivedBy: string | null = null;
   let shiftId: string | null = null;
   let shiftNumber: number | null = null;
+  let shiftName: string | null = null;
   const entryCreatedBy = String((entry as any)?.created_by || '').trim();
   if (entryCreatedBy) {
     receivedBy = await resolveAdminDisplayName(entryCreatedBy);
@@ -168,7 +170,9 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
       if (!pErr && pay) {
         paymentMethod = paymentMethodLabel(String((pay as any)?.method || '')) as any;
         shiftId = String((pay as any)?.shift_id || '').trim() || null;
-        shiftNumber = await resolveShiftNumber(shiftId);
+        const sInfo = await resolveShiftInfo(shiftId);
+        shiftNumber = sInfo.number;
+        shiftName = sInfo.name;
         const pdata = (pay as any)?.data || {};
         const ref = String(pdata?.referenceNumber || pdata?.reference_number || pdata?.paymentReferenceNumber || '').trim();
         paymentReferenceNumber = ref || null;
@@ -222,6 +226,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
     fromAccount: fromAccount || null,
     shiftId,
     shiftNumber,
+    shiftName,
     foreignAmount,
     fxRate,
     baseCurrency,
@@ -261,6 +266,7 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
     fromAccount: (bundle as any).fromAccount || null,
     shiftId: (bundle as any).shiftId || null,
     shiftNumber: (bundle as any).shiftNumber ?? null,
+    shiftName: (bundle as any).shiftName ?? null,
     foreignAmount: (bundle as any).foreignAmount ?? null,
     fxRate: (bundle as any).fxRate ?? null,
     baseCurrency: (bundle as any).baseCurrency ?? null,
@@ -304,6 +310,7 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
     fromAccount: (bundle as any).fromAccount || null,
     shiftId: (bundle as any).shiftId || null,
     shiftNumber: (bundle as any).shiftNumber ?? null,
+    shiftName: (bundle as any).shiftName ?? null,
     foreignAmount: (bundle as any).foreignAmount ?? null,
     fxRate: (bundle as any).fxRate ?? null,
     baseCurrency: (bundle as any).baseCurrency ?? null,
@@ -346,7 +353,9 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
   const amount = Number((pay as any).amount || 0);
   const currency = String((pay as any).currency || '').toUpperCase() || '';
   const shiftId = String((pay as any)?.shift_id || '').trim() || null;
-  const shiftNumber = await resolveShiftNumber(shiftId);
+  const sInfo = await resolveShiftInfo(shiftId);
+  const shiftNumber = sInfo.number;
+  const shiftName = sInfo.name;
   const data = {
     voucherNumber: bundle.documentNumber,
     status: 'Posted',
@@ -367,6 +376,7 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
     fromAccount: (bundle as any).fromAccount || null,
     shiftId,
     shiftNumber,
+    shiftName,
     foreignAmount: (bundle as any).foreignAmount ?? null,
     fxRate: (bundle as any).fxRate ?? null,
     baseCurrency: (bundle as any).baseCurrency ?? null,
@@ -409,7 +419,9 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
   const amount = Number((pay as any).amount || 0);
   const currency = String((pay as any).currency || '').toUpperCase() || '';
   const shiftId = String((pay as any)?.shift_id || '').trim() || null;
-  const shiftNumber = await resolveShiftNumber(shiftId);
+  const sInfo = await resolveShiftInfo(shiftId);
+  const shiftNumber = sInfo.number;
+  const shiftName = sInfo.name;
   const data = {
     voucherNumber: bundle.documentNumber,
     status: 'Posted',
@@ -430,6 +442,7 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
     fromAccount: (bundle as any).fromAccount || null,
     shiftId,
     shiftNumber,
+    shiftName,
     foreignAmount: (bundle as any).foreignAmount ?? null,
     fxRate: (bundle as any).fxRate ?? null,
     baseCurrency: (bundle as any).baseCurrency ?? null,
