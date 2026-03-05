@@ -18,11 +18,7 @@ type Brand = {
 };
 
 const fmtTime = (iso: string) => {
-  try {
-    return new Date(iso).toLocaleString('ar-EG-u-nu-latn');
-  } catch {
-    return iso;
-  }
+  return iso;
 };
 
 const paymentMethodLabel = (method: string) => {

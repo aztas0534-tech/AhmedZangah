@@ -204,11 +204,11 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <div className="flex flex-col w-[30%]">
               <div className="grid-header">
                 <div className="grid-cell label">رقم الصندوق</div>
-                <div className="grid-cell value tabular">{shiftNo || '1'}</div>
+                <div className="grid-cell value tabular">{shiftNo || '—'}</div>
               </div>
               <div className="grid-header">
                 <div className="grid-cell label">اسم الصندوق</div>
-                <div className="grid-cell value tabular">{data.shiftName || 'الصندوق الرئيسي'}</div>
+                <div className="grid-cell value tabular">{data.shiftName || '—'}</div>
               </div>
             </div>
 
