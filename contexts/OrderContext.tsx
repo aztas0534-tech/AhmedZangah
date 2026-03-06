@@ -1140,7 +1140,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           await updateRemoteOrder(nextOrder, { includeStatus: false });
         } catch (err: any) {
           // If the order is already posted, we can't update it. Ignore this error to stop the retry loop.
-          if (String(err?.message || '').includes('posted_order_immutable') || err?.code === 'P0001') {
+          if (String(err?.message || '').includes('posted_order_immutable') || /مُرحّل.*مقفّل/i.test(String(err?.message || '')) || err?.code === 'P0001') {
             console.warn('Skipping update for posted order in ensureInvoiceIssued:', nextOrder.id);
           } else if ((nextOrder.status as any) === 'delivered' || (nextOrder.status as any) === 'posted') {
             console.warn('Swallowing update error for delivered/posted order:', nextOrder.id, err);
@@ -3841,14 +3841,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               await updateRemoteOrder(updated, { includeStatus: false });
             } catch (patchErr: any) {
               const errMsg = String(patchErr?.message || patchErr || '');
-              if (!/posted_order_immutable/i.test(errMsg)) throw patchErr;
+              if (!/posted_order_immutable/i.test(errMsg) && !/مُرحّل.*مقفّل/i.test(errMsg)) throw patchErr;
               // Order already posted by delivery triggers — safe to ignore
             }
             try {
               updated = await ensureInvoiceIssued(updated, paidAtIso);
             } catch (invErr: any) {
               const errMsg = String(invErr?.message || invErr || '');
-              if (!/posted_order_immutable/i.test(errMsg)) throw invErr;
+              if (!/posted_order_immutable/i.test(errMsg) && !/مُرحّل.*مقفّل/i.test(errMsg)) throw invErr;
             }
           }
         } catch (err) {
