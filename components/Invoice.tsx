@@ -696,7 +696,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         <div className="total-row">
                             <span className="font-thin-label">المجموع الفرعي | Subtotal</span>
                             <span className="font-mono font-bold-value flex gap-1 items-center">
-                                {fmtByCode((Number(invoiceOrder.subtotal) || 0) + (Number(invoiceOrder.discountAmount) || 0), currencyCode)}
+                                {fmtByCode(Number(invoiceOrder.subtotal) || 0, currencyCode)}
                                 <span className="font-thin-label text-charcoal mt-[1px]">{invoiceCurrencyLabel}</span>
                             </span>
                         </div>
