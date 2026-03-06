@@ -470,11 +470,11 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
         <div className="vc-info-row">
           <div className="vc-field">
-            <div className="vc-field-label">{isJournal ? 'رقم المرجع' : 'اسم الصندوق'}</div>
+            <div className="vc-field-label">{isJournal ? 'رقم المرجع' : 'أمين الصندوق'}</div>
             <div className="vc-field-value">{isJournal ? (data.referenceId || '—') : (data.shiftName || `صندوق${shiftNo ? ` ${shiftNo}` : ''}`)}</div>
           </div>
           <div className="vc-field">
-            <div className="vc-field-label">{isJournal ? 'المرجع' : 'رقم الصندوق'}</div>
+            <div className="vc-field-label">{isJournal ? 'المرجع' : 'رقم الوردية'}</div>
             <div className="vc-field-value tabular" dir="ltr">{isJournal ? (data.referenceId || '—') : (shiftNo || '—')}</div>
           </div>
           <div className="vc-field">

@@ -52,24 +52,32 @@ const resolveAdminDisplayName = async (userId: string) => {
   }
 };
 
-const resolveShiftInfo = async (shiftId: string | null | undefined): Promise<{ number: number | null, name: string | null }> => {
+const resolveShiftInfo = async (shiftId: string | null | undefined): Promise<{ number: number | null, name: string | null, cashierName: string | null }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return { number: null, name: null };
+  if (!supabase) return { number: null, name: null, cashierName: null };
   const id = String(shiftId || '').trim();
-  if (!id) return { number: null, name: null };
+  if (!id) return { number: null, name: null, cashierName: null };
   try {
     const { data, error } = await supabase
       .from('cash_shifts')
-      .select('shift_number, closed_by')
+      .select('shift_number, opened_by, closed_by')
       .eq('id', id)
       .maybeSingle();
-    if (error) return { number: null, name: null };
+    if (error) return { number: null, name: null, cashierName: null };
     const n = (data as any)?.shift_number;
     const v = n === null || n === undefined ? null : Number(n);
     const num = Number.isFinite(v as any) && (v as number) > 0 ? Math.trunc(v as number) : null;
-    return { number: num, name: num ? `صندوق ${num}` : null };
+
+    // Resolve cashier display name from opened_by
+    let cashierName: string | null = null;
+    const openedBy = String((data as any)?.opened_by || '').trim();
+    if (openedBy) {
+      cashierName = await resolveAdminDisplayName(openedBy);
+    }
+
+    return { number: num, name: cashierName ? `صندوق ${cashierName}` : (num ? `صندوق ${num}` : null), cashierName };
   } catch {
-    return { number: null, name: null };
+    return { number: null, name: null, cashierName: null };
   }
 };
 
