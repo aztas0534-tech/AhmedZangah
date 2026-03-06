@@ -3987,7 +3987,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           await updateRemoteOrder(updated, { includeStatus: false });
         } catch (patchErr: any) {
           const errMsg = String(patchErr?.message || patchErr || '');
-          if (!/posted_order_immutable/i.test(errMsg)) throw patchErr;
+          if (!/posted_order_immutable/i.test(errMsg) && !/مُرحّل.*مقفّل/i.test(errMsg)) throw patchErr;
         }
         finalOrder = await ensureInvoiceIssued(updated, paidAtIso);
       }
