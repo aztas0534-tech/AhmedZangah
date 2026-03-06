@@ -867,7 +867,7 @@ const ShiftReportsScreen: React.FC = () => {
 
             {closeShiftId && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="bg-gray-100 dark:bg-gray-700 p-4 flex justify-between items-center border-b dark:border-gray-600">
                             <h2 className="text-xl font-bold text-gray-800 dark:text-white">إغلاق وردية</h2>
                             <button
@@ -878,7 +878,7 @@ const ShiftReportsScreen: React.FC = () => {
                                 <Icons.XIcon className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
                             {!closeExpectedJson || Object.keys(closeExpectedJson).length === 0 ? (
                                 <div>
                                     <label className="block text-sm font-medium mb-1 dark:text-gray-300">النقد الفعلي بعد الجرد</label>
