@@ -8,7 +8,7 @@ import { roundMoneyByCode as sharedRoundMoneyByCode } from '../utils/currencyDec
 interface SalesReturnContextType {
   returns: SalesReturn[];
   loading: boolean;
-  createReturn: (order: Order, items: SalesReturnItem[], reason?: string, refundMethod?: 'cash' | 'network' | 'kuraimi') => Promise<SalesReturn>;
+  createReturn: (order: Order, items: SalesReturnItem[], reason?: string, refundMethod?: 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit') => Promise<SalesReturn>;
   processReturn: (returnId: string) => Promise<void>;
   getReturnsByOrder: (orderId: string) => Promise<SalesReturn[]>;
 }
@@ -110,7 +110,7 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, [fetchReturns, supabase, user?.id]);
 
-  const createReturn = async (order: Order, items: SalesReturnItem[], reason?: string, refundMethod: 'cash' | 'network' | 'kuraimi' = 'cash') => {
+  const createReturn = async (order: Order, items: SalesReturnItem[], reason?: string, refundMethod: 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit' = 'cash') => {
     try {
       setLoading(true);
       const currency = String((order as any)?.currency || '').trim().toUpperCase() || 'YER';

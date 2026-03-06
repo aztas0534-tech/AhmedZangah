@@ -94,7 +94,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [returnUnits, setReturnUnits] = useState<Record<string, string>>({});
     const [isCreatingReturn, setIsCreatingReturn] = useState(false);
     const [returnReason, setReturnReason] = useState('');
-    const [refundMethod, setRefundMethod] = useState<'cash' | 'network' | 'kuraimi'>('cash');
+    const [refundMethod, setRefundMethod] = useState<'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit'>('cash');
     const [voidOrderId, setVoidOrderId] = useState<string | null>(null);
     const [voidReason, setVoidReason] = useState('');
     const [isVoidingOrder, setIsVoidingOrder] = useState(false);
@@ -993,8 +993,18 @@ const ManageOrdersScreen: React.FC = () => {
         return toYmd(dt);
     };
 
-    const parseRefundMethod = useCallback((value: string): 'cash' | 'network' | 'kuraimi' => {
-        if (value === 'cash' || value === 'network' || value === 'kuraimi') return value;
+    const parseRefundMethod = useCallback((value: string): 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit' => {
+        if (value === 'cash' || value === 'network' || value === 'kuraimi' || value === 'ar' || value === 'store_credit') return value;
+        return 'cash';
+    }, []);
+
+    const detectRefundMethod = useCallback((order: Order): 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit' => {
+        const pm = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase().trim();
+        const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
+        if (pm === 'ar' || hasArPayment) return 'ar';
+        if (pm === 'store_credit') return 'store_credit';
+        if (pm === 'network' || pm === 'card' || pm === 'online') return 'network';
+        if (pm === 'kuraimi' || pm === 'bank' || pm === 'bank_transfer') return 'kuraimi';
         return 'cash';
     }, []);
 
@@ -2693,7 +2703,7 @@ const ManageOrdersScreen: React.FC = () => {
                                     setReturnOrderId(order.id);
                                     setReturnItems({});
                                     setReturnReason('');
-                                    setRefundMethod('cash');
+                                    setRefundMethod(detectRefundMethod(order));
                                 }}
                                 disabled={String((order as any).returnStatus || '').toLowerCase() === 'full'}
                                 className="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
@@ -3326,7 +3336,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     setReturnOrderId(order.id);
                                                                     setReturnItems({});
                                                                     setReturnReason('');
-                                                                    setRefundMethod('cash');
+                                                                    setRefundMethod(detectRefundMethod(order));
                                                                 }}
                                                                 className="w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
                                                             >
@@ -5432,6 +5442,8 @@ const ManageOrdersScreen: React.FC = () => {
                                     <option value="cash">نقدي</option>
                                     <option value="network">حوالات</option>
                                     <option value="kuraimi">حسابات بنكية</option>
+                                    <option value="ar">تخفيض ذمة مدينة (آجل)</option>
+                                    <option value="store_credit">رصيد عميل</option>
                                 </select>
                             </div>
 
