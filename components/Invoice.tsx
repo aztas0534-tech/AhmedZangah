@@ -318,10 +318,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     }
 
                     /* ═══ Typography ═══ */
-                    .text-gold { color: #D4AF37 !important; }
-                    .text-charcoal { color: #0F172A !important; }
-                    .font-thin-label { font-weight: 300 !important; font-size: 7px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
-                    .font-bold-value { font-weight: 700 !important; font-size: 9px !important; color: #0F172A !important; }
+                    .text-gold { color: #1e293b !important; } /* Darkened to slate-800 for better print clarity instead of actual gold */
+                    .text-charcoal { color: #000000 !important; }
+                    .font-thin-label { font-weight: 700 !important; font-size: 9px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
+                    .font-bold-value { font-weight: 900 !important; font-size: 11px !important; color: #000000 !important; }
 
                     /* ═══ HEADER ═══ */
                     .luxury-header {
