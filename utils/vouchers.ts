@@ -79,7 +79,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
 
   const { data: entry, error: eErr } = await supabase
     .from('journal_entries')
-    .select('id,entry_date,memo,status,document_id,source_table,source_id,source_event,branch_id,company_id,created_by')
+    .select('id,entry_date,memo,status,document_id,source_table,source_id,source_event,branch_id,company_id,created_by,shift_id')
     .eq('id', entryId)
     .maybeSingle();
   if (eErr) throw eErr;
@@ -164,9 +164,16 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
   let senderName: string | null = null;
   let senderPhone: string | null = null;
   let receivedBy: string | null = null;
-  let shiftId: string | null = null;
+  let shiftId: string | null = String((entry as any)?.shift_id || '').trim() || null;
   let shiftNumber: number | null = null;
   let shiftName: string | null = null;
+
+  if (shiftId) {
+    const sInfo = await resolveShiftInfo(shiftId);
+    shiftNumber = sInfo.number;
+    shiftName = sInfo.name;
+  }
+
   const entryCreatedBy = String((entry as any)?.created_by || '').trim();
   if (entryCreatedBy) {
     receivedBy = await resolveAdminDisplayName(entryCreatedBy);
@@ -183,10 +190,13 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
         .maybeSingle();
       if (!pErr && pay) {
         paymentMethod = paymentMethodLabel(String((pay as any)?.method || '')) as any;
-        shiftId = String((pay as any)?.shift_id || '').trim() || null;
-        const sInfo = await resolveShiftInfo(shiftId);
-        shiftNumber = sInfo.number;
-        shiftName = sInfo.name;
+        const payShiftId = String((pay as any)?.shift_id || '').trim() || null;
+        if (!shiftId && payShiftId) {
+          shiftId = payShiftId;
+          const sInfo = await resolveShiftInfo(shiftId);
+          shiftNumber = sInfo.number;
+          shiftName = sInfo.name;
+        }
         const pdata = (pay as any)?.data || {};
         const ref = String(pdata?.referenceNumber || pdata?.reference_number || pdata?.paymentReferenceNumber || '').trim();
         paymentReferenceNumber = ref || null;
