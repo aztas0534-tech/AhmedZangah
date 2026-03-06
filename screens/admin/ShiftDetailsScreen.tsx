@@ -59,6 +59,17 @@ type RecognizedOrderRow = {
   discountBase: number | null;
 };
 
+type ManualVoucherRow = {
+  id: string;
+  entry_date: string;
+  memo: string | null;
+  source_event: string;
+  created_at: string;
+  total_debit: number;
+  total_credit: number;
+  lines: { account_name: string; debit: number; credit: number; currency_code: string | null; foreign_amount: number | null }[];
+};
+
 const methodLabel = (method: string) => {
   const m = (method || '').toLowerCase();
   if (m === 'cash') return 'نقد';
@@ -124,6 +135,7 @@ const ShiftDetailsScreen: React.FC = () => {
   const [cashierLabel, setCashierLabel] = useState<string>('');
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [recognizedOrders, setRecognizedOrders] = useState<RecognizedOrderRow[]>([]);
+  const [manualVouchers, setManualVouchers] = useState<ManualVoucherRow[]>([]);
   const [expectedCash, setExpectedCash] = useState<number | null>(null);
   const [expectedCashJson, setExpectedCashJson] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState<string>('');
@@ -339,6 +351,40 @@ const ShiftDetailsScreen: React.FC = () => {
           setRecognizedOrders(effective);
         } else {
           setRecognizedOrders([]);
+        }
+
+        // ── Manual vouchers linked to this shift ──
+        const { data: voucherRows, error: voucherError } = await supabase
+          .from('journal_entries')
+          .select('id, entry_date, memo, source_event, created_at, journal_lines(account_id, debit, credit, currency_code, foreign_amount, chart_of_accounts(name))')
+          .eq('shift_id', resolvedShiftId)
+          .eq('source_table', 'manual')
+          .order('created_at', { ascending: false });
+        if (!voucherError && voucherRows) {
+          const mapped: ManualVoucherRow[] = (voucherRows as any[]).map((v: any) => {
+            const lines = Array.isArray(v.journal_lines) ? v.journal_lines : [];
+            const total_debit = lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+            const total_credit = lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+            return {
+              id: String(v.id),
+              entry_date: String(v.entry_date || v.created_at),
+              memo: v.memo ? String(v.memo) : null,
+              source_event: String(v.source_event || ''),
+              created_at: String(v.created_at),
+              total_debit,
+              total_credit,
+              lines: lines.map((l: any) => ({
+                account_name: l.chart_of_accounts?.name || '-',
+                debit: Number(l.debit) || 0,
+                credit: Number(l.credit) || 0,
+                currency_code: l.currency_code || null,
+                foreign_amount: l.foreign_amount === null || l.foreign_amount === undefined ? null : Number(l.foreign_amount),
+              })),
+            };
+          });
+          setManualVouchers(mapped);
+        } else {
+          setManualVouchers([]);
         }
 
         const { data: expectedData, error: expectedError } = await supabase.rpc('calculate_cash_shift_expected', { p_shift_id: resolvedShiftId });
@@ -957,6 +1003,62 @@ const ShiftDetailsScreen: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Manual Vouchers Section ── */}
+        {manualVouchers.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div className="font-bold dark:text-white">السندات اليدوية المرتبطة بالوردية</div>
+              <div className="text-xs text-gray-500 dark:text-gray-300">{manualVouchers.length} سند</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">التاريخ</th>
+                    <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">النوع</th>
+                    <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">المبلغ</th>
+                    <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">الحسابات</th>
+                    <th className="p-4 text-sm font-medium text-gray-500 dark:text-gray-300">البيان</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {manualVouchers.map((v) => (
+                    <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="p-4 text-sm font-mono dark:text-gray-300">
+                        {new Date(v.entry_date).toLocaleDateString('ar-EG-u-nu-latn')}
+                      </td>
+                      <td className="p-4 text-sm dark:text-gray-300">
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${v.source_event === 'receipt' ? 'bg-emerald-100 text-emerald-700' :
+                            v.source_event === 'payment' ? 'bg-rose-100 text-rose-700' :
+                              'bg-blue-100 text-blue-700'
+                          }`}>
+                          {v.source_event === 'receipt' ? 'سند قبض' : v.source_event === 'payment' ? 'سند صرف' : 'قيد يومية'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm font-mono font-bold dark:text-gray-300">
+                        {v.total_debit.toFixed(2)} {baseCode || '—'}
+                      </td>
+                      <td className="p-4 text-sm dark:text-gray-300">
+                        <div className="space-y-1">
+                          {v.lines.map((l, i) => (
+                            <div key={i} className="flex gap-2 text-xs">
+                              <span className="text-gray-600 dark:text-gray-400">{translateAccountName(l.account_name)}</span>
+                              {l.debit > 0 && <span className="text-emerald-600 font-mono">مدين: {l.debit.toFixed(2)}</span>}
+                              {l.credit > 0 && <span className="text-rose-600 font-mono">دائن: {l.credit.toFixed(2)}</span>}
+                              {l.currency_code && l.foreign_amount ? <span className="text-indigo-500 font-mono">({l.foreign_amount.toFixed(2)} {l.currency_code})</span> : null}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-4 text-sm text-gray-700 dark:text-gray-200">{v.memo || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

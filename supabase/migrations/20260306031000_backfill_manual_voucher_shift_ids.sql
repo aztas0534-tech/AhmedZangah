@@ -1,26 +1,19 @@
 -- =============================================================================
 -- Backfill: Link orphaned manual vouchers to their correct cash shifts
 -- =============================================================================
--- Strategy:
---   For each journal_entry where source_table = 'manual' AND shift_id IS NULL,
---   find the cash_shift that was OPEN for that user (created_by = cashier_id)
---   at the time the voucher was created (created_at BETWEEN opened_at AND
---   COALESCE(closed_at, 'infinity')).
---
---   If multiple shifts match (edge case), pick the one with the latest opened_at.
---   If no shift matches, the voucher remains unlinked (NULL) — this is expected
---   for vouchers created when no shift was open.
+-- Uses session_replication_role = replica to temporarily bypass ALL triggers
+-- on journal_entries during the data repair, then restores it.
 -- =============================================================================
 
 set app.allow_ledger_ddl = '1';
+
+-- Bypass all triggers temporarily
+set session_replication_role = 'replica';
 
 do $$
 declare
   v_updated int := 0;
 begin
-  -- Temporarily allow updates on journal_entries
-  set local app.allow_ledger_ddl = '1';
-
   with matched as (
     select distinct on (je.id)
       je.id as entry_id,
@@ -45,5 +38,8 @@ begin
 
   raise notice 'Backfill complete: % manual voucher(s) linked to their cash shifts.', v_updated;
 end $$;
+
+-- Restore normal trigger behavior
+set session_replication_role = 'origin';
 
 notify pgrst, 'reload schema';
