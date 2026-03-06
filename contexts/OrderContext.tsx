@@ -2301,7 +2301,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           occurredAt: nowIso,
         })),
       });
-      setOrders(prev => [offlineOrder, ...prev]);
+      setOrders(prev => [offlineOrder, ...prev.filter(o => o.id !== offlineOrder.id)]);
       return offlineOrder;
     };
 
@@ -2738,17 +2738,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
 
     if (canMarkPaidUi && !paymentRecordOk) {
-      setOrders(prev => [finalized, ...prev]);
+      setOrders(prev => [finalized, ...prev.filter(o => o.id !== finalized.id)]);
       return finalized;
     }
 
     if (shouldIssueInvoice) {
-      setOrders(prev => [finalized, ...prev]);
+      setOrders(prev => [finalized, ...prev.filter(o => o.id !== finalized.id)]);
       return finalized;
     }
 
     if (!canMarkPaidUi) {
-      setOrders(prev => [newOrder, ...prev]);
+      setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
       return newOrder;
     }
 
@@ -2758,7 +2758,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       itemsCount: items.length
     });
 
-    setOrders(prev => [finalized, ...prev]);
+    setOrders(prev => [finalized, ...prev.filter(o => o.id !== finalized.id)]);
 
     return finalized;
   };
@@ -2993,7 +2993,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: nowIso,
       payload: { orderSource: 'in_store', total: newOrder.total, itemsCount: items.length },
     });
-    setOrders(prev => [newOrder, ...prev]);
+    setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
     return newOrder;
   };
 
@@ -3128,7 +3128,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: nowIso,
       payload: { orderSource: 'in_store', total: newOrder.total, itemsCount: items.length, isDraft: true },
     });
-    setOrders(prev => [newOrder, ...prev]);
+    setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
     return newOrder;
   };
   const resumeInStorePendingOrder = async (orderId: string, payment: {
