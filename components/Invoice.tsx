@@ -320,8 +320,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     /* ═══ Typography ═══ */
                     .text-gold { color: #1e293b !important; } /* Darkened to slate-800 for better print clarity instead of actual gold */
                     .text-charcoal { color: #000000 !important; }
-                    .font-thin-label { font-weight: 700 !important; font-size: 9px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
-                    .font-bold-value { font-weight: 900 !important; font-size: 11px !important; color: #000000 !important; }
+                    .font-thin-label { font-weight: 800 !important; font-size: 10px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
+                    .font-bold-value { font-weight: 900 !important; font-size: 12px !important; color: #000000 !important; }
 
                     /* ═══ HEADER ═══ */
                     .luxury-header {
@@ -330,11 +330,11 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         align-items: center !important;
                         border-bottom: 1.5pt solid #1E3A8A !important;
                         padding-bottom: 2px !important;
-                        margin-bottom: 3px !important;
+                        margin-bottom: 4px !important;
                     }
-                    .brand-name { font-size: 16px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
-                    .invoice-title { font-size: 22px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-                    .title-sub { font-size: 7px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
+                    .brand-name { font-size: 18px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+                    .invoice-title { font-size: 26px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+                    .title-sub { font-size: 8px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
                     
                     /* ═══ INFO GRID ═══ */
                     .info-grid {
@@ -370,17 +370,18 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     .luxury-table th {
                         background-color: #0F172A !important;
                         color: #FFFFFF !important;
-                        padding: 2px 3px !important;
-                        font-weight: 600 !important;
-                        font-size: 8px !important;
+                        padding: 1.5px 2px !important;
+                        font-weight: 700 !important;
+                        font-size: 10px !important;
                         text-transform: uppercase !important;
                         letter-spacing: 0.3px !important;
                         border: none !important;
                     }
                     .luxury-table td {
-                        padding: 1.5px 3px !important;
-                        font-size: 9px !important;
-                        font-weight: 600 !important;
+                        padding: 1.5px 2px !important;
+                        font-size: 11px !important;
+                        font-weight: 700 !important;
+                        line-height: 1 !important;
                         border-bottom: 0.5pt solid #E5E7EB !important;
                         color: #0F172A !important;
                     }
@@ -395,8 +396,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         background-color: #EFF6FF !important;
                         border-bottom: 1pt solid #1E3A8A !important;
                         padding: 1px 4px !important;
-                        font-size: 7px !important;
-                        font-weight: 700 !important;
+                        font-size: 8px !important;
+                        font-weight: 800 !important;
                         color: #1E3A8A !important;
                     }
 
@@ -405,8 +406,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         background-color: #F9FAFB !important;
                         border-top: 0.5pt dashed #9CA3AF !important;
                         border-bottom: none !important;
-                        padding: 1px 4px !important;
-                        font-size: 6px !important;
+                        padding: 1.5px 4px !important;
+                        font-size: 8px !important;
                         color: #9CA3AF !important;
                         text-align: center !important;
                         font-style: italic !important;
@@ -438,11 +439,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         align-items: center !important;
                         background-color: #0F172A !important;
                         color: white !important;
-                        padding: 3px 5px !important;
-                        margin-top: 1px !important;
+                        padding: 3px 6px !important;
+                        margin-top: 2px !important;
+                        border-radius: 2px !important;
                     }
-                    .grand-total-label { font-size: 11px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 0.5px !important; }
-                    .grand-total-value { font-size: 15px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
+                    .grand-total-label { font-size: 13px !important; font-weight: 800 !important; color: #FFFFFF !important; letter-spacing: 0.5px !important; }
+                    .grand-total-value { font-size: 18px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
 
                     /* ═══ SUMMARY BOXES ═══ */
                     .summary-box {
@@ -508,17 +510,17 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
                     <div className="flex items-center gap-6 print:gap-4">
                         {storeLogoUrl && (
-                            <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
-                                <img src={storeLogoUrl} alt="Logo" className="h-24 print:h-12 w-auto object-contain print:grayscale" />
+                            <div className="bg-white p-2 print:p-1 mt-2 z-10">
+                                <img src={storeLogoUrl} alt="Logo" className="h-24 print:h-20 w-auto object-contain print:grayscale" />
                             </div>
                         )}
                         <div className="flex flex-col justify-center">
                             <h1 className="brand-name">
                                 {systemName}
-                                {showBranchName && <span className="text-sm font-normal text-slate-500 mr-2 print:text-[7px] font-sans">({branchName})</span>}
+                                {showBranchName && <span className="text-sm font-normal text-slate-500 mr-2 print:text-[10px] font-sans">({branchName})</span>}
                             </h1>
-                            {systemKey && <div className="text-sm print:text-[5px] text-slate-500 uppercase tracking-[0.3em] font-mono print:mt-0" dir="ltr">{systemKey}</div>}
-                            <div className="mt-2 print:mt-1 flex gap-3 text-sm print:text-[5px] text-slate-600 font-bold">
+                            {systemKey && <div className="text-sm print:text-[8px] text-slate-500 uppercase tracking-[0.3em] font-mono print:mt-0" dir="ltr">{systemKey}</div>}
+                            <div className="mt-2 print:mt-1 flex gap-3 text-sm print:text-[7px] text-slate-700 font-bold">
                                 {vatNumber && <span dir="ltr">VAT: <span className="font-mono text-blue-950">{vatNumber}</span></span>}
                                 {storeContactNumber && <span dir="ltr">TEL: <span className="font-mono text-blue-950">{storeContactNumber}</span></span>}
                             </div>
@@ -676,10 +678,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     {/* Left side / Footer Info (QR) */}
                     <div className="flex-1 flex flex-col justify-end pt-4 print:pt-0">
-                        <div className="flex gap-4 items-end mb-4 print:mb-1 print:gap-2">
+                        <div className="flex gap-4 items-end mb-4 print:mb-1 print:gap-3">
                             {qrUrl && (
                                 <div className="qr-section">
-                                    <img src={qrUrl} alt="QR Code" className="w-24 h-24 print:w-12 print:h-12 object-contain" />
+                                    <img src={qrUrl} alt="QR Code" className="w-24 h-24 print:w-16 print:h-16 object-contain" />
                                 </div>
                             )}
                             {/* Official Entity Stamp space */}
