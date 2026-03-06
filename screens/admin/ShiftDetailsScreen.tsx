@@ -359,6 +359,7 @@ const ShiftDetailsScreen: React.FC = () => {
           .select('id, entry_date, memo, source_event, created_at, journal_lines(account_id, debit, credit, currency_code, foreign_amount, chart_of_accounts(name))')
           .eq('shift_id', resolvedShiftId)
           .eq('source_table', 'manual')
+          .eq('status', 'posted')
           .order('created_at', { ascending: false });
         if (!voucherError && voucherRows) {
           const mapped: ManualVoucherRow[] = (voucherRows as any[]).map((v: any) => {
@@ -1033,8 +1034,8 @@ const ShiftDetailsScreen: React.FC = () => {
                       </td>
                       <td className="p-4 text-sm dark:text-gray-300">
                         <span className={`px-2 py-1 rounded-full text-xs font-bold ${v.source_event === 'receipt' ? 'bg-emerald-100 text-emerald-700' :
-                            v.source_event === 'payment' ? 'bg-rose-100 text-rose-700' :
-                              'bg-blue-100 text-blue-700'
+                          v.source_event === 'payment' ? 'bg-rose-100 text-rose-700' :
+                            'bg-blue-100 text-blue-700'
                           }`}>
                           {v.source_event === 'receipt' ? 'سند قبض' : v.source_event === 'payment' ? 'سند صرف' : 'قيد يومية'}
                         </span>
