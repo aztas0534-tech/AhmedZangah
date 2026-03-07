@@ -311,32 +311,38 @@ const ShiftReportsScreen: React.FC = () => {
                     )
                 );
                 const nextOrders: Order[] = [];
+                const baseCur = String(baseCode || '').trim().toUpperCase();
                 const chunkSize = 200;
                 for (let i = 0; i < orderIds.length; i += chunkSize) {
                     const chunk = orderIds.slice(i, i + chunkSize);
                     const { data: orderRows, error: orderError } = await supabase
                         .from('orders')
-                        .select('id,status,data,fx_rate,base_total,currency')
+                        .select('id,status,data,fx_rate,base_total,currency,total')
                         .in('id', chunk);
                     if (orderError) throw orderError;
                     for (const row of orderRows || []) {
                         const base = (row as any)?.data;
                         if (!base || typeof base !== 'object') continue;
                         const view = getInvoiceOrderView(base as Order);
-                        const fx = Number((row as any)?.fx_rate) || 1;
-                        const rowBaseTotal = (row as any)?.base_total;
-                        const totalBase = (rowBaseTotal !== null && rowBaseTotal !== undefined && Number.isFinite(Number(rowBaseTotal)))
-                            ? Number(rowBaseTotal)
-                            : (Number(view.total || 0) * fx || 0);
-                        const discountBase = Number(view.discountAmount || 0) * fx;
+                        const currency = String((row as any)?.currency || '').trim().toUpperCase();
+                        const fx = (row as any)?.fx_rate == null ? null : Number((row as any).fx_rate);
+                        const baseTotal = (row as any)?.base_total == null ? null : Number((row as any).base_total);
+                        const totalForeign = Number((row as any)?.total) || Number((view as any)?.total) || 0;
+                        const discountForeign = Number((view as any)?.discountAmount) || 0;
+                        const isBase = currency && baseCur === currency;
+                        const computedTotalBase = Number.isFinite(baseTotal as any) ? (baseTotal as number)
+                            : (isBase ? totalForeign : (Number.isFinite(fx as any) ? totalForeign * (fx as number) : null));
+                        const computedDiscountBase = isBase ? discountForeign
+                            : (Number.isFinite(fx as any) ? discountForeign * (fx as number) : null);
                         nextOrders.push({
                             ...view,
                             id: String((row as any).id || (view as any).id || ''),
                             status: String((row as any).status || view.status || '') as any,
                         } as any);
-                        (nextOrders as any)[(nextOrders as any).length - 1].totalBase = totalBase;
-                        (nextOrders as any)[(nextOrders as any).length - 1].discountBase = discountBase;
-                        (nextOrders as any)[(nextOrders as any).length - 1].currencyCode = String((row as any)?.currency || '').trim().toUpperCase();
+                        (nextOrders as any)[(nextOrders as any).length - 1].totalBase = Number.isFinite(computedTotalBase as any) ? computedTotalBase : 0;
+                        (nextOrders as any)[(nextOrders as any).length - 1].discountBase = Number.isFinite(computedDiscountBase as any) ? computedDiscountBase : 0;
+                        (nextOrders as any)[(nextOrders as any).length - 1].currencyCode = currency || baseCur || '—';
+                        (nextOrders as any)[(nextOrders as any).length - 1].total = totalForeign;
                     }
                 }
                 setReportOrders(nextOrders.filter(o => !['cancelled', 'returned'].includes(String(o.status || '').toLowerCase())));
@@ -372,14 +378,8 @@ const ShiftReportsScreen: React.FC = () => {
                             const baseCur = (baseCode || '').trim().toUpperCase();
                             // Convert to base currency if needed
                             if (orderCur && baseCur && orderCur !== baseCur && orderFx > 0) {
-                                // total_refund_amount is in order currency, convert via fx_rate
-                                const orderTotal = Number(orderData?.total) || 0;
-                                const orderBaseTotal = Number(orderData?.base_total) || 0;
-                                // Use order's own fx ratio if available, otherwise fx_rate
-                                const effectiveFx = (orderTotal > 0 && orderBaseTotal > 0)
-                                    ? (orderBaseTotal / orderTotal)
-                                    : (1 / orderFx);
-                                missingRefunds += refundAmt * effectiveFx;
+                                // total_refund_amount is in order currency; fx_rate stores foreign→base multiplier (e.g. 0.0024 for YER→SAR)
+                                missingRefunds += refundAmt * orderFx;
                             } else {
                                 missingRefunds += refundAmt;
                             }
