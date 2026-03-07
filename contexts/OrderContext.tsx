@@ -1036,12 +1036,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     for (const item of items) {
       const requested = getRequestedBaseQuantity(item);
       if (!(requested > 0)) continue;
+      const lineWarehouseId = String((item as any)?.warehouseId || warehouseId || '').trim();
+      if (!lineWarehouseId) {
+        throw new Error('لا يمكن التحقق من المخزون بدون تحديد مستودع للصنف.');
+      }
       const unit = (item.unitType || item.unit || 'piece') as StockManagement['unit'];
-      const current = await loadStockRecord(item.id, item.availableStock || 0, unit, warehouseId);
+      const current = await loadStockRecord(item.id, item.availableStock || 0, unit, lineWarehouseId);
       const availableToSell = current.availableQuantity - current.reservedQuantity;
       if (availableToSell + 1e-9 < requested) {
         const name = item.name?.ar || item.id;
-        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة. المتاح: ${availableToSell}`);
+        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة في هذا المستودع. المتاح: ${availableToSell}`);
       }
     }
   };
