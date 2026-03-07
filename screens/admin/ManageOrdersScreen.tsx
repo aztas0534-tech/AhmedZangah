@@ -189,6 +189,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreCustomerName, setInStoreCustomerName] = useState('');
     const [inStorePhoneNumber, setInStorePhoneNumber] = useState('');
     const [inStoreNotes, setInStoreNotes] = useState('');
+    const [inStoreInvoiceStatement, setInStoreInvoiceStatement] = useState('');
     const [inStorePaymentMethod, setInStorePaymentMethod] = useState('cash');
     const [inStorePaymentReferenceNumber, setInStorePaymentReferenceNumber] = useState('');
     const [inStorePaymentSenderName, setInStorePaymentSenderName] = useState('');
@@ -1710,6 +1711,7 @@ const ManageOrdersScreen: React.FC = () => {
             setInStorePhoneNumber('');
             setInStorePaymentMethod('cash');
             setInStoreNotes('');
+            setInStoreInvoiceStatement('');
             setInStorePaymentReferenceNumber('');
             setInStorePaymentSenderName('');
             setInStorePaymentSenderPhone('');
@@ -1870,6 +1872,7 @@ const ManageOrdersScreen: React.FC = () => {
             customerName: inStoreCustomerName,
             phoneNumber: inStorePhoneNumber,
             notes: inStoreNotes,
+            invoiceStatement: inStoreInvoiceStatement,
             discountType: inStoreDiscountType,
             discountValue: Number(inStoreDiscountValue) || 0,
             paymentReferenceNumber: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentReferenceNumber.trim() : undefined,
@@ -1936,6 +1939,7 @@ const ManageOrdersScreen: React.FC = () => {
                 customerName: inStoreCustomerName,
                 phoneNumber: inStorePhoneNumber,
                 notes: inStoreNotes,
+                invoiceStatement: inStoreInvoiceStatement,
                 discountType: inStoreDiscountType,
                 discountValue: Number(inStoreDiscountValue) || 0,
             });
@@ -1963,6 +1967,7 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreCustomerName('');
             setInStorePhoneNumber('');
             setInStoreNotes('');
+            setInStoreInvoiceStatement('');
             setInStoreDiscountType('amount');
             setInStoreDiscountValue(0);
             setInStoreLines([]);
@@ -3005,6 +3010,19 @@ const ManageOrdersScreen: React.FC = () => {
         setInStorePhoneNumber(order.phoneNumber || '');
         setInStoreCustomerMode('walk_in');
         setInStoreNotes(`محول من عرض السعر #${order.id.slice(-6).toUpperCase()}\n${order.notes || ''}`.trim());
+        setInStoreInvoiceStatement(String((order as any).invoiceStatement || '').trim());
+        const quotationCurrency = String((order as any).currency || '').trim().toUpperCase();
+        if (quotationCurrency && operationalCurrencies.includes(quotationCurrency)) {
+            setInStoreTransactionCurrency(quotationCurrency);
+        }
+        setIsInStoreSaleOpen(true);
+    };
+    const openNewInStoreSale = () => {
+        const base = String(baseCode || '').trim().toUpperCase();
+        const preferred = base && operationalCurrencies.includes(base)
+            ? base
+            : (operationalCurrencies[0] || base || '');
+        if (preferred) setInStoreTransactionCurrency(preferred);
         setIsInStoreSaleOpen(true);
     };
 
@@ -3038,7 +3056,7 @@ const ManageOrdersScreen: React.FC = () => {
                     {canCreateInStoreSale && (
                         <button
                             type="button"
-                            onClick={() => setIsInStoreSaleOpen(true)}
+                            onClick={openNewInStoreSale}
                             className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition text-sm font-semibold"
                         >
                             {language === 'ar' ? 'إضافة بيع حضوري' : 'New in-store sale'}
@@ -3903,6 +3921,9 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
                             <span className="text-gray-600 dark:text-gray-300 mr-1">FX</span>
                             <span className="font-mono" dir="ltr">{Number(inStoreTransactionFxRate || 1).toFixed(6)}</span>
+                            {String(inStoreTransactionCurrency || '').trim().toUpperCase() !== String(baseCode || '').trim().toUpperCase() && Number(inStoreTransactionFxRate || 0) > 0 && (
+                                <span className="font-mono text-gray-500 dark:text-gray-300 ml-2" dir="ltr">{`(1 ${String(baseCode || '').trim().toUpperCase()} = ${(1 / Number(inStoreTransactionFxRate || 1)).toFixed(3)} ${String(inStoreTransactionCurrency || '').trim().toUpperCase()})`}</span>
+                            )}
                         </div>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
@@ -4102,6 +4123,7 @@ const ManageOrdersScreen: React.FC = () => {
                                         setInStoreSelectedPartyId('');
                                         setInStoreCustomerName('');
                                         setInStorePhoneNumber('');
+                                        setInStoreInvoiceStatement('');
                                     }}
                                     className="px-3 py-2 rounded-md bg-gray-700 text-white hover:bg-gray-800 transition text-xs font-semibold"
                                 >
@@ -4116,6 +4138,15 @@ const ManageOrdersScreen: React.FC = () => {
                             rows={3}
                             value={inStoreNotes}
                             onChange={(e) => setInStoreNotes(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">{language === 'ar' ? 'بيان الفاتورة (اختياري)' : 'Invoice statement (optional)'}</label>
+                        <textarea
+                            rows={2}
+                            value={inStoreInvoiceStatement}
+                            onChange={(e) => setInStoreInvoiceStatement(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         />
                     </div>

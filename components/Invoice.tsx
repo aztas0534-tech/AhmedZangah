@@ -49,6 +49,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             paymentMethod: invoiceSnapshot.paymentMethod,
             customerName: invoiceSnapshot.customerName,
             phoneNumber: invoiceSnapshot.phoneNumber,
+            invoiceStatement: (invoiceSnapshot as any).invoiceStatement ?? (order as any).invoiceStatement,
             address: invoiceSnapshot.address,
             invoiceIssuedAt: invoiceSnapshot.issuedAt,
             invoiceNumber: invoiceSnapshot.invoiceNumber,
@@ -555,6 +556,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             <div className="info-item">
                                 <span className="font-thin-label">الهاتف | Phone</span>
                                 <span className="font-bold-value font-mono" dir="ltr">{invoiceOrder.phoneNumber}</span>
+                            </div>
+                        )}
+                        {String((invoiceOrder as any).invoiceStatement || '').trim() && (
+                            <div className="info-item">
+                                <span className="font-thin-label">بيان الفاتورة | Statement</span>
+                                <span className="font-bold-value">{String((invoiceOrder as any).invoiceStatement || '').trim()}</span>
                             </div>
                         )}
                     </div>

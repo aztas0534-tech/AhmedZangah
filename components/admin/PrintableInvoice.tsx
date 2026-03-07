@@ -103,6 +103,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             paymentMethod: invoiceSnapshot.paymentMethod,
             customerName: invoiceSnapshot.customerName,
             phoneNumber: invoiceSnapshot.phoneNumber,
+            invoiceStatement: (invoiceSnapshot as any).invoiceStatement ?? (order as any).invoiceStatement,
             address: invoiceSnapshot.address,
             invoiceIssuedAt: invoiceSnapshot.issuedAt,
             invoiceNumber: invoiceSnapshot.invoiceNumber,
@@ -367,6 +368,12 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     <span>العميل:</span>
                     <span className="font-bold">{invoiceOrder.customerName}</span>
                 </div>
+                {String((invoiceOrder as any).invoiceStatement || '').trim() && (
+                    <div className="flex">
+                        <span>البيان:</span>
+                        <span>{String((invoiceOrder as any).invoiceStatement || '').trim()}</span>
+                    </div>
+                )}
                 {invoiceOrder.deliveryZoneId && (
                     <div className="flex">
                         <span>المنطقة:</span>

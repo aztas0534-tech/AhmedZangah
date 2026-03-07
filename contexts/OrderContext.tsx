@@ -31,6 +31,7 @@ interface OrderContextType {
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     paymentMethod: string;
@@ -77,6 +78,7 @@ interface OrderContextType {
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
   }) => Promise<Order>;
@@ -1108,6 +1110,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         paymentMethod: order.paymentMethod,
         customerName: order.customerName,
         phoneNumber: order.phoneNumber,
+        invoiceStatement: (order as any).invoiceStatement,
         address: order.address,
         deliveryZoneId: order.deliveryZoneId,
         invoiceTerms: (order as any).invoiceTerms,
@@ -1648,6 +1651,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
     belowCostOverrideReason?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
@@ -2365,6 +2369,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           invoiceTerms: newOrder.invoiceTerms || (newOrder.isCreditSale ? 'credit' : 'cash'),
           customerName: newOrder.customerName,
           phoneNumber: newOrder.phoneNumber,
+          invoiceStatement: (newOrder as any).invoiceStatement,
           address: newOrder.address,
           deliveryZoneId: newOrder.deliveryZoneId,
           items: snapshotItems,
@@ -2497,6 +2502,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 invoiceTerms: newOrder.invoiceTerms || (newOrder.isCreditSale ? 'credit' : 'cash'),
                 customerName: newOrder.customerName,
                 phoneNumber: newOrder.phoneNumber,
+                invoiceStatement: (newOrder as any).invoiceStatement,
                 address: newOrder.address,
                 deliveryZoneId: newOrder.deliveryZoneId,
               };
@@ -3019,6 +3025,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       customerName: input.customerName?.trim() || 'زبون حضوري',
       phoneNumber: input.phoneNumber?.trim() || '',
       notes: input.notes?.trim() || undefined,
+      invoiceStatement: String((input as any).invoiceStatement || '').trim() || undefined,
       address: 'داخل المحل',
       paymentMethod: 'mixed',
       status: 'pending',
@@ -3080,6 +3087,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
   }) => {
@@ -3186,6 +3194,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       customerName: input.customerName?.trim() || 'زبون حضوري',
       phoneNumber: input.phoneNumber?.trim() || '',
       notes: input.notes?.trim() || undefined,
+      invoiceStatement: String((input as any).invoiceStatement || '').trim() || undefined,
       address: 'داخل المحل',
       paymentMethod: 'unknown',
       status: 'pending',

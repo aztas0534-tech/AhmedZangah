@@ -369,6 +369,7 @@ export interface Order {
   customerName: string;
   phoneNumber: string;
   notes?: string;
+  invoiceStatement?: string;
   address: string;
   isDraft?: boolean;
   location?: {
@@ -478,6 +479,7 @@ export interface Order {
     paymentVerifiedAt?: string;
     customerName: string;
     phoneNumber: string;
+    invoiceStatement?: string;
     address: string;
     deliveryZoneId?: string;
     taxAmount?: number;
