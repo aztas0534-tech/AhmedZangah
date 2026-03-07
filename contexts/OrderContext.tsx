@@ -1044,8 +1044,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const current = await loadStockRecord(item.id, item.availableStock || 0, unit, lineWarehouseId);
       const availableToSell = current.availableQuantity - current.reservedQuantity;
       if (availableToSell + 1e-9 < requested) {
+        try {
+          const rpcClient = getSupabaseClient();
+          if (rpcClient) {
+            await rpcClient.rpc('recompute_stock_for_item', {
+              p_item_id: item.id,
+              p_warehouse_id: lineWarehouseId,
+            });
+          }
+        } catch { }
+        const refreshed = await loadStockRecord(item.id, item.availableStock || 0, unit, lineWarehouseId);
+        const refreshedAvailableToSell = refreshed.availableQuantity - refreshed.reservedQuantity;
+        if (refreshedAvailableToSell + 1e-9 >= requested) continue;
         const name = item.name?.ar || item.id;
-        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة في هذا المستودع. المتاح: ${availableToSell}`);
+        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة في هذا المستودع. المتاح: ${refreshedAvailableToSell}`);
       }
     }
   };
