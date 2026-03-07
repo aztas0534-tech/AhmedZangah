@@ -125,6 +125,9 @@ const ManageOrdersScreen: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
     const [customerNameFilter, setCustomerNameFilter] = useState('');
+    const [filterShiftId, setFilterShiftId] = useState<string>('all');
+    const [recentShifts, setRecentShifts] = useState<any[]>([]);
+    const [adminUserMap, setAdminUserMap] = useState<Record<string, string>>({});
     const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
     const [isCancelling, setIsCancelling] = useState(false);
     const [expandedAuditOrderId, setExpandedAuditOrderId] = useState<string | null>(null);
@@ -134,6 +137,32 @@ const ManageOrdersScreen: React.FC = () => {
     const [deliverPinOrderId, setDeliverPinOrderId] = useState<string | null>(null);
     const [deliveryPinInput, setDeliveryPinInput] = useState('');
     const [isDeliverConfirming, setIsDeliverConfirming] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        const fetchShifts = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            try {
+                const { data } = await supabase.from('cash_shifts').select('id, cashier_id, opened_at, closed_at').order('opened_at', { ascending: false }).limit(30);
+                if (active && Array.isArray(data)) setRecentShifts(data);
+            } catch { }
+        };
+        fetchShifts();
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        listAdminUsers().then(users => {
+            if (!active) return;
+            const m: Record<string, string> = {};
+            users.forEach(u => m[u.id] = (u as any).fullName || u.email || u.id);
+            setAdminUserMap(m);
+        }).catch(() => { });
+        return () => { active = false; };
+    }, [listAdminUsers]);
+
     const [isInStoreSaleOpen, setIsInStoreSaleOpen] = useState(false);
     const [isInStoreCreating, setIsInStoreCreating] = useState(false);
     const [inStoreIsCredit, setInStoreIsCredit] = useState(false); // NEW: Credit Sale State
@@ -1968,6 +1997,18 @@ const ManageOrdersScreen: React.FC = () => {
             processedOrders = processedOrders.filter(order => order.assignedDeliveryUserId === adminUser.id);
         }
 
+        if (filterShiftId && filterShiftId !== 'all') {
+            const shift = recentShifts.find(s => s.id === filterShiftId);
+            if (shift) {
+                const openTime = new Date(shift.opened_at).getTime();
+                const closeTime = shift.closed_at ? new Date(shift.closed_at).getTime() : Date.now();
+                processedOrders = processedOrders.filter(order => {
+                    const t = new Date(order.createdAt).getTime();
+                    return t >= openTime && t <= closeTime;
+                });
+            }
+        }
+
         const getSortTime = (order: Order) => {
             const candidates = [
                 order.createdAt,
@@ -1990,7 +2031,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, isDeliveryOnly, orders, returnsOnly, sortOrder, baseCode]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, sortOrder, baseCode, recentShifts]);
 
     const totalsByCurrency = useMemo(() => {
         const sums: Record<string, number> = {};
@@ -2955,6 +2996,27 @@ const ManageOrdersScreen: React.FC = () => {
                             <option value="cash">نقداً</option>
                             <option value="ar">آجل</option>
                             <option value="network">حوالة/بنك</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="shiftFilter" className="text-sm font-medium dark:text-gray-300 mx-1">الوردية:</label>
+                        <select
+                            id="shiftFilter"
+                            value={filterShiftId}
+                            onChange={(e) => setFilterShiftId(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        >
+                            <option value="all">الكل</option>
+                            {recentShifts.map(shift => {
+                                const name = adminUserMap[shift.cashier_id] || shift.cashier_id.slice(0, 6);
+                                const d = new Date(shift.opened_at);
+                                const dateStr = `${d.getDate()}/${d.getMonth() + 1} ${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+                                return (
+                                    <option key={shift.id} value={shift.id}>
+                                        {name} - {dateStr}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
                     <div>
