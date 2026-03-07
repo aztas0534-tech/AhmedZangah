@@ -98,6 +98,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [voidOrderId, setVoidOrderId] = useState<string | null>(null);
     const [voidReason, setVoidReason] = useState('');
     const [isVoidingOrder, setIsVoidingOrder] = useState(false);
+    const inStoreCreationLock = useRef(false);
     const [returnsOrderId, setReturnsOrderId] = useState<string | null>(null);
     const [returnsByOrderId, setReturnsByOrderId] = useState<Record<string, any[]>>({});
     const [returnsLoading, setReturnsLoading] = useState(false);
@@ -1648,6 +1649,8 @@ const ManageOrdersScreen: React.FC = () => {
     }, [inStoreIsCredit, inStorePaymentDeclaredAmount, inStorePaymentMethod, inStoreTotals.total, isInStoreSaleOpen]);
 
     const runCreateInStoreSale = async (payload: any, creditOverrideReason?: string) => {
+        if (inStoreCreationLock.current) return;
+        inStoreCreationLock.current = true;
         setIsInStoreCreating(true);
         try {
             const belowCostOverrideReason = String((payload as any)?.belowCostOverrideReason || '').trim();
@@ -1710,6 +1713,7 @@ const ManageOrdersScreen: React.FC = () => {
                 : (localized ? `Failed to create in-store sale: ${localized}` : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.'));
             showNotification(message, 'error');
         } finally {
+            inStoreCreationLock.current = false;
             setIsInStoreCreating(false);
         }
     };
@@ -1883,6 +1887,8 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification('أضف أصنافًا أولاً.', 'error');
             return;
         }
+        if (inStoreCreationLock.current) return;
+        inStoreCreationLock.current = true;
         setIsInStoreCreating(true);
         try {
             const order = await createInStoreDraftQuotation({
@@ -1933,6 +1939,7 @@ const ManageOrdersScreen: React.FC = () => {
             const raw = error instanceof Error ? error.message : '';
             showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل حفظ المسودة.', 'error');
         } finally {
+            inStoreCreationLock.current = false;
             setIsInStoreCreating(false);
         }
     };
