@@ -1960,7 +1960,8 @@ const ManageOrdersScreen: React.FC = () => {
                 processedOrders = processedOrders.filter(order => {
                     const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
                     const isReturned = raw === 'full' || raw === 'partial';
-                    return order.status === 'delivered' && !isReturned;
+                    const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                    return order.status === 'delivered' && !isReturned && !isVoided;
                 });
             } else {
                 processedOrders = processedOrders.filter(order => order.status === filterStatus);
@@ -3025,7 +3026,7 @@ const ManageOrdersScreen: React.FC = () => {
                             className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
                         >
                             <option value="all">الكل</option>
-                            <option value="delivered_no_returns">تم التوصيل (بدون المسترجع)</option>
+                            <option value="delivered_no_returns">تم التوصيل (صافي بدون المسترجع والملغي)</option>
                             {filterStatusOptions.map(status => (
                                 <option key={status} value={status}>{statusTranslations[status] || status}</option>
                             ))}
