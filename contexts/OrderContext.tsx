@@ -2615,6 +2615,26 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const paymentCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
           const sbPay = getSupabaseClient();
           if (!sbPay) throw new Error('Supabase غير مهيأ.');
+          const queuePaymentRepair = (payment: { amount: number; method: string; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean }, idx: number) => {
+            const amount = Number(payment.amount) || 0;
+            if (!(amount > 0)) return;
+            const idempotencyKey = `instore:${newOrder.id}:${nowIso}:${idx}:${payment.method}:${amount}`;
+            enqueueRpc('record_order_payment_v2', {
+              p_order_id: newOrder.id,
+              p_amount: amount,
+              p_method: payment.method,
+              p_occurred_at: nowIso,
+              p_idempotency_key: idempotencyKey,
+              p_currency: paymentCurrency,
+              p_data: {
+                referenceNumber: payment.referenceNumber,
+                senderName: payment.senderName,
+                senderPhone: payment.senderPhone,
+                declaredAmount: Number(payment.declaredAmount) || undefined,
+                amountConfirmed: typeof payment.amountConfirmed === 'boolean' ? payment.amountConfirmed : undefined,
+              },
+            });
+          };
           for (let i = 0; i < paymentBreakdown.length; i++) {
             const p = paymentBreakdown[i];
             const rpcErr = await rpcRecordOrderPayment(sbPay, {
@@ -2627,6 +2647,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             });
             if (rpcErr) {
               paymentRecordOk = false;
+              const transientError = (typeof navigator !== 'undefined' && navigator.onLine === false) || isAbortLikeError(rpcErr);
+              if (transientError) {
+                queuePaymentRepair(p, i);
+                continue;
+              }
               if (import.meta.env.DEV) {
                 logger.warn('Failed to record payment for in-store sale:', rpcErr);
               }
@@ -2657,6 +2682,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 });
                 if (arErr) {
                   paymentRecordOk = false;
+                  const transientError = (typeof navigator !== 'undefined' && navigator.onLine === false) || isAbortLikeError(arErr);
+                  if (transientError) {
+                    enqueueRpc('record_order_payment_v2', {
+                      p_order_id: newOrder.id,
+                      p_amount: arAmount,
+                      p_method: 'ar',
+                      p_occurred_at: nowIso,
+                      p_idempotency_key: `instore:${newOrder.id}:${nowIso}:ar:${arAmount}`,
+                      p_currency: arCurrency,
+                      p_data: {},
+                    });
+                  }
                   if (import.meta.env.DEV) {
                     logger.warn('Failed to record AR payment for credit sale:', arErr);
                   }

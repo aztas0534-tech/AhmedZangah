@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSettings } from '../../contexts/SettingsContext';
 import NumericKeypadModal from './NumericKeypadModal';
 import { getCurrencyDecimalsByCode } from '../../utils/currencyDecimals';
+import { getSupabaseClient } from '../../supabase';
 
 type PaymentLine = {
   method: string;
@@ -12,6 +13,7 @@ type PaymentLine = {
   declaredAmount?: number;
   amountConfirmed?: boolean;
   cashReceived?: number;
+  destinationAccountId?: string;
 };
 
 interface Props {
@@ -61,10 +63,41 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
   const [declaredAmount, setDeclaredAmount] = useState<number>(0);
   const [amountConfirmed, setAmountConfirmed] = useState(false);
   const [cashReceived, setCashReceived] = useState<number>(0);
+  const [destinationAccountId, setDestinationAccountId] = useState<string>('');
+  const [destinationAccounts, setDestinationAccounts] = useState<{id: string, name: string, code: string, parentCode: string}[]>([]);
   const [lines, setLines] = useState<PaymentLine[]>([]);
   const [keypadTarget, setKeypadTarget] = useState<KeypadTarget | null>(null);
   const [keypadTitle, setKeypadTitle] = useState('');
   const [keypadInitial, setKeypadInitial] = useState(0);
+
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { data } = await supabase
+        .from('chart_of_accounts')
+        .select(`id, code, name, parent_id`)
+        .eq('is_active', true);
+      if (data) {
+        const bankParent = data.find(a => a.code === '1020')?.id;
+        const exchParent = data.find(a => a.code === '1030')?.id;
+        if (bankParent || exchParent) {
+          const matching = data.filter(a => a.parent_id === bankParent || a.parent_id === exchParent).map(a => ({
+            id: a.id,
+            name: a.name,
+            code: a.code,
+            parentCode: a.parent_id === bankParent ? '1020' : '1030'
+          }));
+          setDestinationAccounts(matching);
+        }
+      }
+    };
+    fetchAccounts();
+  }, []);
+
+  const availableDestinations = useMemo(() => {
+    return destinationAccounts.filter(a => a.code.endsWith(code));
+  }, [destinationAccounts, code]);
 
   const needsReference = method === 'kuraimi' || method === 'network';
   const totalRounded = useMemo(() => Number((Number(total) || 0).toFixed(currencyDecimals)), [total, currencyDecimals]);
@@ -84,6 +117,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
         base.senderPhone = senderPhone.trim() || undefined;
         base.declaredAmount = Number(declaredAmount) || 0;
         base.amountConfirmed = Boolean(amountConfirmed);
+        base.destinationAccountId = destinationAccountId.trim() || undefined;
       }
       return [base];
     }
@@ -97,6 +131,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
       declaredAmount: Number(l.declaredAmount) || 0,
       amountConfirmed: Boolean(l.amountConfirmed),
       cashReceived: Number(l.cashReceived) || 0,
+      destinationAccountId: l.destinationAccountId?.trim() || undefined,
     }));
   }, [
     amountConfirmed,
@@ -141,6 +176,9 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
         if (!((Number(l.declaredAmount) || 0) > 0)) return { ok: false, message: 'يرجى إدخال مبلغ العملية.' };
         if (Math.abs((Number(l.declaredAmount) || 0) - (Number(l.amount) || 0)) > 0.0001) return { ok: false, message: 'مبلغ العملية لا يطابق مبلغ طريقة الدفع.' };
         if (!l.amountConfirmed) return { ok: false, message: 'يرجى تأكيد مطابقة المبلغ قبل الإتمام.' };
+        if (availableDestinations.length > 0 && !l.destinationAccountId) {
+          return { ok: false, message: 'يرجى اختيار الحساب البنكي / شركة الصرافة.' };
+        }
       }
     }
     if (cashCount > 1) return { ok: false, message: 'لا يمكن تكرار الدفع النقدي أكثر من مرة.' };
@@ -173,6 +211,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
       declaredAmount: Number(l.declaredAmount) || 0,
       amountConfirmed: Boolean(l.amountConfirmed),
       cashReceived: l.method === 'cash' ? (Number(l.cashReceived) || 0) : 0,
+      destinationAccountId: l.destinationAccountId,
     }));
     const primary = payloadBreakdown[0]?.method || method;
     onFinalize({ paymentMethod: primary, paymentBreakdown: payloadBreakdown });
@@ -281,12 +320,15 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
             if (checked) {
               const initMethod = method || availableMethods[0] || 'cash';
               const initNeedsRef = initMethod === 'kuraimi' || initMethod === 'network';
+              const parentCodeFilter = initMethod === 'kuraimi' ? '1020' : initMethod === 'network' ? '1030' : '';
+              const defaultDest = parentCodeFilter ? availableDestinations.find(a => a.parentCode === parentCodeFilter)?.id : undefined;
               setLines([{
                 method: initMethod,
                 amount: Number(total.toFixed(2)),
                 declaredAmount: initNeedsRef ? Number(total.toFixed(2)) : 0,
                 amountConfirmed: initNeedsRef ? false : true,
                 cashReceived: initMethod === 'cash' ? Number(total.toFixed(2)) : 0,
+                destinationAccountId: defaultDest
               }]);
             } else {
               setLines([]);
@@ -321,6 +363,12 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
                   setDeclaredAmount(totalRounded);
                   setAmountConfirmed(false);
                   setCashReceived(nextMethod === 'cash' ? totalRounded : 0);
+                  const parentCodeFilter = nextMethod === 'kuraimi' ? '1020' : nextMethod === 'network' ? '1030' : '';
+                  if (parentCodeFilter) {
+                    setDestinationAccountId(availableDestinations.find(a => a.parentCode === parentCodeFilter)?.id || '');
+                  } else {
+                    setDestinationAccountId('');
+                  }
                 }}
               />
               <span className="font-semibold dark:text-white">
@@ -404,6 +452,8 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
                         value={l.method}
                         onChange={(e) => {
                           const nextMethod = e.target.value;
+                          const parentCodeFilter = nextMethod === 'kuraimi' ? '1020' : nextMethod === 'network' ? '1030' : '';
+                          const defaultDest = parentCodeFilter ? availableDestinations.find(a => a.parentCode === parentCodeFilter)?.id : undefined;
                           setLines(prev => prev.map((row, i) => i === idx ? {
                             ...row,
                             method: nextMethod,
@@ -413,6 +463,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
                             declaredAmount: 0,
                             amountConfirmed: nextMethod === 'cash',
                             cashReceived: 0,
+                            destinationAccountId: defaultDest
                           } : row));
                         }}
                         className={`w-full border rounded-lg dark:bg-gray-700 dark:border-gray-600 ${inputClass}`}
@@ -576,6 +627,21 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
                           مبلغ العملية يجب أن يساوي مبلغ الدفعة.
                         </div>
                       )}
+                      <div className="sm:col-span-2">
+                        <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">تحديد الحساب المالي</div>
+                        <select
+                          value={l.destinationAccountId || ''}
+                          onChange={e => setLines(prev => prev.map((row, i) => i === idx ? { ...row, destinationAccountId: e.target.value } : row))}
+                          className={`w-full border rounded-lg dark:bg-gray-700 dark:border-gray-600 ${inputClass}`}
+                        >
+                          <option value="">(افتراضي)</option>
+                          {availableDestinations
+                            .filter(a => l.method === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                            .map(a => (
+                              <option key={a.id} value={a.id}>{a.name}</option>
+                            ))}
+                        </select>
+                      </div>
                     </div>
                   )}
                   {usedCashByOthers && <div className="text-xs text-red-500">لا يمكن إضافة نقد مرتين.</div>}
@@ -589,12 +655,15 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
                 const currentSum = (lines || []).reduce((s, l) => s + (Number(l.amount) || 0), 0);
                 const nextAmount = Math.max(0, Number((totalRounded - currentSum).toFixed(2)));
                 const nextNeedsRef = nextMethod === 'kuraimi' || nextMethod === 'network';
+                const parentCodeFilter = nextMethod === 'kuraimi' ? '1020' : nextMethod === 'network' ? '1030' : '';
+                const defaultDest = parentCodeFilter ? availableDestinations.find(a => a.parentCode === parentCodeFilter)?.id : undefined;
                 setLines(prev => [...prev, {
                   method: nextMethod,
                   amount: nextAmount,
                   declaredAmount: nextNeedsRef ? nextAmount : 0,
                   amountConfirmed: nextNeedsRef ? false : true,
-                  cashReceived: nextMethod === 'cash' ? nextAmount : 0
+                  cashReceived: nextMethod === 'cash' ? nextAmount : 0,
+                  destinationAccountId: defaultDest
                 }]);
               }}
               className={`${buttonClass} rounded-lg border dark:border-gray-700 font-semibold`}
@@ -699,6 +768,21 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
             />
             تأكيد مطابقة المبلغ
           </label>
+          <div className="sm:col-span-2">
+            <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">تحديد الحساب المالي</div>
+            <select
+              value={destinationAccountId}
+              onChange={e => setDestinationAccountId(e.target.value)}
+              className={`w-full border rounded-lg dark:bg-gray-700 dark:border-gray-600 ${inputClass}`}
+            >
+              <option value="">(افتراضي)</option>
+              {availableDestinations
+                .filter(a => method === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                .map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+            </select>
+          </div>
         </div>
       )}
       {!validation.ok && validation.message && (

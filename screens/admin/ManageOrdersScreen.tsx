@@ -209,7 +209,36 @@ const ManageOrdersScreen: React.FC = () => {
         declaredAmount?: number;
         amountConfirmed?: boolean;
         cashReceived?: number;
+        destinationAccountId?: string;
     }>>([]);
+    const [destinationAccounts, setDestinationAccounts] = useState<{id: string, name: string, code: string, parentCode: string}[]>([]);
+    const [inStorePaymentDestinationAccountId, setInStorePaymentDestinationAccountId] = useState<string>('');
+    const [partialPaymentDestinationAccountId, setPartialPaymentDestinationAccountId] = useState<string>('');
+
+    useEffect(() => {
+        const fetchAccounts = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const { data } = await supabase
+                .from('chart_of_accounts')
+                .select(`id, code, name, parent_id`)
+                .eq('is_active', true);
+            if (data) {
+                const bankParent = data.find(a => a.code === '1020')?.id;
+                const exchParent = data.find(a => a.code === '1030')?.id;
+                if (bankParent || exchParent) {
+                    const matching = data.filter(a => a.parent_id === bankParent || a.parent_id === exchParent).map(a => ({
+                        id: a.id,
+                        name: a.name,
+                        code: a.code,
+                        parentCode: a.parent_id === bankParent ? '1020' : '1030'
+                    }));
+                    setDestinationAccounts(matching);
+                }
+            }
+        };
+        fetchAccounts();
+    }, []);
     const [editOrderId, setEditOrderId] = useState<string | null>(null);
     const [editChangesByCartItemId, setEditChangesByCartItemId] = useState<Record<string, { quantity?: number; uomCode?: string; uomQtyInBase?: number }>>({});
     const [editReservationResult, setEditReservationResult] = useState<Array<{ itemId: string; released: number; reserved: number; name?: string }>>([]);
@@ -237,6 +266,8 @@ const ManageOrdersScreen: React.FC = () => {
     type WarehouseAlert = { type: string; severity: 'error' | 'warning' | 'info' | 'success'; message: string; other_warehouse_id?: string; other_warehouse?: string;[k: string]: any };
     const [inStoreAlertsByIndex, setInStoreAlertsByIndex] = useState<Record<number, WarehouseAlert[]>>({});
     const [inStoreAlertsLoadingByIndex, setInStoreAlertsLoadingByIndex] = useState<Record<number, boolean>>({});
+
+
 
     const fetchInStoreAlerts = useCallback(async (index: number, itemId: string, whId: string, qty: number) => {
         const supabase = getSupabaseClient();
@@ -1736,6 +1767,7 @@ const ManageOrdersScreen: React.FC = () => {
                     declaredAmount: Number(p.declaredAmount) || 0,
                     amountConfirmed: Boolean(p.amountConfirmed),
                     cashReceived: Number(p.cashReceived) || 0,
+                    destinationAccountId: p.destinationAccountId?.trim() || undefined,
                 }))
                 .filter(p => Boolean(p.method) && p.amount > 0)
             : [{
@@ -1747,6 +1779,7 @@ const ManageOrdersScreen: React.FC = () => {
                 declaredAmount: Number(inStorePaymentDeclaredAmount) || 0,
                 amountConfirmed: Boolean(inStorePaymentAmountConfirmed) || inStorePaymentMethod === 'cash',
                 cashReceived: Number(inStoreCashReceived) || 0,
+                destinationAccountId: inStorePaymentDestinationAccountId.trim() || undefined,
             }];
 
         if (!normalizedPaymentLines.length && !inStoreIsCredit) {
@@ -1781,6 +1814,10 @@ const ManageOrdersScreen: React.FC = () => {
                 return;
             }
             if (needsReference) {
+                if (availableInStoreDestinations.length > 0 && !p.destinationAccountId) {
+                    showNotification('يرجى اختيار الحساب البنكي / شركة الصرافة.', 'error');
+                    return;
+                }
                 if (!p.referenceNumber) {
                     showNotification(p.method === 'kuraimi' ? 'يرجى إدخال رقم الإيداع.' : 'يرجى إدخال رقم الحوالة.', 'error');
                     return;
@@ -1852,6 +1889,7 @@ const ManageOrdersScreen: React.FC = () => {
                 declaredAmount: p.declaredAmount,
                 amountConfirmed: p.amountConfirmed,
                 cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
+                destinationAccountId: p.destinationAccountId,
             })),
         };
 
@@ -2053,6 +2091,17 @@ const ManageOrdersScreen: React.FC = () => {
         return processedOrders;
     }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, sortOrder, baseCode, recentShifts]);
 
+    const availableInStoreDestinations = useMemo(() => {
+        const currency = String(inStoreTransactionCurrency || '').toUpperCase();
+        return destinationAccounts.filter(a => a.code.endsWith(currency));
+    }, [destinationAccounts, inStoreTransactionCurrency]);
+
+    const availablePartialDestinations = useMemo(() => {
+        const order = partialPaymentOrderId ? (filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId)) : null;
+        const currency = order ? String((order as any).currency || '').toUpperCase() || baseCode : baseCode;
+        return destinationAccounts.filter(a => a.code.endsWith(currency));
+    }, [destinationAccounts, partialPaymentOrderId, filteredAndSortedOrders, orders, baseCode]);
+
     const totalsByCurrency = useMemo(() => {
         const sums: Record<string, number> = {};
         for (const order of filteredAndSortedOrders) {
@@ -2122,6 +2171,7 @@ const ManageOrdersScreen: React.FC = () => {
         setPartialPaymentAmountConfirmed(false);
         setPartialPaymentAdvancedAccounting(false);
         setPartialPaymentOverrideAccountId('');
+        setPartialPaymentDestinationAccountId('');
     };
 
     const confirmPartialPayment = async () => {
@@ -2163,9 +2213,17 @@ const ManageOrdersScreen: React.FC = () => {
                 if (!partialPaymentAmountConfirmed) throw new Error('يرجى تأكيد مطابقة المبلغ قبل تسجيل الدفعة.');
             }
             const occurredAtIso = partialPaymentOccurredAt ? new Date(partialPaymentOccurredAt).toISOString() : undefined;
-            const override = partialPaymentAdvancedAccounting && canManageAccounting && isUuidText(partialPaymentOverrideAccountId)
-                ? String(partialPaymentOverrideAccountId || '').trim()
-                : undefined;
+            const isDestinationOverride = partialPaymentMethod === 'kuraimi' || partialPaymentMethod === 'network';
+            if (isDestinationOverride && availablePartialDestinations.length > 0 && !partialPaymentDestinationAccountId) {
+                showNotification('يرجى اختيار الحساب البنكي / شركة الصرافة.', 'error');
+                setIsRecordingPartialPayment(false);
+                return;
+            }
+            const override = isDestinationOverride && partialPaymentDestinationAccountId
+                ? partialPaymentDestinationAccountId
+                : (partialPaymentAdvancedAccounting && canManageAccounting && isUuidText(partialPaymentOverrideAccountId)
+                    ? String(partialPaymentOverrideAccountId || '').trim()
+                    : undefined);
             await recordOrderPaymentPartial(partialPaymentOrderId, amount, partialPaymentMethod, occurredAtIso, override, {
                 referenceNumber: (partialPaymentReferenceNumber || '').trim() || undefined,
                 senderName: (partialPaymentSenderName || '').trim() || undefined,
@@ -3847,7 +3905,7 @@ const ManageOrdersScreen: React.FC = () => {
                             <span className="font-mono" dir="ltr">{Number(inStoreTransactionFxRate || 1).toFixed(6)}</span>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
                         <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600">
                             <div className="text-gray-500 dark:text-gray-300">المجموع الفرعي</div>
                             <CurrencyDualAmount
@@ -3869,12 +3927,12 @@ const ManageOrdersScreen: React.FC = () => {
                             />
                         </div>
                         <div className="p-2 rounded bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+                            <div className="text-gray-500 dark:text-gray-300 font-bold mb-1">الإجمالي</div>
                             <CurrencyDualAmount
                                 amount={inStoreTotals.total}
                                 currencyCode={inStoreTransactionCurrency}
                                 baseAmount={undefined}
                                 fxRate={undefined}
-                                label="الإجمالي"
                                 compact
                             />
                         </div>
@@ -4304,6 +4362,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 declaredAmount: 0,
                                                                 amountConfirmed: nextMethod === 'cash',
                                                                 cashReceived: 0,
+                                                                destinationAccountId: undefined,
                                                             } : row));
                                                         }}
                                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
@@ -4360,6 +4419,21 @@ const ManageOrdersScreen: React.FC = () => {
 
                                             {needsReference && (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div className="md:col-span-2">
+                                                        <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">تحديد الحساب المالي</label>
+                                                        <select
+                                                            value={p.destinationAccountId || ''}
+                                                            onChange={(e) => setInStorePaymentLines(prev => prev.map((row, i) => i === idx ? { ...row, destinationAccountId: e.target.value } : row))}
+                                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                        >
+                                                            <option value="">(افتراضي)</option>
+                                                            {availableInStoreDestinations
+                                                                .filter(a => p.method === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                                                .map(a => (
+                                                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                                                ))}
+                                                        </select>
+                                                    </div>
                                                     <div>
                                                         <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">{p.method === 'kuraimi' ? 'رقم الإيداع' : 'رقم الحوالة'}</label>
                                                         <input
@@ -4475,6 +4549,21 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="p-3 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-3">
                             <div className="text-xs font-semibold text-blue-800 dark:text-blue-300">
                                 {inStorePaymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">تحديد الحساب المالي</label>
+                                <select
+                                    value={inStorePaymentDestinationAccountId}
+                                    onChange={(e) => setInStorePaymentDestinationAccountId(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                >
+                                    <option value="">(افتراضي)</option>
+                                    {availableInStoreDestinations
+                                        .filter(a => inStorePaymentMethod === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                        .map(a => (
+                                            <option key={a.id} value={a.id}>{a.name}</option>
+                                        ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
@@ -5473,6 +5562,21 @@ const ManageOrdersScreen: React.FC = () => {
                                 <div className="p-3 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-3">
                                     <div className="text-xs font-semibold text-blue-800 dark:text-blue-300">
                                         {partialPaymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">تحديد الحساب المالي</label>
+                                        <select
+                                            value={partialPaymentDestinationAccountId}
+                                            onChange={(e) => setPartialPaymentDestinationAccountId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        >
+                                            <option value="">(افتراضي)</option>
+                                            {availablePartialDestinations
+                                                .filter(a => partialPaymentMethod === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                                .map(a => (
+                                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                                ))}
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
