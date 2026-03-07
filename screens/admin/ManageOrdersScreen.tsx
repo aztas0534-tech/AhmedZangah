@@ -1946,10 +1946,12 @@ const ManageOrdersScreen: React.FC = () => {
 
         if (customerNameFilter.trim()) {
             const term = customerNameFilter.trim().toLowerCase();
+            const cleanTerm = term.replace(/^#/, '');
             processedOrders = processedOrders.filter(order => {
                 const nameMatch = (order.customerName || '').toLowerCase().includes(term);
                 const phoneMatch = (order.phoneNumber || '').toLowerCase().includes(term);
-                return nameMatch || phoneMatch;
+                const idMatch = (order.id || '').toLowerCase().includes(cleanTerm);
+                return nameMatch || phoneMatch || idMatch;
             });
         }
 
@@ -2977,12 +2979,12 @@ const ManageOrdersScreen: React.FC = () => {
                         </button>
                     )}
                     <div className="flex items-center gap-2">
-                        <label htmlFor="customerNameFilter" className="text-sm font-medium dark:text-gray-300 mx-2">الاسم / الهاتف:</label>
+                        <label htmlFor="customerNameFilter" className="text-sm font-medium dark:text-gray-300 mx-2">بحث ذكي:</label>
                         <input
                             id="customerNameFilter"
                             value={customerNameFilter}
                             onChange={(e) => setCustomerNameFilter(e.target.value)}
-                            placeholder="ابحث بالاسم أو رقم الهاتف..."
+                            placeholder="الاسم، الهاتف، أو رقم الطلب..."
                             className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm w-56"
                         />
                         {customerNameFilter.trim() && (
