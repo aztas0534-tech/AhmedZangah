@@ -2003,8 +2003,10 @@ const ManageOrdersScreen: React.FC = () => {
                 const openTime = new Date(shift.opened_at).getTime();
                 const closeTime = shift.closed_at ? new Date(shift.closed_at).getTime() : Date.now();
                 processedOrders = processedOrders.filter(order => {
-                    const t = new Date(order.createdAt).getTime();
-                    return t >= openTime && t <= closeTime;
+                    const orderTime = new Date(order.createdAt).getTime();
+                    const isWithinTimeRange = orderTime >= openTime && orderTime <= closeTime;
+                    const isSameCashier = order._createdBy === shift.cashier_id || order.paymentVerifiedBy === shift.cashier_id;
+                    return isWithinTimeRange && isSameCashier;
                 });
             }
         }

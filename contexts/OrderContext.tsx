@@ -643,7 +643,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const trySelectWithDeliveryZoneId = async () => {
         return await supabase
           .from('orders')
-          .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data')
+          .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
           .eq('id', orderId)
           .maybeSingle();
       };
@@ -654,7 +654,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (error && isSchemaCacheMissingColumnError(error, 'delivery_zone_id')) {
         ({ data: row, error } = await supabase
           .from('orders')
-          .select('id,status,created_at,currency,fx_rate,base_total,data')
+          .select('id,status,created_at,currency,fx_rate,base_total,data,order_events(action,actor_id)')
           .eq('id', orderId)
           .maybeSingle());
       }
@@ -669,6 +669,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const currency = colCurrency || dataCurrency;
       const fxRate = typeof (row as any)?.fx_rate === 'number' ? (row as any).fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
       const baseTotal = typeof (row as any)?.base_total === 'number' ? (row as any).base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
+      const events = typeof row?.order_events === 'object' && row.order_events !== null ? (Array.isArray(row.order_events) ? row.order_events : [row.order_events]) : [];
+      const createdEvent = events.find((e: any) => String(e?.action || '') === 'order.created');
+      const _createdBy = createdEvent?.actor_id ? String(createdEvent.actor_id) : undefined;
       const enriched: Order = {
         ...base,
         id: String(row.id),
@@ -676,6 +679,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         createdAt: (row.created_at as string) || base.createdAt || new Date().toISOString(),
         deliveryZoneId: (row.delivery_zone_id as string) || base.deliveryZoneId,
         ...(currency ? { currency } : {}),
+        ...(_createdBy ? { _createdBy } : {}),
       };
       if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
       if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);
@@ -1183,7 +1187,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
+                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1192,7 +1196,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithoutZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data')
+                .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1232,6 +1236,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               const currency = colCurrency || dataCurrency;
               const fxRate = typeof r?.fx_rate === 'number' ? r.fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
               const baseTotal = typeof r?.base_total === 'number' ? r.base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
+              const events = typeof r?.order_events === 'object' && r.order_events !== null ? (Array.isArray(r.order_events) ? r.order_events : [r.order_events]) : [];
+              const createdEvent = events.find((e: any) => String(e?.action || '') === 'order.created');
+              const _createdBy = createdEvent?.actor_id ? String(createdEvent.actor_id) : undefined;
               const enriched: Order = {
                 ...base,
                 id: String(r.id),
@@ -1240,6 +1247,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 deliveryZoneId: typeof r.delivery_zone_id === 'string' ? r.delivery_zone_id : base.deliveryZoneId,
                 ...(r.warehouse_id ? { warehouseId: r.warehouse_id } : {}),
                 ...(currency ? { currency } : {}),
+                ...(_createdBy ? { _createdBy } : {}),
               };
               if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
               if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);

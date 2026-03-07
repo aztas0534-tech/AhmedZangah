@@ -501,6 +501,7 @@ export interface Order {
   invoiceTerms?: 'cash' | 'credit';
   netDays?: number;
   dueDate?: string;
+  _createdBy?: string;
 }
 
 export interface User {
