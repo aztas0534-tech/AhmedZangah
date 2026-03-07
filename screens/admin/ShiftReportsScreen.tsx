@@ -339,7 +339,7 @@ const ShiftReportsScreen: React.FC = () => {
                         (nextOrders as any)[(nextOrders as any).length - 1].currencyCode = String((row as any)?.currency || '').trim().toUpperCase();
                     }
                 }
-                setReportOrders(nextOrders.filter(o => o.status === 'delivered'));
+                setReportOrders(nextOrders.filter(o => !['cancelled', 'returned'].includes(String(o.status || '').toLowerCase())));
 
                 const refundPaymentIds = new Set(
                     pList

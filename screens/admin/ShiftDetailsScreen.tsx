@@ -347,7 +347,7 @@ const ShiftDetailsScreen: React.FC = () => {
               });
             }
           }
-          const effective = nextOrders.filter(o => String(o.status || '') === 'delivered');
+          const effective = nextOrders.filter(o => !['cancelled', 'returned'].includes(String(o.status || '').toLowerCase()));
           setRecognizedOrders(effective);
         } else {
           setRecognizedOrders([]);
