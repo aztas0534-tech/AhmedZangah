@@ -2635,6 +2635,37 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         }
 
+        // ── Ensure credit (AR) sales always have an AR payment record ──
+        // If isCredit and no AR payment was recorded via the breakdown loop,
+        // create an AR payment for the full order amount so the sale appears
+        // in shift reports and AR aging correctly.
+        if (input.isCredit && paymentRecordOk) {
+          const hasArPayment = paymentBreakdown.some(p => p.method === 'ar');
+          if (!hasArPayment) {
+            const arCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+            const sbAr = getSupabaseClient();
+            if (sbAr) {
+              const arAmount = computedTotalRounded - paymentBreakdown.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+              if (arAmount > 0) {
+                const arErr = await rpcRecordOrderPayment(sbAr, {
+                  orderId: newOrder.id,
+                  amount: arAmount,
+                  method: 'ar',
+                  occurredAt: nowIso,
+                  currency: arCurrency,
+                  idempotencyKey: `instore:${newOrder.id}:${nowIso}:ar:${arAmount}`,
+                });
+                if (arErr) {
+                  paymentRecordOk = false;
+                  if (import.meta.env.DEV) {
+                    logger.warn('Failed to record AR payment for credit sale:', arErr);
+                  }
+                }
+              }
+            }
+          }
+        }
+
         paidAtIso = (paymentRecordOk && isFullyPaid) ? nowIso : undefined;
         shouldIssueInvoice = (paymentRecordOk && isFullyPaid);
         if (paidAtIso) {
