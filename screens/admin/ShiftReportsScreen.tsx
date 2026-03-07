@@ -339,7 +339,7 @@ const ShiftReportsScreen: React.FC = () => {
                         (nextOrders as any)[(nextOrders as any).length - 1].currencyCode = String((row as any)?.currency || '').trim().toUpperCase();
                     }
                 }
-                setReportOrders(nextOrders.filter(o => o.status === 'delivered' && Boolean(o.paidAt)));
+                setReportOrders(nextOrders.filter(o => o.status === 'delivered'));
 
                 const refundPaymentIds = new Set(
                     pList
@@ -353,7 +353,7 @@ const ShiftReportsScreen: React.FC = () => {
                 if (rangeStart) {
                     let q = supabase
                         .from('sales_returns')
-                        .select('id,total_refund_amount,return_date,created_by')
+                        .select('id,total_refund_amount,return_date,created_by,order_id,orders(currency,fx_rate,base_total,total)')
                         .gte('return_date', rangeStart)
                         .lte('return_date', rangeEnd)
                         .limit(2000);
@@ -365,7 +365,24 @@ const ShiftReportsScreen: React.FC = () => {
                         for (const r of retRows) {
                             const rid = String((r as any)?.id || '');
                             if (!rid || refundPaymentIds.has(rid)) continue;
-                            missingRefunds += Number((r as any)?.total_refund_amount) || 0;
+                            const refundAmt = Number((r as any)?.total_refund_amount) || 0;
+                            const orderData = (r as any)?.orders;
+                            const orderCur = String(orderData?.currency || '').trim().toUpperCase();
+                            const orderFx = Number(orderData?.fx_rate) || 1;
+                            const baseCur = (baseCode || '').trim().toUpperCase();
+                            // Convert to base currency if needed
+                            if (orderCur && baseCur && orderCur !== baseCur && orderFx > 0) {
+                                // total_refund_amount is in order currency, convert via fx_rate
+                                const orderTotal = Number(orderData?.total) || 0;
+                                const orderBaseTotal = Number(orderData?.base_total) || 0;
+                                // Use order's own fx ratio if available, otherwise fx_rate
+                                const effectiveFx = (orderTotal > 0 && orderBaseTotal > 0)
+                                    ? (orderBaseTotal / orderTotal)
+                                    : (1 / orderFx);
+                                missingRefunds += refundAmt * effectiveFx;
+                            } else {
+                                missingRefunds += refundAmt;
+                            }
                         }
                     }
                 }

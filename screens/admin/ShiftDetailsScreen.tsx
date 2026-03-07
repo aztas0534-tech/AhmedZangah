@@ -347,7 +347,7 @@ const ShiftDetailsScreen: React.FC = () => {
               });
             }
           }
-          const effective = nextOrders.filter(o => String(o.status || '') === 'delivered' && Boolean(o.paidAt));
+          const effective = nextOrders.filter(o => String(o.status || '') === 'delivered');
           setRecognizedOrders(effective);
         } else {
           setRecognizedOrders([]);
