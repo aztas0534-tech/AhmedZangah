@@ -2872,6 +2872,56 @@ const ManageOrdersScreen: React.FC = () => {
         printContent(componentStr, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
     };
 
+    const handlePrintOrdersList = () => {
+        const componentStr = renderToString(
+            <div dir="rtl" style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+                <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>تقرير الطلبات</h1>
+                <div style={{ marginBottom: '10px' }}>
+                    <strong>إجمالي الطلبات:</strong> {filteredAndSortedOrders.length}
+                </div>
+                {Object.keys(totalsByCurrency).length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <strong>المجاميع حسب العملة:</strong>
+                        <ul style={{ listStyleType: 'none', padding: 0 }}>
+                            {Object.entries(totalsByCurrency).map(([currency, total]) => (
+                                <li key={currency}>
+                                    {formatMoneyByCode(total, currency)} {currency}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+                    <thead>
+                        <tr style={{ backgroundColor: '#f3f4f6' }}>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>رقم الطلب</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>التاريخ</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>العميل</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>الإجمالي</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>الحالة</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filteredAndSortedOrders.map(order => {
+                            const currency = String((order as any).currency || baseCode).toUpperCase();
+                            return (
+                                <tr key={order.id}>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>#{order.id.slice(-6).toUpperCase()}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>{order.customerName || order.phoneNumber}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }} dir="ltr">{formatMoneyByCode(order.total, currency)} {currency}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>{statusTranslations[order.status] || order.status}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        );
+        printContent(componentStr, 'Orders-Report');
+    };
+
+
     const loadQuotationToCart = (order: Order) => {
         const lines = (order.items || []).map((item: any) => ({
             menuItemId: String(item.id || item.menuItemId || ''),
@@ -2908,6 +2958,15 @@ const ManageOrdersScreen: React.FC = () => {
                     )}
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={handlePrintOrdersList}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-semibold flex items-center gap-2"
+                        title={language === 'ar' ? 'طباعة / حفظ PDF' : 'Print / Save PDF'}
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                        <span>{language === 'ar' ? 'طباعة / تصدير PDF' : 'Print / PDF'}</span>
+                    </button>
                     {canCreateInStoreSale && (
                         <button
                             type="button"
