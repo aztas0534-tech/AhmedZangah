@@ -258,7 +258,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStorePartyOptions, setInStorePartyOptions] = useState<Array<{ id: string; name: string; type?: string }>>([]);
     const [inStorePartyLoading, setInStorePartyLoading] = useState(false);
     const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
-    const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number }>>({});
+    const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean }>>({});
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
@@ -891,7 +891,7 @@ const ManageOrdersScreen: React.FC = () => {
                 }
 
                 const results = await Promise.all(Array.from(uniq.values()).map(async (r) => {
-                    const fallback = async () => {
+                        const fallback = async () => {
                         const mi = menuItems.find(m => m.id === r.itemId);
                         if (!mi) return { key: r.key, unitPrice: 0, unitType: r.unitType };
                         const baseUnitPrice = mi.unitType === 'gram' && Number(mi.pricePerUnit || 0) > 0
@@ -899,7 +899,7 @@ const ManageOrdersScreen: React.FC = () => {
                             : (Number(mi.price) || 0);
                         const unitPrice = Number(baseUnitPrice) || 0;
                         const unitPricePerKg = r.unitType === 'gram' ? unitPrice * 1000 : undefined;
-                        return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
+                            return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: false };
                     };
 
                     // Use FEFO batch pricing from server when warehouse is available
@@ -920,7 +920,7 @@ const ManageOrdersScreen: React.FC = () => {
                             const suggestedPrice = Number(row?.suggested_price) || 0;
                             if (suggestedPrice <= 0) return await fallback();
                             const unitPricePerKg = r.unitType === 'gram' ? suggestedPrice * 1000 : undefined;
-                            return { key: r.key, unitPrice: suggestedPrice, unitPricePerKg, unitType: r.unitType };
+                            return { key: r.key, unitPrice: suggestedPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: true };
                         } catch {
                             return await fallback();
                         }
@@ -930,12 +930,13 @@ const ManageOrdersScreen: React.FC = () => {
                 }));
 
                 if (cancelled) return;
-                const next: Record<string, { unitPrice: number; unitPricePerKg?: number }> = {};
+                const next: Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean }> = {};
                 for (const row of results) {
                     if (!row?.key) continue;
                     next[String(row.key)] = {
                         unitPrice: Number(row.unitPrice) || 0,
-                        unitPricePerKg: row.unitPricePerKg != null ? (Number(row.unitPricePerKg) || 0) : undefined
+                        unitPricePerKg: row.unitPricePerKg != null ? (Number(row.unitPricePerKg) || 0) : undefined,
+                        isTxnPrice: Boolean((row as any).isTxnPrice),
                     };
                 }
                 setInStorePricingMap(next);
@@ -1618,9 +1619,12 @@ const ManageOrdersScreen: React.FC = () => {
             const pricingKey = `${line.menuItemId}:${unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[pricingKey];
             const fallbackUnitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
-            const unitPrice = unitType === 'gram'
+            const pricedUnitPrice = unitType === 'gram'
                 ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
                 : (Number(priced?.unitPrice) || fallbackUnitPrice);
+            const unitPrice = priced?.isTxnPrice
+                ? convertInStoreTxnToBase(pricedUnitPrice, fx)
+                : pricedUnitPrice;
 
             // Addons cost
             let addonsCost = 0;
@@ -4779,9 +4783,12 @@ const ManageOrdersScreen: React.FC = () => {
                                     const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
                                     const priced = inStorePricingMap[pricingKey];
                                     const fallbackUnitPrice = mi.unitType === 'gram' && mi.pricePerUnit ? mi.pricePerUnit / 1000 : mi.price;
-                                    const baseUnitPrice = mi.unitType === 'gram'
+                                    const pricedUnitPrice = mi.unitType === 'gram'
                                         ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
                                         : (Number(priced?.unitPrice) || fallbackUnitPrice);
+                                    const baseUnitPrice = priced?.isTxnPrice
+                                        ? convertInStoreTxnToBase(pricedUnitPrice, Number(inStoreTransactionFxRate) || 1)
+                                        : pricedUnitPrice;
                                     const available = typeof mi.availableStock === 'number' ? mi.availableStock : undefined;
                                     let baseAddonsCost = 0;
                                     if (line.selectedAddons && mi.addons) {
