@@ -817,8 +817,8 @@ const ManageOrdersScreen: React.FC = () => {
             return `${l.menuItemId}:${unitType}:${qty}:u${uomQty}:p${priceSig}`;
         }).sort().join('|');
         const wh = sessionScope.scope?.warehouseId || '';
-        return `${base}|cust:${inStoreSelectedCustomerId || ''}|wh:${wh}`;
-    }, [inStoreLines, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId]);
+        return `${base}|cust:${inStoreSelectedCustomerId || ''}|wh:${wh}|cur:${inStoreTransactionCurrency}`;
+    }, [inStoreLines, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId, inStoreTransactionCurrency]);
 
     useEffect(() => {
         if (!isInStoreSaleOpen || !inStoreLines.length) {
@@ -879,7 +879,7 @@ const ManageOrdersScreen: React.FC = () => {
                                 p_warehouse_id: warehouseId,
                                 p_quantity: r.pricingQty,
                                 p_customer_id: customerId || null,
-                                p_currency_code: null,
+                                p_currency_code: inStoreTransactionCurrency || null,
                             } as any);
                             if (fefoErr || !fefo || (Array.isArray(fefo) && fefo.length === 0)) {
                                 return await fallback();
