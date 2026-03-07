@@ -118,6 +118,9 @@ const ManageOrdersScreen: React.FC = () => {
     const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
     const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
+    const [filterCurrency, setFilterCurrency] = useState<string>('all');
+    const [filterDateFrom, setFilterDateFrom] = useState('');
+    const [filterDateTo, setFilterDateTo] = useState('');
     const [returnsOnly, setReturnsOnly] = useState(false);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
@@ -1935,6 +1938,25 @@ const ManageOrdersScreen: React.FC = () => {
             });
         }
 
+        if (filterCurrency !== 'all') {
+            processedOrders = processedOrders.filter(order => {
+                const currency = String((order as any).currency || baseCode).toUpperCase();
+                return currency === filterCurrency.toUpperCase();
+            });
+        }
+
+        if (filterDateFrom) {
+            const start = new Date(filterDateFrom);
+            start.setHours(0, 0, 0, 0);
+            processedOrders = processedOrders.filter(order => new Date(order.createdAt) >= start);
+        }
+
+        if (filterDateTo) {
+            const end = new Date(filterDateTo);
+            end.setHours(23, 59, 59, 999);
+            processedOrders = processedOrders.filter(order => new Date(order.createdAt) <= end);
+        }
+
         if (returnsOnly) {
             processedOrders = processedOrders.filter((order) => {
                 const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
@@ -1968,7 +1990,16 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, isDeliveryOnly, orders, returnsOnly, sortOrder]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, isDeliveryOnly, orders, returnsOnly, sortOrder, baseCode]);
+
+    const totalsByCurrency = useMemo(() => {
+        const sums: Record<string, number> = {};
+        for (const order of filteredAndSortedOrders) {
+            const code = String((order as any).currency || baseCode).toUpperCase() || '—';
+            sums[code] = (sums[code] || 0) + (Number(order.total) || 0);
+        }
+        return sums;
+    }, [filteredAndSortedOrders, baseCode]);
 
     const loadPaidSums = useCallback(async (orderIds: string[]) => {
         const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
@@ -2810,8 +2841,21 @@ const ManageOrdersScreen: React.FC = () => {
 
     return (
         <div className="animate-fade-in">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات ({filteredAndSortedOrders.length})</h1>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات ({filteredAndSortedOrders.length})</h1>
+                    {Object.keys(totalsByCurrency).length > 0 && typeof formatMoneyByCode === 'function' && (
+                        <div className="flex flex-wrap gap-2">
+                            {Object.entries(totalsByCurrency).map(([currency, total]) => (
+                                <span key={currency} className="px-3 py-1 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200 rounded-md text-sm font-bold border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1">
+                                    <span>الإجمالي:</span>
+                                    <span className="font-mono mx-1" dir="ltr">{formatMoneyByCode(total, currency)}</span>
+                                    <span>{currency}</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
                 <div className="flex items-center gap-4 flex-wrap">
                     {canCreateInStoreSale && (
                         <button
@@ -2874,6 +2918,31 @@ const ManageOrdersScreen: React.FC = () => {
                             ))}
                         </select>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium dark:text-gray-300">من:</label>
+                        <input
+                            type="date"
+                            value={filterDateFrom}
+                            onChange={(e) => setFilterDateFrom(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        />
+                        <label className="text-sm font-medium dark:text-gray-300">إلى:</label>
+                        <input
+                            type="date"
+                            value={filterDateTo}
+                            onChange={(e) => setFilterDateTo(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        />
+                        {(filterDateFrom || filterDateTo) && (
+                            <button
+                                type="button"
+                                onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
+                                className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold"
+                            >
+                                مسح
+                            </button>
+                        )}
+                    </div>
                     <div>
                         <label htmlFor="paymentFilter" className="text-sm font-medium dark:text-gray-300 mx-1">طريقة الدفع:</label>
                         <select
@@ -2886,6 +2955,21 @@ const ManageOrdersScreen: React.FC = () => {
                             <option value="cash">نقداً</option>
                             <option value="ar">آجل</option>
                             <option value="network">حوالة/بنك</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="currencyFilter" className="text-sm font-medium dark:text-gray-300 mx-1">العملة:</label>
+                        <select
+                            id="currencyFilter"
+                            value={filterCurrency}
+                            onChange={(e) => setFilterCurrency(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        >
+                            <option value="all">الكل</option>
+                            <option value={baseCode.toUpperCase()}>{baseCode.toUpperCase()}</option>
+                            {currencyOptions.filter(c => c.toUpperCase() !== baseCode.toUpperCase()).map(c => (
+                                <option key={c} value={c.toUpperCase()}>{c.toUpperCase()}</option>
+                            ))}
                         </select>
                     </div>
                     <div className="flex items-center gap-2">
