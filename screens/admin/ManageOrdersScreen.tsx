@@ -117,6 +117,7 @@ const ManageOrdersScreen: React.FC = () => {
     const { isWeightBasedUnit } = useItemMeta();
     const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
+    const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
     const [returnsOnly, setReturnsOnly] = useState(false);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
@@ -1924,6 +1925,16 @@ const ManageOrdersScreen: React.FC = () => {
             processedOrders = processedOrders.filter(order => order.status === filterStatus);
         }
 
+        if (filterPaymentMethod !== 'all') {
+            processedOrders = processedOrders.filter(order => {
+                const method = String(order.paymentMethod || '').toLowerCase();
+                if (filterPaymentMethod === 'ar') return method === 'ar';
+                if (filterPaymentMethod === 'cash') return method === 'cash';
+                if (filterPaymentMethod === 'network') return method === 'network' || method === 'bank' || method === 'kuraimi';
+                return method === filterPaymentMethod;
+            });
+        }
+
         if (returnsOnly) {
             processedOrders = processedOrders.filter((order) => {
                 const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
@@ -1957,7 +1968,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, isDeliveryOnly, orders, returnsOnly, sortOrder]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, isDeliveryOnly, orders, returnsOnly, sortOrder]);
 
     const loadPaidSums = useCallback(async (orderIds: string[]) => {
         const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
@@ -2855,12 +2866,26 @@ const ManageOrdersScreen: React.FC = () => {
                             id="statusFilter"
                             value={filterStatus}
                             onChange={(e) => setFilterStatus(e.target.value as OrderStatus | 'all')}
-                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition"
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
                         >
                             <option value="all">الكل</option>
                             {filterStatusOptions.map(status => (
                                 <option key={status} value={status}>{statusTranslations[status] || status}</option>
                             ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="paymentFilter" className="text-sm font-medium dark:text-gray-300 mx-1">طريقة الدفع:</label>
+                        <select
+                            id="paymentFilter"
+                            value={filterPaymentMethod}
+                            onChange={(e) => setFilterPaymentMethod(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        >
+                            <option value="all">الكل</option>
+                            <option value="cash">نقداً</option>
+                            <option value="ar">آجل</option>
+                            <option value="network">حوالة/بنك</option>
                         </select>
                     </div>
                     <div className="flex items-center gap-2">
