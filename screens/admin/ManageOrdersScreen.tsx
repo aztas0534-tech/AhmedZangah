@@ -1957,7 +1957,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, filterStatus, isDeliveryOnly, orders, returnsOnly, sortOrder]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, isDeliveryOnly, orders, returnsOnly, sortOrder]);
 
     const loadPaidSums = useCallback(async (orderIds: string[]) => {
         const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
