@@ -87,6 +87,26 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
             .brand-name { font-size: 16px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
             .doc-title { font-size: 20px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
             .title-sub { font-size: 7px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
+            .brand-logo-box {
+                width: 22mm !important;
+                height: 22mm !important;
+                min-width: 22mm !important;
+                min-height: 22mm !important;
+                max-width: 22mm !important;
+                max-height: 22mm !important;
+                overflow: hidden !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            .brand-logo {
+                width: 100% !important;
+                height: 100% !important;
+                max-width: 22mm !important;
+                max-height: 22mm !important;
+                object-fit: contain !important;
+                display: block !important;
+            }
             
             .info-grid {
                 display: flex !important; justify-content: space-between !important;
@@ -127,8 +147,8 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
         <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
           <div className="flex items-center gap-6 print:gap-4">
             {brand?.logoUrl && (
-              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
-                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-16 w-auto object-contain print:grayscale" />
+              <div className="brand-logo-box bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
+                <img src={brand.logoUrl} alt="Logo" className="brand-logo h-24 print:h-16 w-auto object-contain print:grayscale" />
               </div>
             )}
             <div className="flex flex-col justify-center">
