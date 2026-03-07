@@ -42,7 +42,6 @@ const ShiftReportsScreen: React.FC = () => {
     const [reportShift, setReportShift] = useState<any | null>(null);
     const [reportPayments, setReportPayments] = useState<any[]>([]);
     const [reportOrders, setReportOrders] = useState<Order[]>([]);
-    const [reportMissingRefunds, setReportMissingRefunds] = useState<number>(0);
     const [reportExpectedCash, setReportExpectedCash] = useState<number | null>(null);
     const navigate = useNavigate();
     const { settings } = useSettings();
@@ -274,7 +273,6 @@ const ShiftReportsScreen: React.FC = () => {
                 setReportShift(null);
                 setReportPayments([]);
                 setReportOrders([]);
-                setReportMissingRefunds(0);
                 setReportError('');
                 setReportLoading(false);
                 setReportExpectedCash(null);
@@ -347,53 +345,13 @@ const ShiftReportsScreen: React.FC = () => {
                 }
                 setReportOrders(nextOrders.filter(o => !['cancelled', 'returned'].includes(String(o.status || '').toLowerCase())));
 
-                const refundPaymentIds = new Set(
-                    pList
-                        .filter((p: any) => String(p.reference_table || '') === 'sales_returns' && p.reference_id)
-                        .map((p: any) => String(p.reference_id))
-                        .filter(Boolean)
-                );
-                const rangeStart = shiftRow?.opened_at ? String(shiftRow.opened_at) : null;
-                const rangeEnd = shiftRow?.closed_at ? String(shiftRow.closed_at) : new Date().toISOString();
-                let missingRefunds = 0;
-                if (rangeStart) {
-                    let q = supabase
-                        .from('sales_returns')
-                        .select('id,total_refund_amount,return_date,created_by,order_id,orders(currency,fx_rate,base_total,total)')
-                        .gte('return_date', rangeStart)
-                        .lte('return_date', rangeEnd)
-                        .limit(2000);
-                    if (shiftRow?.cashier_id) {
-                        q = q.eq('created_by', String(shiftRow.cashier_id));
-                    }
-                    const { data: retRows, error: retError } = await q;
-                    if (!retError && Array.isArray(retRows)) {
-                        for (const r of retRows) {
-                            const rid = String((r as any)?.id || '');
-                            if (!rid || refundPaymentIds.has(rid)) continue;
-                            const refundAmt = Number((r as any)?.total_refund_amount) || 0;
-                            const orderData = (r as any)?.orders;
-                            const orderCur = String(orderData?.currency || '').trim().toUpperCase();
-                            const orderFx = Number(orderData?.fx_rate) || 1;
-                            const baseCur = (baseCode || '').trim().toUpperCase();
-                            // Convert to base currency if needed
-                            if (orderCur && baseCur && orderCur !== baseCur && orderFx > 0) {
-                                // total_refund_amount is in order currency; fx_rate stores foreign→base multiplier (e.g. 0.0024 for YER→SAR)
-                                missingRefunds += refundAmt * orderFx;
-                            } else {
-                                missingRefunds += refundAmt;
-                            }
-                        }
-                    }
-                }
-                setReportMissingRefunds(missingRefunds);
+
             } catch (err: any) {
                 const raw = String(err?.message || '');
                 setReportError(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'تعذر تحميل تقرير الوردية.');
                 setReportShift(null);
                 setReportPayments([]);
                 setReportOrders([]);
-                setReportMissingRefunds(0);
             } finally {
                 setReportLoading(false);
             }
@@ -580,6 +538,17 @@ const ShiftReportsScreen: React.FC = () => {
             const c = String((o as any)?.currencyCode || '').trim().toUpperCase() || String(base || '—');
             salesByCurrency[c] = (salesByCurrency[c] || 0) + (Number((o as any)?.total) || 0);
         }
+        const refundsByCurrency: Record<string, number> = {};
+        for (const p of refunds as any[]) {
+            const c = String(p?.currency || '').trim().toUpperCase() || String(base || '—');
+            refundsByCurrency[c] = (refundsByCurrency[c] || 0) + (Number(p?.amount) || 0);
+        }
+        const discountsByCurrency: Record<string, number> = {};
+        for (const o of reportOrders as any[]) {
+            const c = String((o as any)?.currencyCode || '').trim().toUpperCase() || String(base || '—');
+            const dForeign = Number((o as any)?.discountAmount) || 0;
+            if (dForeign > 0) discountsByCurrency[c] = (discountsByCurrency[c] || 0) + dForeign;
+        }
         return {
             totalsByMethod,
             refundsTotal,
@@ -590,6 +559,8 @@ const ShiftReportsScreen: React.FC = () => {
             paymentsCount: reportPayments.length,
             ordersCount: reportOrders.length,
             salesByCurrency,
+            refundsByCurrency,
+            discountsByCurrency,
             missingPaymentBase,
         };
     }, [reportPayments, reportOrders, baseCode]);
@@ -700,21 +671,27 @@ const ShiftReportsScreen: React.FC = () => {
                             <div className="text-xs text-gray-500 dark:text-gray-300">المرتجعات</div>
                             <div className="mt-1 text-lg font-bold font-mono text-rose-600 dark:text-rose-400">{reportComputed.refundsTotal.toFixed(2)} {baseCode || '—'}</div>
                             <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">{reportComputed.refundsCount} عملية إرجاع</div>
+                            {Object.keys(reportComputed.refundsByCurrency || {}).length > 0 && (
+                                <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
+                                    {Object.entries(reportComputed.refundsByCurrency || {}).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ')}
+                                </div>
+                            )}
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">الخصومات</div>
                             <div className="mt-1 text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{reportComputed.discountsTotal.toFixed(2)} {baseCode || '—'}</div>
+                            {Object.keys(reportComputed.discountsByCurrency || {}).length > 0 && (
+                                <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
+                                    {Object.entries(reportComputed.discountsByCurrency || {}).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ')}
+                                </div>
+                            )}
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">الصافي</div>
                             <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportComputed.netTotal.toFixed(2)} {baseCode || '—'}</div>
                         </div>
                     </div>
-                    {reportMissingRefunds > 0.01 && (
-                        <div className="mt-3 p-3 rounded-lg bg-amber-50 text-amber-900 text-sm">
-                            مرتجعات غير مرتبطة بعمليات دفع داخل الوردية: {reportMissingRefunds.toFixed(2)} {baseCode || '—'}
-                        </div>
-                    )}
+
                     {reportComputed.missingPaymentBase > 0 && (
                         <div className="mt-3 p-3 rounded-lg bg-amber-50 text-amber-900 text-sm">
                             توجد {reportComputed.missingPaymentBase} عملية بعملة أجنبية بدون مبلغ محوّل للأساسية. أدخل أسعار الصرف ثم أعد احتساب FX.
@@ -1223,7 +1200,6 @@ const ShiftReportsScreen: React.FC = () => {
                                                         ['الصافي', reportComputed.netTotal.toFixed(2)],
                                                         ['عدد الطلبات', reportComputed.ordersCount],
                                                         ['عدد العمليات', reportComputed.paymentsCount],
-                                                        ['مرتجعات غير مرتبطة', reportMissingRefunds.toFixed(2)],
                                                     ];
                                                     await exportToXlsx(
                                                         ['البند', 'القيمة'],
