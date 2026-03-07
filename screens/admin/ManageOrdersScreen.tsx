@@ -120,6 +120,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [returnsOnly, setReturnsOnly] = useState(false);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
+    const [customerNameFilter, setCustomerNameFilter] = useState('');
     const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
     const [isCancelling, setIsCancelling] = useState(false);
     const [expandedAuditOrderId, setExpandedAuditOrderId] = useState<string | null>(null);
@@ -1910,6 +1911,15 @@ const ManageOrdersScreen: React.FC = () => {
             processedOrders = processedOrders.filter(order => order.userId === customerUserIdFilter.trim());
         }
 
+        if (customerNameFilter.trim()) {
+            const term = customerNameFilter.trim().toLowerCase();
+            processedOrders = processedOrders.filter(order => {
+                const nameMatch = (order.customerName || '').toLowerCase().includes(term);
+                const phoneMatch = (order.phoneNumber || '').toLowerCase().includes(term);
+                return nameMatch || phoneMatch;
+            });
+        }
+
         if (filterStatus !== 'all') {
             processedOrders = processedOrders.filter(order => order.status === filterStatus);
         }
@@ -2790,7 +2800,7 @@ const ManageOrdersScreen: React.FC = () => {
     return (
         <div className="animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات</h1>
+                <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات ({filteredAndSortedOrders.length})</h1>
                 <div className="flex items-center gap-4 flex-wrap">
                     {canCreateInStoreSale && (
                         <button
@@ -2801,6 +2811,25 @@ const ManageOrdersScreen: React.FC = () => {
                             {language === 'ar' ? 'إضافة بيع حضوري' : 'New in-store sale'}
                         </button>
                     )}
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="customerNameFilter" className="text-sm font-medium dark:text-gray-300 mx-2">الاسم / الهاتف:</label>
+                        <input
+                            id="customerNameFilter"
+                            value={customerNameFilter}
+                            onChange={(e) => setCustomerNameFilter(e.target.value)}
+                            placeholder="ابحث بالاسم أو رقم الهاتف..."
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm w-56"
+                        />
+                        {customerNameFilter.trim() && (
+                            <button
+                                type="button"
+                                onClick={() => setCustomerNameFilter('')}
+                                className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold"
+                            >
+                                مسح
+                            </button>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2">
                         <label htmlFor="customerFilter" className="text-sm font-medium dark:text-gray-300 mx-2">فلترة حسب العميل:</label>
                         <input
