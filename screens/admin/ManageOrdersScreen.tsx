@@ -116,7 +116,7 @@ const ManageOrdersScreen: React.FC = () => {
     const { menuItems: allMenuItems } = useMenu();
     const { isWeightBasedUnit } = useItemMeta();
     const { guardPosting } = useGovernance();
-    const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
+    const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all' | 'delivered_no_returns'>('all');
     const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
     const [filterCurrency, setFilterCurrency] = useState<string>('all');
     const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -1954,7 +1954,15 @@ const ManageOrdersScreen: React.FC = () => {
         }
 
         if (filterStatus !== 'all') {
-            processedOrders = processedOrders.filter(order => order.status === filterStatus);
+            if (filterStatus === 'delivered_no_returns') {
+                processedOrders = processedOrders.filter(order => {
+                    const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
+                    const isReturned = raw === 'full' || raw === 'partial';
+                    return order.status === 'delivered' && !isReturned;
+                });
+            } else {
+                processedOrders = processedOrders.filter(order => order.status === filterStatus);
+            }
         }
 
         if (filterPaymentMethod !== 'all') {
@@ -2952,10 +2960,11 @@ const ManageOrdersScreen: React.FC = () => {
                         <select
                             id="statusFilter"
                             value={filterStatus}
-                            onChange={(e) => setFilterStatus(e.target.value as OrderStatus | 'all')}
+                            onChange={(e) => setFilterStatus(e.target.value as OrderStatus | 'all' | 'delivered_no_returns')}
                             className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
                         >
                             <option value="all">الكل</option>
+                            <option value="delivered_no_returns">تم التوصيل (بدون المسترجع)</option>
                             {filterStatusOptions.map(status => (
                                 <option key={status} value={status}>{statusTranslations[status] || status}</option>
                             ))}
