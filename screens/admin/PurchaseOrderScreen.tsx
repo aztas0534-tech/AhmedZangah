@@ -846,6 +846,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [warehouseId, setWarehouseId] = useState<string>('');
     const [paymentTerms, setPaymentTerms] = useState<'cash' | 'credit'>('cash');
     const [netDays, setNetDays] = useState<number>(0);
+    const [poNotes, setPoNotes] = useState<string>('');
 
     // ── UX Filters & Search ──
     const [searchQuery, setSearchQuery] = useState('');
@@ -1491,7 +1492,8 @@ const PurchaseOrderScreen: React.FC = () => {
                 warehouseId,
                 termsAtSubmit,
                 netDays,
-                dueDate
+                dueDate,
+                poNotes.trim() || undefined
             );
             setIsModalOpen(false);
             if (termsAtSubmit === 'cash') {
@@ -1522,6 +1524,7 @@ const PurchaseOrderScreen: React.FC = () => {
             setSupplierId('');
             setSupplierInvoiceNumber('');
             setPaymentTerms('cash');
+            setPoNotes('');
             setNetDays(0);
             setDueDate(toDateInputValue());
             setOrderItems([]);
@@ -2223,6 +2226,7 @@ const PurchaseOrderScreen: React.FC = () => {
                         onClick={() => {
                             setIsModalOpen(true);
                             setSupplierInvoiceNumber('');
+                            setPoNotes('');
                             setWarehouseId(String(scope?.warehouseId || warehouses.find(w => w.isActive)?.id || ''));
                             setPurchaseDate(toDateInputValue());
                             setPaymentTerms('cash');
@@ -2972,6 +2976,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                             value={supplierInvoiceNumber}
                                             placeholder="يمكن إدخاله لاحقًا"
                                             onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">ملاحظات / بيان الفاتورة (اختياري)</label>
+                                        <textarea
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-none"
+                                            rows={2}
+                                            value={poNotes}
+                                            placeholder="أضف ملاحظات أو بيان يظهر في الفاتورة المطبوعة..."
+                                            onChange={(e) => setPoNotes(e.target.value)}
                                         />
                                     </div>
                                 </div>

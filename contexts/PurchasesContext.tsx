@@ -647,7 +647,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     warehouseId?: string,
     paymentTerms?: 'cash' | 'credit',
     netDays?: number,
-    dueDate?: string
+    dueDate?: string,
+    notes?: string
   ): Promise<string> => {
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     if (!user) throw new Error('لم يتم تسجيل الدخول.');
@@ -736,6 +737,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               payment_terms: effectiveTerms,
               net_days: effectiveNetDays,
               due_date: effectiveDueDate,
+              notes: (notes && notes.trim()) ? notes.trim() : null,
             }])
             .select()
             .single();
