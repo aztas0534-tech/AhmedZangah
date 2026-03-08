@@ -176,7 +176,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreCreditOverridePending, setInStoreCreditOverridePending] = useState<any | null>(null);
     const [inStoreBelowCostModalOpen, setInStoreBelowCostModalOpen] = useState(false);
     const [inStoreBelowCostReason, setInStoreBelowCostReason] = useState('');
-    const [inStoreBelowCostPending, setInStoreBelowCostPending] = useState<{ payload: any; creditOverrideReason?: string } | null>(null);
+    const [inStoreBelowCostPending, setInStoreBelowCostPending] = useState<{ payload: any; creditOverrideReason?: string; pendingOrderId?: string } | null>(null);
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
         items.sort((a, b) => {
@@ -955,6 +955,25 @@ const ManageOrdersScreen: React.FC = () => {
             cancelled = true;
         };
     }, [inStorePricingSignature]);
+
+    const inStoreMissingServerPricing = useMemo(() => {
+        if (!isInStoreSaleOpen || !inStoreLines.length) return false;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+        for (const l of inStoreLines) {
+            const mi = menuItems.find(m => m.id === l.menuItemId);
+            if (!mi) return true;
+            const unitType = mi.unitType || 'piece';
+            const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const pricingQty = (unitType === 'kg' || unitType === 'gram')
+                ? (Number(l.weight) || Number(l.quantity) || 0)
+                : ((Number(l.quantity) || 0) * uomQty);
+            if (!(pricingQty > 0)) continue;
+            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+            const priced = inStorePricingMap[key];
+            if (!priced) return true;
+        }
+        return false;
+    }, [inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems]);
 
     useEffect(() => {
         const fetchDriverBalances = async () => {
@@ -1756,7 +1775,8 @@ const ManageOrdersScreen: React.FC = () => {
             const isBelowCostReason = upper === 'BELOW_COST_REASON_REQUIRED' || /BELOW_COST_REASON_REQUIRED/i.test(raw);
             const isBelowCostNotAllowed = upper === 'SELLING_BELOW_COST_NOT_ALLOWED' || /SELLING_BELOW_COST_NOT_ALLOWED/i.test(raw);
             if (canOverrideBelowCost && (isBelowCostReason || isBelowCostNotAllowed)) {
-                setInStoreBelowCostPending({ payload, creditOverrideReason });
+                const pendingOrderId = String((error as any)?.pendingOrderId || '').trim();
+                setInStoreBelowCostPending({ payload, creditOverrideReason, pendingOrderId: pendingOrderId || undefined });
                 setInStoreBelowCostReason('');
                 setInStoreBelowCostModalOpen(true);
                 return;
@@ -1773,6 +1793,14 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const confirmInStoreSale = async () => {
+        if (inStorePricingBusy) {
+            showNotification('جاري تحديث السعر من الخادم، انتظر لحظة ثم أعد المحاولة.', 'error');
+            return;
+        }
+        if (inStoreMissingServerPricing) {
+            showNotification('تعذر اعتماد التسعير من الخادم لبعض الأصناف. أعد اختيار الصنف أو تحقق من الاتصال.', 'error');
+            return;
+        }
         const total = Number(inStoreTotals.total) || 0;
         if (!(total > 0)) {
             showNotification('الإجمالي يجب أن يكون أكبر من صفر.', 'error');
@@ -3908,7 +3936,7 @@ const ManageOrdersScreen: React.FC = () => {
                 cancelText={language === 'ar' ? 'رجوع' : 'Back'}
                 confirmButtonClassName="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400"
                 maxWidthClassName="max-w-5xl"
-                hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod}
+                hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod || inStorePricingBusy || inStoreMissingServerPricing}
             >
                 <div className="space-y-4">
                     <div className="flex items-center justify-between text-xs">
@@ -3979,6 +4007,13 @@ const ManageOrdersScreen: React.FC = () => {
                             />
                         </div>
                     </div>
+                    {(inStorePricingBusy || inStoreMissingServerPricing) && (
+                        <div className="text-xs text-amber-700 dark:text-amber-300">
+                            {inStorePricingBusy
+                                ? 'يتم الآن جلب السعر النهائي من الخادم وقد يختلف عن السعر المحلي.'
+                                : 'لا يوجد تسعير خادمي معتمد لكل الأصناف، لذلك تم إيقاف التسجيل حتى اكتمال التسعير.'}
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                             <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">{language === 'ar' ? 'اسم الزبون (اختياري)' : 'Customer name (optional)'}</label>
@@ -5143,7 +5178,11 @@ const ManageOrdersScreen: React.FC = () => {
                     }
                     setInStoreBelowCostModalOpen(false);
                     setInStoreBelowCostPending(null);
-                    await runCreateInStoreSale({ ...pending.payload, belowCostOverrideReason: reason }, pending.creditOverrideReason);
+                    await runCreateInStoreSale({
+                        ...pending.payload,
+                        belowCostOverrideReason: reason,
+                        existingOrderId: pending.pendingOrderId || (pending.payload as any)?.existingOrderId,
+                    }, pending.creditOverrideReason);
                 }}
                 title="سبب البيع تحت التكلفة"
                 message=""

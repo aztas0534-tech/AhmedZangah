@@ -45,6 +45,7 @@ interface OrderContextType {
     creditDays?: number;
     dueDate?: string;
     creditOverrideReason?: string;
+    existingOrderId?: string;
     paymentBreakdown?: Array<{
       method: string;
       amount: number;
@@ -1877,6 +1878,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const hasPromoLines =
       Array.isArray((items as any[])) && (items as any[]).some((it: any) => it?.lineType === 'promotion' || it?.promotionId);
     const offlineHint = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const allowMenuManagedPricing = Boolean((settings as any)?.ALLOW_BELOW_COST_SALES);
     if (!offlineHint) {
       const stockCheckItems = items.filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId));
       await ensureSufficientStockForOrderItems(stockCheckItems, warehouseId);
@@ -1884,22 +1886,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     let pricedItems: CartItem[] = items;
     if (!offlineHint) {
-      const supabaseForPricing = getSupabaseClient();
-      if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
-
-      const canReuseServerPriced = items.every((item: any) => {
-        if (item?.lineType === 'promotion' || item?.promotionId) return true;
-        if ((item as any)?._pricedByRpc !== true) return false;
-        const unitPrice = Number(item?.price);
-        if (!Number.isFinite(unitPrice) || unitPrice < 0) return false;
-        if (item.unitType === 'gram') {
-          const per = Number(item?.pricePerUnit);
-          if (!Number.isFinite(per) || per <= 0) return false;
-        }
-        return true;
-      });
-
-      if (canReuseServerPriced) {
+      if (allowMenuManagedPricing) {
         pricedItems = items.map((item: any) => {
           if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
           const unitPrice = Number(item.price);
@@ -1910,55 +1897,82 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           return { ...item, price: unitPrice };
         });
       } else {
-        pricedItems = await Promise.all(items.map(async (item: any) => {
-          if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
-          const uomFactor = Number((item as any).uomQtyInBase) || 1;
-          const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
-            ? (item.weight || item.quantity)
-            : item.quantity * uomFactor;
-          const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
-          const call = async (customerId: string | null) => {
-            return await supabaseForPricing!.rpc('get_fefo_pricing', {
-              p_item_id: item.id,
-              p_warehouse_id: (item as any).warehouseId || warehouseId,
-              p_quantity: pricingQty,
-              p_customer_id: customerId,
-              p_currency_code: desiredCurrency,
-              p_batch_id: (item as any).forcedBatchId || null,
-            });
-          };
-          let { data, error } = await call(rawCustomerId);
+        const supabaseForPricing = getSupabaseClient();
+        if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
 
-          if (error && isRpcNotFoundError(error)) {
-            const reloaded = await reloadPostgrestSchema();
-            if (reloaded) {
-              const retry = await call(rawCustomerId);
-              data = retry.data;
-              error = retry.error;
-            }
-          }
-
-          if (error) throw new Error(localizeSupabaseError(error));
-          const row = (Array.isArray(data) ? data[0] : data) as any;
-          const unitPrice = Number(row?.suggested_price);
-          if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-            throw new Error('تعذر احتساب السعر.');
-          }
-          const basePatch: any = {
-            _pricedByRpc: true,
-            _fefoBatchId: row?.batch_id ? String(row.batch_id) : undefined,
-            _fefoBatchCode: row?.batch_code ? String(row.batch_code) : undefined,
-            _fefoExpiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
-            _fefoUnitCost: Number(row?.unit_cost) || 0,
-            _fefoMinPrice: row?.min_price != null ? Number(row?.min_price) : undefined,
-            _fefoNextBatchMinPrice: row?.next_batch_min_price != null ? Number(row?.next_batch_min_price) : undefined,
-            _fefoWarningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
-          };
+        const canReuseServerPriced = items.every((item: any) => {
+          if (item?.lineType === 'promotion' || item?.promotionId) return true;
+          if ((item as any)?._pricedByRpc !== true) return false;
+          const unitPrice = Number(item?.price);
+          if (!Number.isFinite(unitPrice) || unitPrice < 0) return false;
           if (item.unitType === 'gram') {
-            return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
+            const per = Number(item?.pricePerUnit);
+            if (!Number.isFinite(per) || per <= 0) return false;
           }
-          return { ...item, price: unitPrice, ...basePatch };
-        }));
+          return true;
+        });
+
+        if (canReuseServerPriced) {
+          pricedItems = items.map((item: any) => {
+            if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
+            const unitPrice = Number(item.price);
+            if (item.unitType === 'gram') {
+              const per = Number(item.pricePerUnit) || unitPrice * 1000;
+              return { ...item, price: unitPrice, pricePerUnit: per };
+            }
+            return { ...item, price: unitPrice };
+          });
+        } else {
+          pricedItems = await Promise.all(items.map(async (item: any) => {
+            if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
+            const uomFactor = Number((item as any).uomQtyInBase) || 1;
+            const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
+              ? (item.weight || item.quantity)
+              : item.quantity * uomFactor;
+            const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
+            const call = async (customerId: string | null) => {
+              return await supabaseForPricing!.rpc('get_fefo_pricing', {
+                p_item_id: item.id,
+                p_warehouse_id: (item as any).warehouseId || warehouseId,
+                p_quantity: pricingQty,
+                p_customer_id: customerId,
+                p_currency_code: desiredCurrency,
+                p_batch_id: (item as any).forcedBatchId || null,
+              });
+            };
+            let { data, error } = await call(rawCustomerId);
+
+            if (error && isRpcNotFoundError(error)) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) {
+                const retry = await call(rawCustomerId);
+                data = retry.data;
+                error = retry.error;
+              }
+            }
+
+            if (error) throw new Error(localizeSupabaseError(error));
+            const row = (Array.isArray(data) ? data[0] : data) as any;
+            const unitPrice = Number(row?.suggested_price);
+            if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+              throw new Error('تعذر احتساب السعر.');
+            }
+            const basePatch: any = {
+              _pricedByRpc: true,
+              _fefoBatchId: row?.batch_id ? String(row.batch_id) : undefined,
+              _fefoBatchCode: row?.batch_code ? String(row.batch_code) : undefined,
+              _fefoExpiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
+              _fefoUnitCost: Number(row?.unit_cost) || 0,
+              _fefoMinPrice: row?.min_price != null ? Number(row?.min_price) : undefined,
+              _fefoNextBatchMinPrice: row?.next_batch_min_price != null ? Number(row?.next_batch_min_price) : undefined,
+              _fefoWarningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
+            };
+            if (item.unitType === 'gram') {
+              return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
+            }
+            return { ...item, price: unitPrice, ...basePatch };
+          }));
+        }
       }
     } else {
       pricedItems = items.map((item) => {
@@ -2224,6 +2238,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       } catch { }
     }
     const rawPartyId = String((input as any).partyId || '').trim();
+    const existingOrderId = String((input as any).existingOrderId || '').trim();
+    const isResumingExistingOrder = isUuid(existingOrderId);
     if (!offlineHint && isUuid(rawPartyId)) {
       try {
         const supabase = getSupabaseClient();
@@ -2253,7 +2269,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
     const newOrder: Order = {
-      id: crypto.randomUUID(),
+      id: isResumingExistingOrder ? existingOrderId : crypto.randomUUID(),
       userId: effectiveCustomerAuthId,
       orderSource: 'in_store',
       warehouseId,
@@ -2371,7 +2387,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     let finalized: Order = newOrder;
 
     try {
-      await createRemoteOrder({ ...newOrder, status: 'pending' });
+      if (isResumingExistingOrder) {
+        await updateRemoteOrder({ ...newOrder, status: 'pending' });
+      } else {
+        await createRemoteOrder({ ...newOrder, status: 'pending' });
+      }
 
       try {
         const supabase = getSupabaseClient();
