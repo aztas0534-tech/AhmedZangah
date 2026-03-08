@@ -3442,15 +3442,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (rowErr || !row) return false;
       const status = String((row as any)?.status || '').trim().toLowerCase();
       const data = ((row as any)?.data && typeof (row as any).data === 'object' ? (row as any).data : {}) as Record<string, any>;
-      const paidAt = String(data?.paidAt || '').trim();
       const snapshotIssuedAt = String(data?.invoiceSnapshot?.issuedAt || '').trim();
       const topIssuedAt = String(data?.invoiceIssuedAt || '').trim();
+      const deliveredAt = String(data?.deliveredAt || '').trim();
+      const src = String(data?.orderSource || '').trim();
+      const inStoreFailed = Boolean(String(data?.inStoreFailureAt || '').trim() || String(data?.inStoreFailureReason || '').trim());
       if (status !== 'pending') return false;
-      if (paidAt) return false;
-      if (!snapshotIssuedAt && !topIssuedAt) return false;
+      if (deliveredAt) return false;
+      if (src !== 'in_store') return false;
+      if (!inStoreFailed) return false;
+      if (!snapshotIssuedAt && !topIssuedAt && !String(data?.paidAt || '').trim()) return false;
       const nextData = { ...data };
       delete (nextData as any).invoiceSnapshot;
       delete (nextData as any).invoiceIssuedAt;
+      delete (nextData as any).paidAt;
       const { error: clearErr } = await supabase
         .from('orders')
         .update({ data: nextData, updated_at: new Date().toISOString() } as any)
@@ -3997,15 +4002,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (rowErr || !row) return false;
         const status = String((row as any)?.status || '').trim().toLowerCase();
         const data = ((row as any)?.data && typeof (row as any).data === 'object' ? (row as any).data : {}) as Record<string, any>;
-        const paidAt = String(data?.paidAt || '').trim();
         const snapshotIssuedAt = String(data?.invoiceSnapshot?.issuedAt || '').trim();
         const topIssuedAt = String(data?.invoiceIssuedAt || '').trim();
+        const deliveredAt = String(data?.deliveredAt || '').trim();
+        const src = String(data?.orderSource || '').trim();
+        const inStoreFailed = Boolean(String(data?.inStoreFailureAt || '').trim() || String(data?.inStoreFailureReason || '').trim());
         if (status !== 'pending') return false;
-        if (paidAt) return false;
-        if (!snapshotIssuedAt && !topIssuedAt) return false;
+        if (deliveredAt) return false;
+        if (src !== 'in_store') return false;
+        if (!inStoreFailed) return false;
+        if (!snapshotIssuedAt && !topIssuedAt && !String(data?.paidAt || '').trim()) return false;
         const nextData = { ...data };
         delete (nextData as any).invoiceSnapshot;
         delete (nextData as any).invoiceIssuedAt;
+        delete (nextData as any).paidAt;
         const { error: clearErr } = await supabase
           .from('orders')
           .update({ data: nextData, updated_at: new Date().toISOString() } as any)
