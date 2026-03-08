@@ -1082,6 +1082,8 @@ const POSScreen: React.FC = () => {
       customerName: customerName.trim() || undefined,
       phoneNumber: phoneNumber.trim() || undefined,
       notes: notes.trim() || undefined,
+      customerId: selectedCustomerId || undefined,
+      partyId: selectedCustomerId || undefined,
     }).then(order => {
       setItems([]);
       setDiscountType('amount');
@@ -1327,6 +1329,7 @@ const POSScreen: React.FC = () => {
       const order = await createInStoreDraftQuotation({
         lines,
         customerId: selectedCustomerId || undefined,
+        partyId: selectedCustomerId || undefined,
         customerName: customerName.trim() || undefined,
         phoneNumber: phoneNumber.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -1404,6 +1407,10 @@ const POSScreen: React.FC = () => {
             cashReceived: p.cashReceived,
           })),
           belowCostOverrideReason: reason,
+          customerId: selectedCustomerId || undefined,
+          partyId: selectedCustomerId || undefined,
+          isCreditSale: payload.paymentMethod === 'credit',
+          invoiceTerms: payload.paymentMethod === 'credit' ? 'credit' : 'cash',
         } as any).then((order) => {
           setPendingOrderId(null);
           setItems([]);
@@ -1444,6 +1451,8 @@ const POSScreen: React.FC = () => {
           customerName: customerName.trim() || undefined,
           phoneNumber: phoneNumber.trim() || undefined,
           notes: notes.trim() || undefined,
+          customerId: selectedCustomerId || undefined,
+          partyId: selectedCustomerId || undefined,
         }).then(async (order) => {
           const supabase = getSupabaseClient();
           if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -1491,6 +1500,10 @@ const POSScreen: React.FC = () => {
           customerName: customerName.trim() || undefined,
           phoneNumber: phoneNumber.trim() || undefined,
           notes: notes.trim() || undefined,
+          customerId: selectedCustomerId || undefined,
+          partyId: selectedCustomerId || undefined,
+          isCreditSale: payload.paymentMethod === 'credit',
+          invoiceTerms: payload.paymentMethod === 'credit' ? 'credit' : 'cash',
           belowCostOverrideReason: reason,
           paymentMethod: payload.paymentMethod,
           paymentAmountConfirmed: true,

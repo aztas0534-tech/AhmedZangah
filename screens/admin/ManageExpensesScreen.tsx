@@ -28,6 +28,7 @@ const ManageExpensesScreen: React.FC = () => {
     const [paymentOccurredAt, setPaymentOccurredAt] = useState<string>(toDateTimeLocalInputValue());
     const [paymentAdvancedAccounting, setPaymentAdvancedAccounting] = useState(false);
     const [paymentOverrideAccountId, setPaymentOverrideAccountId] = useState<string>('');
+    const [paymentDestinationAccountId, setPaymentDestinationAccountId] = useState<string>('');
 
     // Form State
     const [formData, setFormData] = useState<Partial<Expense>>({
@@ -44,6 +45,7 @@ const ManageExpensesScreen: React.FC = () => {
     const [formPaymentMethod, setFormPaymentMethod] = useState<string>('cash');
     const [formAdvancedAccounting, setFormAdvancedAccounting] = useState(false);
     const [formOverrideAccountId, setFormOverrideAccountId] = useState<string>('');
+    const [formDestinationAccountId, setFormDestinationAccountId] = useState<string>('');
 
     const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string; nameAr: string; account_type?: string }>>([]);
     const [accountsError, setAccountsError] = useState<string>('');
@@ -76,6 +78,40 @@ const ManageExpensesScreen: React.FC = () => {
         }
         return { ...base, overrideAccountId: override };
     };
+
+    const buildDataWithDestination = (current: any, destination: string | null) => {
+        const base = current && typeof current === 'object' && !Array.isArray(current) ? { ...current } : {};
+        if (!destination) {
+            if (Object.prototype.hasOwnProperty.call(base, 'destinationAccountId')) {
+                delete (base as any).destinationAccountId;
+            }
+            return base;
+        }
+        return { ...base, destinationAccountId: destination };
+    };
+
+    const destinationAccounts = useMemo(() => {
+        const list = Array.isArray(accounts) ? accounts : [];
+        return list
+            .map((a: any) => {
+                const code = String(a?.code || '').trim().toUpperCase();
+                const parentCode = code.startsWith('1020-') ? '1020' : (code.startsWith('1030-') ? '1030' : '');
+                return { ...a, code, parentCode };
+            })
+            .filter((a: any) => Boolean(a.parentCode));
+    }, [accounts]);
+
+    const formAvailableDestinations = useMemo(() => {
+        const currency = normalizeCurrencyCode(String((formData as any)?.currency || baseCode));
+        if (!currency) return [] as Array<{ id: string; code: string; name: string; nameAr: string; parentCode: string }>;
+        return destinationAccounts.filter((a: any) => String(a.code || '').endsWith(currency));
+    }, [baseCode, destinationAccounts, formData]);
+
+    const paymentAvailableDestinations = useMemo(() => {
+        const currency = normalizeCurrencyCode(String((paymentExpense as any)?.currency || baseCode));
+        if (!currency) return [] as Array<{ id: string; code: string; name: string; nameAr: string; parentCode: string }>;
+        return destinationAccounts.filter((a: any) => String(a.code || '').endsWith(currency));
+    }, [baseCode, destinationAccounts, paymentExpense]);
 
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
@@ -247,6 +283,26 @@ const ManageExpensesScreen: React.FC = () => {
                 fxRate = lookedUp;
             }
 
+            const formNormalizedMethod = normalizePaymentMethod(formPaymentMethod);
+            const formNeedsDestination = formNormalizedMethod === 'kuraimi' || formNormalizedMethod === 'network';
+            if (payNow && formNeedsDestination) {
+                const neededParent = formNormalizedMethod === 'kuraimi' ? '1020' : '1030';
+                const availableForMethod = formAvailableDestinations.filter((a: any) => a.parentCode === neededParent);
+                if (availableForMethod.length > 0 && !String(formDestinationAccountId || '').trim()) {
+                    showNotification('يرجى اختيار الحساب البنكي / شركة الصرافة.', 'error');
+                    return;
+                }
+            }
+
+            const destinationId = isUuidText(formDestinationAccountId) ? formDestinationAccountId.trim() : '';
+            let expenseData: any = {};
+            if (destinationId) {
+                expenseData = buildDataWithDestination(expenseData, destinationId);
+            }
+            if (formAdvancedAccounting && canManageAccounting) {
+                expenseData = buildDataWithOverride(expenseData, isUuidText(formOverrideAccountId) ? formOverrideAccountId.trim() : null);
+            }
+
             const { data: inserted, error } = await supabase.from('expenses').insert({
                 title: formData.title,
                 amount: formData.amount,
@@ -256,9 +312,7 @@ const ManageExpensesScreen: React.FC = () => {
                 date: formData.date,
                 notes: formData.notes,
                 cost_center_id: formData.cost_center_id || null,
-                data: formAdvancedAccounting && canManageAccounting && isUuidText(formOverrideAccountId)
-                    ? buildDataWithOverride({}, formOverrideAccountId.trim())
-                    : {},
+                data: expenseData,
             }).select('*').single();
 
             if (error) throw error;
@@ -299,6 +353,7 @@ const ManageExpensesScreen: React.FC = () => {
             setFormPaymentMethod('cash');
             setFormAdvancedAccounting(false);
             setFormOverrideAccountId('');
+            setFormDestinationAccountId('');
             fetchExpenses();
         } catch (error) {
             console.error('Error adding expense:', error);
@@ -309,11 +364,19 @@ const ManageExpensesScreen: React.FC = () => {
     const openPaymentModal = (exp: Expense) => {
         const d = (exp as any)?.data || {};
         const existingOverride = typeof d?.overrideAccountId === 'string' ? d.overrideAccountId : '';
+        const existingDestination = typeof d?.destinationAccountId === 'string' ? d.destinationAccountId : '';
+        const currentCurrency = normalizeCurrencyCode(String((exp as any)?.currency || baseCode));
+        const normalizedMethod = normalizePaymentMethod('cash');
+        const neededParent = normalizedMethod === 'kuraimi' ? '1020' : (normalizedMethod === 'network' ? '1030' : '');
+        const defaultDest = neededParent
+            ? destinationAccounts.find((a: any) => a.parentCode === neededParent && String(a.code || '').endsWith(currentCurrency))?.id
+            : '';
         setPaymentExpense(exp);
         setPaymentAmount(exp.amount);
         setPaymentMethod('cash');
         setPaymentOccurredAt(toDateTimeLocalInputValue());
         setPaymentOverrideAccountId(existingOverride);
+        setPaymentDestinationAccountId(existingDestination || defaultDest || '');
         setPaymentAdvancedAccounting(canViewAccounting && Boolean(String(existingOverride || '').trim()));
         setIsPaymentModalOpen(true);
     };
@@ -325,17 +388,30 @@ const ManageExpensesScreen: React.FC = () => {
             const supabase = getSupabaseClient();
             if (!supabase) return;
             const occurredAt = paymentOccurredAt ? new Date(paymentOccurredAt).toISOString() : new Date().toISOString();
+            const normalizedMethod = normalizePaymentMethod(paymentMethod);
+            const needsDestination = normalizedMethod === 'kuraimi' || normalizedMethod === 'network';
+            if (needsDestination) {
+                const neededParent = normalizedMethod === 'kuraimi' ? '1020' : '1030';
+                const availableForMethod = paymentAvailableDestinations.filter((a: any) => a.parentCode === neededParent);
+                if (availableForMethod.length > 0 && !String(paymentDestinationAccountId || '').trim()) {
+                    showNotification('يرجى اختيار الحساب البنكي / شركة الصرافة.', 'error');
+                    return;
+                }
+            }
+            const current = (paymentExpense as any)?.data || {};
+            let next = buildDataWithDestination(current, isUuidText(paymentDestinationAccountId) ? paymentDestinationAccountId.trim() : null);
             if (paymentAdvancedAccounting && canManageAccounting) {
                 const override = isUuidText(paymentOverrideAccountId) ? paymentOverrideAccountId.trim() : '';
-                const current = (paymentExpense as any)?.data || {};
-                const next = buildDataWithOverride(current, override || null);
+                next = buildDataWithOverride(next, override || null);
+            }
+            if (JSON.stringify(next || {}) !== JSON.stringify(current || {})) {
                 const { error: upErr } = await supabase.from('expenses').update({ data: next }).eq('id', paymentExpense.id);
                 if (upErr) throw upErr;
             }
             const { error } = await supabase.rpc('record_expense_payment', {
                 p_expense_id: paymentExpense.id,
                 p_amount: Number(paymentAmount),
-                p_method: normalizePaymentMethod(paymentMethod),
+                p_method: normalizedMethod,
                 p_occurred_at: occurredAt,
             });
             if (error) throw error;
@@ -344,6 +420,7 @@ const ManageExpensesScreen: React.FC = () => {
             setPaymentExpense(null);
             setPaymentAdvancedAccounting(false);
             setPaymentOverrideAccountId('');
+            setPaymentDestinationAccountId('');
             fetchExpenses();
         } catch (error) {
             console.error('Error recording expense payment:', error);
@@ -604,7 +681,19 @@ const ManageExpensesScreen: React.FC = () => {
                                     <label className="block text-sm font-medium mb-1 dark:text-gray-300">طريقة الدفع</label>
                                     <select
                                         value={formPaymentMethod}
-                                        onChange={e => setFormPaymentMethod(e.target.value)}
+                                        onChange={e => {
+                                            const next = e.target.value;
+                                            setFormPaymentMethod(next);
+                                            const normalized = normalizePaymentMethod(next);
+                                            if (normalized === 'kuraimi' || normalized === 'network') {
+                                                const neededParent = normalized === 'kuraimi' ? '1020' : '1030';
+                                                const currency = normalizeCurrencyCode(String((formData as any)?.currency || baseCode));
+                                                const defaultDest = formAvailableDestinations.find((a: any) => a.parentCode === neededParent && String(a.code || '').endsWith(currency))?.id;
+                                                setFormDestinationAccountId(defaultDest || '');
+                                            } else {
+                                                setFormDestinationAccountId('');
+                                            }
+                                        }}
                                         disabled={!payNow}
                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60"
                                     >
@@ -614,6 +703,25 @@ const ManageExpensesScreen: React.FC = () => {
                                     </select>
                                 </div>
                             </div>
+                            {payNow && (normalizePaymentMethod(formPaymentMethod) === 'kuraimi' || normalizePaymentMethod(formPaymentMethod) === 'network') && (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب المالي الوجهة</label>
+                                    <select
+                                        value={formDestinationAccountId}
+                                        onChange={e => setFormDestinationAccountId(e.target.value)}
+                                        className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                                        required={formAvailableDestinations.some((a: any) => a.parentCode === (normalizePaymentMethod(formPaymentMethod) === 'kuraimi' ? '1020' : '1030'))}
+                                    >
+                                        <option value="">(افتراضي)</option>
+                                        {formAvailableDestinations
+                                            .filter((a: any) => normalizePaymentMethod(formPaymentMethod) === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                            .map((a: any) => {
+                                                const dispName = a.nameAr !== a.name ? `${a.nameAr} (${a.name})` : a.nameAr;
+                                                return <option key={a.id} value={a.id}>{a.code} — {dispName}</option>;
+                                            })}
+                                    </select>
+                                </div>
+                            )}
                             {canViewAccounting && (
                                 <div className="space-y-2 rounded-lg border border-gray-200 dark:border-gray-600 p-3">
                                     <label className="flex items-center gap-2 text-sm font-medium dark:text-gray-300">
@@ -696,7 +804,19 @@ const ManageExpensesScreen: React.FC = () => {
                                     <label className="block text-sm font-medium mb-1 dark:text-gray-300">طريقة الدفع</label>
                                     <select
                                         value={paymentMethod}
-                                        onChange={e => setPaymentMethod(e.target.value)}
+                                        onChange={e => {
+                                            const next = e.target.value;
+                                            setPaymentMethod(next);
+                                            const normalized = normalizePaymentMethod(next);
+                                            if (normalized === 'kuraimi' || normalized === 'network') {
+                                                const neededParent = normalized === 'kuraimi' ? '1020' : '1030';
+                                                const currency = normalizeCurrencyCode(String((paymentExpense as any)?.currency || baseCode));
+                                                const defaultDest = paymentAvailableDestinations.find((a: any) => a.parentCode === neededParent && String(a.code || '').endsWith(currency))?.id;
+                                                setPaymentDestinationAccountId(defaultDest || '');
+                                            } else {
+                                                setPaymentDestinationAccountId('');
+                                            }
+                                        }}
                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
                                     >
                                         <option value="cash">نقدًا</option>
@@ -705,6 +825,25 @@ const ManageExpensesScreen: React.FC = () => {
                                     </select>
                                 </div>
                             </div>
+                            {(normalizePaymentMethod(paymentMethod) === 'kuraimi' || normalizePaymentMethod(paymentMethod) === 'network') && (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب المالي الوجهة</label>
+                                    <select
+                                        value={paymentDestinationAccountId}
+                                        onChange={e => setPaymentDestinationAccountId(e.target.value)}
+                                        className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                                        required={paymentAvailableDestinations.some((a: any) => a.parentCode === (normalizePaymentMethod(paymentMethod) === 'kuraimi' ? '1020' : '1030'))}
+                                    >
+                                        <option value="">(افتراضي)</option>
+                                        {paymentAvailableDestinations
+                                            .filter((a: any) => normalizePaymentMethod(paymentMethod) === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                            .map((a: any) => {
+                                                const dispName = a.nameAr !== a.name ? `${a.nameAr} (${a.name})` : a.nameAr;
+                                                return <option key={a.id} value={a.id}>{a.code} — {dispName}</option>;
+                                            })}
+                                    </select>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت الدفع</label>
                                 <input

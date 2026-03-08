@@ -383,6 +383,7 @@ export interface Order {
     referenceNumber?: string;
     senderName?: string;
     senderPhone?: string;
+    destinationAccountId?: string;
     cashReceived?: number;
     cashChange?: number;
   }>;
@@ -393,11 +394,13 @@ export interface Order {
     bankName: string;
     accountName: string;
     accountNumber: string;
+    destinationAccountId?: string;
   };
   paymentNetworkRecipient?: {
     recipientId: string;
     recipientName: string;
     recipientPhoneNumber: string;
+    destinationAccountId?: string;
   };
   paymentProofType?: 'image' | 'ref_number';
   paymentProof?: string; // base64 string for image, or reference number
@@ -454,6 +457,7 @@ export interface Order {
       referenceNumber?: string;
       senderName?: string;
       senderPhone?: string;
+      destinationAccountId?: string;
       cashReceived?: number;
       cashChange?: number;
     }>;
@@ -464,11 +468,13 @@ export interface Order {
       bankName: string;
       accountName: string;
       accountNumber: string;
+      destinationAccountId?: string;
     };
     paymentNetworkRecipient?: {
       recipientId: string;
       recipientName: string;
       recipientPhoneNumber: string;
+      destinationAccountId?: string;
     };
     paymentProofType?: 'image' | 'ref_number';
     paymentProof?: string;
@@ -890,6 +896,7 @@ export interface Bank {
   name: string;
   accountName: string;
   accountNumber: string;
+  destinationAccountId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -899,6 +906,7 @@ export interface TransferRecipient {
   id: string;
   name: string;
   phoneNumber: string;
+  destinationAccountId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

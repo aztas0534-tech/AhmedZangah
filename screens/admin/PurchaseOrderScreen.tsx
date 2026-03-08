@@ -900,6 +900,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>('');
     const [paymentAdvancedAccounting, setPaymentAdvancedAccounting] = useState(false);
     const [paymentOverrideAccountId, setPaymentOverrideAccountId] = useState<string>('');
+    const [paymentDestinationAccountId, setPaymentDestinationAccountId] = useState<string>('');
     const [accounts, setAccounts] = useState<{ id: string; code: string; name: string; nameAr: string }[]>([]);
     const [accountsError, setAccountsError] = useState<string>('');
     const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null);
@@ -1997,6 +1998,18 @@ const PurchaseOrderScreen: React.FC = () => {
         return method;
     };
 
+    const availablePurchaseDestinations = useMemo(() => {
+        const currency = String((paymentOrder as any)?.currency || baseCode || '').trim().toUpperCase();
+        if (!currency) return [] as Array<{ id: string; code: string; name: string; nameAr: string; parentCode: string }>;
+        return (accounts || [])
+            .map((a: any) => {
+                const code = String(a?.code || '').trim().toUpperCase();
+                const parentCode = code.startsWith('1020-') ? '1020' : (code.startsWith('1030-') ? '1030' : '');
+                return { ...a, code, parentCode };
+            })
+            .filter((a: any) => Boolean(a.parentCode) && a.code.endsWith(currency));
+    }, [accounts, baseCode, paymentOrder]);
+
     const openPaymentModal = (order: PurchaseOrder) => {
         const remaining = Math.max(0, Number(order.totalAmount || 0) - Number(order.paidAmount || 0));
         setPaymentOrder(order);
@@ -2012,6 +2025,9 @@ const PurchaseOrderScreen: React.FC = () => {
         setPaymentIdempotencyKey(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
         setPaymentAdvancedAccounting(false);
         setPaymentOverrideAccountId('');
+        const parentCodeFilter = nextMethod === 'kuraimi' ? '1020' : nextMethod === 'network' ? '1030' : '';
+        const defaultDest = parentCodeFilter ? availablePurchaseDestinations.find(a => a.parentCode === parentCodeFilter)?.id : '';
+        setPaymentDestinationAccountId(defaultDest || '');
         setIsPaymentModalOpen(true);
     };
 
@@ -2038,6 +2054,12 @@ const PurchaseOrderScreen: React.FC = () => {
                 return;
             }
             if (needsReference) {
+                const neededParent = paymentMethod === 'kuraimi' ? '1020' : '1030';
+                const availableForMethod = availablePurchaseDestinations.filter(a => a.parentCode === neededParent);
+                if (availableForMethod.length > 0 && !String(paymentDestinationAccountId || '').trim()) {
+                    alert('يرجى اختيار الحساب البنكي / شركة الصرافة.');
+                    return;
+                }
                 if (!paymentReferenceNumber.trim()) {
                     alert(paymentMethod === 'kuraimi' ? 'يرجى إدخال رقم الإيداع.' : 'يرجى إدخال رقم الحوالة.');
                     return;
@@ -2071,6 +2093,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     paymentSenderPhone: paymentSenderPhone.trim() || null,
                     paymentDeclaredAmount: Number(paymentDeclaredAmount) || 0,
                     paymentAmountConfirmed: Boolean(paymentAmountConfirmed),
+                    destinationAccountId: String(paymentDestinationAccountId || '').trim() || undefined,
                 }
                 : { idempotencyKey: paymentIdempotencyKey };
 
@@ -2104,6 +2127,7 @@ const PurchaseOrderScreen: React.FC = () => {
             setPaymentOrder(null);
             setPaymentAdvancedAccounting(false);
             setPaymentOverrideAccountId('');
+            setPaymentDestinationAccountId('');
         } catch (error) {
             console.error(error);
             alert(getErrorMessage(error, 'فشل تسجيل الدفعة.'));
@@ -3439,12 +3463,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 setPaymentSenderPhone('');
                                                 setPaymentDeclaredAmount(0);
                                                 setPaymentAmountConfirmed(false);
+                                                setPaymentDestinationAccountId('');
                                             } else {
                                                 setPaymentReferenceNumber('');
                                                 setPaymentSenderName('');
                                                 setPaymentSenderPhone('');
                                                 setPaymentDeclaredAmount(Number(paymentAmount) || 0);
                                                 setPaymentAmountConfirmed(false);
+                                                const parentCodeFilter = next === 'kuraimi' ? '1020' : next === 'network' ? '1030' : '';
+                                                const defaultDest = parentCodeFilter ? availablePurchaseDestinations.find(a => a.parentCode === parentCodeFilter)?.id : '';
+                                                setPaymentDestinationAccountId(defaultDest || '');
                                             }
                                         }}
                                         className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
@@ -3465,6 +3493,23 @@ const PurchaseOrderScreen: React.FC = () => {
                                         {paymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
                                     </div>
                                     <div className="grid grid-cols-1 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب المالي الوجهة</label>
+                                            <select
+                                                value={paymentDestinationAccountId}
+                                                onChange={(e) => setPaymentDestinationAccountId(e.target.value)}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                required={availablePurchaseDestinations.some(a => a.parentCode === (paymentMethod === 'kuraimi' ? '1020' : '1030'))}
+                                            >
+                                                <option value="">(افتراضي)</option>
+                                                {availablePurchaseDestinations
+                                                    .filter(a => paymentMethod === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                                    .map(a => {
+                                                        const dispName = a.nameAr !== a.name ? `${a.nameAr} (${a.name})` : a.nameAr;
+                                                        return <option key={a.id} value={a.id}>{a.code} - {dispName}</option>;
+                                                    })}
+                                            </select>
+                                        </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1 dark:text-gray-300">
                                                 {paymentMethod === 'kuraimi' ? 'رقم الإيداع' : 'رقم الحوالة'}

@@ -5,7 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { printJournalVoucherByEntryId, printPaymentVoucherByEntryId, printReceiptVoucherByEntryId } from '../../utils/vouchers';
 
-type AccountRow = { id: string; code: string; name: string; nameAr: string };
+type AccountRow = { id: string; code: string; name: string; nameAr: string; parentId?: string; parentCode?: string };
 type CostCenterRow = { id: string; name: string; code: string | null };
 type PartyRow = { id: string; name: string };
 type VoucherHistoryRow = {
@@ -129,6 +129,7 @@ export default function VoucherEntryScreen() {
   const [occurredAt, setOccurredAt] = useState(() => toDateTimeLocalInputValue(new Date()));
   const [memo, setMemo] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const [destinationAccountCode, setDestinationAccountCode] = useState<string>('');
   const [costCenterId, setCostCenterId] = useState<string>('');
 
   // Multi-line support
@@ -167,15 +168,18 @@ export default function VoucherEntryScreen() {
       setLoading(true);
       try {
         const [{ data: acc }, { data: cc }, { data: ps }, { data: cur }] = await Promise.all([
-          supabase.from('chart_of_accounts').select('id,code,name').eq('is_active', true).order('code', { ascending: true }).limit(1500),
+          supabase.from('chart_of_accounts').select('id,code,name,parent_id').eq('is_active', true).order('code', { ascending: true }).limit(1500),
           supabase.from('cost_centers').select('id,name,code').eq('is_active', true).order('name', { ascending: true }).limit(500),
           supabase.from('financial_parties').select('id,name').eq('is_active', true).order('created_at', { ascending: false }).limit(500),
           supabase.from('currencies').select('code').order('code', { ascending: true }).limit(500),
         ]);
-        setAccounts((Array.isArray(acc) ? acc : []).map((r: any) => ({
+        const mappedAccounts: AccountRow[] = (Array.isArray(acc) ? acc : []).map((r: any) => ({
           id: String(r.id), code: String(r.code || ''), name: String(r.name || ''),
+          parentId: r?.parent_id ? String(r.parent_id) : undefined,
           nameAr: translateAccountName(String(r.name || ''))
-        })));
+        }));
+        const codeById = new Map(mappedAccounts.map((a) => [a.id, a.code]));
+        setAccounts(mappedAccounts.map((a) => ({ ...a, parentCode: a.parentId ? (codeById.get(a.parentId) || undefined) : undefined })));
         setCostCenters((Array.isArray(cc) ? cc : []).map((r: any) => ({ id: String(r.id), name: String(r.name || ''), code: r.code ? String(r.code) : null })));
         setParties((Array.isArray(ps) ? ps : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
         setCurrencyOptions((Array.isArray(cur) ? cur : []).map((r: any) => String(r.code || '').trim().toUpperCase()).filter(Boolean));
@@ -188,6 +192,7 @@ export default function VoucherEntryScreen() {
   }, [canView, showNotification]);
 
   const normalizedCurrency = useMemo(() => String(currencyCode || '').trim().toUpperCase(), [currencyCode]);
+  const effectiveCurrency = useMemo(() => normalizedCurrency || baseCurrencyCode, [baseCurrencyCode, normalizedCurrency]);
   const usingForeign = Boolean(normalizedCurrency && normalizedCurrency !== baseCurrencyCode);
   const occurredAtYmd = useMemo(() => {
     const raw = String(occurredAt || '');
@@ -232,6 +237,34 @@ export default function VoucherEntryScreen() {
 
   const fx = useMemo(() => { const n = Number(fxRate || ''); return Number.isFinite(n) && n > 0 ? n : 0; }, [fxRate]);
   const fAmt = useMemo(() => { const n = Number(foreignAmount || ''); return Number.isFinite(n) && n > 0 ? n : 0; }, [foreignAmount]);
+  const normalizedVoucherMethod = useMemo(() => {
+    const m = String(paymentMethod || '').trim();
+    if (m === 'bank_transfer') return 'kuraimi';
+    if (m === 'network') return 'network';
+    return 'cash';
+  }, [paymentMethod]);
+  const needsDestination = useMemo(() => voucherType !== 'journal' && (normalizedVoucherMethod === 'kuraimi' || normalizedVoucherMethod === 'network'), [normalizedVoucherMethod, voucherType]);
+  const destinationParentCode = useMemo(() => normalizedVoucherMethod === 'kuraimi' ? '1020' : (normalizedVoucherMethod === 'network' ? '1030' : ''), [normalizedVoucherMethod]);
+  const voucherDestinationOptions = useMemo(() => {
+    return accounts
+      .filter((a) => a.parentCode === '1020' || a.parentCode === '1030')
+      .filter((a) => String(a.code || '').toUpperCase().endsWith(effectiveCurrency));
+  }, [accounts, effectiveCurrency]);
+
+  useEffect(() => {
+    if (!needsDestination) {
+      setDestinationAccountCode('');
+      return;
+    }
+    const availableForMethod = voucherDestinationOptions.filter((a) => a.parentCode === destinationParentCode);
+    if (availableForMethod.length === 0) {
+      setDestinationAccountCode('');
+      return;
+    }
+    if (!destinationAccountCode || !availableForMethod.some((a) => a.code === destinationAccountCode)) {
+      setDestinationAccountCode(availableForMethod[0].code);
+    }
+  }, [destinationAccountCode, destinationParentCode, needsDestination, voucherDestinationOptions]);
 
   // ═══ LINE MANAGEMENT ═══
   const addLine = () => setLines(prev => [...prev, emptyLine()]);
@@ -304,6 +337,19 @@ export default function VoucherEntryScreen() {
     if (usingForeign && (!(fx > 0) || !(fAmt > 0))) {
       showNotification('تعذر اعتماد مبلغ أجنبي بدون سعر صرف ومبلغ أجنبي صحيح.', 'error');
       return;
+    }
+    if (needsDestination) {
+      const availableForMethod = voucherDestinationOptions.filter((a) => a.parentCode === destinationParentCode);
+      if (availableForMethod.length > 0 && !destinationAccountCode) {
+        showNotification('يرجى اختيار الحساب البنكي / شركة الصرافة في السند.', 'error');
+        return;
+      }
+      if (destinationAccountCode && !payload.some((l) => l.accountCode === destinationAccountCode)) {
+        const idx = payload.findIndex((l) => voucherType === 'receipt' ? Number(l.debit) > 0 : Number(l.credit) > 0);
+        if (idx >= 0) {
+          payload[idx].accountCode = destinationAccountCode;
+        }
+      }
     }
     const supabase = getSupabaseClient();
     if (!supabase) return;
@@ -609,7 +655,7 @@ export default function VoucherEntryScreen() {
       {/* ═══ FORM ═══ */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4 space-y-4">
         {/* Row 1: Type, Date, Payment Method, Cost Center */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">نوع السند</div>
             <select value={voucherType} onChange={(e) => setVoucherType(e.target.value as any)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -629,6 +675,24 @@ export default function VoucherEntryScreen() {
               <option value="check">شيك</option>
               <option value="bank_transfer">تحويل بنكي</option>
               <option value="network">شبكة</option>
+            </select>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب المالي الوجهة</div>
+            <select
+              value={destinationAccountCode}
+              onChange={(e) => setDestinationAccountCode(e.target.value)}
+              disabled={!needsDestination}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-60"
+            >
+              <option value="">(افتراضي)</option>
+              {voucherDestinationOptions
+                .filter((a) => !needsDestination || a.parentCode === destinationParentCode)
+                .map((a) => (
+                  <option key={a.id} value={a.code}>
+                    {a.code} — {a.nameAr}{a.nameAr !== a.name ? ` (${a.name})` : ''}
+                  </option>
+                ))}
             </select>
           </div>
           <div>

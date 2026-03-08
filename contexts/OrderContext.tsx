@@ -52,6 +52,7 @@ interface OrderContextType {
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
       cashReceived?: number;
     }>;
   }) => Promise<Order>;
@@ -92,6 +93,7 @@ interface OrderContextType {
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
       cashReceived?: number;
     }>;
     occurredAt?: string;
@@ -119,6 +121,7 @@ interface OrderContextType {
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
     }
   ) => Promise<void>;
   issueInvoiceNow: (orderId: string) => Promise<void>;
@@ -161,6 +164,23 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const isUuid = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  const resolveOrderDestinationAccountId = (orderLike: any, methodLike?: string): string | undefined => {
+    const method = String(methodLike || orderLike?.paymentMethod || '').trim();
+    if (!method) return undefined;
+    const fromBreakdown = (Array.isArray(orderLike?.paymentBreakdown) ? orderLike.paymentBreakdown : [])
+      .find((p: any) => String(p?.method || '').trim() === method);
+    const fromBreakdownDest = String((fromBreakdown as any)?.destinationAccountId || '').trim();
+    if (isUuid(fromBreakdownDest)) return fromBreakdownDest;
+    if (method === 'kuraimi') {
+      const dest = String(orderLike?.paymentBank?.destinationAccountId || '').trim();
+      if (isUuid(dest)) return dest;
+    }
+    if (method === 'network') {
+      const dest = String(orderLike?.paymentNetworkRecipient?.destinationAccountId || '').trim();
+      if (isUuid(dest)) return dest;
+    }
+    return undefined;
+  };
 
   const isRpcNotFoundError = (err: any) => {
     const code = String(err?.code || '');
@@ -220,6 +240,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
     }
   ): Promise<any> => {
     const callV2 = async () => {
@@ -250,6 +271,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const declaredAmount = Number(input.declaredAmount);
       if (Number.isFinite(declaredAmount) && declaredAmount > 0) base.p_data.declaredAmount = declaredAmount;
       if (typeof input.amountConfirmed === 'boolean') base.p_data.amountConfirmed = input.amountConfirmed;
+      const destinationAccountId = String(input.destinationAccountId || '').trim();
+      if (destinationAccountId) base.p_data.destinationAccountId = destinationAccountId;
       const { error } = await supabase.rpc('record_order_payment_v2', base);
       return error;
     };
@@ -282,7 +305,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       String(input.senderName || '').trim().length > 0 ||
       String(input.senderPhone || '').trim().length > 0 ||
       (Number.isFinite(Number(input.declaredAmount)) && Number(input.declaredAmount) > 0) ||
-      typeof input.amountConfirmed === 'boolean';
+      typeof input.amountConfirmed === 'boolean' ||
+      String(input.destinationAccountId || '').trim().length > 0;
     let error: any = null;
     if (hasOverride || hasMeta) {
       error = await callV2();
@@ -2037,6 +2061,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         senderPhone: (p.senderPhone || '').trim() || undefined,
         declaredAmount: Number(p.declaredAmount) || 0,
         amountConfirmed: Boolean(p.amountConfirmed),
+        destinationAccountId: String((p as any).destinationAccountId || '').trim() || undefined,
         cashReceived: Number(p.cashReceived) || 0,
       }))
       .filter((p) => Boolean(p.method) && (Number(p.amount) || 0) > 0);
@@ -2051,6 +2076,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         senderPhone: fallbackNeedsReference ? (input.paymentSenderPhone || '').trim() || undefined : undefined,
         declaredAmount: fallbackNeedsReference ? (Number(input.paymentDeclaredAmount) || 0) : 0,
         amountConfirmed: fallbackNeedsReference ? Boolean(input.paymentAmountConfirmed) : true,
+        destinationAccountId: fallbackNeedsReference ? String((input as any).paymentDestinationAccountId || '').trim() || undefined : undefined,
         cashReceived: 0,
       },
     ];
@@ -2248,6 +2274,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         referenceNumber: p.referenceNumber,
         senderName: p.senderName,
         senderPhone: p.senderPhone,
+        destinationAccountId: (p as any).destinationAccountId,
         cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
         cashChange: p.method === 'cash' && p.cashReceived > 0 ? Math.max(0, p.cashReceived - p.amount) : undefined,
       })) : undefined,
@@ -2323,6 +2350,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           referenceNumber: p.referenceNumber,
           senderName: p.senderName,
           senderPhone: p.senderPhone,
+          destinationAccountId: (p as any).destinationAccountId,
           declaredAmount: Number((p as any).declaredAmount) || 0,
           amountConfirmed: Boolean((p as any).amountConfirmed),
           cashReceived: (p as any).cashReceived,
@@ -3246,6 +3274,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }>;
     occurredAt?: string;
     belowCostOverrideReason?: string;
+    customerId?: string;
+    partyId?: string;
+    isCreditSale?: boolean;
+    invoiceTerms?: string;
   }) => {
     const existing = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
     if (!existing || existing.status !== 'pending') {
@@ -3320,6 +3352,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       paidAt: nowIso,
       paymentMethod: payment.paymentMethod,
       ...(belowCostOverrideReason ? ({ belowCostOverrideReason } as any) : {}),
+      ...(payment.customerId ? { customerId: payment.customerId } : {}),
+      ...((payment.partyId ? { partyId: payment.partyId } : {}) as any),
+      ...(typeof payment.isCreditSale === 'boolean' ? { isCreditSale: payment.isCreditSale } : {}),
+      ...(payment.invoiceTerms ? { invoiceTerms: payment.invoiceTerms } : {}),
     };
     const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(supabase, {
       orderId: existing.id,
