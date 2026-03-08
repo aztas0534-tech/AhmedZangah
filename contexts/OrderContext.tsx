@@ -2213,7 +2213,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
           if (input.isCredit) {
             const pType = String((pRow as any).party_type || '').trim().toLowerCase();
-            const allowed = pType === 'customer' || pType === 'partner' || pType === 'generic';
+            const allowed = pType === 'customer' || pType === 'partner' || pType === 'generic' || pType === 'employee' || pType === 'supplier';
             if (!allowed) {
               throw new Error('لا يمكن إنشاء بيع آجل لهذا النوع من الأطراف المالية.');
             }
