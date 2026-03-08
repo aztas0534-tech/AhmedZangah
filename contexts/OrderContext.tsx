@@ -446,10 +446,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_warehouse_id: input.warehouseId,
       };
 
-      const preferred = await supabase.rpc('confirm_order_delivery_with_credit_rpc', args);
-      if (!preferred?.error) return preferred;
-      if (!isRpcNotFoundError(preferred.error)) return preferred;
-
+      // Skip _rpc wrapper — call confirm_order_delivery_with_credit directly
+      // (the _rpc alias has a stale body on some environments causing 42703 errors).
       const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', args);
       return { data, error };
     };
@@ -546,9 +544,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_warehouse_id: input.warehouseId,
       };
 
-      const preferred = await supabase.rpc('confirm_order_delivery_rpc', args);
-      if (!preferred?.error || !isRpcNotFoundError(preferred.error)) return preferred;
-
+      // Skip _rpc wrapper — call confirm_order_delivery directly (the _rpc alias
+      // has a stale body on some environments causing 42703 errors).
       const { data, error } = await supabase.rpc('confirm_order_delivery', args);
       return { data, error };
     };
