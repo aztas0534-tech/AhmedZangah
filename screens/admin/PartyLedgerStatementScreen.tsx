@@ -276,7 +276,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
           audit={{ printedBy }}
         />
       );
-      printContent(content, `كشف حساب طرف • ${partyName || partyId.slice(-8).toUpperCase()}`, { page: 'A4' });
+      printContent(content, `كشف حساب طرف • ${partyName || partyId.slice(-8).toUpperCase()}`, { page: 'A5' });
       const supabase = getSupabaseClient();
       if (supabase) {
         try {

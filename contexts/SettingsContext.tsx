@@ -150,8 +150,8 @@ const defaultSettings: AppSettings = {
   },
   defaultInvoiceTemplateByRole: {
     pos: 'thermal',
-    admin: 'a4',
-    merchant: 'a4',
+    admin: 'a5',
+    merchant: 'a5',
   },
   inventoryFlags: {
     autoArchiveExpired: false,

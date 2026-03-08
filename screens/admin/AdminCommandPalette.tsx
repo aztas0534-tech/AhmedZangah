@@ -421,7 +421,7 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                         audit={{ printedBy }}
                     />
                 );
-                printContent(content, `كشف حساب طرف • ${partyName}`, { page: 'A4' });
+                printContent(content, `كشف حساب طرف • ${partyName}`, { page: 'A5' });
                 try {
                     await supabase.from('system_audit_logs').insert({
                         action: 'print',
