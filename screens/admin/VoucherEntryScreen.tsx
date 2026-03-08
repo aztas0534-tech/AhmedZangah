@@ -803,8 +803,7 @@ export default function VoucherEntryScreen() {
               <button type="button" onClick={addLine} className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold">+ إضافة سطر</button>
             </div>
           </div>
-
-          <div className="overflow-x-auto">
+          <div className="w-full overflow-visible pb-16">
             <table className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg">
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-900/50 text-center">
