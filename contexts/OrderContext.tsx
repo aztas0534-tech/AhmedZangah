@@ -8,7 +8,7 @@ import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
 import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled, isRpcStrictMode, isRpcWrappersAvailable, markRpcStrictModeEnabled, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
 import { createLogger } from '../utils/logger';
-import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
+import { localizeSupabaseError, isAbortLikeError, resolveErrorMessage } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
 import { decryptField, isEncrypted } from '../utils/encryption';
 import { getCurrencyDecimalsByCode } from '../utils/currencyDecimals';
@@ -1044,8 +1044,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const current = await loadStockRecord(item.id, item.availableStock || 0, unit, lineWarehouseId);
       const availableToSell = current.availableQuantity - current.reservedQuantity;
       if (availableToSell + 1e-9 < requested) {
+        try {
+          const rpcClient = getSupabaseClient();
+          if (rpcClient) {
+            await rpcClient.rpc('recompute_stock_for_item', {
+              p_item_id: item.id,
+              p_warehouse_id: lineWarehouseId,
+            });
+          }
+        } catch { }
+        const refreshed = await loadStockRecord(item.id, item.availableStock || 0, unit, lineWarehouseId);
+        const refreshedAvailableToSell = refreshed.availableQuantity - refreshed.reservedQuantity;
+        if (refreshedAvailableToSell + 1e-9 >= requested) continue;
         const name = item.name?.ar || item.id;
-        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة في هذا المستودع. المتاح: ${availableToSell}`);
+        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة في هذا المستودع. المتاح: ${refreshedAvailableToSell}`);
       }
     }
   };
@@ -3349,10 +3361,53 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     // We no longer attempt to delete orders or manually manage stock here.
     // The cancel_order RPC handles stock release, payment reversal, and status update reliably on the server.
-    const { error: cancelErr } = await supabase.rpc('cancel_order', {
-      p_order_id: existing.id,
-      p_reason: 'تم الإلغاء من قبل البائع'
-    });
+    const clearPendingSettlementMarkers = async (targetOrderId: string) => {
+      const { data: row, error: rowErr } = await supabase
+        .from('orders')
+        .select('status,data')
+        .eq('id', targetOrderId)
+        .maybeSingle();
+      if (rowErr || !row) return false;
+      const status = String((row as any)?.status || '').trim().toLowerCase();
+      const data = ((row as any)?.data && typeof (row as any).data === 'object' ? (row as any).data : {}) as Record<string, any>;
+      const paidAt = String(data?.paidAt || '').trim();
+      const snapshotIssuedAt = String(data?.invoiceSnapshot?.issuedAt || '').trim();
+      const topIssuedAt = String(data?.invoiceIssuedAt || '').trim();
+      if (status !== 'pending') return false;
+      if (paidAt) return false;
+      if (!snapshotIssuedAt && !topIssuedAt) return false;
+      const nextData = { ...data };
+      delete (nextData as any).invoiceSnapshot;
+      delete (nextData as any).invoiceIssuedAt;
+      const { error: clearErr } = await supabase
+        .from('orders')
+        .update({ data: nextData, updated_at: new Date().toISOString() } as any)
+        .eq('id', targetOrderId)
+        .eq('status', 'pending');
+      return !clearErr;
+    };
+
+    let cancelErr: any = null;
+    {
+      const { error } = await supabase.rpc('cancel_order', {
+        p_order_id: existing.id,
+        p_reason: 'تم الإلغاء من قبل البائع'
+      });
+      cancelErr = error;
+    }
+    if (cancelErr) {
+      const raw = String(resolveErrorMessage(cancelErr) || '').toLowerCase();
+      if (raw.includes('cannot_cancel_settled')) {
+        const cleared = await clearPendingSettlementMarkers(existing.id);
+        if (cleared) {
+          const { error } = await supabase.rpc('cancel_order', {
+            p_order_id: existing.id,
+            p_reason: 'تم الإلغاء من قبل البائع'
+          });
+          cancelErr = error;
+        }
+      }
+    }
 
     if (cancelErr) {
       throw new Error(localizeSupabaseError(cancelErr));
@@ -3861,10 +3916,52 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const updated = { ...existing, ...updates } as Order;
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
-      const { error: rpcError } = await supabase.rpc('cancel_order', {
-        p_order_id: updated.id,
-        p_reason: '',
-      });
+      const clearPendingSettlementMarkers = async (targetOrderId: string) => {
+        const { data: row, error: rowErr } = await supabase
+          .from('orders')
+          .select('status,data')
+          .eq('id', targetOrderId)
+          .maybeSingle();
+        if (rowErr || !row) return false;
+        const status = String((row as any)?.status || '').trim().toLowerCase();
+        const data = ((row as any)?.data && typeof (row as any).data === 'object' ? (row as any).data : {}) as Record<string, any>;
+        const paidAt = String(data?.paidAt || '').trim();
+        const snapshotIssuedAt = String(data?.invoiceSnapshot?.issuedAt || '').trim();
+        const topIssuedAt = String(data?.invoiceIssuedAt || '').trim();
+        if (status !== 'pending') return false;
+        if (paidAt) return false;
+        if (!snapshotIssuedAt && !topIssuedAt) return false;
+        const nextData = { ...data };
+        delete (nextData as any).invoiceSnapshot;
+        delete (nextData as any).invoiceIssuedAt;
+        const { error: clearErr } = await supabase
+          .from('orders')
+          .update({ data: nextData, updated_at: new Date().toISOString() } as any)
+          .eq('id', targetOrderId)
+          .eq('status', 'pending');
+        return !clearErr;
+      };
+      let rpcError: any = null;
+      {
+        const { error } = await supabase.rpc('cancel_order', {
+          p_order_id: updated.id,
+          p_reason: '',
+        });
+        rpcError = error;
+      }
+      if (rpcError) {
+        const raw = String(resolveErrorMessage(rpcError) || '').toLowerCase();
+        if (raw.includes('cannot_cancel_settled')) {
+          const cleared = await clearPendingSettlementMarkers(updated.id);
+          if (cleared) {
+            const { error } = await supabase.rpc('cancel_order', {
+              p_order_id: updated.id,
+              p_reason: '',
+            });
+            rpcError = error;
+          }
+        }
+      }
       if (rpcError) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
         if (isOffline || isAbortLikeError(rpcError)) {

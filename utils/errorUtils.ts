@@ -209,6 +209,15 @@ export const localizeError = (message: string): string => {
   if (raw.includes('credit_limit_exceeded')) {
     return 'لا يمكن إتمام العملية لأن حد الائتمان تجاوز المسموح.';
   }
+  if (raw.includes('cannot_cancel_settled')) {
+    return 'لا يمكن إلغاء الطلب لأنه يعتبر مسددًا أو عليه بيانات فاتورة. أزل بيانات التسوية أولاً ثم أعد المحاولة.';
+  }
+  if (raw.includes('cash_refund_requires_open_shift')) {
+    return 'لا يمكن إلغاء الطلب النقدي بدون وردية نقدية مفتوحة لاسترجاع الحركة.';
+  }
+  if (raw.includes('credit_hold')) {
+    return 'لا يمكن إتمام العملية لأن الطرف عليه إيقاف ائتماني (Credit Hold).';
+  }
   if (raw.includes('invalid amount')) {
     return 'قيمة الدفعة غير صحيحة. تحقق من المبلغ وأعد المحاولة.';
   }
