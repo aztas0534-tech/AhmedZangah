@@ -1606,7 +1606,12 @@ const ManageOrdersScreen: React.FC = () => {
 
     const inStoreTotals = useMemo(() => {
         const fx = Number(inStoreTransactionFxRate) || 1;
-        const baseSubtotal = inStoreLines.reduce((sum, line) => {
+        const toTxn = (amount: number) => {
+            if (!(fx > 0)) return amount;
+            return (amount / fx);
+        };
+
+        const txnSubtotal = inStoreLines.reduce((sum, line) => {
             const menuItem = menuItems.find(m => m.id === line.menuItemId);
             if (!menuItem) return sum;
             const unitType = menuItem.unitType;
@@ -1618,13 +1623,20 @@ const ManageOrdersScreen: React.FC = () => {
                 : ((Number(quantity) || 0) * (Number(line.uomQtyInBase || 1) || 1));
             const pricingKey = `${line.menuItemId}:${unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[pricingKey];
+            
             const fallbackUnitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
-            const pricedUnitPrice = unitType === 'gram'
+            const fallbackTxnUnit = toTxn(Number(fallbackUnitPrice) || 0);
+
+            let pricedUnitPrice = unitType === 'gram'
                 ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
                 : (Number(priced?.unitPrice) || fallbackUnitPrice);
-            const unitPrice = priced?.isTxnPrice
-                ? convertInStoreTxnToBase(pricedUnitPrice, fx)
-                : pricedUnitPrice;
+
+            let unitPrice = pricedUnitPrice;
+            if (priced) {
+                unitPrice = priced.isTxnPrice ? pricedUnitPrice : toTxn(pricedUnitPrice);
+            } else {
+                unitPrice = fallbackTxnUnit;
+            }
 
             // Addons cost
             let addonsCost = 0;
@@ -1636,20 +1648,25 @@ const ManageOrdersScreen: React.FC = () => {
                     }
                 });
             }
+            const addonsTxnCost = toTxn(addonsCost);
 
             const lineTotal = isWeightBased
-                ? (unitPrice * weight) + (addonsCost * 1)
-                : (unitPrice + addonsCost) * quantity * (Number(line.uomQtyInBase || 1) || 1);
+                ? (unitPrice * weight) + (addonsTxnCost * 1)
+                : (unitPrice + addonsTxnCost) * quantity * (Number(line.uomQtyInBase || 1) || 1);
 
             return sum + lineTotal;
         }, 0);
+        
         const discountValue = Number(inStoreDiscountValue) || 0;
         const discountAmount = inStoreDiscountType === 'percent'
-            ? Math.max(0, Math.min(100, discountValue)) * convertBaseToInStoreTxn(baseSubtotal, fx) / 100
-            : Math.max(0, Math.min(convertBaseToInStoreTxn(baseSubtotal, fx), discountValue));
-        const subtotal = convertBaseToInStoreTxn(baseSubtotal, fx);
+            ? Math.max(0, Math.min(100, discountValue)) * txnSubtotal / 100
+            : Math.max(0, Math.min(txnSubtotal, discountValue));
+        
+        const subtotal = txnSubtotal;
         const total = Math.max(0, subtotal - discountAmount);
-        const baseDiscountValue = inStoreDiscountType === 'amount' ? roundMoney(discountValue * fx) : discountValue;
+        
+        const baseSubtotal = convertInStoreTxnToBase(txnSubtotal, fx);
+        const baseDiscountValue = inStoreDiscountType === 'amount' ? convertInStoreTxnToBase(discountValue, fx) : discountValue;
         const baseDiscountAmount = inStoreDiscountType === 'percent'
             ? Math.max(0, Math.min(100, Number(discountValue) || 0)) * baseSubtotal / 100
             : Math.max(0, Math.min(baseSubtotal, baseDiscountValue));
