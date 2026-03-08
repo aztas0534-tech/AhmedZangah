@@ -5,8 +5,8 @@ Skipping migration diag.sql... (file name must match pattern "<timestamp>_name.s
 Skipping migration diagnose_d11611.sql... (file name must match pattern "<timestamp>_name.sql")
 Skipping migration emergency_fix_instore_sales.sql... (file name must match pattern "<timestamp>_name.sql")
 Do you want to push these migrations to the remote database?
- • 20260308155000_fix_delivery_chain_data_column.sql
+ • 20260308163000_drop_stale_delivery_overloads.sql
 
  [Y/n] y
-Applying migration 20260308155000_fix_delivery_chain_data_column.sql...
+Applying migration 20260308163000_drop_stale_delivery_overloads.sql...
 Finished supabase db push.

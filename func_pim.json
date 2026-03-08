@@ -1,0 +1,6 @@
+{
+  "code": "PGRST202",
+  "details": "Searched for the function public.get_function_defs with parameter p_func_names or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.",
+  "hint": null,
+  "message": "Could not find the function public.get_function_defs(p_func_names) in the schema cache"
+}
