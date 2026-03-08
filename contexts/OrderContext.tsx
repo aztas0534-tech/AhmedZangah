@@ -2035,6 +2035,47 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       fxRate = fx;
     }
 
+    if (desiredCurrency !== baseCurrency && fxRate > 0) {
+      items = items.map((item: any) => {
+        const wasServerPriced = Boolean((item as any)?._pricedByRpc);
+        const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : item.price) || 0;
+        const nextSelected: any = {};
+        for (const [id, entry] of Object.entries(item.selectedAddons || {})) {
+          const e: any = entry as any;
+          const addon = e?.addon;
+          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
+          const addonPriceTxn = addonBase / fxRate;
+          nextSelected[id] = {
+            ...e,
+            addon: addon
+              ? {
+                ...addon,
+                _basePrice: addonBase,
+                price: addonPriceTxn,
+              }
+              : addon,
+          };
+        }
+        if (item.unitType === 'gram') {
+          const basePerUnit = Number((item as any)?._basePricePerUnit != null ? (item as any)._basePricePerUnit : ((Number(item.pricePerUnit) || baseUnitPrice * 1000))) || 0;
+          const nextPerUnit = wasServerPriced ? (Number(item.pricePerUnit) || (basePerUnit / fxRate)) : (basePerUnit / fxRate);
+          const nextUnitPrice = nextPerUnit / 1000;
+          return {
+            ...item,
+            price: nextUnitPrice,
+            pricePerUnit: nextPerUnit,
+            selectedAddons: nextSelected,
+          };
+        }
+        const nextUnitPrice = wasServerPriced ? (Number(item.price) || (baseUnitPrice / fxRate)) : (baseUnitPrice / fxRate);
+        return {
+          ...item,
+          price: nextUnitPrice,
+          selectedAddons: nextSelected,
+        };
+      });
+    }
+
     const computedSubtotal = items.reduce((total, item) => {
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce(
         (sum, { addon, quantity }) => sum + addon.price * quantity,
@@ -3055,6 +3096,47 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         throw new Error('لا يوجد سعر صرف تشغيلي صالح لهذه العملة. أضف السعر من شاشة أسعار الصرف.');
       }
       fxRate = fx;
+    }
+
+    if (desiredCurrency !== baseCurrency && fxRate > 0) {
+      items = items.map((item: any) => {
+        const wasServerPriced = Boolean((item as any)?._pricedByRpc);
+        const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : item.price) || 0;
+        const nextSelected: any = {};
+        for (const [id, entry] of Object.entries(item.selectedAddons || {})) {
+          const e: any = entry as any;
+          const addon = e?.addon;
+          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
+          const addonPriceTxn = addonBase / fxRate;
+          nextSelected[id] = {
+            ...e,
+            addon: addon
+              ? {
+                ...addon,
+                _basePrice: addonBase,
+                price: addonPriceTxn,
+              }
+              : addon,
+          };
+        }
+        if (item.unitType === 'gram') {
+          const basePerUnit = Number((item as any)?._basePricePerUnit != null ? (item as any)._basePricePerUnit : ((Number(item.pricePerUnit) || baseUnitPrice * 1000))) || 0;
+          const nextPerUnit = wasServerPriced ? (Number(item.pricePerUnit) || (basePerUnit / fxRate)) : (basePerUnit / fxRate);
+          const nextUnitPrice = nextPerUnit / 1000;
+          return {
+            ...item,
+            price: nextUnitPrice,
+            pricePerUnit: nextPerUnit,
+            selectedAddons: nextSelected,
+          };
+        }
+        const nextUnitPrice = wasServerPriced ? (Number(item.price) || (baseUnitPrice / fxRate)) : (baseUnitPrice / fxRate);
+        return {
+          ...item,
+          price: nextUnitPrice,
+          selectedAddons: nextSelected,
+        };
+      });
     }
 
     const computedSubtotal = items.reduce((total, item) => {
