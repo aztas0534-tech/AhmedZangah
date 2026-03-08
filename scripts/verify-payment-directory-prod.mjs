@@ -18,11 +18,6 @@ const client = new Client({
 const run = async () => {
   await client.connect();
   try {
-    await client.query(`
-      insert into supabase_migrations.schema_migrations(version, name)
-      values ('20260308014500', 'validate_payment_directory_destination_accounts')
-      on conflict (version) do nothing
-    `);
     const { rows } = await client.query(`
       select
         exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='trg_validate_payment_directory_destination_account') as has_fn,
@@ -30,7 +25,11 @@ const run = async () => {
         exists(select 1 from pg_trigger t join pg_class c2 on c2.oid=t.tgrelid join pg_namespace n on n.oid=c2.relnamespace where n.nspname='public' and c2.relname='transfer_recipients' and t.tgname='trg_validate_payment_directory_destination_account' and not t.tgisinternal) as recipients_trigger,
         exists(select 1 from supabase_migrations.schema_migrations where version='20260308014500') as migration_registered
     `);
-    console.log(JSON.stringify(rows[0], null, 2));
+    const result = rows[0] || {};
+    console.log(JSON.stringify({
+      ...result,
+      ready: Boolean(result.has_fn && result.banks_trigger && result.recipients_trigger && result.migration_registered),
+    }, null, 2));
   } finally {
     await client.end();
   }

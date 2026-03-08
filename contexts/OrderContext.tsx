@@ -40,6 +40,7 @@ interface OrderContextType {
     paymentSenderPhone?: string;
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
+    paymentDestinationAccountId?: string;
     isCredit?: boolean;
     creditDays?: number;
     dueDate?: string;
@@ -1701,6 +1702,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     paymentSenderPhone?: string;
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
+    paymentDestinationAccountId?: string;
     isCredit?: boolean;
     creditDays?: number;
     dueDate?: string;
@@ -1712,6 +1714,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
       cashReceived?: number;
     }>;
   }) => {
@@ -2665,7 +2668,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const paymentCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
           const sbPay = getSupabaseClient();
           if (!sbPay) throw new Error('Supabase غير مهيأ.');
-          const queuePaymentRepair = (payment: { amount: number; method: string; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean }, idx: number) => {
+          const queuePaymentRepair = (payment: { amount: number; method: string; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; destinationAccountId?: string }, idx: number) => {
             const amount = Number(payment.amount) || 0;
             if (!(amount > 0)) return;
             const idempotencyKey = `instore:${newOrder.id}:${nowIso}:${idx}:${payment.method}:${amount}`;
@@ -2682,6 +2685,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 senderPhone: payment.senderPhone,
                 declaredAmount: Number(payment.declaredAmount) || undefined,
                 amountConfirmed: typeof payment.amountConfirmed === 'boolean' ? payment.amountConfirmed : undefined,
+                destinationAccountId: String(payment.destinationAccountId || '').trim() || undefined,
               },
             });
           };
@@ -2694,6 +2698,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               occurredAt: nowIso,
               currency: paymentCurrency,
               idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+              destinationAccountId: String((p as any).destinationAccountId || '').trim() || undefined,
+              referenceNumber: p.referenceNumber || undefined,
+              senderName: p.senderName || undefined,
+              senderPhone: p.senderPhone || undefined,
+              declaredAmount: Number((p as any).declaredAmount) || undefined,
+              amountConfirmed: typeof (p as any).amountConfirmed === 'boolean' ? Boolean((p as any).amountConfirmed) : undefined,
             });
             if (rpcErr) {
               paymentRecordOk = false;
@@ -3379,6 +3389,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         occurredAt: payment.occurredAt || nowIso,
         currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
         idempotencyKey: `resume:${existing.id}:${payment.occurredAt || nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+        destinationAccountId: String((p as any).destinationAccountId || '').trim() || resolveOrderDestinationAccountId(existing, p.method),
+        referenceNumber: String((p as any).referenceNumber || '').trim() || undefined,
+        senderName: String((p as any).senderName || '').trim() || undefined,
+        senderPhone: String((p as any).senderPhone || '').trim() || undefined,
+        declaredAmount: Number((p as any).declaredAmount) || undefined,
+        amountConfirmed: typeof (p as any).amountConfirmed === 'boolean' ? Boolean((p as any).amountConfirmed) : undefined,
       });
       if (error) throw new Error(localizeRecordOrderPaymentError(error));
     }
@@ -4041,6 +4057,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               occurredAt: nowIso,
               currency: String((updated as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
               idempotencyKey: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
+            destinationAccountId: resolveOrderDestinationAccountId(updated, updated.paymentMethod),
             });
             if (error) {
               const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -4182,6 +4199,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             occurredAt: nowIso,
             currency: currencyCode,
             idempotencyKey: `markPaid:${existing.id}:${nowIso}:${Number(remaining) || 0}`,
+            destinationAccountId: resolveOrderDestinationAccountId(existing, existing.paymentMethod),
           });
           if (error) {
             const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -4230,7 +4248,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       method?: string,
       occurredAt?: string,
       overrideAccountId?: string,
-      meta?: { referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean }
+      meta?: { referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; destinationAccountId?: string }
     ) => {
       const existing = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
       if (!existing) return;
@@ -4248,6 +4266,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const senderPhone = String(meta?.senderPhone || '').trim();
       const declaredAmount = Number(meta?.declaredAmount);
       const amountConfirmed = Boolean(meta?.amountConfirmed);
+      const destinationAccountId = String(meta?.destinationAccountId || '').trim() || resolveOrderDestinationAccountId(existing, methodValue);
 
       await addOrderEvent({
         orderId,
@@ -4263,6 +4282,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           ...(senderPhone ? { senderPhone } : {}),
           ...(Number.isFinite(declaredAmount) && declaredAmount > 0 ? { declaredAmount } : {}),
           ...(meta && typeof meta.amountConfirmed === 'boolean' ? { amountConfirmed } : {}),
+          ...(destinationAccountId ? { destinationAccountId } : {}),
         },
       });
 
@@ -4283,6 +4303,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         senderPhone: senderPhone || undefined,
         declaredAmount: Number.isFinite(declaredAmount) ? declaredAmount : undefined,
         amountConfirmed: meta && typeof meta.amountConfirmed === 'boolean' ? amountConfirmed : undefined,
+        destinationAccountId: destinationAccountId || undefined,
       });
       if (error) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
