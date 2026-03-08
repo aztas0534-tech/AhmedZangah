@@ -2208,13 +2208,29 @@ const ManageOrdersScreen: React.FC = () => {
         void loadPaidSums(filteredAndSortedOrders.map(o => o.id));
     }, [filteredAndSortedOrders, loadPaidSums]);
 
+    const getOrderPaymentSnapshot = useCallback((order: Order) => {
+        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+        const total = roundMoneyByCode(Number(order.total) || 0, currency);
+        const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+        const rawPaid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+        const paymentMethod = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase().trim();
+        const invoiceTerms = String((order as any)?.invoiceTerms || (order as any)?.data?.invoiceTerms || '').toLowerCase().trim();
+        const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
+        const isCreditSale = paymentMethod === 'ar' || hasArPayment || invoiceTerms === 'credit';
+        const isDelivered = String(order.status || '').toLowerCase() === 'delivered';
+        const isCashLike = paymentMethod === 'cash' || invoiceTerms === 'cash';
+        const hasPaidAt = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
+        const isInStoreCashSettlement = isInStoreOrder(order) && isDelivered && isCashLike && !isCreditSale;
+        const isMarkedCashSettlement = hasPaidAt && isDelivered && isCashLike && !isCreditSale;
+        const paid = (rawPaid <= tol && (isInStoreCashSettlement || isMarkedCashSettlement)) ? total : rawPaid;
+        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+        return { currency, total, paid, remaining, tol, paymentMethod, isCreditSale };
+    }, [baseCode, isInStoreOrder, paidSumByOrderId]);
+
     const openPartialPaymentModal = (orderId: string) => {
         const order = filteredAndSortedOrders.find(o => o.id === orderId) || orders.find(o => o.id === orderId);
         if (!order) return;
-        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-        const paid = roundMoneyByCode(Number(paidSumByOrderId[orderId]) || 0, currency);
-        const total = roundMoneyByCode(Number(order.total) || 0, currency);
-        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+        const { currency, remaining } = getOrderPaymentSnapshot(order);
         setPartialPaymentOrderId(orderId);
         const dp = getCurrencyDecimalsByCode(currency);
         setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(dp)) : 0);
@@ -2238,10 +2254,7 @@ const ManageOrdersScreen: React.FC = () => {
         }
         const order = filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId);
         if (!order) return;
-        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-        const paid = roundMoneyByCode(Number(paidSumByOrderId[partialPaymentOrderId]) || 0, currency);
-        const total = roundMoneyByCode(Number(order.total) || 0, currency);
-        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+        const { currency, remaining } = getOrderPaymentSnapshot(order);
         const amount = Number(partialPaymentAmount);
         if (!Number.isFinite(amount) || amount <= 0) {
             showNotification('أدخل مبلغًا صحيحًا.', 'error');
@@ -2611,17 +2624,11 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const renderMobileCard = (order: Order) => {
-        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-        const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
-        const total = roundMoneyByCode(Number(order.total) || 0, currency);
-        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+        const { paid, remaining, tol, isCreditSale } = getOrderPaymentSnapshot(order);
         const returnStatus = getReturnStatus(order);
         const isFullyReturned = returnStatus === 'full';
         const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
-        const paymentMethod = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase();
-        const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
-        const isCreditSale = paymentMethod === 'ar' || hasArPayment;
-        const canReturn = order.status === 'delivered' && (isCreditSale || paid > Math.pow(10, -getCurrencyDecimalsByCode(currency))) && !isFullyReturned && !isVoided;
+        const canReturn = order.status === 'delivered' && (isCreditSale || paid > tol) && !isFullyReturned && !isVoided;
         const items = Array.isArray((order as any)?.items) ? (order as any).items : [];
 
         return (
@@ -3458,15 +3465,12 @@ const ManageOrdersScreen: React.FC = () => {
                                                 />
                                                 {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
                                                 {(() => {
-                                                    const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-                                                    const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
-                                                    const total = roundMoneyByCode(Number(order.total) || 0, currency);
-                                                    const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+                                                    const { currency, paid, remaining, tol } = getOrderPaymentSnapshot(order);
                                                     return (
                                                         <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
                                                             <div>مدفوع: <span className="font-mono" dir="ltr">{formatMoneyByCode(paid || 0, currency)} {currency || '—'}</span></div>
                                                             <div>متبقي: <span className="font-mono" dir="ltr">{formatMoneyByCode(remaining || 0, currency)} {currency || '—'}</span></div>
-                                                            {remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && order.status !== 'delivered' && (
+                                                            {remaining > tol && order.status !== 'delivered' && (
                                                                 <div>
                                                                     <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
                                                                         بانتظار التحصيل
@@ -3480,13 +3484,10 @@ const ManageOrdersScreen: React.FC = () => {
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 border-r dark:border-gray-700">{paymentTranslations[order.paymentMethod] || order.paymentMethod}</td>
                                             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                                 {(() => {
-                                                    const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-                                                    const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
-                                                    const total = roundMoneyByCode(Number(order.total) || 0, currency);
-                                                    const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+                                                    const { remaining, tol } = getOrderPaymentSnapshot(order);
                                                     const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
                                                     const isVoidedTbl = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
-                                                    const showPaymentActions = order.status === 'delivered' && remaining > Math.pow(10, -getCurrencyDecimalsByCode(currency)) && !isFullyReturned && !isVoidedTbl;
+                                                    const showPaymentActions = order.status === 'delivered' && remaining > tol && !isFullyReturned && !isVoidedTbl;
 
                                                     const paymentActions = showPaymentActions ? (
                                                         <div className="flex flex-col gap-2">
@@ -3556,7 +3557,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                         طباعة سند تسليم
                                                                     </button>
                                                                 )}
-                                                                {canViewAccounting && (Number(paidSumByOrderId[order.id]) || 0) > 0 && (
+                                                                {canViewAccounting && getOrderPaymentSnapshot(order).paid > 0 && (
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => { void handlePrintReceiptVoucher(order); }}
@@ -3572,12 +3573,9 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                     if (order.status === 'delivered') {
                                                         const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
-                                                        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
-                                                        const paid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
-                                                        const total = roundMoneyByCode(Number(order.total) || 0, currency);
-                                                        const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+                                                        const { paid, total, tol, isCreditSale } = getOrderPaymentSnapshot(order);
                                                         const isPaid = total > 0 && (paid + tol) >= total;
-                                                        const canIssueInvoice = !isCod && (isPaid || order.paymentMethod === 'ar') && canManageAccounting;
+                                                        const canIssueInvoice = !isCod && (isPaid || isCreditSale) && canManageAccounting;
                                                         return (
                                                             <div className="flex flex-col gap-2">
                                                                 {canIssueInvoice && (
@@ -3720,13 +3718,10 @@ const ManageOrdersScreen: React.FC = () => {
                                                     </button>
                                                 )}
                                                 {(() => {
-                                                    const paid = Number(paidSumByOrderId[order.id]) || 0;
+                                                    const { paid, isCreditSale, tol } = getOrderPaymentSnapshot(order);
                                                     const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
                                                     const isVoidedRow = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
-                                                    const paymentMethod = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase();
-                                                    const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
-                                                    const isCreditSale = paymentMethod === 'ar' || hasArPayment;
-                                                    const canReturn = order.status === 'delivered' && (isCreditSale || paid > 0.01) && !isFullyReturned && !isVoidedRow;
+                                                    const canReturn = order.status === 'delivered' && (isCreditSale || paid > tol) && !isFullyReturned && !isVoidedRow;
                                                     if (!canReturn) return null;
                                                     return (
                                                         <div className="mt-2 flex flex-col gap-2">
