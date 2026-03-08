@@ -223,14 +223,12 @@ const ManageOrdersScreen: React.FC = () => {
             if (!supabase) return;
             const { data } = await supabase
                 .from('chart_of_accounts')
-                .select(`id, code, name, parent_id`)
+                .select(`id, code, name`)
                 .eq('is_active', true);
             if (data) {
-                const codeById = new Map((data || []).map((a: any) => [String(a?.id || ''), String(a?.code || '')]));
                 const matching = (data || [])
                     .map((a: any) => {
-                        const parentCodeRaw = a?.parent_id ? (codeById.get(String(a.parent_id)) || '') : '';
-                        const parentCode = inferDestinationParentCode(String(a?.code || ''), String(parentCodeRaw || ''));
+                        const parentCode = inferDestinationParentCode(String(a?.code || ''), '');
                         return {
                             id: String(a?.id || ''),
                             name: String(a?.name || ''),
