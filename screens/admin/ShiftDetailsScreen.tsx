@@ -622,7 +622,7 @@ const ShiftDetailsScreen: React.FC = () => {
                 ['ملخص', 'المبيعات', computed.salesTotal.toFixed(2)],
                 ['ملخص', 'المرتجعات', computed.refundsTotal.toFixed(2)],
                 ['ملخص', 'الخصومات', computed.discountsTotal.toFixed(2)],
-                ['ملخص', 'الصافي', (computed.salesTotal - computed.refundsTotal).toFixed(2)],
+                ['ملخص', 'الصافي', (computed.salesTotal - computed.refundsTotal - computed.discountsTotal).toFixed(2)],
                 ['ملخص', 'عدد الطلبات', recognizedOrders.length],
                 ['ملخص', 'عدد العمليات', payments.length],
               ];
@@ -911,7 +911,7 @@ const ShiftDetailsScreen: React.FC = () => {
             </div>
             <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
               <div className="text-xs text-gray-500 dark:text-gray-300">الصافي</div>
-              <div className="mt-1 text-lg font-bold font-mono dark:text-white">{(computed.salesTotal - computed.refundsTotal).toFixed(2)} {baseCode || '—'}</div>
+              <div className="mt-1 text-lg font-bold font-mono dark:text-white">{(computed.salesTotal - computed.refundsTotal - computed.discountsTotal).toFixed(2)} {baseCode || '—'}</div>
             </div>
           </div>
         </div>
