@@ -10,6 +10,7 @@ import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { nextMonthStartYmd, toDateInputValue, toDateTimeLocalInputValue, toMonthInputValue, toUtcIsoAtMiddayFromYmd } from '../../utils/dateUtils';
 
 import { translateAccountName } from '../../utils/accountUtils';
+import { inferDestinationParentCode, matchesDestinationCurrency } from '../../utils/accountDestinationUtils';
 
 const ManageExpensesScreen: React.FC = () => {
     const { showNotification } = useToast();
@@ -95,7 +96,7 @@ const ManageExpensesScreen: React.FC = () => {
         return list
             .map((a: any) => {
                 const code = String(a?.code || '').trim().toUpperCase();
-                const parentCode = code.startsWith('1020-') ? '1020' : (code.startsWith('1030-') ? '1030' : '');
+                const parentCode = inferDestinationParentCode(code, String((a as any)?.parentCode || '')) || '';
                 return { ...a, code, parentCode };
             })
             .filter((a: any) => Boolean(a.parentCode));
@@ -104,13 +105,13 @@ const ManageExpensesScreen: React.FC = () => {
     const formAvailableDestinations = useMemo(() => {
         const currency = normalizeCurrencyCode(String((formData as any)?.currency || baseCode));
         if (!currency) return [] as Array<{ id: string; code: string; name: string; nameAr: string; parentCode: string }>;
-        return destinationAccounts.filter((a: any) => String(a.code || '').endsWith(currency));
+        return destinationAccounts.filter((a: any) => matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currency));
     }, [baseCode, destinationAccounts, formData]);
 
     const paymentAvailableDestinations = useMemo(() => {
         const currency = normalizeCurrencyCode(String((paymentExpense as any)?.currency || baseCode));
         if (!currency) return [] as Array<{ id: string; code: string; name: string; nameAr: string; parentCode: string }>;
-        return destinationAccounts.filter((a: any) => String(a.code || '').endsWith(currency));
+        return destinationAccounts.filter((a: any) => matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currency));
     }, [baseCode, destinationAccounts, paymentExpense]);
 
     useEffect(() => {
@@ -369,7 +370,7 @@ const ManageExpensesScreen: React.FC = () => {
         const normalizedMethod = normalizePaymentMethod('cash');
         const neededParent = normalizedMethod === 'kuraimi' ? '1020' : (normalizedMethod === 'network' ? '1030' : '');
         const defaultDest = neededParent
-            ? destinationAccounts.find((a: any) => a.parentCode === neededParent && String(a.code || '').endsWith(currentCurrency))?.id
+            ? destinationAccounts.find((a: any) => a.parentCode === neededParent && matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currentCurrency))?.id
             : '';
         setPaymentExpense(exp);
         setPaymentAmount(exp.amount);
@@ -688,7 +689,7 @@ const ManageExpensesScreen: React.FC = () => {
                                             if (normalized === 'kuraimi' || normalized === 'network') {
                                                 const neededParent = normalized === 'kuraimi' ? '1020' : '1030';
                                                 const currency = normalizeCurrencyCode(String((formData as any)?.currency || baseCode));
-                                                const defaultDest = formAvailableDestinations.find((a: any) => a.parentCode === neededParent && String(a.code || '').endsWith(currency))?.id;
+                                                const defaultDest = formAvailableDestinations.find((a: any) => a.parentCode === neededParent && matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currency))?.id;
                                                 setFormDestinationAccountId(defaultDest || '');
                                             } else {
                                                 setFormDestinationAccountId('');
@@ -811,7 +812,7 @@ const ManageExpensesScreen: React.FC = () => {
                                             if (normalized === 'kuraimi' || normalized === 'network') {
                                                 const neededParent = normalized === 'kuraimi' ? '1020' : '1030';
                                                 const currency = normalizeCurrencyCode(String((paymentExpense as any)?.currency || baseCode));
-                                                const defaultDest = paymentAvailableDestinations.find((a: any) => a.parentCode === neededParent && String(a.code || '').endsWith(currency))?.id;
+                                                const defaultDest = paymentAvailableDestinations.find((a: any) => a.parentCode === neededParent && matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currency))?.id;
                                                 setPaymentDestinationAccountId(defaultDest || '');
                                             } else {
                                                 setPaymentDestinationAccountId('');

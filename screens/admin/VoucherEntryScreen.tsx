@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { printJournalVoucherByEntryId, printPaymentVoucherByEntryId, printReceiptVoucherByEntryId } from '../../utils/vouchers';
+import { inferDestinationParentCode } from '../../utils/accountDestinationUtils';
 
 type AccountRow = { id: string; code: string; name: string; nameAr: string; parentId?: string; parentCode?: string };
 type CostCenterRow = { id: string; name: string; code: string | null };
@@ -179,7 +180,11 @@ export default function VoucherEntryScreen() {
           nameAr: translateAccountName(String(r.name || ''))
         }));
         const codeById = new Map(mappedAccounts.map((a) => [a.id, a.code]));
-        setAccounts(mappedAccounts.map((a) => ({ ...a, parentCode: a.parentId ? (codeById.get(a.parentId) || undefined) : undefined })));
+        setAccounts(mappedAccounts.map((a) => {
+          const parentCodeRaw = a.parentId ? (codeById.get(a.parentId) || undefined) : undefined;
+          const parentCode = inferDestinationParentCode(a.code, parentCodeRaw);
+          return { ...a, parentCode };
+        }));
         setCostCenters((Array.isArray(cc) ? cc : []).map((r: any) => ({ id: String(r.id), name: String(r.name || ''), code: r.code ? String(r.code) : null })));
         setParties((Array.isArray(ps) ? ps : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
         setCurrencyOptions((Array.isArray(cur) ? cur : []).map((r: any) => String(r.code || '').trim().toUpperCase()).filter(Boolean));

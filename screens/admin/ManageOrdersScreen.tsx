@@ -30,6 +30,7 @@ import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
 import { getCurrencyDecimalsByCode as sharedGetCurrencyDecimals, initCurrencyDecimals } from '../../utils/currencyDecimals';
+import { inferDestinationParentCode, matchesDestinationCurrency } from '../../utils/accountDestinationUtils';
 import { Trash } from '../../components/icons';
 
 const statusTranslations: Record<OrderStatus, string> = {
@@ -225,17 +226,20 @@ const ManageOrdersScreen: React.FC = () => {
                 .select(`id, code, name, parent_id`)
                 .eq('is_active', true);
             if (data) {
-                const bankParent = data.find(a => a.code === '1020')?.id;
-                const exchParent = data.find(a => a.code === '1030')?.id;
-                if (bankParent || exchParent) {
-                    const matching = data.filter(a => a.parent_id === bankParent || a.parent_id === exchParent).map(a => ({
-                        id: a.id,
-                        name: a.name,
-                        code: a.code,
-                        parentCode: a.parent_id === bankParent ? '1020' : '1030'
-                    }));
-                    setDestinationAccounts(matching);
-                }
+                const codeById = new Map((data || []).map((a: any) => [String(a?.id || ''), String(a?.code || '')]));
+                const matching = (data || [])
+                    .map((a: any) => {
+                        const parentCodeRaw = a?.parent_id ? (codeById.get(String(a.parent_id)) || '') : '';
+                        const parentCode = inferDestinationParentCode(String(a?.code || ''), String(parentCodeRaw || ''));
+                        return {
+                            id: String(a?.id || ''),
+                            name: String(a?.name || ''),
+                            code: String(a?.code || '').toUpperCase(),
+                            parentCode: parentCode || '',
+                        };
+                    })
+                    .filter((a: any) => Boolean(a.id) && (a.parentCode === '1020' || a.parentCode === '1030'));
+                setDestinationAccounts(matching);
             }
         };
         fetchAccounts();
@@ -2147,13 +2151,13 @@ const ManageOrdersScreen: React.FC = () => {
 
     const availableInStoreDestinations = useMemo(() => {
         const currency = String(inStoreTransactionCurrency || '').toUpperCase();
-        return destinationAccounts.filter(a => a.code.endsWith(currency));
+        return destinationAccounts.filter(a => matchesDestinationCurrency(String(a.code || ''), String((a as any).name || ''), currency));
     }, [destinationAccounts, inStoreTransactionCurrency]);
 
     const availablePartialDestinations = useMemo(() => {
         const order = partialPaymentOrderId ? (filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId)) : null;
         const currency = order ? String((order as any).currency || '').toUpperCase() || baseCode : baseCode;
-        return destinationAccounts.filter(a => a.code.endsWith(currency));
+        return destinationAccounts.filter(a => matchesDestinationCurrency(String(a.code || ''), String((a as any).name || ''), currency));
     }, [destinationAccounts, partialPaymentOrderId, filteredAndSortedOrders, orders, baseCode]);
 
     const totalsByCurrency = useMemo(() => {

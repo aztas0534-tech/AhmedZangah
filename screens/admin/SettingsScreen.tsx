@@ -20,6 +20,7 @@ import { Link } from 'react-router-dom';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 import { translateAccountName } from '../../utils/accountUtils';
+import { inferDestinationParentCode } from '../../utils/accountDestinationUtils';
 
 const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -119,11 +120,11 @@ const SettingsScreen: React.FC = () => {
   }, []);
 
   const bankDestinationOptions = useMemo(() => {
-    return accounts.filter((a) => a.parentCode === '1020');
+    return accounts.filter((a: any) => inferDestinationParentCode(String(a?.code || ''), String((a as any)?.parentCode || '')) === '1020');
   }, [accounts]);
 
   const networkDestinationOptions = useMemo(() => {
-    return accounts.filter((a) => a.parentCode === '1030');
+    return accounts.filter((a: any) => inferDestinationParentCode(String(a?.code || ''), String((a as any)?.parentCode || '')) === '1030');
   }, [accounts]);
 
   const accountCodeById = useMemo(() => {

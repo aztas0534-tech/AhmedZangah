@@ -24,6 +24,7 @@ import PrintableGrn, { PrintableGrnData } from '../../components/admin/documents
 import { printPaymentVoucherByPaymentId } from '../../utils/vouchers';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 import { printPurchaseReturnById } from '../../utils/returnsPrint';
+import { inferDestinationParentCode, matchesDestinationCurrency } from '../../utils/accountDestinationUtils';
 
 interface OrderItemRow {
     itemId: string;
@@ -2004,10 +2005,10 @@ const PurchaseOrderScreen: React.FC = () => {
         return (accounts || [])
             .map((a: any) => {
                 const code = String(a?.code || '').trim().toUpperCase();
-                const parentCode = code.startsWith('1020-') ? '1020' : (code.startsWith('1030-') ? '1030' : '');
+                const parentCode = inferDestinationParentCode(code, String((a as any)?.parentCode || '')) || '';
                 return { ...a, code, parentCode };
             })
-            .filter((a: any) => Boolean(a.parentCode) && a.code.endsWith(currency));
+            .filter((a: any) => Boolean(a.parentCode) && matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currency));
     }, [accounts, baseCode, paymentOrder]);
 
     const openPaymentModal = (order: PurchaseOrder) => {

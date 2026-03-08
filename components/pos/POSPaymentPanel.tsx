@@ -3,6 +3,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import NumericKeypadModal from './NumericKeypadModal';
 import { getCurrencyDecimalsByCode } from '../../utils/currencyDecimals';
 import { getSupabaseClient } from '../../supabase';
+import { inferDestinationParentCode, matchesDestinationCurrency } from '../../utils/accountDestinationUtils';
 
 type PaymentLine = {
   method: string;
@@ -79,24 +80,28 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
         .select(`id, code, name, parent_id`)
         .eq('is_active', true);
       if (data) {
-        const bankParent = data.find(a => a.code === '1020')?.id;
-        const exchParent = data.find(a => a.code === '1030')?.id;
-        if (bankParent || exchParent) {
-          const matching = data.filter(a => a.parent_id === bankParent || a.parent_id === exchParent).map(a => ({
-            id: a.id,
-            name: a.name,
-            code: a.code,
-            parentCode: a.parent_id === bankParent ? '1020' : '1030'
-          }));
-          setDestinationAccounts(matching);
-        }
+        const codeById = new Map((data || []).map((a: any) => [String(a?.id || ''), String(a?.code || '')]));
+        const matching = (data || [])
+          .map((a: any) => {
+            const parentCodeRaw = a?.parent_id ? (codeById.get(String(a.parent_id)) || '') : '';
+            const parentCode = inferDestinationParentCode(String(a?.code || ''), String(parentCodeRaw || ''));
+            return {
+              id: String(a?.id || ''),
+              name: String(a?.name || ''),
+              code: String(a?.code || '').toUpperCase(),
+              parentCode: parentCode || '',
+            };
+          })
+          .filter((a: any) => Boolean(a.id) && (a.parentCode === '1020' || a.parentCode === '1030'));
+        setDestinationAccounts(matching);
       }
     };
     fetchAccounts();
   }, []);
 
   const availableDestinations = useMemo(() => {
-    return destinationAccounts.filter(a => a.code.endsWith(code));
+    const currency = String(code || '').trim().toUpperCase();
+    return destinationAccounts.filter(a => matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currency));
   }, [destinationAccounts, code]);
 
   const needsReference = method === 'kuraimi' || method === 'network';
