@@ -2,6 +2,7 @@ import { PurchaseOrder } from '../../../types';
 import { AZTA_IDENTITY } from '../../../config/identity';
 import DocumentAuditFooter from './DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
+import { localizeUomCodeAr } from '../../../utils/displayLabels';
 
 type Brand = {
   name?: string;
@@ -19,6 +20,25 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
   const currency = String(order.currency || '').toUpperCase() || '—';
   const fx = Number(order.fxRate || 0);
   const items = Array.isArray(order.items) ? order.items : [];
+
+  const uomLabel = (code: string) => {
+    const raw = String(code || '').trim();
+    if (!raw) return '—';
+    if (/[\u0600-\u06FF]/.test(raw)) return raw;
+    const mapped = localizeUomCodeAr(raw);
+    if (mapped && mapped !== '—' && mapped !== raw) return mapped;
+    const lower = raw.toLowerCase();
+    if (lower === 'piece' || lower === 'pcs' || lower === 'pc') return 'حبة';
+    if (lower === 'carton' || lower === 'ctn') return 'كرتون';
+    if (lower === 'box') return 'صندوق';
+    if (lower === 'pack' || lower === 'pkt') return 'عبوة';
+    if (lower === 'bottle') return 'زجاجة';
+    if (lower === 'kg') return 'كجم';
+    if (lower === 'gram' || lower === 'g') return 'جرام';
+    if (lower === 'bag') return 'كيس';
+    if (lower === 'bundle') return 'ربطة';
+    return raw;
+  };
 
   const fmt = (n: number) => {
     const v = Number(n || 0);
@@ -227,6 +247,7 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
               <tr>
                 <th className="w-8 text-center">م</th>
                 <th className={isArabic ? 'text-right' : 'text-left'}>{isArabic ? 'الصنف | Item Description' : 'Item Description'}</th>
+                <th className="text-center w-20">{isArabic ? 'الوحدة UNIT' : 'Unit'}</th>
                 <th className="text-center w-24">الكمية QTY</th>
                 <th className="text-center w-32">سعر الوحدة UNIT</th>
                 <th className="text-center w-32">الإجمالي TOTAL</th>
@@ -235,7 +256,7 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
+                  <td colSpan={6} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
                 </tr>
               ) : (
                 items.map((it, idx) => {
@@ -248,6 +269,7 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
                       <td>
                         <div className="font-bold-value text-blue-950">{it.itemName || it.itemId}</div>
                       </td>
+                      <td className="text-center font-bold-value text-charcoal">{uomLabel((it as any).uomCode || (it as any).uom_code || '')}</td>
                       <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{qty}</td>
                       <td className="text-center tabular text-charcoal" dir="ltr">{fmt(unit)}</td>
                       <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{fmt(total)}</td>
@@ -257,13 +279,13 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
               )}
               {Array.from({ length: Math.max(0, 5 - items.length) }).map((_, idx) => (
                 <tr key={`fill-${idx}`}>
-                  <td></td><td></td><td></td><td></td><td></td>
+                  <td></td><td></td><td></td><td></td><td></td><td></td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={5} className="p-0 border-none">
+                <td colSpan={6} className="p-0 border-none">
                   <div className="flex justify-between items-center bg-blue-950 text-white p-3 print:px-4 print:py-2 rounded-b-md">
                     <span className="font-bold text-lg print:text-sm tracking-wide">{isArabic ? 'الإجمالي الكلي | GRAND TOTAL' : 'GRAND TOTAL'}</span>
                     <div className="flex items-baseline gap-2">

@@ -3,6 +3,7 @@ import { localizeDocStatusAr, shortId } from '../../../utils/displayLabels';
 import { AZTA_IDENTITY } from '../../../config/identity';
 import DocumentAuditFooter from './DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
+import { localizeUomCodeAr } from '../../../utils/displayLabels';
 
 type Brand = {
   name?: string;
@@ -31,6 +32,7 @@ export type PrintableGrnData = {
     productionDate?: string | null;
     expiryDate?: string | null;
     totalCost?: number;
+    uomCode?: string;
   }>;
   currency?: string;
 };
@@ -39,6 +41,25 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
   const { data, brand, language = 'ar', audit } = props;
 
   const isArabic = language === 'ar';
+
+  const uomLabel = (code: string) => {
+    const raw = String(code || '').trim();
+    if (!raw) return '—';
+    if (/[\u0600-\u06FF]/.test(raw)) return raw;
+    const mapped = localizeUomCodeAr(raw);
+    if (mapped && mapped !== '—' && mapped !== raw) return mapped;
+    const lower = raw.toLowerCase();
+    if (lower === 'piece' || lower === 'pcs' || lower === 'pc') return 'حبة';
+    if (lower === 'carton' || lower === 'ctn') return 'كرتون';
+    if (lower === 'box') return 'صندوق';
+    if (lower === 'pack' || lower === 'pkt') return 'عبوة';
+    if (lower === 'bottle') return 'زجاجة';
+    if (lower === 'kg') return 'كجم';
+    if (lower === 'gram' || lower === 'g') return 'جرام';
+    if (lower === 'bag') return 'كيس';
+    if (lower === 'bundle') return 'ربطة';
+    return raw;
+  };
 
   return (
     <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir={isArabic ? 'rtl' : 'ltr'}>
@@ -213,6 +234,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
               <tr>
                 <th className="w-8 text-center">م</th>
                 <th className={isArabic ? 'text-right' : 'text-left'}>{isArabic ? 'الصنف | Item Description' : 'Item Description'}</th>
+                <th className="text-center w-20">{isArabic ? 'الوحدة UNIT' : 'Unit'}</th>
                 <th className="text-center w-24">الكمية QTY</th>
                 <th className="text-center w-32">الصلاحية EXPIRY</th>
               </tr>
@@ -220,7 +242,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
             <tbody>
               {data.items.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
+                  <td colSpan={5} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
                 </tr>
               ) : (
                 data.items.map((it, idx) => {
@@ -237,6 +259,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
                           </div>
                         )}
                       </td>
+                      <td className="text-center font-bold-value text-charcoal">{uomLabel((it as any).uomCode || (it as any).uom_code || '')}</td>
                       <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{qty}</td>
                       <td className="text-center tabular font-thin-label text-charcoal" dir="ltr">{it.expiryDate ? formatDateOnly(it.expiryDate) : '—'}</td>
                     </tr>
@@ -245,7 +268,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
               )}
               {Array.from({ length: Math.max(0, 5 - data.items.length) }).map((_, idx) => (
                 <tr key={`fill-${idx}`}>
-                  <td></td><td></td><td></td><td></td>
+                  <td></td><td></td><td></td><td></td><td></td>
                 </tr>
               ))}
             </tbody>

@@ -637,6 +637,18 @@ const PurchaseOrderScreen: React.FC = () => {
                 totalCost: Number(r.totalCost || ((Number(r.quantity || 0) || 0) * (Number(r.unitCost || 0) || 0))),
             }))).filter((x: any) => Number(x.quantity || 0) > 0);
 
+        // Map uomCode from PO items to GRN items by itemId
+        const poUomByItemId = new Map<string, string>();
+        for (const poItem of (po.items || [])) {
+            const itemId = String((poItem as any)?.itemId || '').trim();
+            const uomCode = String((poItem as any)?.uomCode || (poItem as any)?.uom_code || '').trim();
+            if (itemId && uomCode) poUomByItemId.set(itemId, uomCode);
+        }
+        const grnItems = normalizedItems.map((it: any) => ({
+            ...it,
+            uomCode: poUomByItemId.get(String(it.itemId || '').trim()) || '',
+        }));
+
         const grn: PrintableGrnData = {
             grnNumber: String((receipt as any)?.grn_number || `GRN-${receiptId.slice(-6).toUpperCase()}`),
             documentStatus: 'Approved',
@@ -646,7 +658,7 @@ const PurchaseOrderScreen: React.FC = () => {
             supplierName: po.supplierName || undefined,
             warehouseName: po.warehouseName || undefined,
             notes: (receipt as any)?.notes ?? null,
-            items: normalizedItems,
+            items: grnItems,
             currency: String(po.currency || ''),
         };
 
