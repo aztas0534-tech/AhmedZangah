@@ -168,13 +168,37 @@ export default function VoucherEntryScreen() {
     void (async () => {
       setLoading(true);
       try {
-        const [{ data: acc }, { data: cc }, { data: ps }, { data: cur }] = await Promise.all([
+        const results = await Promise.allSettled([
           supabase.from('chart_of_accounts').select('id,code,name,parent_id').eq('is_active', true).order('code', { ascending: true }).limit(1500),
           supabase.from('cost_centers').select('id,name,code').eq('is_active', true).order('name', { ascending: true }).limit(500),
           supabase.from('financial_parties').select('id,name').eq('is_active', true).order('created_at', { ascending: false }).limit(500),
           supabase.from('currencies').select('code').order('code', { ascending: true }).limit(500),
         ]);
-        const mappedAccounts: AccountRow[] = (Array.isArray(acc) ? acc : []).map((r: any) => ({
+        const coaRes = results[0];
+        const ccRes = results[1];
+        const fpRes = results[2];
+        const curRes = results[3];
+
+        let coaRows: any[] = [];
+        if (coaRes.status === 'fulfilled') {
+          const payload = coaRes.value as any;
+          if (!payload?.error && Array.isArray(payload?.data)) {
+            coaRows = payload.data;
+          }
+        }
+        if (coaRows.length === 0) {
+          const { data: rpcData, error: rpcErr } = await supabase.rpc('list_active_accounts');
+          if (!rpcErr && Array.isArray(rpcData)) {
+            coaRows = rpcData.map((r: any) => ({
+              id: r?.id,
+              code: r?.code,
+              name: r?.name,
+              parent_id: r?.parent_id,
+            }));
+          }
+        }
+
+        const mappedAccounts: AccountRow[] = (Array.isArray(coaRows) ? coaRows : []).map((r: any) => ({
           id: String(r.id), code: String(r.code || ''), name: String(r.name || ''),
           parentId: r?.parent_id ? String(r.parent_id) : undefined,
           nameAr: translateAccountName(String(r.name || ''))
@@ -185,9 +209,34 @@ export default function VoucherEntryScreen() {
           const parentCode = inferDestinationParentCode(a.code, parentCodeRaw);
           return { ...a, parentCode };
         }));
-        setCostCenters((Array.isArray(cc) ? cc : []).map((r: any) => ({ id: String(r.id), name: String(r.name || ''), code: r.code ? String(r.code) : null })));
-        setParties((Array.isArray(ps) ? ps : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
-        setCurrencyOptions((Array.isArray(cur) ? cur : []).map((r: any) => String(r.code || '').trim().toUpperCase()).filter(Boolean));
+        if (ccRes.status === 'fulfilled' && !(ccRes.value as any)?.error) {
+          const cc = (ccRes.value as any)?.data;
+          setCostCenters((Array.isArray(cc) ? cc : []).map((r: any) => ({ id: String(r.id), name: String(r.name || ''), code: r.code ? String(r.code) : null })));
+        } else {
+          setCostCenters([]);
+        }
+
+        let partiesRows: any[] = [];
+        if (fpRes.status === 'fulfilled' && !(fpRes.value as any)?.error) {
+          const ps = (fpRes.value as any)?.data;
+          partiesRows = Array.isArray(ps) ? ps : [];
+        } else {
+          const { data: altPs, error: altPsErr } = await supabase
+            .from('financial_parties')
+            .select('id,name')
+            .eq('status', 'active')
+            .order('created_at', { ascending: false })
+            .limit(500);
+          if (!altPsErr && Array.isArray(altPs)) partiesRows = altPs;
+        }
+        setParties(partiesRows.map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
+
+        if (curRes.status === 'fulfilled' && !(curRes.value as any)?.error) {
+          const cur = (curRes.value as any)?.data;
+          setCurrencyOptions((Array.isArray(cur) ? cur : []).map((r: any) => String(r.code || '').trim().toUpperCase()).filter(Boolean));
+        } else {
+          setCurrencyOptions([]);
+        }
       } catch (e: any) {
         showNotification(String(e?.message || 'تعذر تحميل البيانات المساعدة.'), 'error');
       } finally {
