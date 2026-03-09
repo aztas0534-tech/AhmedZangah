@@ -200,6 +200,12 @@ const ShiftReconciliationScreen: React.FC = () => {
         } catch { setError('تعذر مراجعة الوردية.'); } finally { setReviewBusy(false); }
     };
 
+    const canExport = (tab === 'cash' && shifts.length > 0)
+        || (tab === 'sales' && dashboard?.sales?.total_orders > 0)
+        || (tab === 'purchases' && dashboard?.purchases?.total_pos > 0)
+        || (tab === 'parties' && dashboard?.parties)
+        || (tab === 'gl' && (dashboard?.trial_balance?.length ?? 0) > 0);
+
     const handleExport = () => {
         if (tab === 'cash' && shifts.length) {
             const headers = ['رقم الوردية', 'الكاشير', 'الفتح', 'الإغلاق', 'عهدة', 'المتوقع', 'الفعلي', 'الفرق', 'الحالة', 'المراجعة'];
@@ -211,6 +217,39 @@ const ShiftReconciliationScreen: React.FC = () => {
                 s.status === 'open' ? 'مفتوحة' : 'مغلقة', reviewStatusLabel[s.review_status || 'pending'] || '-',
             ]);
             exportToXlsx(headers, rows, `مطابقة-صندوق-${period}`, buildXlsxBrandOptions(settings, 'مطابقة الصندوق', headers.length));
+        } else if (tab === 'sales' && dashboard?.sales) {
+            const s = dashboard.sales;
+            const headers = ['طريقة الدفع', 'عدد الطلبات', 'الإجمالي'];
+            const rows: (string | number)[][] = Object.entries(s.by_payment_method).map(([m, d]) => [methodLabel(m), d.count, d.total]);
+            rows.push(['', '', '']);
+            rows.push(['إجمالي المبيعات', s.total_orders, s.total_sales]);
+            rows.push(['الضريبة', '', s.total_tax]);
+            rows.push(['الخصومات', '', s.total_discount]);
+            rows.push(['مكتملة/مسلمة', s.delivered_orders, '']);
+            rows.push(['ملغاة', s.cancelled_orders, '']);
+            rows.push(['معلقة', s.pending_orders, '']);
+            rows.push(['مرتجعة', s.returned_orders, '']);
+            exportToXlsx(headers, rows, `مبيعات-${period}`, buildXlsxBrandOptions(settings, 'ملخص المبيعات', headers.length));
+        } else if (tab === 'purchases' && dashboard?.purchases) {
+            const p = dashboard.purchases;
+            const headers = ['المورد', 'الأوامر', 'الإجمالي', 'المدفوع', 'المتبقي'];
+            const rows: (string | number)[][] = p.by_supplier.map(s => [s.supplier_name, s.count, s.total, s.paid, s.total - s.paid]);
+            rows.push(['', '', '', '', '']);
+            rows.push(['الإجمالي', p.total_pos, p.total_amount, p.total_paid, p.total_unpaid]);
+            exportToXlsx(headers, rows, `مشتريات-${period}`, buildXlsxBrandOptions(settings, 'ملخص المشتريات', headers.length));
+        } else if (tab === 'parties' && dashboard?.parties) {
+            const pt = dashboard.parties;
+            const headers = ['الاسم', 'النوع', 'الرصيد'];
+            const rows: (string | number)[][] = [];
+            rows.push(['--- أكبر المدينين ---', '', '']);
+            pt.top_debtors.forEach(d => rows.push([d.name, partyTypeLabel[d.party_type] || d.party_type, d.balance]));
+            rows.push(['', '', '']);
+            rows.push(['--- أكبر الدائنين ---', '', '']);
+            pt.top_creditors.forEach(c => rows.push([c.name, partyTypeLabel[c.party_type] || c.party_type, c.balance]));
+            rows.push(['', '', '']);
+            rows.push(['الذمم المدينة (AR)', '', pt.ar_balance]);
+            rows.push(['الذمم الدائنة (AP)', '', pt.ap_balance]);
+            exportToXlsx(headers, rows, `ذمم-${period}`, buildXlsxBrandOptions(settings, 'ملخص الذمم', headers.length));
         } else if (tab === 'gl' && dashboard?.trial_balance?.length) {
             const headers = ['الكود', 'الحساب', 'النوع', 'مدين', 'دائن', 'الرصيد'];
             const rows: (string | number)[][] = dashboard.trial_balance.map(a => [a.code, a.name, acctTypeLabel[a.account_type] || a.account_type, a.total_debit, a.total_credit, a.balance]);
@@ -234,7 +273,7 @@ const ShiftReconciliationScreen: React.FC = () => {
                     <button onClick={loadData} disabled={loading} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
                         {loading ? '...' : 'تحديث'}
                     </button>
-                    <button onClick={handleExport} disabled={!(tab === 'cash' && shifts.length) && !(tab === 'gl' && dashboard?.trial_balance?.length)} className="px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 text-sm disabled:opacity-50">
+                    <button onClick={handleExport} disabled={!canExport} className="px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 text-sm disabled:opacity-50">
                         تصدير Excel
                     </button>
                 </div>

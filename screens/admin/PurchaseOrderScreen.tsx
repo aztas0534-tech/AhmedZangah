@@ -732,6 +732,43 @@ const PurchaseOrderScreen: React.FC = () => {
         };
     };
 
+    const getLatestPurchaseReturnForOrder = async (orderId: string) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return null;
+        const { data, error } = await supabase
+            .from('purchase_returns')
+            .select('id,returned_at,created_at')
+            .eq('purchase_order_id', orderId)
+            .order('returned_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (error) throw error;
+        if (!data?.id) return null;
+        return {
+            id: String((data as any).id),
+            returnedAt: String((data as any).returned_at || ''),
+            createdAt: String((data as any).created_at || ''),
+        };
+    };
+
+    const handleReprintLatestPurchaseReturn = async (order: PurchaseOrder) => {
+        const latest = await getLatestPurchaseReturnForOrder(order.id);
+        if (!latest?.id) {
+            showNotification('لا يوجد مرتجع مشتريات لهذا الأمر.', 'info');
+            return;
+        }
+        const brand = resolveBrandingForWarehouseId(order.warehouseId);
+        const branchHdr = await fetchBranchHeader(scope?.branchId);
+        const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+        await printPurchaseReturnById(
+            latest.id,
+            { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode },
+            baseCode,
+            { printedBy }
+        );
+    };
+
     const loadLatestReceiptPostingForOrders = async (orderIds: string[]) => {
         const supabase = getSupabaseClient();
         if (!supabase) return {} as Record<string, { receiptId: string; status: string; error: string }>;
@@ -2921,6 +2958,24 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 >
                                                                     مرتجع
                                                                 </button>
+                                                                {order.hasReturns && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            void (async () => {
+                                                                                try {
+                                                                                    await handleReprintLatestPurchaseReturn(order);
+                                                                                } catch (e) {
+                                                                                    alert(getErrorMessage(e, 'تعذر إعادة طباعة سند مرتجع المشتريات.'));
+                                                                                }
+                                                                            })();
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50"
+                                                                    >
+                                                                        إعادة طباعة آخر مرتجع
+                                                                    </button>
+                                                                )}
                                                                 {canManageImports && (
                                                                     <button
                                                                         type="button"
