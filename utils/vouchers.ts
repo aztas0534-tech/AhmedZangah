@@ -108,7 +108,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
 
   const { data: lines, error: lErr } = await supabase
     .from('journal_lines')
-    .select('debit,credit,line_memo,currency_code,fx_rate,foreign_amount,account_id,party_id,chart_of_accounts(code,name),financial_parties(name)')
+    .select('debit,credit,line_memo,currency_code,fx_rate,foreign_amount,account_id,party_id,chart_of_accounts(code,name),financial_parties!journal_lines_party_id_fkey(name)')
     .eq('journal_entry_id', entryId)
     .order('id', { ascending: true });
   if (lErr) throw lErr;
@@ -144,7 +144,7 @@ const fetchJournalEntryWithLines = async (entryId: string) => {
   try {
     const { data: ple, error: pleErr } = await supabase
       .from('party_ledger_entries')
-      .select('party_id, financial_parties(name)')
+      .select('party_id, financial_parties!party_ledger_entries_party_id_fkey(name)')
       .eq('journal_entry_id', entryId)
       .order('occurred_at', { ascending: false })
       .limit(1)

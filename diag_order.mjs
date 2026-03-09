@@ -4,22 +4,50 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-  // Find all payments where amount ≈ base_amount but currency != SAR
-  const { data: payments, error } = await supabase
-    .from('payments')
-    .select('id, amount, base_amount, currency, fx_rate, reference_table, reference_id, direction, method')
-    .not('currency', 'is', null)
-    .neq('currency', 'SAR')
-    .order('created_at', { ascending: false });
+  // Check journal entries for the cancelled order #86A00D  
+  const { data: cancelledEntries } = await supabase
+    .from('journal_entries')
+    .select('id, source_table, source_id, source_event, entry_date, memo, status')
+    .or('source_id.ilike.%86a00d%,source_id.ilike.%86A00D%');
+  
+  console.log('Journal entries for cancelled order #86A00D:', JSON.stringify(cancelledEntries, null, 2));
 
-  if (error) { console.error('Error:', error); return; }
+  // Check journal entries for the delivered order #479F27
+  const { data: deliveredEntries } = await supabase
+    .from('journal_entries')
+    .select('id, source_table, source_id, source_event, entry_date, memo, status')
+    .or('source_id.ilike.%479f27%,source_id.ilike.%479F27%');
+  
+  console.log('Journal entries for delivered order #479F27:', JSON.stringify(deliveredEntries, null, 2));
 
-  console.log(`Total non-SAR payments: ${payments?.length || 0}\n`);
+  // Check payment A4D95F75
+  const { data: paymentEntries } = await supabase
+    .from('journal_entries')
+    .select('id, source_table, source_id, source_event, entry_date, memo, status')
+    .or('source_id.ilike.%a4d95f75%,source_id.ilike.%A4D95F75%');
+  
+  console.log('Journal entries for payment A4D95F75:', JSON.stringify(paymentEntries, null, 2));
 
-  for (const p of (payments || [])) {
-    const ratio = Math.abs(p.amount / (p.base_amount || 1));
-    const isSuspect = Math.abs(p.amount - (p.base_amount || 0)) < 1.0;
-    console.log(`Payment ${p.id.slice(-8)}: currency=${p.currency} amount=${p.amount} base=${p.base_amount} fx=${p.fx_rate} ratio=${ratio.toFixed(4)} SUSPECT=${isSuspect} ref=${p.reference_table}/${p.reference_id?.slice(-8)}`);
-  }
+  // Look for ALL journal entries with source_event containing 'reversal', 'void', or 'cancel'
+  const { data: reversals } = await supabase
+    .from('journal_entries')
+    .select('id, source_table, source_id, source_event, entry_date, memo, status')
+    .in('source_event', ['reversal', 'void', 'reversed', 'cancelled']);
+  
+  console.log('All reversal/void entries:', JSON.stringify(reversals, null, 2));
+
+  // Check all orders for the customer
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('id, status, total, currency, fx_rate, invoice_number, data')
+    .or('id.ilike.%86a00d%,id.ilike.%479f27%,id.ilike.%5ddd19%');
+  
+  console.log('Orders:', orders?.map(o => ({
+    id: o.id?.slice(-8),
+    status: o.status,
+    total: o.total,
+    currency: o.currency,
+    invoice: o.invoice_number || o.data?.invoiceNumber
+  })));
 }
 run();
