@@ -201,9 +201,9 @@ const ShiftReconciliationScreen: React.FC = () => {
     };
 
     const canExport = (tab === 'cash' && shifts.length > 0)
-        || (tab === 'sales' && dashboard?.sales?.total_orders > 0)
-        || (tab === 'purchases' && dashboard?.purchases?.total_pos > 0)
-        || (tab === 'parties' && dashboard?.parties)
+        || (tab === 'sales' && (dashboard?.sales?.total_orders ?? 0) > 0)
+        || (tab === 'purchases' && (dashboard?.purchases?.total_pos ?? 0) > 0)
+        || (tab === 'parties' && !!dashboard?.parties)
         || (tab === 'gl' && (dashboard?.trial_balance?.length ?? 0) > 0);
 
     const handleExport = () => {
