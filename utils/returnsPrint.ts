@@ -219,7 +219,9 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     totalReturnBase: totalBase,
     items: (Array.isArray(retItems) ? retItems : []).map((it: any) => ({
       itemId: String(it?.item_id || ''),
-      itemName: String(it?.menu_items?.name || ''),
+      itemName: typeof it?.menu_items?.name === 'object' && it?.menu_items?.name !== null 
+        ? String(it?.menu_items?.name?.ar || it?.menu_items?.name?.en || '') 
+        : String(it?.menu_items?.name || ''),
       quantity: Number(it?.quantity || 0) || 0,
     })),
   };

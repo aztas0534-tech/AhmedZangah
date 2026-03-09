@@ -125,6 +125,7 @@ const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; b
                 align-items: center !important; border-bottom: 1.5pt solid #1E3A8A !important;
                 padding-bottom: 2px !important; margin-bottom: 3px !important;
             }
+            .luxury-header img { max-height: 50px !important; max-width: 150px !important; object-fit: contain !important; filter: grayscale(100%) !important; }
             .brand-name { font-size: 16px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
             .doc-title { font-size: 18px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
             .title-sub { font-size: 7px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
@@ -178,8 +179,8 @@ const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; b
         <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
           <div className="flex items-center gap-6 print:gap-4">
             {brand?.logoUrl && (
-              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
-                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-16 w-auto object-contain print:grayscale" />
+              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10" style={{ maxWidth: '160px' }}>
+                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-16 w-auto object-contain print:grayscale" style={{ maxHeight: '50px', maxWidth: '100%', objectFit: 'contain' }} />
               </div>
             )}
             <div className="flex flex-col justify-center">
