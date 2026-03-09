@@ -1130,7 +1130,7 @@ export const SalesStatusRow: React.FC = () => {
 // 9. TOP DEBTORS
 export const TopDebtorsSection: React.FC = () => {
     const { hasPermission } = useAuth();
-    const { currency, refreshKey } = useDashboard();
+    const { currency, refreshKey, dateRange } = useDashboard();
     const [debtors, setDebtors] = useState<{ name: string; amount: number; overdueDays: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -1174,7 +1174,7 @@ export const TopDebtorsSection: React.FC = () => {
         };
         void load();
         return () => { active = false; };
-    }, [canView, refreshKey]);
+    }, [canView, refreshKey, dateRange]);
 
     if (!canView) return null;
     if (!loading && debtors.length === 0 && !error) return null;

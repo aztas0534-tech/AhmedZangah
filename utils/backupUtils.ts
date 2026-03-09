@@ -225,27 +225,84 @@ export const importSystemBackup = async (
         const tablesData = parsed.data;
 
         // Dependency Order (Parent tables first, then children)
+        // Comprehensive dependency-ordered list of ALL system tables
+        // Parent tables MUST come before their children (FK dependencies)
         const priorityOrder = [
+            // ── Tier 0: System config ──
+            'app_settings',
             'organization_settings',
+            'currencies',
+            'fx_rates',
+            // ── Tier 1: Core entities ──
+            'roles',
             'branches',
+            'companies',
+            'cost_centers',
             'warehouses',
             'chart_of_accounts',
-            'financial_parties',
-            'categories',
-            'items',
-            'item_warehouses',
-            'cash_shifts',
-            'invoices',
-            'invoice_items',
-            'purchases',
-            'purchase_items',
-            'inventory_movements',
-            'journal_entries',
-            'journal_entry_lines',
-            'pos_sessions',
-            'vouchers',
+            // ── Tier 2: Parties & Items ──
+            'admin_users',
             'employees',
-            'roles',
+            'financial_parties',
+            'suppliers',
+            'customers',
+            'categories',
+            'menu_items',
+            'items',
+            'uom',
+            'item_uom',
+            'item_warehouses',
+            // ── Tier 3: Pricing ──
+            'product_prices_multi_currency',
+            'pricing_tiers',
+            'customer_pricing',
+            // ── Tier 4: Purchase flow ──
+            'purchase_orders',
+            'purchase_items',
+            'purchase_receipts',
+            'purchase_receipt_items',
+            // ── Tier 5: Inventory ──
+            'stock_management',
+            'batches',
+            'inventory_movements',
+            'order_item_reservations',
+            // ── Tier 6: Imports/Shipments ──
+            'import_shipments',
+            'import_shipments_items',
+            'import_expenses',
+            // ── Tier 7: Sales flow ──
+            'cash_shifts',
+            'orders',
+            'order_items',
+            'order_item_cogs',
+            'sales_returns',
+            // ── Tier 8: Transfers ──
+            'warehouse_transfers',
+            'warehouse_transfer_items',
+            // ── Tier 9: Accounting ──
+            'journal_entries',
+            'journal_lines',
+            'vouchers',
+            'payments',
+            'supplier_credit_notes',
+            // ── Tier 10: HR/Payroll ──
+            'payroll_runs',
+            'payroll_lines',
+            'allowance_types',
+            'deduction_types',
+            'employee_allowances',
+            'employee_deductions',
+            'attendance_records',
+            // ── Tier 11: Other ──
+            'supplier_contracts',
+            'supplier_evaluations',
+            'notifications',
+            'reviews',
+            'system_audit_logs',
+            'pos_sessions',
+            'pos_terminals',
+            'stocktaking_sessions',
+            'stocktaking_items',
         ];
 
         const tables = Object.keys(tablesData);
@@ -304,6 +361,15 @@ export const importSystemBackup = async (
                     });
                 }
             }
+        }
+
+        // Post-restore: resync computed fields (batch costs, avg_cost)
+        // since triggers were disabled during import
+        onProgress({ status: 'generating_file', currentTable: '', tableProgress: 90, tablesCompleted: totalTables, totalTables, message: 'جاري إعادة حساب التكاليف والأرصدة...' });
+        try {
+            await supabase.rpc('admin_post_restore_resync');
+        } catch (resyncErr) {
+            console.warn('Post-restore resync warning (non-fatal):', resyncErr);
         }
 
         onProgress({ status: 'completed', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'تمت عملية الاسترداد الشامل بنجاح!' });

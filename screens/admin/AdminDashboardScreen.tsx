@@ -3,6 +3,7 @@ import { useOrders } from '../../contexts/OrderContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
     DashboardProvider,
+    useDashboard,
     DashboardHeader,
     KPIBar,
     InventorySection,
@@ -21,11 +22,16 @@ import { adminStatusColors } from '../../utils/orderUtils';
 const RecentOrdersTable: React.FC = () => {
     const { orders, updateOrderStatus } = useOrders();
     const { showNotification } = useToast();
+    const { dateRange } = useDashboard();
     const [recentOrders, setRecentOrders] = useState<Order[]>([]);
 
     useEffect(() => {
-        setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
-    }, [orders]);
+        const filtered = orders.filter(o => {
+            const d = new Date(o.createdAt);
+            return d >= dateRange.start && d <= dateRange.end;
+        });
+        setRecentOrders([...filtered].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
+    }, [orders, dateRange]);
 
     const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
         try {
