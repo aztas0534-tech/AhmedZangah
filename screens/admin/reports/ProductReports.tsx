@@ -62,6 +62,36 @@ const ProductReports: React.FC = () => {
 
     const language = 'ar'; // Fixed for now or get from context if available
 
+    // Unit type to human-readable label mapping
+    const unitLabel = (unitType: string): string => {
+        if (!unitType) return '-';
+        const u = unitType.toLowerCase().trim();
+        // Standard types
+        if (u === 'piece' || u === 'pcs' || u === 'unit') return 'قطعة';
+        if (u === 'kg' || u === 'kilogram') return 'كيلو';
+        if (u === 'gram' || u === 'g' || u === 'gm') return 'جرام';
+        if (u === 'box') return 'صندوق';
+        if (u === 'pack' || u === 'packet') return 'عبوة';
+        if (u === 'carton') return 'كرتون';
+        if (u === 'liter' || u === 'litre' || u === 'l') return 'لتر';
+        if (u === 'ml' || u === 'milliliter') return 'مل';
+        if (u === 'bag') return 'كيس';
+        if (u === 'bottle') return 'زجاجة';
+        if (u === 'can') return 'علبة';
+        if (u === 'roll') return 'لفة';
+        if (u === 'meter' || u === 'm') return 'متر';
+        if (u === 'dozen') return 'درزن';
+        if (u === 'pair') return 'زوج';
+        if (u === 'set') return 'طقم';
+        if (u === 'bundle') return 'رزمة';
+        if (u === 'ton' || u === 'tonne') return 'طن';
+        if (u === 'gallon') return 'جالون';
+        if (u === 'sheet') return 'ورقة';
+        // UUID-based custom unit — extract the last part or show generic
+        if (/^unit_/i.test(u) || /^[0-9a-f]{8}-/i.test(u)) return 'وحدة';
+        return unitType;
+    };
+
     const applyPreset = (preset: typeof rangePreset) => {
         setRangePreset(preset);
         if (preset === 'all') {
@@ -739,7 +769,7 @@ const ProductReports: React.FC = () => {
         const rows = exportProducts.map(p => [
             p.name,
             Number(p.quantity_sold.toFixed(3)),
-            p.unit_type,
+            unitLabel(p.unit_type),
             Number(p.total_sales || 0).toFixed(2),
             Number(p.total_cost || 0).toFixed(2),
             Number(p.total_profit || 0).toFixed(2),
@@ -1068,7 +1098,7 @@ const ProductReports: React.FC = () => {
                                             <tr key={product.item_id}>
                                                 <td className="px-6 py-4 whitespace-nowrap font-medium border-r dark:border-gray-700">{product.name}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-lg font-bold border-r dark:border-gray-700">{product.quantity_sold.toFixed(3).replace(/\.?0+$/, '')}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{product.unit_type}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{unitLabel(product.unit_type)}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap font-semibold text-orange-500 border-r dark:border-gray-700">{Number(product.total_sales || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-red-600 dark:text-red-400 border-r dark:border-gray-700">{Number(product.total_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>
                                                 <td className={`px-6 py-4 whitespace-nowrap font-bold border-r dark:border-gray-700 ${product.total_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
