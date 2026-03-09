@@ -23,7 +23,8 @@ interface PurchasesContextType {
     warehouseId?: string,
     paymentTerms?: 'cash' | 'credit',
     netDays?: number,
-    dueDate?: string
+    dueDate?: string,
+    notes?: string
   ) => Promise<string>;
   deletePurchaseOrder: (purchaseOrderId: string) => Promise<void>;
   cancelPurchaseOrder: (purchaseOrderId: string, reason?: string, occurredAt?: string) => Promise<void>;
@@ -46,6 +47,7 @@ interface PurchasesContextType {
     occurredAt?: string
   ) => Promise<string>;
   updatePurchaseOrderInvoiceNumber: (purchaseOrderId: string, invoiceNumber: string | null) => Promise<void>;
+  getPurchaseReceivedSummary: (purchaseOrderId: string) => Promise<Record<string, number>>;
   getPurchaseReturnSummary: (purchaseOrderId: string) => Promise<Record<string, number>>;
   fetchPurchaseOrders: () => Promise<void>;
 }
@@ -1491,6 +1493,33 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return summary;
   };
 
+  const getPurchaseReceivedSummary = async (purchaseOrderId: string): Promise<Record<string, number>> => {
+    const summary: Record<string, number> = {};
+    if (!supabase) return summary;
+    try {
+      const { data: receipts, error: rErr } = await supabase
+        .from('purchase_receipts')
+        .select('id')
+        .eq('purchase_order_id', purchaseOrderId);
+      if (rErr) throw rErr;
+      const ids = (receipts || []).map((r: any) => r?.id).filter(Boolean);
+      if (ids.length === 0) return summary;
+      const { data: items, error: iErr } = await supabase
+        .from('purchase_receipt_items')
+        .select('item_id, quantity')
+        .in('receipt_id', ids);
+      if (iErr) throw iErr;
+      for (const row of items || []) {
+        const key = String((row as any)?.item_id || '');
+        const qty = Number((row as any)?.quantity) || 0;
+        if (!key) continue;
+        summary[key] = (summary[key] || 0) + qty;
+      }
+    } catch {
+    }
+    return summary;
+  };
+
   return (
     <PurchasesContext.Provider value={{
       suppliers,
@@ -1507,6 +1536,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       receivePurchaseOrderPartial,
       createPurchaseReturn,
       updatePurchaseOrderInvoiceNumber,
+      getPurchaseReceivedSummary,
       getPurchaseReturnSummary,
       fetchPurchaseOrders
     }}>

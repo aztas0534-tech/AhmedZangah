@@ -2012,6 +2012,8 @@ const ManageOrdersScreen: React.FC = () => {
             };
             let printNumber = 1;
             try {
+                const supabase = getSupabaseClient();
+                if (!supabase) throw new Error('Supabase غير مهيأ.');
                 const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableQuotation' });
                 printNumber = Number(pn) || 1;
             } catch { /* fallback */ }

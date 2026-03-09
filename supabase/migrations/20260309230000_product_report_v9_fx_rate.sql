@@ -184,8 +184,8 @@ begin
       ni.order_id,
       ni.item_id_text,
       max(ni.fx_rate_effective) as fx_rate_effective,
-      max(ni.item_name) as any_name,
-      max(ni.unit_type) as any_unit,
+      (array_agg(ni.item_name order by ni.item_name::text))[1] as any_name,
+      (array_agg(ni.unit_type order by ni.unit_type))[1] as any_unit,
       sum(
         case
           when ni.unit_type in ('kg', 'gram') and ni.weight > 0
@@ -251,8 +251,8 @@ begin
   order_item_net as (
     select
       oig.item_id_text,
-      max(oig.any_name) as any_name,
-      max(oig.any_unit) as any_unit,
+      (array_agg(oig.any_name order by oig.any_name::text))[1] as any_name,
+      (array_agg(oig.any_unit order by oig.any_unit))[1] as any_unit,
       sum(oig.qty_sold) as qty_sold,
       -- Apply FX rate to convert foreign currency amounts to base currency
       sum(

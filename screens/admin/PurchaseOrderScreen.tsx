@@ -57,7 +57,7 @@ type ItemUomRow = { code: string; name: string; qtyInBase: number };
 
 const PurchaseOrderScreen: React.FC = () => {
     const location = useLocation();
-    const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
+    const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReceivedSummary, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
     const { menuItems } = useMenu();
     const { stockItems } = useStock();
     const { user, hasPermission } = useAuth();
@@ -1866,10 +1866,11 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     const openReturnModal = async (order: PurchaseOrder) => {
+        const receivedSummary = await getPurchaseReceivedSummary(order.id);
         const summary = await getPurchaseReturnSummary(order.id);
         const rows: ReceiveRow[] = (order.items || []).map((it: any) => {
             const ordered = Number(it.qtyBase ?? it.quantity ?? 0);
-            const received = Number(it.receivedQuantity || 0);
+            const received = Number(receivedSummary[it.itemId] ?? it.receivedQuantity ?? 0);
             const prev = Number(summary[it.itemId] || 0);
             const remaining = Math.max(0, received - prev);
             const stock = stockItems.find(s => s.itemId === it.itemId);
