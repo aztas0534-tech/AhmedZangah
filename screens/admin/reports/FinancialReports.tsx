@@ -901,13 +901,12 @@ const FinancialReports: React.FC = () => {
         supabase.rpc('currency_balances', periodRangeParams),
       ]);
 
-      if (tbError) throw tbError;
       if (isError) throw isError;
       if (bsError) throw bsError;
       if (tbEntErr) throw tbEntErr;
       if (cbError) throw cbError;
 
-      setTrialBalance(((tbData as any[]) || []).map((r) => {
+      const mapTrial = (rows: any[]) => rows.map((r) => {
         const trName = translateAccountName(String(r.account_name));
         return {
           account_code: String(r.account_code),
@@ -918,7 +917,34 @@ const FinancialReports: React.FC = () => {
           credit: Number(r.credit) || 0,
           balance: Number(r.balance) || 0,
         };
-      }));
+      });
+      const mapTrialFromEnterprise = (rows: any[]) => rows.map((r) => {
+        const debit = Number(r.total_debits_base ?? r.debit_base ?? r.debit ?? 0) || 0;
+        const credit = Number(r.total_credits_base ?? r.credit_base ?? r.credit ?? 0) || 0;
+        const balance = Number(r.view_balance_base ?? r.balance_base ?? r.balance ?? (debit - credit)) || 0;
+        const accountNameRaw = String(r.account_name || r.name || '');
+        const trName = translateAccountName(accountNameRaw);
+        return {
+          account_code: String(r.account_code || r.code || ''),
+          account_name: trName !== accountNameRaw ? `${trName} (${accountNameRaw})` : trName,
+          account_type: String(r.account_type || ''),
+          normal_balance: String(r.normal_balance || (balance >= 0 ? 'debit' : 'credit')),
+          debit,
+          credit,
+          balance,
+        };
+      }).filter((r) => Boolean(r.account_code));
+
+      if (!tbError) {
+        setTrialBalance(mapTrial((tbData as any[]) || []));
+      } else {
+        const entRows = mapTrialFromEnterprise((tbEnt as any[]) || []);
+        if (entRows.length > 0) {
+          setTrialBalance(entRows);
+        } else {
+          throw tbError;
+        }
+      }
 
       setCurrencyBalances(((cbData as any[]) || []).map((r) => {
         const trName = translateAccountName(String(r.account_name));
@@ -1405,16 +1431,45 @@ const FinancialReports: React.FC = () => {
         p_cost_center_id: appliedFilters.costCenterId || null,
         p_journal_id: appliedFilters.journalId || null,
       });
-      if (error) throw error;
-      const rows = ((data as any[]) || []).map((r) => ({
-        account_code: String(r.account_code),
-        account_name: String(r.account_name),
-        account_type: String(r.account_type),
-        normal_balance: String(r.normal_balance),
-        debit: Number(r.debit) || 0,
-        credit: Number(r.credit) || 0,
-        balance: Number(r.balance) || 0,
-      })) as TrialBalanceRow[];
+      let rows: TrialBalanceRow[] = [];
+      if (!error) {
+        rows = ((data as any[]) || []).map((r) => ({
+          account_code: String(r.account_code),
+          account_name: String(r.account_name),
+          account_type: String(r.account_type),
+          normal_balance: String(r.normal_balance),
+          debit: Number(r.debit) || 0,
+          credit: Number(r.credit) || 0,
+          balance: Number(r.balance) || 0,
+        })) as TrialBalanceRow[];
+      } else {
+        const { data: entData, error: entErr } = await supabase.rpc('enterprise_trial_balance', {
+          p_start: null,
+          p_end: asOfDate || null,
+          p_company_id: null,
+          p_branch_id: null,
+          p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+          p_dept_id: null,
+          p_project_id: null,
+          p_currency_view: 'base',
+          p_rollup: 'account',
+        });
+        if (entErr) throw error;
+        rows = ((entData as any[]) || []).map((r) => {
+          const debit = Number(r.total_debits_base ?? r.debit_base ?? r.debit ?? 0) || 0;
+          const credit = Number(r.total_credits_base ?? r.credit_base ?? r.credit ?? 0) || 0;
+          const balance = Number(r.view_balance_base ?? r.balance_base ?? r.balance ?? (debit - credit)) || 0;
+          return {
+            account_code: String(r.account_code || r.code || ''),
+            account_name: String(r.account_name || r.name || ''),
+            account_type: String(r.account_type || ''),
+            normal_balance: String(r.normal_balance || (balance >= 0 ? 'debit' : 'credit')),
+            debit,
+            credit,
+            balance,
+          };
+        }).filter((r) => Boolean(r.account_code)) as TrialBalanceRow[];
+      }
       setTrialBalanceAsOf(rows);
       setTrialBalanceAsOfDate(asOfDate);
     } catch (err: any) {
