@@ -109,14 +109,14 @@ export default function PrintablePartyLedgerStatement(props: {
 
             .document-container { 
                 width: 100% !important; 
-                padding: 2mm 5mm !important;
+                padding: 3mm 3mm 2mm 3mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important;
-                line-height: 1.35 !important;
+                line-height: 1.2 !important;
                 position: relative !important;
-                min-height: 296mm !important;
+                min-height: 210mm !important;
                 background-color: #FAFAFA !important;
             }
 
@@ -126,7 +126,7 @@ export default function PrintablePartyLedgerStatement(props: {
                 top: 50% !important;
                 left: 50% !important;
                 transform: translate(-50%, -50%) rotate(-30deg) !important;
-                font-size: 14rem !important;
+                font-size: 10rem !important;
                 font-weight: 900 !important;
                 color: #D4AF37 !important;
                 opacity: 0.03 !important;
@@ -136,19 +136,19 @@ export default function PrintablePartyLedgerStatement(props: {
                 letter-spacing: -2px !important;
             }
 
-            /* ═══ THE CERTIFICATE FRAME (ULTRA LUXURY) ═══ */
+            /* ═══ FRAME ═══ */
             .document-container::before {
                 content: '';
                 position: absolute !important;
-                top: 5mm; bottom: 5mm; left: 5mm; right: 5mm;
-                border: 2pt solid #1E3A8A !important;
+                top: 1mm; bottom: 1mm; left: 1mm; right: 1mm;
+                border: 1.5pt solid #1E3A8A !important;
                 pointer-events: none !important;
                 z-index: 50 !important;
             }
             .document-container::after {
                 content: '';
                 position: absolute !important;
-                top: 6mm; bottom: 6mm; left: 6mm; right: 6mm;
+                top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
                 border: 0.5pt solid #D4AF37 !important;
                 pointer-events: none !important;
                 z-index: 50 !important;
@@ -158,9 +158,31 @@ export default function PrintablePartyLedgerStatement(props: {
             .text-gold { color: #D4AF37 !important; }
             .text-charcoal { color: #0F172A !important; }
             .bg-gold-50 { background-color: #fcf9f2 !important; }
-            .font-thin-label { font-weight: 300 !important; font-size: 10px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-            .font-bold-value { font-weight: 800 !important; font-size: 13px !important; color: #0F172A !important; }
+            .font-thin-label { font-weight: 300 !important; font-size: 7px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
+            .font-bold-value { font-weight: 700 !important; font-size: 9px !important; color: #0F172A !important; }
             .tabular { font-variant-numeric: tabular-nums; font-family: 'Arial', sans-serif; letter-spacing: 0.5px; }
+
+            /* ═══ LOGO ═══ */
+            .brand-logo-box {
+                width: 18mm !important;
+                height: 18mm !important;
+                min-width: 18mm !important;
+                min-height: 18mm !important;
+                max-width: 18mm !important;
+                max-height: 18mm !important;
+                overflow: hidden !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            .brand-logo {
+                width: 100% !important;
+                height: 100% !important;
+                max-width: 18mm !important;
+                max-height: 18mm !important;
+                object-fit: contain !important;
+                display: block !important;
+            }
 
             /* ═══ HEADER ═══ */
             .luxury-header {
@@ -168,26 +190,26 @@ export default function PrintablePartyLedgerStatement(props: {
                 justify-content: space-between !important;
                 align-items: center !important;
                 border-bottom: 1.5pt solid #1E3A8A !important;
-                padding-bottom: 6px !important;
-                margin-bottom: 12px !important;
+                padding-bottom: 2px !important;
+                margin-bottom: 3px !important;
             }
-            .brand-name { font-size: 24px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 2px !important; }
-            .doc-title { font-size: 28px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-            .title-sub { font-size: 9px !important; font-weight: 800 !important; letter-spacing: 2px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 2px !important; margin-top: 2px !important; text-align: center !important; }
+            .brand-name { font-size: 14px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+            .doc-title { font-size: 18px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+            .title-sub { font-size: 7px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
             
             /* ═══ INFO GRID ═══ */
             .info-grid {
                 display: flex !important;
                 justify-content: space-between !important;
-                margin-bottom: 10px !important;
+                margin-bottom: 3px !important;
                 background: #F3F4F6 !important;
                 border: 0.5pt solid #E5E7EB !important;
-                padding: 6px 12px !important;
+                padding: 2px 5px !important;
             }
             .info-group {
                 display: flex !important;
                 flex-direction: column !important;
-                gap: 4px !important;
+                gap: 1px !important;
             }
             .info-item {
                 display: flex !important;
@@ -198,22 +220,22 @@ export default function PrintablePartyLedgerStatement(props: {
             .luxury-table {
                 width: 100% !important;
                 border-collapse: collapse !important;
-                margin-bottom: 10px !important;
+                margin-bottom: 3px !important;
                 table-layout: fixed !important;
             }
             .luxury-table th {
                 background-color: #0F172A !important;
                 color: #FFFFFF !important;
-                padding: 6px 8px !important;
+                padding: 2px 2px !important;
                 font-weight: 600 !important;
-                font-size: 11px !important;
+                font-size: 7px !important;
                 text-transform: uppercase !important;
-                letter-spacing: 0.5px !important;
+                letter-spacing: 0.3px !important;
                 border: none !important;
             }
             .luxury-table td {
-                padding: 4px 6px !important;
-                font-size: 11px !important;
+                padding: 1.5px 2px !important;
+                font-size: 8px !important;
                 font-weight: 600 !important;
                 border-bottom: 0.5pt solid #E5E7EB !important;
                 color: #0F172A !important;
@@ -226,15 +248,15 @@ export default function PrintablePartyLedgerStatement(props: {
              /* ═══ SUMMARY CARDS ═══ */
             .summary {
                 display: flex !important;
-                gap: 8px !important;
-                margin-bottom: 12px !important;
+                gap: 4px !important;
+                margin-bottom: 4px !important;
             }
             .summary-card {
                 flex: 1 !important;
                 background: #F3F4F6 !important;
                 border: 0.5pt solid #E5E7EB !important;
-                border-top: 2pt solid #1E3A8A !important;
-                padding: 8px !important;
+                border-top: 1.5pt solid #1E3A8A !important;
+                padding: 3px !important;
                 text-align: center !important;
             }
 
@@ -242,20 +264,20 @@ export default function PrintablePartyLedgerStatement(props: {
             .luxury-footer {
                 margin-top: auto !important;
                 text-align: center !important;
-                font-size: 9px !important;
+                font-size: 7px !important;
                 color: #4B5563 !important;
-                padding-top: 6px !important;
+                padding-top: 2px !important;
                 page-break-inside: avoid !important;
                 display: flex !important;
                 flex-direction: column !important;
                 align-items: center !important;
-                gap: 2px !important;
+                gap: 1px !important;
             }
             .footer-line {
-                width: 60px !important;
-                height: 1pt !important;
+                width: 40px !important;
+                height: 0.5pt !important;
                 background-color: #D4AF37 !important;
-                margin: 4px 0 !important;
+                margin: 1px 0 !important;
             }
         }
       `}</style>
@@ -268,8 +290,8 @@ export default function PrintablePartyLedgerStatement(props: {
         <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
           <div className="flex items-center gap-6 print:gap-4">
             {brand?.logoUrl && (
-              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
-                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-16 w-auto object-contain print:grayscale" />
+              <div className="brand-logo-box bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
+                <img src={brand.logoUrl} alt="Logo" className="brand-logo h-24 print:h-16 w-auto object-contain print:grayscale" />
               </div>
             )}
             <div className="flex flex-col justify-center">
@@ -330,18 +352,18 @@ export default function PrintablePartyLedgerStatement(props: {
             <>
               <div className="summary-card">
                 <div className="font-thin-label mb-1">إجمالي مدين | Total Debit</div>
-                <div className="text-xl print:text-base font-bold text-charcoal tabular font-mono" dir="ltr">{fmt(summaries[0].debit)}</div>
-                <div className="text-[10px] text-slate-500 mt-1">{summaries[0].currencyCode}</div>
+                <div className="text-xl print:text-sm font-bold text-charcoal tabular font-mono" dir="ltr">{fmt(summaries[0].debit)}</div>
+                <div className="text-[10px] print:text-[7px] text-slate-500 mt-1">{summaries[0].currencyCode}</div>
               </div>
               <div className="summary-card">
                 <div className="font-thin-label mb-1">إجمالي دائن | Total Credit</div>
-                <div className="text-xl print:text-base font-bold text-charcoal tabular font-mono" dir="ltr">{fmt(summaries[0].credit)}</div>
-                <div className="text-[10px] text-slate-500 mt-1">{summaries[0].currencyCode}</div>
+                <div className="text-xl print:text-sm font-bold text-charcoal tabular font-mono" dir="ltr">{fmt(summaries[0].credit)}</div>
+                <div className="text-[10px] print:text-[7px] text-slate-500 mt-1">{summaries[0].currencyCode}</div>
               </div>
               <div className="summary-card bg-[#F8FAFC]">
                 <div className="font-thin-label mb-1 text-gold">الرصيد الحالي | Closing Balance</div>
-                <div className="text-2xl print:text-lg font-bold text-blue-950 tabular font-mono" dir="ltr">{fmt(summaries[0].last)}</div>
-                <div className="text-[10px] font-bold text-blue-800 mt-1">
+                <div className="text-2xl print:text-sm font-bold text-blue-950 tabular font-mono" dir="ltr">{fmt(summaries[0].last)}</div>
+                <div className="text-[10px] print:text-[7px] font-bold text-blue-800 mt-1">
                   {summaries[0].currencyCode} • {summaries[0].last < 0 ? 'دائن' : summaries[0].last > 0 ? 'مدين' : 'متزن'}
                 </div>
               </div>
