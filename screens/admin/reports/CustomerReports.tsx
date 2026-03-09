@@ -13,7 +13,7 @@ const CustomerReports: React.FC = () => {
     const { customers } = useUserAuth();
     const { showNotification } = useToast();
     const { settings } = useSettings();
-    const supabase = getSupabaseClient();
+    const supabase = useMemo(() => getSupabaseClient(), []);
     const [isSharing, setIsSharing] = useState(false);
     const [currency, setCurrency] = useState('—');
     const [startDate, setStartDate] = useState('');

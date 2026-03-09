@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getSupabaseClient } from '../../../supabase';
 import * as Icons from '../../../components/icons';
+import { exportToXlsx, sharePdf } from '../../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
+import { useSettings } from '../../../contexts/SettingsContext';
+import { useToast } from '../../../contexts/ToastContext';
+import { toYmdLocal } from '../../../utils/dateUtils';
 
 type AgingRow = {
   party_id: string;
@@ -26,7 +31,10 @@ type LegacyAgingRow = {
 };
 
 const PartyAgingReportsScreen: React.FC = () => {
+  const { settings } = useSettings();
+  const { showNotification } = useToast();
   const [loading, setLoading] = useState(true);
+  const [isSharing, setIsSharing] = useState(false);
   const [tab, setTab] = useState<'ar' | 'ap'>('ar');
   const [currencyMode, setCurrencyMode] = useState<'all' | 'by_currency'>('by_currency');
   const [arByCurrency, setArByCurrency] = useState<AgingRow[]>([]);
@@ -202,10 +210,58 @@ const PartyAgingReportsScreen: React.FC = () => {
 
         <button
           onClick={() => void load()}
-          className="ml-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700"
+          className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700"
         >
           <Icons.ReportIcon className="w-5 h-5" />
           <span>تحديث</span>
+        </button>
+
+        <button
+          onClick={async () => {
+            const headers = tab === 'ar'
+              ? ['الطرف', ...(currencyMode === 'by_currency' ? ['العملة'] : []), 'حالي', '1-30', '31-60', '61-90', '91+', 'الإجمالي']
+              : ['الطرف', ...(currencyMode === 'by_currency' ? ['العملة'] : []), 'حالي', '1-30', '31-60', '61-90', '91+', 'الإجمالي'];
+            const xlsxRows = rows.map(r => [
+              r.party_name || partyNames[r.party_id] || '—',
+              ...(currencyMode === 'by_currency' ? [r.currency_code || '—'] : []),
+              Number(r.current_amount || 0),
+              Number(r.days_1_30 || 0),
+              Number(r.days_31_60 || 0),
+              Number(r.days_61_90 || 0),
+              Number(r.days_91_plus || 0),
+              Number(r.total_outstanding || 0),
+            ]);
+            const label = tab === 'ar' ? 'أعمار ذمم مدينة' : 'أعمار ذمم دائنة';
+            const ok = await exportToXlsx(
+              headers,
+              xlsxRows,
+              `party_aging_${tab}_${toYmdLocal(new Date())}.xlsx`,
+              { sheetName: tab.toUpperCase(), currencyColumns: currencyMode === 'by_currency' ? [3,4,5,6,7,8] : [2,3,4,5,6,7], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, label, headers.length) }
+            );
+            showNotification(ok ? 'تم حفظ التقرير' : 'فشل التصدير', ok ? 'success' : 'error');
+          }}
+          disabled={rows.length === 0}
+          className="ml-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 disabled:opacity-60"
+        >
+          Excel
+        </button>
+        <button
+          onClick={async () => {
+            setIsSharing(true);
+            const label = tab === 'ar' ? 'أعمار ذمم مدينة' : 'أعمار ذمم دائنة';
+            const ok = await sharePdf(
+              'party-aging-print-area',
+              label,
+              `party_aging_${tab}_${toYmdLocal(new Date())}.pdf`,
+              buildPdfBrandOptions(settings, label, { pageNumbers: true })
+            );
+            showNotification(ok ? 'تم حفظ التقرير' : 'فشل التصدير', ok ? 'success' : 'error');
+            setIsSharing(false);
+          }}
+          disabled={rows.length === 0 || isSharing}
+          className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 disabled:opacity-60"
+        >
+          PDF
         </button>
       </div>
 
@@ -229,7 +285,7 @@ const PartyAgingReportsScreen: React.FC = () => {
       </div>
 
       {/* Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div id="party-aging-print-area" className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right">
             <thead className="bg-gray-50 dark:bg-gray-700/50">
