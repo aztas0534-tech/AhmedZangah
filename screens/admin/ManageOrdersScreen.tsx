@@ -1276,7 +1276,7 @@ const ManageOrdersScreen: React.FC = () => {
         const key = warehouseId ? String(warehouseId) : '';
         const override = key ? settings.branchBranding?.[key] : undefined;
         const brand = {
-            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            name: (override?.name || fallback.name || wh?.name || '').trim(),
             address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
             contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
@@ -1327,11 +1327,11 @@ const ManageOrdersScreen: React.FC = () => {
             const key = warehouseId ? String(warehouseId) : '';
             const override = key ? settings.branchBranding?.[key] : undefined;
             const brand: any = {
-                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
                 address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
                 contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
                 logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
-                branchName: '',
+                branchName: (wh?.name || '').trim(),
                 branchCode: '',
             };
             try {
@@ -1367,11 +1367,11 @@ const ManageOrdersScreen: React.FC = () => {
             const key = warehouseId ? String(warehouseId) : '';
             const override = key ? settings.branchBranding?.[key] : undefined;
             const brand: any = {
-                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
                 address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
                 contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
                 logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
-                branchName: '',
+                branchName: (wh?.name || '').trim(),
                 branchCode: '',
             };
             try {
@@ -1422,11 +1422,11 @@ const ManageOrdersScreen: React.FC = () => {
             const key = warehouseId ? String(warehouseId) : '';
             const override = key ? settings.branchBranding?.[key] : undefined;
             const brand: any = {
-                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
                 address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
                 contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
                 logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
-                branchName: '',
+                branchName: (wh?.name || '').trim(),
                 branchCode: '',
             };
             try {
@@ -1476,11 +1476,11 @@ const ManageOrdersScreen: React.FC = () => {
             const key = warehouseId ? String(warehouseId) : '';
             const override = key ? settings.branchBranding?.[key] : undefined;
             const brand: any = {
-                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
                 address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
                 contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
                 logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
-                branchName: '',
+                branchName: (wh?.name || '').trim(),
                 branchCode: '',
             };
             try {
@@ -2332,11 +2332,11 @@ const ManageOrdersScreen: React.FC = () => {
                             const key = warehouseId ? String(warehouseId) : '';
                             const override = key ? settings.branchBranding?.[key] : undefined;
                             const brand = {
-                                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                                name: (override?.name || fallback.name || wh?.name || '').trim(),
                                 address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
                                 contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
                                 logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
-                                branchName: '',
+                                branchName: (wh?.name || '').trim(),
                                 branchCode: '',
                             };
                             try {
