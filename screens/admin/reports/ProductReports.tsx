@@ -290,6 +290,13 @@ const ProductReports: React.FC = () => {
                     return;
                 }
 
+                const allowLegacyFallback = Boolean((window as any)?.__ALLOW_LEGACY_PRODUCT_REPORT_FALLBACK__);
+                if (!allowLegacyFallback) {
+                    showNotification('تعذر تحميل دوال تقرير المنتجات من الخادم. طبّق آخر تحديثات قاعدة البيانات ثم أعد المحاولة.', 'error');
+                    if (active) setReportData([]);
+                    return;
+                }
+
                 const orderIds: string[] = [];
                 const limit = 20000;
                 let offset = 0;

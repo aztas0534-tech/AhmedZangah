@@ -165,14 +165,29 @@ const SalesReports: React.FC = () => {
             const supabase = getSupabaseClient();
             if (!supabase || !effectiveRange) { setDailySalesData([]); return; }
             const zoneArg = (selectedZoneId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedZoneId)) ? selectedZoneId : null;
-            const payload: any = {
+            const payloadV2: any = {
                 p_start_date: effectiveRange.start.toISOString(),
                 p_end_date: effectiveRange.end.toISOString(),
                 p_zone_id: zoneArg,
                 p_warehouse_id: sessionScope.scope?.warehouseId || null,
                 p_invoice_only: invoiceOnly,
             };
-            const { data, error } = await supabase.rpc('get_daily_sales_stats_v2', payload);
+            const payloadV1: any = {
+                p_start_date: effectiveRange.start.toISOString(),
+                p_end_date: effectiveRange.end.toISOString(),
+                p_zone_id: zoneArg,
+                p_invoice_only: invoiceOnly,
+            };
+            let data: any[] | null = null;
+            let error: any = null;
+            const v2 = await supabase.rpc('get_daily_sales_stats_v2', payloadV2);
+            if (!v2.error && Array.isArray(v2.data)) {
+                data = v2.data as any[];
+            } else {
+                const v1 = await supabase.rpc('get_daily_sales_stats', payloadV1);
+                data = Array.isArray(v1.data) ? (v1.data as any[]) : null;
+                error = v1.error;
+            }
             if (!active) return;
             if (error || !Array.isArray(data)) { showNotification(localizeSupabaseError(error || '')); setDailySalesData([]); return; }
             const rows = ((data as any[]) || [])

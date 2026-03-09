@@ -745,6 +745,24 @@ const FinancialReports: React.FC = () => {
     return { p_start, p_end, p_cost_center_id, p_journal_id };
   }, [appliedFilters.endDate, appliedFilters.startDate, appliedFilters.costCenterId, appliedFilters.journalId]);
 
+  const callTrialBalanceCompat = useCallback(async (args: { p_start: string | null; p_end: string | null; p_cost_center_id: string | null; p_journal_id: string | null; }) => {
+    if (!supabase) return { data: null as any, error: new Error('supabase_unavailable') as any };
+    const isMissing = (err: any) => /could not find the function|pgrst202|schema cache/i.test(String(err?.message || err?.details || err || '').toLowerCase());
+    const tries = [
+      { p_start: args.p_start, p_end: args.p_end, p_cost_center_id: args.p_cost_center_id, p_journal_id: args.p_journal_id },
+      { p_start: args.p_start, p_end: args.p_end, p_cost_center_id: args.p_cost_center_id },
+      { p_start: args.p_start, p_end: args.p_end },
+    ];
+    let lastErr: any = null;
+    for (const payload of tries) {
+      const res = await supabase.rpc('trial_balance', payload as any);
+      if (!res.error) return res;
+      lastErr = res.error;
+      if (!isMissing(res.error)) return res;
+    }
+    return { data: null as any, error: lastErr };
+  }, [supabase]);
+
   const loadAccounts = useCallback(async () => {
     if (!supabase) return;
     try {
@@ -862,7 +880,7 @@ const FinancialReports: React.FC = () => {
     setLoadingKey('statements', true);
     try {
       const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }, { data: cbData, error: cbError }] = await Promise.all([
-        supabase.rpc('trial_balance', periodRangeParams),
+        callTrialBalanceCompat(periodRangeParams),
         supabase.rpc('income_statement', periodRangeParams),
         supabase.rpc('balance_sheet', {
           p_as_of: appliedFilters.asOfDate || null,
@@ -940,7 +958,7 @@ const FinancialReports: React.FC = () => {
     } finally {
       setLoadingKey('statements', false);
     }
-  }, [appliedFilters.asOfDate, periodRangeParams, setLoadingKey, showNotification, supabase]);
+  }, [appliedFilters.asOfDate, callTrialBalanceCompat, periodRangeParams, setLoadingKey, showNotification, supabase]);
 
   const getEffectiveStartEnd = useCallback(() => {
     if (appliedFilters.startDate && appliedFilters.endDate) {
@@ -1381,7 +1399,7 @@ const FinancialReports: React.FC = () => {
     if (!supabase) return;
     setLoadingKey('drilldown', true);
     try {
-      const { data, error } = await supabase.rpc('trial_balance', {
+      const { data, error } = await callTrialBalanceCompat({
         p_start: null,
         p_end: asOfDate || null,
         p_cost_center_id: appliedFilters.costCenterId || null,
@@ -1406,7 +1424,7 @@ const FinancialReports: React.FC = () => {
     } finally {
       setLoadingKey('drilldown', false);
     }
-  }, [appliedFilters.costCenterId, appliedFilters.journalId, setLoadingKey, showNotification, supabase]);
+  }, [appliedFilters.costCenterId, appliedFilters.journalId, callTrialBalanceCompat, setLoadingKey, showNotification, supabase]);
 
   const loadBalanceSheetComparison = useCallback(async () => {
     if (!supabase) return;
