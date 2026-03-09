@@ -29,6 +29,14 @@ BEGIN
     END IF;
 
     -- 1. SALES SUMMARY (from orders)
+    -- Compute order stats
+    v_sales := jsonb_build_object(
+        'total_orders', 0, 'delivered_orders', 0, 'cancelled_orders', 0,
+        'pending_orders', 0, 'returned_orders', 0,
+        'total_sales', 0, 'total_tax', 0, 'total_discount', 0,
+        'by_payment_method', '{}'::jsonb, 'by_source', '{}'::jsonb
+    );
+
     SELECT jsonb_build_object(
         'total_orders', count(*)::int,
         'delivered_orders', count(*) FILTER (WHERE status IN ('delivered','completed'))::int,
@@ -40,46 +48,47 @@ BEGIN
         'total_tax', coalesce(sum(coalesce(nullif((data->>'taxAmount')::numeric, null), 0))
                      FILTER (WHERE status NOT IN ('cancelled','returned')), 0),
         'total_discount', coalesce(sum(coalesce(nullif((data->>'discount')::numeric, null), 0))
-                          FILTER (WHERE status NOT IN ('cancelled','returned')), 0),
-        'by_payment_method', (
-            SELECT coalesce(jsonb_object_agg(
-                coalesce(NULLIF(TRIM(data->>'paymentMethod'), ''), 'unknown'),
-                jsonb_build_object(
-                    'count', sub.cnt,
-                    'total', sub.total
-                )
-            ), '{}'::jsonb)
-            FROM (
-                SELECT
-                    coalesce(NULLIF(TRIM(data->>'paymentMethod'), ''), 'unknown') AS method,
-                    count(*)::int AS cnt,
-                    coalesce(sum(coalesce(nullif((data->>'total')::numeric, null), 0)), 0) AS total
-                FROM public.orders
-                WHERE created_at >= v_start AND created_at <= v_end
-                  AND status NOT IN ('cancelled','returned')
-                GROUP BY method
-            ) sub
-        ),
-        'by_source', (
-            SELECT coalesce(jsonb_object_agg(
-                coalesce(NULLIF(TRIM(data->>'orderSource'), ''), 'unknown'),
-                jsonb_build_object('count', sub.cnt, 'total', sub.total)
-            ), '{}'::jsonb)
-            FROM (
-                SELECT
-                    coalesce(NULLIF(TRIM(data->>'orderSource'), ''), 'unknown') AS src,
-                    count(*)::int AS cnt,
-                    coalesce(sum(coalesce(nullif((data->>'total')::numeric, null), 0)), 0) AS total
-                FROM public.orders
-                WHERE created_at >= v_start AND created_at <= v_end
-                  AND status NOT IN ('cancelled','returned')
-                GROUP BY src
-            ) sub
-        )
+                          FILTER (WHERE status NOT IN ('cancelled','returned')), 0)
     )
     INTO v_sales
     FROM public.orders
     WHERE created_at >= v_start AND created_at <= v_end;
+
+    -- Sales by payment method (independent query)
+    v_sales := v_sales || jsonb_build_object('by_payment_method', (
+        SELECT coalesce(jsonb_object_agg(
+            sub.method,
+            jsonb_build_object('count', sub.cnt, 'total', sub.total)
+        ), '{}'::jsonb)
+        FROM (
+            SELECT
+                coalesce(NULLIF(TRIM(data->>'paymentMethod'), ''), 'unknown') AS method,
+                count(*)::int AS cnt,
+                coalesce(sum(coalesce(nullif((data->>'total')::numeric, null), 0)), 0) AS total
+            FROM public.orders
+            WHERE created_at >= v_start AND created_at <= v_end
+              AND status NOT IN ('cancelled','returned')
+            GROUP BY 1
+        ) sub
+    ));
+
+    -- Sales by source (independent query)
+    v_sales := v_sales || jsonb_build_object('by_source', (
+        SELECT coalesce(jsonb_object_agg(
+            sub.src,
+            jsonb_build_object('count', sub.cnt, 'total', sub.total)
+        ), '{}'::jsonb)
+        FROM (
+            SELECT
+                coalesce(NULLIF(TRIM(data->>'orderSource'), ''), 'unknown') AS src,
+                count(*)::int AS cnt,
+                coalesce(sum(coalesce(nullif((data->>'total')::numeric, null), 0)), 0) AS total
+            FROM public.orders
+            WHERE created_at >= v_start AND created_at <= v_end
+              AND status NOT IN ('cancelled','returned')
+            GROUP BY 1
+        ) sub
+    ));
 
     -- 2. PURCHASES SUMMARY (from purchase_orders)
     SELECT jsonb_build_object(

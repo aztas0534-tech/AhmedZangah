@@ -398,21 +398,17 @@ export const KPIBar: React.FC = () => {
                     const netSales = grossSales - returnsAmount;
                     const cogs = Number(salesData?.cogs) || 0;
                     const adjustedCogs = Math.max(0, cogs);
-                    const discounts = Number(salesData?.discounts) || 0;
-                    const grossSubtotal = Number(salesData?.gross_subtotal) || 0;
                     const expenses = Number(salesData?.expenses) || 0;
                     const wastage = Number(salesData?.wastage) || 0;
                     const deliveryCost = Number(salesData?.delivery_cost) || 0;
-                    const grossProfit = (grossSubtotal - discounts - returnsAmount) - adjustedCogs;
+                    const grossProfit = netSales - adjustedCogs;
                     const netProfit = grossProfit - expenses - wastage - deliveryCost;
 
                     const prevGrossSales = Number(prevSalesData?.total_sales_accrual) || 0;
                     const prevReturnsAmount = Number((prevSalesData as any)?.returns_total ?? prevSalesData?.returns) || 0;
                     const prevNetSales = prevGrossSales - prevReturnsAmount;
                     const prevCogs = Math.max(0, Number(prevSalesData?.cogs) || 0);
-                    const prevDiscounts = Number(prevSalesData?.discounts) || 0;
-                    const prevGrossSubtotal = Number(prevSalesData?.gross_subtotal) || 0;
-                    const prevGrossProfit = (prevGrossSubtotal - prevDiscounts - prevReturnsAmount) - prevCogs;
+                    const prevGrossProfit = prevNetSales - prevCogs;
                     const prevNetProfit = prevGrossProfit - (Number(prevSalesData?.expenses) || 0) - (Number(prevSalesData?.wastage) || 0) - (Number(prevSalesData?.delivery_cost) || 0);
 
                     const newStats = {
