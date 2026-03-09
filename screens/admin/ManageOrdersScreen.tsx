@@ -1264,7 +1264,7 @@ const ManageOrdersScreen: React.FC = () => {
         }
     };
 
-    const handlePrintDeliveryNote = (order: Order) => {
+    const handlePrintDeliveryNote = async (order: Order) => {
         const fallback = {
             name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
             address: (settings.address || '').trim(),
@@ -1281,6 +1281,14 @@ const ManageOrdersScreen: React.FC = () => {
             contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
         };
+        let printNumber = 1;
+        try {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableOrder' });
+                printNumber = Number(pn) || 1;
+            }
+        } catch { /* fallback */ }
         const content = renderToString(
             <PrintableOrder
                 order={order}
@@ -1289,6 +1297,7 @@ const ManageOrdersScreen: React.FC = () => {
                 companyAddress={brand.address}
                 companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
+                printNumber={printNumber}
             />
         );
         printContent(content, `سند تسليم #${order.id.slice(-6).toUpperCase()}`);
@@ -2001,6 +2010,11 @@ const ManageOrdersScreen: React.FC = () => {
                 contactNumber: (settings.contactNumber || '').trim(),
                 logoUrl: (settings.logoUrl || '').trim(),
             };
+            let printNumber = 1;
+            try {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableQuotation' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
             const printHtml = renderToString(
                 <PrintableQuotation
                     order={order}
@@ -2009,6 +2023,7 @@ const ManageOrdersScreen: React.FC = () => {
                     inStoreLines={inStoreLines}
                     externalCustomerName={inStoreCustomerName}
                     externalCustomerPhone={inStorePhoneNumber}
+                    printNumber={printNumber}
                 />
             );
             printContent(printHtml, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
@@ -2991,6 +3006,14 @@ const ManageOrdersScreen: React.FC = () => {
             contactNumber: (settings.contactNumber || '').trim(),
             logoUrl: (settings.logoUrl || '').trim(),
         };
+        let printNumber = 1;
+        try {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableQuotation' });
+                printNumber = Number(pn) || 1;
+            }
+        } catch { /* fallback */ }
         const componentStr = renderToString(
             <PrintableQuotation
                 order={order}
@@ -2998,6 +3021,7 @@ const ManageOrdersScreen: React.FC = () => {
                 language={language as 'ar' | 'en'}
                 externalCustomerName={order.customerName}
                 externalCustomerPhone={order.phoneNumber}
+                printNumber={printNumber}
             />
         );
         printContent(componentStr, `Quotation - ${order.id.slice(-6).toUpperCase()}`);

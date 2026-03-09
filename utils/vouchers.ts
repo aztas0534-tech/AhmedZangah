@@ -307,9 +307,16 @@ export const printReceiptVoucherByEntryId = async (entryId: string, brand?: Bran
     baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
+  // Mark as printed BEFORE rendering to get the print number
+  let printNumber = 1;
+  try {
+    const { data: pn } = await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintableReceiptVoucher' });
+    printNumber = Number(pn) || 1;
+  } catch { /* fallback to 1 */ }
+  (data as any).printNumber = printNumber;
+
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
   printContent(html, `سند قبض #${bundle.documentNumber}`);
-  await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintableReceiptVoucher' });
 };
 
 export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Brand) => {
@@ -354,9 +361,15 @@ export const printPaymentVoucherByEntryId = async (entryId: string, brand?: Bran
     baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
+  let printNumber = 1;
+  try {
+    const { data: pn } = await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintablePaymentVoucher' });
+    printNumber = Number(pn) || 1;
+  } catch { /* fallback to 1 */ }
+  (data as any).printNumber = printNumber;
+
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
   printContent(html, `سند صرف #${bundle.documentNumber}`);
-  await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintablePaymentVoucher' });
 };
 
 export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: Brand) => {
@@ -420,9 +433,15 @@ export const printReceiptVoucherByPaymentId = async (paymentId: string, brand?: 
     baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
+  let printNumber = 1;
+  try {
+    const { data: pn } = await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintableReceiptVoucher' });
+    printNumber = Number(pn) || 1;
+  } catch { /* fallback to 1 */ }
+  (data as any).printNumber = printNumber;
+
   const html = renderToString(createElement(PrintableReceiptVoucher as any, { data, brand }));
   printContent(html, `سند قبض #${bundle.documentNumber}`);
-  await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintableReceiptVoucher' });
 };
 
 export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: Brand) => {
@@ -486,9 +505,15 @@ export const printPaymentVoucherByPaymentId = async (paymentId: string, brand?: 
     baseCurrency: (bundle as any).baseCurrency ?? null,
   };
 
+  let printNumber = 1;
+  try {
+    const { data: pn } = await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintablePaymentVoucher' });
+    printNumber = Number(pn) || 1;
+  } catch { /* fallback to 1 */ }
+  (data as any).printNumber = printNumber;
+
   const html = renderToString(createElement(PrintablePaymentVoucher as any, { data, brand }));
   printContent(html, `سند صرف #${bundle.documentNumber}`);
-  await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintablePaymentVoucher' });
 };
 
 export const printJournalVoucherByEntryId = async (entryId: string, brand?: Brand) => {
@@ -520,8 +545,14 @@ export const printJournalVoucherByEntryId = async (entryId: string, brand?: Bran
     fromAccount: (bundle as any).fromAccount || null,
   };
 
+  let printNumber = 1;
+  try {
+    const { data: pn } = await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintableJournalVoucher' });
+    printNumber = Number(pn) || 1;
+  } catch { /* fallback to 1 */ }
+  (data as any).printNumber = printNumber;
+
   const html = renderToString(createElement(PrintableJournalVoucher as any, { data, brand }));
   printContent(html, `قيد يومية #${bundle.documentNumber}`);
-  await supabase.rpc('mark_accounting_document_printed', { p_document_id: bundle.documentId, p_template: 'PrintableJournalVoucher' });
 };
 

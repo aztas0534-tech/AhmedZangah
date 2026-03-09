@@ -113,7 +113,14 @@ export const printSalesReturnById = async (returnId: string, brand?: Brand, audi
     })),
   };
 
-  const html = renderToString(createElement(PrintableSalesReturnNote as any, { data, brand, audit }));
+  // Track print count
+  let printNumber = 1;
+  try {
+    const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'sales_returns', p_source_id: rid, p_template: 'PrintableSalesReturnNote' });
+    printNumber = Number(pn) || 1;
+  } catch { /* fallback */ }
+
+  const html = renderToString(createElement(PrintableSalesReturnNote as any, { data, brand, audit, printNumber }));
   printContent(html, `مرتجع مبيعات #${String(data.returnId).slice(-8)}`);
   try {
     await supabase.from('system_audit_logs').insert({
@@ -217,7 +224,14 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     })),
   };
 
-  const html = renderToString(createElement(PrintablePurchaseReturnNote as any, { data, brand, audit }));
+  // Track print count
+  let printNumber = 1;
+  try {
+    const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'purchase_returns', p_source_id: rid, p_template: 'PrintablePurchaseReturnNote' });
+    printNumber = Number(pn) || 1;
+  } catch { /* fallback */ }
+
+  const html = renderToString(createElement(PrintablePurchaseReturnNote as any, { data, brand, audit, printNumber }));
   printContent(html, `مرتجع مشتريات #${String(data.returnId).slice(-8)}`);
   try {
     await supabase.from('system_audit_logs').insert({

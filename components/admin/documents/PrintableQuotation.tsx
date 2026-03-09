@@ -3,6 +3,7 @@ import { Order } from '../../../types';
 import { AZTA_IDENTITY } from '../../../config/identity';
 import DocumentAuditFooter from './DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
+import PrintCopyBadge from './PrintCopyBadge';
 
 type Brand = {
     name?: string;
@@ -14,8 +15,8 @@ type Brand = {
     vatNumber?: string;
 };
 
-export default function PrintableQuotation(props: { order: Order; brand?: Brand; language?: 'ar' | 'en'; audit?: DocumentAuditInfo | null; inStoreLines?: any[]; externalCustomerName?: string; externalCustomerPhone?: string }) {
-    const { order, brand, language = 'ar', audit, inStoreLines, externalCustomerName, externalCustomerPhone } = props;
+export default function PrintableQuotation(props: { order: Order; brand?: Brand; language?: 'ar' | 'en'; audit?: DocumentAuditInfo | null; inStoreLines?: any[]; externalCustomerName?: string; externalCustomerPhone?: string; printNumber?: number | null }) {
+    const { order, brand, language = 'ar', audit, inStoreLines, externalCustomerName, externalCustomerPhone, printNumber } = props;
     const docNo = order.id ? `QT-${order.id.slice(-6).toUpperCase()}` : 'NEW';
     const currency = String(order.currency || '').toUpperCase() || '—';
 
@@ -163,6 +164,7 @@ export default function PrintableQuotation(props: { order: Order; brand?: Brand;
                         <h2 className="doc-title">{isArabic ? 'عرض سعر' : 'QUOTATION'}</h2>
                         <div className="title-sub">ESTIMATE</div>
                     </div>
+                    <PrintCopyBadge printNumber={printNumber} position="top-left" />
                 </div>
 
                 {/* ▬▬▬ INFO SECTION ▬▬▬ */}

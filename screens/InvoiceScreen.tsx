@@ -458,10 +458,18 @@ const InvoiceScreen: React.FC = () => {
         }).finally(() => setIsPrintingA5Pdf(false));
     };
 
-    const handlePrintDeliveryNote = () => {
+    const handlePrintDeliveryNote = async () => {
         if (!order) return;
         const brand = resolveBranding();
         const printedBy = (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null;
+        let printNumber = 1;
+        try {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableOrder' });
+                printNumber = Number(pn) || 1;
+            }
+        } catch { /* fallback */ }
         const content = renderToString(
             <PrintableOrder
                 order={order}
@@ -471,6 +479,7 @@ const InvoiceScreen: React.FC = () => {
                 companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
                 audit={{ printedBy }}
+                printNumber={printNumber}
             />
         );
         printContent(content, `سند تسليم #${order.id.slice(-6).toUpperCase()}`);

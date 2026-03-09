@@ -3,6 +3,7 @@ import { AZTA_IDENTITY } from '../../../config/identity';
 import DocumentAuditFooter from './DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
 import { localizeUomCodeAr } from '../../../utils/displayLabels';
+import PrintCopyBadge from './PrintCopyBadge';
 
 type Brand = {
   name?: string;
@@ -14,8 +15,8 @@ type Brand = {
   vatNumber?: string;
 };
 
-export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; brand?: Brand; language?: 'ar' | 'en'; documentStatus?: string; referenceId?: string; audit?: DocumentAuditInfo | null }) {
-  const { order, brand, language = 'ar', documentStatus, referenceId, audit } = props;
+export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; brand?: Brand; language?: 'ar' | 'en'; documentStatus?: string; referenceId?: string; audit?: DocumentAuditInfo | null; printNumber?: number | null }) {
+  const { order, brand, language = 'ar', documentStatus, referenceId, audit, printNumber } = props;
   const docNo = order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`;
   const currency = String(order.currency || '').toUpperCase() || '—';
   const fx = Number(order.fxRate || 0);
@@ -195,6 +196,7 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
               </div>
             )}
           </div>
+          <PrintCopyBadge printNumber={printNumber} position="top-left" />
         </div>
 
         {/* ▬▬▬ INFO SECTION ▬▬▬ */}

@@ -133,6 +133,14 @@ const PurchaseOrderScreen: React.FC = () => {
                 ? 'Cancelled'
                 : 'Approved';
         const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+        let printNumber = 1;
+        const supabase = getSupabaseClient();
+        if (supabase) {
+            try {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'purchase_orders', p_source_id: order.id, p_template: 'PrintablePurchaseOrder' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
+        }
         const content = renderToString(
             <PrintablePurchaseOrder
                 order={order}
@@ -145,10 +153,10 @@ const PurchaseOrderScreen: React.FC = () => {
                 documentStatus={statusLabel}
                 referenceId={order.id}
                 audit={{ printedBy }}
+                printNumber={printNumber}
             />
         );
         printContent(content, `أمر شراء #${String(order.poNumber || order.id).slice(-12)}`);
-        const supabase = getSupabaseClient();
         if (supabase) {
             try {
                 await supabase.from('system_audit_logs').insert({
@@ -663,6 +671,11 @@ const PurchaseOrderScreen: React.FC = () => {
         };
 
         const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+        let printNumber = 1;
+        try {
+            const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'purchase_receipts', p_source_id: receiptId, p_template: 'PrintableGrn' });
+            printNumber = Number(pn) || 1;
+        } catch { /* fallback */ }
         const content = renderToString(
             <PrintableGrn
                 data={grn}
@@ -673,6 +686,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     branchCode: branchHdr.branchCode,
                 }}
                 audit={{ printedBy }}
+                printNumber={printNumber}
             />
         );
         printContent(content, `GRN #${grn.grnNumber}`);

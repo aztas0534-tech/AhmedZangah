@@ -1335,8 +1335,17 @@ const POSScreen: React.FC = () => {
         notes: notes.trim() || undefined,
       });
 
+      let printNumber = 1;
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableQuotation' });
+          printNumber = Number(pn) || 1;
+        }
+      } catch { /* fallback */ }
+
       const componentStr = renderToString(
-        <PrintableQuotation order={order} brand={(settings as any)?.brand || { name: { ar: 'متجرنا', en: 'Our Store' } }} />
+        <PrintableQuotation order={order} brand={(settings as any)?.brand || { name: { ar: 'متجرنا', en: 'Our Store' } }} printNumber={printNumber} />
       );
       printContent(componentStr, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
       showNotification(`تم حفظ عرض السعر #${order.id.slice(-6).toUpperCase()}`, 'success');

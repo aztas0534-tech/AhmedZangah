@@ -51,6 +51,7 @@ export type VoucherData = {
   baseCurrency?: string | null;
   createdBy?: string | null;
   attachmentsCount?: number | null;
+  printNumber?: number | null;
 };
 
 const fmt = (n: number | null | undefined) => {
@@ -113,6 +114,10 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
   const voucherTitle = isJournal ? 'قيد يومية' : (isReceipt ? 'سند قبض' : (isPayment ? 'سند صرف' : data.title));
   const voucherSubTitle = isJournal ? 'JOURNAL VOUCHER' : isPayment ? 'PAYMENT VOUCHER' : 'RECEIPT VOUCHER';
   const payMethodLabel = data.paymentMethod === 'cash' ? 'نقداً' : data.paymentMethod === 'bank' || data.paymentMethod === 'bank_transfer' ? 'تحويل بنكي' : data.paymentMethod === 'network' ? 'شبكة' : 'نقداً';
+
+  const printNumber = Number(data.printNumber) || 0;
+  const isOriginal = printNumber <= 1;
+  const printLabel = isOriginal ? 'أصل / ORIGINAL' : `نسخة #${printNumber} / COPY #${printNumber}`;
 
   return (
     <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
@@ -378,6 +383,28 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             .vc-footer-brand { color: #D4AF37 !important; font-weight: 700 !important; font-size: 7px !important; }
 
             .tabular { font-variant-numeric: tabular-nums; font-family: 'Arial', sans-serif; letter-spacing: 0.5px; }
+
+            /* Print Label */
+            .vc-print-label {
+                display: inline-block !important;
+                padding: 1px 8px !important;
+                border-radius: 2px !important;
+                font-size: 7px !important;
+                font-weight: 800 !important;
+                letter-spacing: 0.5px !important;
+                text-transform: uppercase !important;
+                border: 1pt solid !important;
+            }
+            .vc-print-label-original {
+                background: #ECFDF5 !important;
+                color: #065F46 !important;
+                border-color: #059669 !important;
+            }
+            .vc-print-label-copy {
+                background: #FFFBEB !important;
+                color: #92400E !important;
+                border-color: #D97706 !important;
+            }
         }
 
         /* Screen styles */
@@ -428,6 +455,9 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             .vc-footer { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #D4AF37; padding-top: 6px; font-size: 10px; color: #9CA3AF; }
             .vc-footer-brand { color: #D4AF37; font-weight: 700; font-size: 11px; }
             .tabular { font-variant-numeric: tabular-nums; font-family: Arial, sans-serif; }
+            .vc-print-label { display: inline-block; padding: 2px 12px; border-radius: 3px; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; border: 1px solid; }
+            .vc-print-label-original { background: #ECFDF5; color: #065F46; border-color: #059669; }
+            .vc-print-label-copy { background: #FFFBEB; color: #92400E; border-color: #D97706; }
         }
       `}</style>
 
@@ -450,6 +480,13 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <div className="vc-title-en">{voucherSubTitle}</div>
             {!isJournal && <div className="vc-title-method">/ {payMethodLabel}</div>}
           </div>
+          {printNumber > 0 && (
+            <div style={{ position: 'absolute', top: 4, left: 8, zIndex: 100 }}>
+              <span className={`vc-print-label ${isOriginal ? 'vc-print-label-original' : 'vc-print-label-copy'}`}>
+                {printLabel}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* ═══ INFO FIELDS ROW ═══ */}
@@ -634,7 +671,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
 
         {/* ═══ FOOTER ═══ */}
         <div className="vc-footer">
-          <span>{new Date().toLocaleString('en-GB')} طبع بواسطة: {cleanName(data.createdBy || 'النظام')}</span>
+          <span>{new Date().toLocaleString('en-GB')} طبع بواسطة: {cleanName(data.createdBy || 'النظام')}{printNumber > 0 ? ` | طبعة ${printNumber}` : ''}</span>
           <span className="vc-footer-brand">{AZTA_IDENTITY.tradeNameAr} — LICENSED SYSTEM</span>
           <span>1/1</span>
         </div>

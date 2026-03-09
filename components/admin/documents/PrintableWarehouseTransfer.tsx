@@ -2,6 +2,7 @@
 import { AZTA_IDENTITY } from '../../../config/identity';
 import DocumentAuditFooter from './DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
+import PrintCopyBadge from './PrintCopyBadge';
 
 type Brand = {
   name?: string;
@@ -24,8 +25,8 @@ export type PrintableWarehouseTransferData = {
   items: Array<{ itemName: string; itemId: string; quantity: number; notes?: string | null }>;
 };
 
-export default function PrintableWarehouseTransfer(props: { data: PrintableWarehouseTransferData; brand?: Brand; language?: 'ar' | 'en'; audit?: DocumentAuditInfo | null }) {
-  const { data, brand, language = 'ar', audit } = props;
+export default function PrintableWarehouseTransfer(props: { data: PrintableWarehouseTransferData; brand?: Brand; language?: 'ar' | 'en'; audit?: DocumentAuditInfo | null; printNumber?: number | null }) {
+  const { data, brand, language = 'ar', audit, printNumber } = props;
 
   const isArabic = language === 'ar';
 
@@ -152,6 +153,7 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
               </div>
             )}
           </div>
+          <PrintCopyBadge printNumber={printNumber} position="top-left" />
         </div>
 
         {/* ▬▬▬ INFO SECTION ▬▬▬ */}

@@ -1,6 +1,7 @@
 import React from 'react';
 import DocumentAuditFooter from '../documents/DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
+import PrintCopyBadge from '../documents/PrintCopyBadge';
 
 type Brand = {
   name?: string;
@@ -48,7 +49,7 @@ const fmtTime = (iso: string) => {
   }
 };
 
-const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteData; brand?: Brand; audit?: DocumentAuditInfo | null }> = ({ data, brand, audit }) => {
+const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteData; brand?: Brand; audit?: DocumentAuditInfo | null; printNumber?: number | null }> = ({ data, brand, audit, printNumber }) => {
   const cur = String(data.currency || '').trim().toUpperCase() || data.baseCurrency || 'YER';
   const baseCur = String(data.baseCurrency || '').trim().toUpperCase() || 'YER';
   const title = 'إشعار مرتجع مشتريات (Supplier Return Note)';
@@ -183,6 +184,7 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
             <h2 className="doc-title">{title}</h2>
             <div className="title-sub">SUPPLIER RETURN NOTE</div>
           </div>
+          <PrintCopyBadge printNumber={printNumber} position="top-left" />
         </div>
 
         {/* ▬▬▬ INFO SECTION ▬▬▬ */}

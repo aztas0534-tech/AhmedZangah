@@ -2,6 +2,7 @@ import React from 'react';
 import { Order } from '../../types';
 import DocumentAuditFooter from './documents/DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../utils/documentStandards';
+import PrintCopyBadge from './documents/PrintCopyBadge';
 
 interface PrintableOrderProps {
     order: Order;
@@ -11,9 +12,10 @@ interface PrintableOrderProps {
     companyPhone?: string;
     logoUrl?: string;
     audit?: DocumentAuditInfo | null;
+    printNumber?: number | null;
 }
 
-const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar', companyName = '', companyAddress = '', companyPhone = '', logoUrl = '', audit }) => {
+const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar', companyName = '', companyAddress = '', companyPhone = '', logoUrl = '', audit, printNumber }) => {
     const storeName = companyName;
 
     const getStatusText = (status: string) => {
@@ -90,6 +92,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, language = 'ar',
                     display: flex; justify-content: space-between;
                 }
             `}</style>
+
+            <PrintCopyBadge printNumber={printNumber} position="top-left" />
 
             <div className="header-section">
                 <div className="company-info">

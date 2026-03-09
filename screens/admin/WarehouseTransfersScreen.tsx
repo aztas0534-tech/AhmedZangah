@@ -106,6 +106,11 @@ const WarehouseTransfersScreen: React.FC = () => {
             const brand = resolveBrandingForWarehouseId(String(transfer.fromWarehouseId || ''));
             const branchHdr = await fetchBranchHeader(scope?.branchId);
             const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+            let printNumber = 1;
+            try {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'warehouse_transfers', p_source_id: transfer.id, p_template: 'PrintableWarehouseTransfer' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
             const content = renderToString(
                 <PrintableWarehouseTransfer
                     data={data}
@@ -116,6 +121,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                         branchCode: branchHdr.branchCode,
                     }}
                     audit={{ printedBy }}
+                    printNumber={printNumber}
                 />
             );
             printContent(content, `تحويل مخزني #${data.transferNumber}`);

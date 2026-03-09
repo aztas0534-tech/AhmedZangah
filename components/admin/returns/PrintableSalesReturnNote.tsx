@@ -1,6 +1,7 @@
 import React from 'react';
 import DocumentAuditFooter from '../documents/DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
+import PrintCopyBadge from '../documents/PrintCopyBadge';
 
 type Brand = {
   name?: string;
@@ -65,7 +66,7 @@ const methodLabel = (m?: string | null) => {
   return v || '—';
 };
 
-const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; brand?: Brand; audit?: DocumentAuditInfo | null }> = ({ data, brand, audit }) => {
+const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; brand?: Brand; audit?: DocumentAuditInfo | null; printNumber?: number | null }> = ({ data, brand, audit, printNumber }) => {
   const cur = String(data.currency || '').trim().toUpperCase() || 'YER';
   const title = 'إشعار مرتجع مبيعات (Credit Note)';
   const idShort = String(data.returnId || '').replace(/-/g, '').slice(-8).toUpperCase();
@@ -199,6 +200,7 @@ const PrintableSalesReturnNote: React.FC<{ data: PrintableSalesReturnNoteData; b
             <h2 className="doc-title">{title}</h2>
             <div className="title-sub">CREDIT NOTE</div>
           </div>
+          <PrintCopyBadge printNumber={printNumber} position="top-left" />
         </div>
 
         {/* ▬▬▬ INFO SECTION ▬▬▬ */}
