@@ -100,7 +100,7 @@ export default function PrintablePartyLedgerStatement(props: {
     .join(' • ');
 
   return (
-    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
+    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
       <style>{`
         @media print {
             @page { size: A5 portrait; margin: 0; }
@@ -109,7 +109,7 @@ export default function PrintablePartyLedgerStatement(props: {
 
             .document-container { 
                 width: 100% !important; 
-                padding: 3mm 3mm 2mm 3mm !important;
+                padding: 5mm 5mm 4mm 5mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
@@ -118,6 +118,7 @@ export default function PrintablePartyLedgerStatement(props: {
                 position: relative !important;
                 min-height: 210mm !important;
                 background-color: #FAFAFA !important;
+                overflow: visible !important;
             }
 
             /* ═══ WATERMARK ═══ */
@@ -222,25 +223,31 @@ export default function PrintablePartyLedgerStatement(props: {
                 border-collapse: collapse !important;
                 margin-bottom: 3px !important;
                 table-layout: fixed !important;
+                overflow: visible !important;
             }
             .luxury-table th {
                 background-color: #0F172A !important;
                 color: #FFFFFF !important;
-                padding: 2px 2px !important;
+                padding: 2px 3px !important;
                 font-weight: 600 !important;
-                font-size: 7px !important;
+                font-size: 6.5px !important;
                 text-transform: uppercase !important;
-                letter-spacing: 0.3px !important;
+                letter-spacing: 0.2px !important;
                 border: none !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
             }
             .luxury-table td {
-                padding: 1.5px 2px !important;
-                font-size: 8px !important;
+                padding: 1.5px 3px !important;
+                font-size: 7.5px !important;
                 font-weight: 600 !important;
                 border-bottom: 0.5pt solid #E5E7EB !important;
                 color: #0F172A !important;
                 word-break: break-word !important;
                 overflow-wrap: anywhere !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
             }
             .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
             .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
@@ -384,14 +391,14 @@ export default function PrintablePartyLedgerStatement(props: {
           <table className="luxury-table print:w-full text-right">
             <thead>
               <tr>
-                <th style={{ width: '13%' }}>التاريخ</th>
-                <th style={{ width: '12%' }}>رمز الحساب</th>
-                <th style={{ width: '17%' }}>اسم الحساب</th>
-                <th style={{ width: '12%' }} className="text-center">مدين</th>
-                <th style={{ width: '12%' }} className="text-center">دائن</th>
-                <th style={{ width: '12%' }} className="text-center">الرصيد</th>
-                <th style={{ width: '12%' }} className="text-center">المصدر</th>
-                <th style={{ width: '10%' }} className="text-center">المتبقي/الحالة</th>
+                <th style={{ width: '14%' }}>التاريخ</th>
+                <th style={{ width: '8%' }}>رمز الحساب</th>
+                <th style={{ width: '16%' }}>اسم الحساب</th>
+                <th style={{ width: '14%' }} className="text-center">مدين</th>
+                <th style={{ width: '14%' }} className="text-center">دائن</th>
+                <th style={{ width: '14%' }} className="text-center">الرصيد</th>
+                <th style={{ width: '10%' }} className="text-center">المصدر</th>
+                <th style={{ width: '10%' }} className="text-center">المتبقي</th>
               </tr>
             </thead>
             <tbody>
