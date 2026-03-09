@@ -78,6 +78,7 @@ const PayrollScreen = lazy(() => import('./screens/admin/PayrollScreen'));
 const PurchaseOrderScreen = lazy(() => import('./screens/admin/PurchaseOrderScreen'));
 const ShiftReportsScreen = lazy(() => import('./screens/admin/ShiftReportsScreen'));
 const ShiftDetailsScreen = lazy(() => import('./screens/admin/ShiftDetailsScreen'));
+const ShiftReconciliationScreen = lazy(() => import('./screens/admin/ShiftReconciliationScreen'));
 const CODSettlementsScreen = lazy(() => import('./screens/admin/CODSettlementsScreen'));
 const SystemAuditScreen = lazy(() => import('./screens/admin/SystemAuditScreen'));
 const DatabaseExplorerScreen = lazy(() => import('./screens/admin/DatabaseExplorerScreen'));
@@ -427,6 +428,7 @@ const App: React.FC = () => {
                     <Route path="database" element={<AdminProtectedRoute permissions={['settings.manage']}><DatabaseExplorerScreen /></AdminProtectedRoute>} />
                     <Route path="shift-reports" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftReportsScreen /></AdminProtectedRoute>} />
                     <Route path="shift-reports/:shiftId" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftDetailsScreen /></AdminProtectedRoute>} />
+                    <Route path="shift-reconciliation" element={<AdminProtectedRoute permissions={['accounting.view', 'cashShifts.manage']} requireAllPermissions={false}><ShiftReconciliationScreen /></AdminProtectedRoute>} />
                     <Route path="cod-settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><CODSettlementsScreen /></AdminProtectedRoute>} />
                     <Route
                       path="my-shift"

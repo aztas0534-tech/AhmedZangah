@@ -165,24 +165,33 @@ const ProductReports: React.FC = () => {
                     let stockQuery = supabase
                         .from('stock_management')
                         .select('item_id,available_quantity,reserved_quantity,avg_cost');
-                    if (warehouseId) {
+                    if (!zoneArg && warehouseId) {
                         stockQuery = stockQuery.eq('warehouse_id', warehouseId);
                     }
                     const { data: stocks, error: smErr } = await stockQuery;
                     if (smErr) throw smErr;
                     let inventoryTotal = 0;
+                    const stockAgg = new Map<string, { qty: number; reserved: number; costValue: number }>();
                     for (const s of stocks || []) {
                         const id = String((s as any)?.item_id || '');
                         if (!id) continue;
                         const qty = parseNumber((s as any)?.available_quantity);
                         const reserved = parseNumber((s as any)?.reserved_quantity);
                         const cost = parseNumber((s as any)?.avg_cost);
-                        stockById.set(id, {
-                            current_stock: qty,
-                            reserved_stock: reserved,
-                            current_cost_price: cost,
-                        });
+                        const prev = stockAgg.get(id) || { qty: 0, reserved: 0, costValue: 0 };
+                        prev.qty += qty;
+                        prev.reserved += reserved;
+                        prev.costValue += (qty + reserved) * cost;
+                        stockAgg.set(id, prev);
                         inventoryTotal += (qty + reserved) * cost;
+                    }
+                    for (const [id, agg] of stockAgg.entries()) {
+                        const totalQty = agg.qty + agg.reserved;
+                        stockById.set(id, {
+                            current_stock: agg.qty,
+                            reserved_stock: agg.reserved,
+                            current_cost_price: totalQty > 0 ? (agg.costValue / totalQty) : 0,
+                        });
                     }
                     if (active) setAllStockInventoryValue(inventoryTotal);
                 }

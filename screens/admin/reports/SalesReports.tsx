@@ -168,7 +168,8 @@ const SalesReports: React.FC = () => {
             const payload: any = {
                 p_start_date: effectiveRange.start.toISOString(),
                 p_end_date: effectiveRange.end.toISOString(),
-                p_warehouse_id: zoneArg,
+                p_zone_id: zoneArg,
+                p_warehouse_id: sessionScope.scope?.warehouseId || null,
                 p_invoice_only: invoiceOnly,
             };
             const { data, error } = await supabase.rpc('get_daily_sales_stats_v2', payload);

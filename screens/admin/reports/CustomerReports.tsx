@@ -1,25 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useOrders } from '../../../contexts/OrderContext';
 import { useUserAuth } from '../../../contexts/UserAuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { exportToXlsx, sharePdf } from '../../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
-import { getInvoiceOrderView } from '../../../utils/orderUtils';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
-import { getBaseCurrencyCode } from '../../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../../supabase';
+import { localizeSupabaseError } from '../../../utils/errorUtils';
 
 const CustomerReports: React.FC = () => {
-    const { orders } = useOrders();
     const { customers } = useUserAuth();
     const { showNotification } = useToast();
     const { settings } = useSettings();
+    const supabase = getSupabaseClient();
     const [isSharing, setIsSharing] = useState(false);
     const [currency, setCurrency] = useState('—');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [rangePreset, setRangePreset] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
+    const [customerStats, setCustomerStats] = useState<Map<string, { totalOrders: number; totalSpent: number }>>(new Map());
 
     const applyPreset = (preset: typeof rangePreset) => {
         setRangePreset(preset);
@@ -63,19 +63,37 @@ const CustomerReports: React.FC = () => {
         return { start, end };
     }, [startDate, endDate]);
 
-    const getEffectiveDate = (order: ReturnType<typeof getInvoiceOrderView>) => {
-        const iso = order.invoiceIssuedAt || order.paidAt || order.deliveredAt || order.cancelledAt || order.createdAt;
-        return new Date(iso);
-    };
-
-    const salesOrders = useMemo(() => {
-        const base = orders.map(getInvoiceOrderView).filter(o => o.status === 'delivered' && Boolean(o.paidAt) && Boolean(o.userId));
-        if (!range) return base;
-        return base.filter(o => {
-            const d = getEffectiveDate(o);
-            return d >= range.start && d <= range.end;
-        });
-    }, [orders, range]);
+    useEffect(() => {
+        let active = true;
+        const loadCustomerStats = async () => {
+            if (!supabase) return;
+            const pStart = range ? range.start.toISOString() : '2000-01-01T00:00:00Z';
+            const pEnd = range ? range.end.toISOString() : '2100-01-01T23:59:59Z';
+            const { data, error } = await supabase.rpc('get_customer_sales_report_v1', {
+                p_start_date: pStart,
+                p_end_date: pEnd,
+                p_invoice_only: false,
+            });
+            if (!active) return;
+            if (error || !Array.isArray(data)) {
+                showNotification(localizeSupabaseError(error || ''), 'error');
+                setCustomerStats(new Map());
+                return;
+            }
+            const next = new Map<string, { totalOrders: number; totalSpent: number }>();
+            for (const row of data as any[]) {
+                const id = String(row?.customer_auth_user_id || '');
+                if (!id) continue;
+                next.set(id, {
+                    totalOrders: Number(row?.total_orders) || 0,
+                    totalSpent: Number(row?.total_spent) || 0,
+                });
+            }
+            setCustomerStats(next);
+        };
+        void loadCustomerStats();
+        return () => { active = false; };
+    }, [range, showNotification, supabase]);
 
     const customerReportData = useMemo(() => {
         const byId = new Map<string, { id: string; name: string; phone: string; loyaltyTier: string; loyaltyPoints: number; totalOrders: number; totalSpent: number }>();
@@ -91,16 +109,15 @@ const CustomerReports: React.FC = () => {
             });
         }
 
-        for (const order of salesOrders) {
-            if (!order.userId) continue;
-            const stat = byId.get(order.userId);
+        for (const [customerId, statData] of customerStats.entries()) {
+            const stat = byId.get(customerId);
             if (!stat) continue;
-            stat.totalOrders += 1;
-            stat.totalSpent += Number((order as any).baseTotal ?? 0) || 0;
+            stat.totalOrders = Number(statData.totalOrders) || 0;
+            stat.totalSpent = Number(statData.totalSpent) || 0;
         }
 
         return Array.from(byId.values()).sort((a, b) => b.totalSpent - a.totalSpent);
-    }, [customers, salesOrders]);
+    }, [customerStats, customers]);
 
     const summary = useMemo(() => {
         const active = customerReportData.filter(c => c.totalOrders > 0);
@@ -230,7 +247,7 @@ const CustomerReports: React.FC = () => {
                 </div>
                 <div className="flex-grow"></div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                    يعتمد التقرير على الطلبات المسلّمة والمدفوعة فقط.
+                    يعتمد التقرير على أساس الاستحقاق: الطلبات المسلّمة أو المسددة.
                 </div>
             </div>
 
