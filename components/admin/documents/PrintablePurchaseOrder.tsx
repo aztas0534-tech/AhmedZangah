@@ -53,7 +53,7 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
   const isArabic = language === 'ar';
 
   return (
-    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir={isArabic ? 'rtl' : 'ltr'}>
+    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir={isArabic ? 'rtl' : 'ltr'}>
       <style>{`
         @media print {
             @page { size: A5 portrait; margin: 0; }
@@ -62,12 +62,12 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
 
             .document-container { 
                 width: 100% !important; 
-                padding: 3mm 3mm 2mm 3mm !important;
+                padding: 5mm 5mm 4mm 5mm !important;
                 display: flex !important; flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important; line-height: 1.2 !important;
                 position: relative !important;
-                max-height: 210mm !important; overflow: hidden !important;
+                min-height: 210mm !important; overflow: visible !important;
                 background-color: #FAFAFA !important;
             }
 
@@ -271,8 +271,8 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
                       <td>
                         <div className="font-bold-value text-blue-950">{it.itemName || it.itemId}</div>
                       </td>
-                      <td className="text-center font-bold-value text-charcoal">{uomLabel((it as any).uomCode || (it as any).uom_code || '')}</td>
-                      <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{qty}</td>
+                      <td className="text-center font-bold-value text-charcoal">{uomLabel((it as any).uomCode || (it as any).uom_code || (it as any).unit || (it as any).uom || '')}</td>
+                      <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{Number(it.quantity || (it as any).qtyBase || 0)}</td>
                       <td className="text-center tabular text-charcoal" dir="ltr">{fmt(unit)}</td>
                       <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{fmt(total)}</td>
                     </tr>

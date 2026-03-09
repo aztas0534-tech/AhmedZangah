@@ -63,7 +63,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
   };
 
   return (
-    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir={isArabic ? 'rtl' : 'ltr'}>
+    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir={isArabic ? 'rtl' : 'ltr'}>
       <style>{`
         @media print {
             @page { size: A5 portrait; margin: 0; }
@@ -72,15 +72,15 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
 
             .document-container { 
                 width: 100% !important; 
-                padding: 3mm 3mm 2mm 3mm !important;
+                padding: 5mm 5mm 4mm 5mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important;
                 line-height: 1.2 !important;
                 position: relative !important;
-                max-height: 210mm !important;
-                overflow: hidden !important;
+                min-height: 210mm !important;
+                overflow: visible !important;
                 background-color: #FAFAFA !important;
             }
 
@@ -118,6 +118,26 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
                 display: flex !important; justify-content: space-between !important;
                 align-items: center !important; border-bottom: 1.5pt solid #1E3A8A !important;
                 padding-bottom: 2px !important; margin-bottom: 3px !important;
+            }
+            .brand-logo-box {
+                width: 22mm !important;
+                height: 22mm !important;
+                min-width: 22mm !important;
+                min-height: 22mm !important;
+                max-width: 22mm !important;
+                max-height: 22mm !important;
+                overflow: hidden !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            .brand-logo {
+                width: 100% !important;
+                height: 100% !important;
+                max-width: 22mm !important;
+                max-height: 22mm !important;
+                object-fit: contain !important;
+                display: block !important;
             }
             .brand-name { font-size: 16px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
             .doc-title { font-size: 20px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
@@ -162,8 +182,8 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
         <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
           <div className="flex items-center gap-6 print:gap-4">
             {brand?.logoUrl && (
-              <div className="bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
-                <img src={brand.logoUrl} alt="Logo" className="h-24 print:h-16 w-auto object-contain print:grayscale" />
+              <div className="brand-logo-box bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
+                <img src={brand.logoUrl} alt="Logo" className="brand-logo h-24 print:h-16 w-auto object-contain print:grayscale" />
               </div>
             )}
             <div className="flex flex-col justify-center">
@@ -261,7 +281,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
                           </div>
                         )}
                       </td>
-                      <td className="text-center font-bold-value text-charcoal">{uomLabel((it as any).uomCode || (it as any).uom_code || '')}</td>
+                      <td className="text-center font-bold-value text-charcoal">{uomLabel((it as any).uomCode || (it as any).uom_code || (it as any).unit || (it as any).uom || '')}</td>
                       <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{qty}</td>
                       <td className="text-center tabular font-thin-label text-charcoal" dir="ltr">{it.expiryDate ? formatDateOnly(it.expiryDate) : '—'}</td>
                     </tr>

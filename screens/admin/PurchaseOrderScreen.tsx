@@ -649,7 +649,7 @@ const PurchaseOrderScreen: React.FC = () => {
         const poUomByItemId = new Map<string, string>();
         for (const poItem of (po.items || [])) {
             const itemId = String((poItem as any)?.itemId || '').trim();
-            const uomCode = String((poItem as any)?.uomCode || (poItem as any)?.uom_code || '').trim();
+            const uomCode = String((poItem as any)?.uomCode || (poItem as any)?.uom_code || (poItem as any)?.unit || (poItem as any)?.uom || '').trim();
             if (itemId && uomCode) poUomByItemId.set(itemId, uomCode);
         }
         const grnItems = normalizedItems.map((it: any) => ({
