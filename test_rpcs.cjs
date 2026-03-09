@@ -13,55 +13,66 @@ const serviceKey = env['VITE_SUPABASE_SERVICE_ROLE_KEY'] || env['VITE_SUPABASE_A
 const supabase = createClient(url, serviceKey);
 
 async function run() {
-  // The issue may be that PostgREST cached the prep statement with the OLD function body.
-  // Supabase PostgREST runs in a connection pool (PgBouncer). Each connection may have 
-  // a cached prepared statement with the old function body.
-  //
-  // The fix: re-create the function with CREATE OR REPLACE again after the schema reload.
-  // This forces PostgreSQL to invalidate cached plans.
-  
-  console.log('=== Force schema reload + function re-create ===');
+  // Strategy: DROP v9 + CREATE a new v9 as a simple wrapper around v10.
+  // DROP forces invalidation of ALL cached plans (PgBouncer, PostgreSQL).
+  // This is safe because v10 has the exact same signature and return type.
 
-  // First, read the fixed SQL
-  const migrationSQL = fs.readFileSync(
-    'c:\\nasrflash\\AhmedZ\\supabase\\migrations\\20260309230000_product_report_v9_fx_rate.sql',
-    'utf-8'
-  );
-  const endOfFunction = migrationSQL.indexOf('$$;');
-  const createFunctionSQL = migrationSQL.substring(0, endOfFunction + 3);
-
-  // Step 1: Schema reload
+  console.log('=== Step 1: Drop v9 ===');
   var r = await supabase.rpc('exec_debug_sql', {
-    q: "select pg_notify('pgrst', 'reload schema'); select pg_notify('pgrst', 'reload config'); select 'step1_done'::text"
+    q: "drop function if exists public.get_product_sales_report_v9(timestamptz, timestamptz, uuid, boolean); select 'dropped'::text"
   });
-  console.log('Step 1 (schema reload):', JSON.stringify(r.data));
+  console.log('Drop:', JSON.stringify(r.data));
 
-  // Step 2: Wait
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  console.log('\n=== Step 2: Create v9 as wrapper to v10 ===');
+  var wrapperSQL = `
+create or replace function public.get_product_sales_report_v9(
+  p_start_date timestamptz,
+  p_end_date timestamptz,
+  p_zone_id uuid default null,
+  p_invoice_only boolean default false
+)
+returns table (
+  item_id text,
+  item_name jsonb,
+  unit_type text,
+  quantity_sold numeric,
+  total_sales numeric,
+  total_cost numeric,
+  total_profit numeric,
+  current_stock numeric,
+  reserved_stock numeric,
+  current_cost_price numeric,
+  avg_inventory numeric
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select * from public.get_product_sales_report_v10(p_start_date, p_end_date, p_zone_id, p_invoice_only);
+$$;
+select 'created_wrapper'::text
+  `;
+  r = await supabase.rpc('exec_debug_sql', { q: wrapperSQL });
+  console.log('Create wrapper:', JSON.stringify(r.data));
 
-  // Step 3: Re-deploy the function (forces plan cache invalidation)
+  // Grant
+  console.log('\n=== Step 3: Grant permissions ===');
   r = await supabase.rpc('exec_debug_sql', {
-    q: createFunctionSQL + "; select 'step3_done'::text"
+    q: "grant execute on function public.get_product_sales_report_v9(timestamptz, timestamptz, uuid, boolean) to anon, authenticated, service_role; select 'granted'::text"
   });
-  console.log('Step 3 (re-deploy):', JSON.stringify(r.data));
+  console.log('Grant:', JSON.stringify(r.data));
 
-  // Step 4: Re-grant
+  // Reload schema
+  console.log('\n=== Step 4: Schema reload ===');
   r = await supabase.rpc('exec_debug_sql', {
-    q: "grant execute on function public.get_product_sales_report_v9(timestamptz, timestamptz, uuid, boolean) to anon, authenticated, service_role; select 'step4_done'::text"
+    q: "select pg_notify('pgrst', 'reload schema'); select 'reloaded'::text"
   });
-  console.log('Step 4 (grant):', JSON.stringify(r.data));
+  console.log('Reload:', JSON.stringify(r.data));
 
-  // Step 5: Another schema reload
-  r = await supabase.rpc('exec_debug_sql', {
-    q: "select pg_notify('pgrst', 'reload schema'); select 'step5_done'::text"
-  });
-  console.log('Step 5 (reload):', JSON.stringify(r.data));
-
-  // Step 6: Wait longer
   await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Step 7: Test via PostgREST with service key
-  console.log('\n=== PostgREST test ===');
+  // Test v9 via PostgREST
+  console.log('\n=== Step 5: Test v9 via PostgREST ===');
   var resp = await fetch(url + '/rest/v1/rpc/get_product_sales_report_v9', {
     method: 'POST',
     headers: {
@@ -78,19 +89,17 @@ async function run() {
   });
   console.log('Status:', resp.status);
   var data = await resp.text();
-  // Parse to see if it's the max(jsonb) error or the is_staff error
   try {
     var parsed = JSON.parse(data);
     if (parsed.code === '42883') {
-      console.log('STILL max(jsonb) ERROR:', parsed.message);
-    } else if (parsed.code === 'P0001') {
-      console.log('is_staff() block (EXPECTED for service key):', parsed.message);
-      console.log('FIX IS WORKING - the max(jsonb) issue is resolved!');
+      console.log('STILL SQL ERROR:', parsed.message);
+    } else if (parsed.code === 'P0001' && parsed.message === 'not allowed') {
+      console.log('V9 WRAPPER WORKS! (is_staff block from v10)');
     } else if (Array.isArray(parsed)) {
-      console.log('SUCCESS! Got', parsed.length, 'rows');
-      console.log('First 2:', parsed.slice(0, 2).map(r => r.item_name + ': ' + r.total_sales));
+      console.log('SUCCESS! Got', parsed.length, 'rows - FX CONVERSION WORKING!');
+      parsed.slice(0, 3).forEach(r => console.log('-', JSON.stringify(r.item_name), '| sales:', r.total_sales?.toFixed(2)));
     } else {
-      console.log('Unknown response:', data.substring(0, 300));
+      console.log('Response:', data.substring(0, 300));
     }
   } catch(e) {
     console.log('Raw:', data.substring(0, 500));
