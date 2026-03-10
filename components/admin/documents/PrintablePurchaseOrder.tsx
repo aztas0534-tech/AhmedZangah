@@ -1,348 +1,404 @@
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { PurchaseOrder } from '../../../types';
 import { AZTA_IDENTITY } from '../../../config/identity';
-import DocumentAuditFooter from './DocumentAuditFooter';
-import { DocumentAuditInfo } from '../../../utils/documentStandards';
 import { localizeUomCodeAr } from '../../../utils/displayLabels';
-import PrintCopyBadge from './PrintCopyBadge';
+import { DocumentAuditInfo } from '../../../utils/documentStandards';
 
-type Brand = {
-  name?: string;
-  address?: string;
-  contactNumber?: string;
-  logoUrl?: string;
-  branchName?: string;
-  branchCode?: string;
-  vatNumber?: string;
+// Helper to generate TLV base64 for ZATCA QR
+const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
+    const simpleTLV = (tag: number, value: string) => {
+        const utf8Encoder = new TextEncoder();
+        const valueBytes = utf8Encoder.encode(value);
+        const len = valueBytes.length;
+        const tagByte = new Uint8Array([tag]);
+        const lenByte = new Uint8Array([len]);
+        const combined = new Uint8Array(tagByte.length + lenByte.length + valueBytes.length);
+        combined.set(tagByte);
+        combined.set(lenByte, tagByte.length);
+        combined.set(valueBytes, tagByte.length + lenByte.length);
+        return combined;
+    };
+
+    const tags = [
+        simpleTLV(1, sellerName),
+        simpleTLV(2, vatRegistrationNumber),
+        simpleTLV(3, timestamp),
+        simpleTLV(4, total),
+        simpleTLV(5, vatTotal)
+    ];
+
+    const totalLength = tags.reduce((acc, curr) => acc + curr.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    tags.forEach(tag => {
+        result.set(tag, offset);
+        offset += tag.length;
+    });
+
+    let binary = '';
+    const len = result.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(result[i]);
+    }
+    return window.btoa(binary);
 };
 
-export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; brand?: Brand; language?: 'ar' | 'en'; documentStatus?: string; referenceId?: string; audit?: DocumentAuditInfo | null; printNumber?: number | null }) {
-  const { order, brand, language = 'ar', documentStatus, referenceId, audit, printNumber } = props;
-  const docNo = order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`;
-  const currency = String(order.currency || '').toUpperCase() || '—';
-  const fx = Number(order.fxRate || 0);
-  const items = Array.isArray(order.items) ? order.items : [];
-
-  const uomLabel = (code: string) => {
-    const raw = String(code || '').trim();
-    if (!raw) return '—';
-    if (/[\u0600-\u06FF]/.test(raw)) return raw;
-    const mapped = localizeUomCodeAr(raw);
-    if (mapped && mapped !== '—' && mapped !== raw) return mapped;
-    const lower = raw.toLowerCase();
-    if (lower === 'piece' || lower === 'pcs' || lower === 'pc') return 'حبة';
-    if (lower === 'carton' || lower === 'ctn') return 'كرتون';
-    if (lower === 'box') return 'صندوق';
-    if (lower === 'pack' || lower === 'pkt') return 'عبوة';
-    if (lower === 'bottle') return 'زجاجة';
-    if (lower === 'kg') return 'كجم';
-    if (lower === 'gram' || lower === 'g') return 'جرام';
-    if (lower === 'bag') return 'كيس';
-    if (lower === 'bundle') return 'ربطة';
-    return raw;
-  };
-
-  const fmt = (n: number) => {
-    const v = Number(n || 0);
-    try {
-      return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    } catch {
-      return v.toFixed(2);
-    }
-  };
-
-  const isArabic = language === 'ar';
-
-  return (
-    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir={isArabic ? 'rtl' : 'ltr'}>
-      <style>{`
-        @media print {
-            @page { size: A5 landscape; margin: 0; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
-            * { box-sizing: border-box; }
-
-            .document-container { 
-                width: 100% !important; 
-                padding: 4mm 4mm 3mm 4mm !important;
-                display: flex !important; flex-direction: column !important;
-                font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
-                color: #0F172A !important; line-height: 1.2 !important;
-                position: relative !important;
-                min-height: 148mm !important; overflow: visible !important;
-                background-color: #FAFAFA !important;
-            }
-
-            .luxury-watermark {
-                position: absolute !important; top: 50% !important; left: 50% !important;
-                transform: translate(-50%, -50%) rotate(-30deg) !important;
-                font-size: 10rem !important; font-weight: 900 !important;
-                color: #D4AF37 !important; opacity: 0.03 !important;
-                white-space: nowrap !important; pointer-events: none !important;
-                z-index: 1 !important; letter-spacing: -2px !important;
-            }
-
-            .document-container::before {
-                content: ''; position: absolute !important;
-                top: 1mm; bottom: 1mm; left: 1mm; right: 1mm;
-                border: 1.5pt solid #1E3A8A !important;
-                pointer-events: none !important; z-index: 50 !important;
-            }
-            .document-container::after {
-                content: ''; position: absolute !important;
-                top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
-                border: 0.5pt solid #D4AF37 !important;
-                pointer-events: none !important; z-index: 50 !important;
-            }
-
-            .text-gold { color: #D4AF37 !important; }
-            .text-charcoal { color: #0F172A !important; }
-            .bg-gold-50 { background-color: #fcf9f2 !important; }
-            .font-thin-label { font-weight: 300 !important; font-size: 7px !important; color: #6B7280 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
-            .font-bold-value { font-weight: 700 !important; font-size: 9px !important; color: #0F172A !important; }
-            .tabular { font-variant-numeric: tabular-nums; font-family: 'Arial', sans-serif; letter-spacing: 0.5px; }
-
-            .luxury-header {
-                display: flex !important; justify-content: space-between !important;
-                align-items: center !important; border-bottom: 1.5pt solid #1E3A8A !important;
-                padding-bottom: 2px !important; margin-bottom: 3px !important;
-            }
-            .brand-name { font-size: 16px !important; font-weight: 900 !important; letter-spacing: -0.5px !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
-            .doc-title { font-size: 20px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
-            .title-sub { font-size: 7px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
-            .brand-logo-box {
-                width: 22mm !important;
-                height: 22mm !important;
-                min-width: 22mm !important;
-                min-height: 22mm !important;
-                max-width: 22mm !important;
-                max-height: 22mm !important;
-                overflow: hidden !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-            }
-            .brand-logo {
-                width: 100% !important;
-                height: 100% !important;
-                max-width: 22mm !important;
-                max-height: 22mm !important;
-                object-fit: contain !important;
-                display: block !important;
-            }
-            
-            .info-grid {
-                display: flex !important; justify-content: space-between !important;
-                margin-bottom: 3px !important; background: #F3F4F6 !important;
-                border: 0.5pt solid #E5E7EB !important; padding: 2px 5px !important;
-            }
-            .info-group { display: flex !important; flex-direction: column !important; gap: 1px !important; }
-            .info-item { display: flex !important; flex-direction: column !important; }
-
-            .luxury-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 3px !important; }
-            .luxury-table th {
-                background-color: #0F172A !important; color: #FFFFFF !important;
-                padding: 2px 3px !important; font-weight: 600 !important; font-size: 8px !important;
-                text-transform: uppercase !important; letter-spacing: 0.3px !important; border: none !important;
-            }
-            .luxury-table td {
-                padding: 1.5px 3px !important; font-size: 8px !important; font-weight: 600 !important;
-                border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
-                word-break: break-word !important; overflow-wrap: anywhere !important;
-            }
-            .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
-            .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
-
-            .luxury-footer {
-                margin-top: auto !important; text-align: center !important;
-                font-size: 7px !important; color: #4B5563 !important; padding-top: 2px !important;
-                page-break-inside: avoid !important; display: flex !important;
-                flex-direction: column !important; align-items: center !important; gap: 1px !important;
-            }
-            .footer-line { width: 40px !important; height: 0.5pt !important; background-color: #D4AF37 !important; margin: 1px 0 !important; }
-        }
-      `}</style>
-
-      <div className="document-container w-full mx-auto p-12 bg-[#FAFAFA] flex flex-col text-blue-950 print:p-0" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
-
-        <div className="luxury-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
-
-        {/* ▬▬▬ HEADER ▬▬▬ */}
-        <div className="luxury-header relative z-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 pb-6 mb-8 border-b-2 border-slate-900 print:pb-0 print:mb-0 print:border-none print:flex-row">
-          <div className="flex items-center gap-6 print:gap-4">
-            {brand?.logoUrl && (
-              <div className="brand-logo-box bg-white p-2 print:p-1 print:border print:border-slate-200 z-10">
-                <img src={brand.logoUrl} alt="Logo" className="brand-logo h-24 print:h-16 w-auto object-contain print:grayscale" />
-              </div>
-            )}
-            <div className="flex flex-col justify-center">
-              <h1 className="brand-name">
-                {brand?.name || (isArabic ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn)}
-                {(brand?.name || brand?.branchName) && brand?.name !== (isArabic ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn) && (
-                  <span className="text-sm font-normal text-slate-500 mr-2 print:text-[8px] font-sans">({brand?.name || brand?.branchName})</span>
-                )}
-              </h1>
-              <div className="mt-2 print:mt-1 flex gap-3 text-sm print:text-[6px] text-slate-600 font-bold">
-                {brand?.address && <span dir="ltr">Add: <span className="font-mono text-blue-950">{brand.address}</span></span>}
-                {brand?.contactNumber && <span dir="ltr">TEL: <span className="font-mono text-blue-950">{brand.contactNumber}</span></span>}
-                {brand?.vatNumber && <span dir="ltr">VAT: <span className="font-mono text-blue-950">{brand.vatNumber}</span></span>}
-              </div>
-            </div>
-          </div>
-
-          <div className={`text-center flex flex-col items-center flex-shrink-0 z-10 ${isArabic ? 'md:text-left rtl:text-left' : 'md:text-right rtl:text-right'}`}>
-            <h2 className="doc-title">{isArabic ? 'أمر شراء' : 'Purchase Order'}</h2>
-            <div className="title-sub">P.O DOCUMENT</div>
-            {documentStatus && (
-              <div className="mt-2 text-[10px] print:text-[11px] font-bold text-center border-2 px-3 py-1 rounded-md tracking-wider" style={{ borderColor: documentStatus === 'posted' ? '#166534' : '#64748b', color: documentStatus === 'posted' ? '#166534' : '#64748b', backgroundColor: documentStatus === 'posted' ? '#dcfce7' : '#f1f5f9' }}>
-                {documentStatus || 'DRAFT'}
-              </div>
-            )}
-          </div>
-          <PrintCopyBadge printNumber={printNumber} position="top-left" />
-        </div>
-
-        {/* ▬▬▬ INFO SECTION ▬▬▬ */}
-        <div className="info-grid relative z-10 mb-8 print:mb-4">
-          <div className="info-group">
-            <div className="info-item mb-2 print:mb-1">
-              <span className="font-thin-label">{isArabic ? 'المورد | Supplier' : 'Supplier'}</span>
-              <span className="font-bold-value text-gold">{order.supplierName || '—'}</span>
-            </div>
-            <div className="info-item">
-              <span className="font-thin-label">{isArabic ? 'المستودع الوجهة | Warehouse' : 'Warehouse'}</span>
-              <span className="font-bold-value text-charcoal">{order.warehouseName || '—'}</span>
-            </div>
-          </div>
-
-          <div className="info-group border-x border-slate-300 px-4 print:border-[#E5E7EB]">
-            <div className="info-item mb-2 print:mb-1">
-              <span className="font-thin-label">{isArabic ? 'رقم الأمر | P.O No.' : 'P.O No.'}</span>
-              <span className="font-bold-value font-mono text-charcoal" dir="ltr">#{docNo}</span>
-            </div>
-            <div className="info-item">
-              <span className="font-thin-label">{isArabic ? 'التاريخ | Date' : 'Date'}</span>
-              <span className="font-bold-value font-mono tabular" dir="ltr">{new Date(order.purchaseDate).toLocaleDateString('en-GB')}</span>
-            </div>
-          </div>
-
-          <div className="info-group">
-            <div className="info-item mb-2 print:mb-1">
-              <span className="font-thin-label">{isArabic ? 'المرجع | Reference' : 'Reference'}</span>
-              <span className="font-bold-value font-mono text-charcoal tabular" dir="ltr">{referenceId || '—'}</span>
-            </div>
-            <div className="info-item">
-              <span className="font-thin-label">{isArabic ? 'عملة الشراء | Currency' : 'Currency'}</span>
-              <span className="font-bold-value text-charcoal" dir="ltr">{currency} {fx > 0 && <span className="font-thin-label text-slate-500">(FX: {fx})</span>}</span>
-            </div>
-          </div>
-
-          <div className="info-group border-r border-slate-300 pr-4 print:border-[#E5E7EB]">
-            <div className="info-item mb-2 print:mb-1">
-              <span className="font-thin-label">{isArabic ? 'فاتورة المورد | Supplier Inv' : 'Supplier Inv'}</span>
-              <span className="font-bold-value font-mono text-charcoal tabular" dir="ltr">{order.referenceNumber || '—'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ▬▬▬ TABLE ▬▬▬ */}
-        <div className="relative z-10 w-full overflow-visible mb-8 print:mb-4">
-          <table className={`luxury-table print:w-full ${isArabic ? 'text-right' : 'text-left'}`}>
-            <thead>
-              <tr>
-                <th className="w-8 text-center">م</th>
-                <th className={isArabic ? 'text-right' : 'text-left'}>{isArabic ? 'الصنف | Item Description' : 'Item Description'}</th>
-                <th className="text-center w-20">{isArabic ? 'الوحدة UNIT' : 'Unit'}</th>
-                <th className="text-center w-24">الكمية QTY</th>
-                <th className="text-center w-32">سعر الوحدة UNIT</th>
-                <th className="text-center w-32">الإجمالي TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
-                </tr>
-              ) : (
-                items.map((it, idx) => {
-                  const qty = Number(it.quantity || 0);
-                  const unit = Number(it.unitCost || 0);
-                  const total = Number(it.totalCost || qty * unit);
-                  return (
-                    <tr key={`${it.id || idx}`} style={{ pageBreakInside: 'avoid' }}>
-                      <td className="text-center tabular font-thin-label text-slate-600">{idx + 1}</td>
-                      <td>
-                        <div className="font-bold-value text-blue-950">{it.itemName || it.itemId}</div>
-                      </td>
-                      <td className="text-center font-bold-value text-charcoal">{uomLabel((it as any).uomCode || (it as any).uom_code || (it as any).unit || (it as any).uom || '')}</td>
-                      <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{Number(it.quantity || (it as any).qtyBase || 0)}</td>
-                      <td className="text-center tabular text-charcoal" dir="ltr">{fmt(unit)}</td>
-                      <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{fmt(total)}</td>
-                    </tr>
-                  );
-                })
-              )}
-              {Array.from({ length: Math.max(0, 5 - items.length) }).map((_, idx) => (
-                <tr key={`fill-${idx}`}>
-                  <td></td><td></td><td></td><td></td><td></td><td></td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={6} className="p-0 border-none">
-                  <div className="flex justify-between items-center bg-blue-950 text-white p-3 print:px-4 print:py-2 rounded-b-md">
-                    <span className="font-bold text-lg print:text-sm tracking-wide">{isArabic ? 'الإجمالي الكلي | GRAND TOTAL' : 'GRAND TOTAL'}</span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl print:text-lg font-bold tabular text-gold" dir="ltr">{fmt(Number(order.totalAmount || 0))}</span>
-                      <span className="text-sm font-normal text-slate-300">{currency}</span>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {/* ▬▬▬ NOTES ▬▬▬ */}
-        {order.notes && (
-          <div className="relative z-10 w-full mb-8 print:mb-4 bg-gold-50 border border-gold-500 p-4 print:p-3 rounded-sm">
-            <div className="font-thin-label mb-1 text-gold">{isArabic ? 'ملاحظات | Notes' : 'Notes'}</div>
-            <div className="font-bold-value text-charcoal">{order.notes}</div>
-          </div>
-        )}
-
-        {/* ▬▬▬ LEGAL & SIGNATURES ▬▬▬ */}
-        <div className="relative z-10 w-full mt-8 print:mt-6">
-          <div className="flex justify-around items-end px-12 print:px-8">
-            <div className="text-center w-32 print:w-28">
-              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
-                <span className="font-thin-label block text-blue-950 font-bold">{isArabic ? 'إعداد | Prepared By' : 'Prepared By'}</span>
-              </div>
-            </div>
-            <div className="text-center w-32 print:w-28">
-              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
-                <span className="font-thin-label block text-blue-950 font-bold">{isArabic ? 'مراجعة | Checked By' : 'Checked By'}</span>
-              </div>
-            </div>
-            <div className="text-center w-32 print:w-28">
-              <div className="border-t border-blue-900 print:border-blue-900 pt-1.5">
-                <span className="font-thin-label block text-blue-950 font-bold">{isArabic ? 'اعتماد | Approved By' : 'Approved By'}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ▬▬▬ FOOTER ▬▬▬ */}
-        <div className="luxury-footer relative z-10 w-full font-mono mt-auto pt-6">
-          <div className="footer-line"></div>
-          <div className="font-bold-value text-gold mb-1 print:mb-0.5 mt-1 font-sans tracking-wide">نموذج نظام مرخص — LICENSED SYSTEM FORM</div>
-
-          <DocumentAuditFooter
-            audit={{ printedAt: new Date().toISOString(), generatedBy: brand?.name || AZTA_IDENTITY.tradeNameAr, ...(audit || {}) }}
-            extraRight={<div className="font-sans text-slate-400">{brand?.name || AZTA_IDENTITY.tradeNameAr}</div>}
-          />
-        </div>
-
-      </div>
-    </div>
-  );
+interface Brand {
+    name?: string;
+    address?: string;
+    contactNumber?: string;
+    logoUrl?: string;
+    branchName?: string;
+    branchCode?: string;
+    vatNumber?: string;
 }
+
+export default function PrintablePurchaseOrder({
+    order,
+    brand,
+    language = 'ar',
+    documentStatus,
+    referenceId,
+    audit,
+    printNumber
+}: {
+    order: PurchaseOrder;
+    brand?: Brand;
+    language?: 'ar' | 'en';
+    documentStatus?: string;
+    referenceId?: string;
+    audit?: DocumentAuditInfo | null;
+    printNumber?: number | null;
+}) {
+    const docNo = order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`;
+    const currency = String(order.currency || '').toUpperCase() || '—';
+    const fx = Number(order.fxRate || 0);
+    const items = Array.isArray(order.items) ? order.items : [];
+
+    const resolvedCompanyName = brand?.name || AZTA_IDENTITY.tradeNameAr;
+    const resolvedCompanyPhone = brand?.contactNumber || '';
+    const resolvedCompanyAddress = brand?.address || '';
+    const resolvedLogoUrl = brand?.logoUrl || '';
+    const resolvedVatNumber = brand?.vatNumber || '';
+    const systemName = AZTA_IDENTITY.tradeNameAr;
+    const branchName = resolvedCompanyName.trim();
+    const showBranchName = Boolean(branchName) && branchName !== systemName.trim();
+
+    const uomLabel = (code: string) => {
+        const raw = String(code || '').trim();
+        if (!raw) return '—';
+        if (/[\u0600-\u06FF]/.test(raw)) return raw;
+        const mapped = localizeUomCodeAr(raw);
+        if (mapped && mapped !== '—' && mapped !== raw) return mapped;
+        const lower = raw.toLowerCase();
+        if (lower === 'piece' || lower === 'pcs' || lower === 'pc') return 'حبة';
+        if (lower === 'carton' || lower === 'ctn') return 'كرتون';
+        if (lower === 'box') return 'صندوق';
+        if (lower === 'pack' || lower === 'pkt') return 'عبوة';
+        if (lower === 'bottle') return 'زجاجة';
+        if (lower === 'kg') return 'كجم';
+        if (lower === 'gram' || lower === 'g') return 'جرام';
+        if (lower === 'bag') return 'كيس';
+        if (lower === 'bundle') return 'ربطة';
+        return raw;
+    };
+
+    const currencyLabelAr = (codeRaw: string) => {
+        const c = String(codeRaw || '').trim().toUpperCase();
+        if (!c || c === '—') return 'عملة';
+        if (c === 'SAR') return 'ريال سعودي';
+        if (c === 'YER') return 'ريال يمني';
+        if (c === 'USD') return 'دولار أمريكي';
+        if (c === 'EUR') return 'يورو';
+        if (c === 'GBP') return 'جنيه إسترليني';
+        if (c === 'AED') return 'درهم إماراتي';
+        if (c === 'KWD') return 'دينار كويتي';
+        if (c === 'BHD') return 'دينار بحريني';
+        if (c === 'OMR') return 'ريال عُماني';
+        if (c === 'QAR') return 'ريال قطري';
+        return 'عملة';
+    };
+
+    const formatAmount = (value: number) => {
+        const n = Number(value) || 0;
+        try {
+            return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } catch {
+            return n.toFixed(2);
+        }
+    };
+
+    // Subtotal and Total calculations
+    const calcSubtotal = items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unitCost || 0)), 0);
+    const calcTax = Number(order.taxAmount || 0);
+    const calcDiscount = Number(order.discountAmount || 0);
+    const calcDelivery = Number(order.deliveryFee || 0); // POs typically don't have delivery fees but keeping for parity
+    const calcTotal = calcSubtotal - calcDiscount + calcTax + calcDelivery;
+
+    const qrData = generateZatcaTLV(
+        systemName,
+        resolvedVatNumber,
+        order.purchaseDate || new Date().toISOString(),
+        calcTotal.toFixed(2),
+        calcTax.toFixed(2)
+    );
+
+    const printedBy = String(audit?.printedBy || '').trim();
+    const typeLabel = 'مشتريات';
+
+    const copyTitle = !printNumber || printNumber === 1
+        ? 'أمر شراء'
+        : printNumber === 2
+            ? 'نسخة الإدارة'
+            : 'نسخة الحسابات';
+
+    const thermalPaperWidth = '80mm';
+
+    return (
+        <div className="thermal-invoice" dir="rtl">
+            <style>{`
+                .thermal-invoice {
+                    font-family: 'Tahoma', 'Arial', sans-serif;
+                    font-size: 12px;
+                    line-height: 1.4;
+                    color: #000;
+                    width: ${thermalPaperWidth};
+                    max-width: ${thermalPaperWidth};
+                    margin: 0 auto;
+                    padding: 0 2px;
+                    background: white;
+                }
+                @media print {
+                    @page {
+                        margin: 0;
+                        size: auto;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                    }
+                    .thermal-invoice {
+                        width: 100%;
+                        max-width: none;
+                        padding: 5px;
+                    }
+                }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .text-left { text-align: left; }
+                .font-bold { font-weight: bold; }
+                .text-xs { font-size: 11px; }
+                .text-sm { font-size: 12px; }
+                .text-lg { font-size: 15px; }
+                .text-xl { font-size: 18px; }
+                .mb-1 { margin-bottom: 4px; }
+                .mb-2 { margin-bottom: 8px; }
+                .mt-1 { margin-top: 4px; }
+                .mt-2 { margin-top: 8px; }
+                .py-1 { padding-top: 4px; padding-bottom: 4px; }
+                .border-b { border-bottom: 1px dashed #000; }
+                .border-t { border-top: 1px dashed #000; }
+                .border-y { border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
+                .flex { display: flex; justify-content: space-between; align-items: baseline; }
+                .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; letter-spacing: -0.5px; }
+                .logo-img { height: 100px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
+                table { width: 100%; border-collapse: collapse; }
+                th { text-align: right; font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
+                td { padding: 3px 0; vertical-align: top; }
+                .item-name { font-weight: bold; margin-bottom: 2px; }
+                .item-meta { font-size: 10px; color: #444; }
+                .total-box { border: 2px solid #000; padding: 8px; margin-top: 10px; border-radius: 4px; }
+                .watermark { 
+                    position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
+                    font-size: 40px; font-weight: bold; color: rgba(0,0,0,0.1); pointer-events: none; z-index: 0; border: 4px solid rgba(0,0,0,0.1); padding: 10px 40px;
+                }
+            `}</style>
+
+            {printNumber && printNumber > 1 && (
+                <div className="watermark">{copyTitle}</div>
+            )}
+
+            <div className="text-center mb-2">
+                {resolvedLogoUrl && <img src={resolvedLogoUrl} alt="Logo" className="logo-img" />}
+                <div className="font-bold text-lg mb-1">{systemName}</div>
+                {showBranchName && <div className="text-sm mb-1">{branchName}</div>}
+                <div className="text-xs">{resolvedCompanyAddress}</div>
+                {resolvedCompanyPhone && <div className="text-xs" dir="ltr">{resolvedCompanyPhone}</div>}
+                {resolvedVatNumber && <div className="text-xs mt-1 font-bold">الرقم الضريبي: <span dir="ltr" className="tabular">{resolvedVatNumber}</span></div>}
+            </div>
+
+            <div className="text-center border-y py-1 mb-2">
+                <div className="font-bold text-lg">أمر شراء (PO)</div>
+                <div className="inline-block border border-black rounded px-2 py-0.5 mt-1 text-sm font-bold bg-gray-100">{copyTitle}</div>
+                <div className="text-xs mt-1">النوع: {typeLabel}</div>
+            </div>
+
+            <div className="mb-2 text-sm">
+                <div className="flex">
+                    <span>رقم الأمر:</span>
+                    <span className="font-bold tabular" dir="ltr">{docNo}</span>
+                </div>
+                <div className="flex">
+                    <span>التاريخ:</span>
+                    <span className="tabular" dir="ltr">{new Date(order.purchaseDate || order.createdAt || new Date()).toLocaleDateString('en-GB')} {new Date(order.purchaseDate || order.createdAt || new Date()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                </div>
+                <div className="flex">
+                    <span>المورد:</span>
+                    <span className="font-bold">{order.supplierName || 'غير محدد'}</span>
+                </div>
+                {order.referenceNumber && (
+                    <div className="flex">
+                        <span>فاتورة المورد:</span>
+                        <span className="tabular" dir="ltr">{order.referenceNumber}</span>
+                    </div>
+                )}
+                {order.warehouseName && (
+                    <div className="flex">
+                        <span>المستودع:</span>
+                        <span>{order.warehouseName}</span>
+                    </div>
+                )}
+            </div>
+
+            <table className="mb-2">
+                <thead>
+                    <tr>
+                        <th style={{ width: '14%' }}>رقم الصنف</th>
+                        <th style={{ width: '38%' }}>البيان</th>
+                        <th style={{ width: '13%', textAlign: 'center' }}>الكمية</th>
+                        <th style={{ width: '15%', textAlign: 'center' }}>السعر</th>
+                        <th style={{ width: '20%', textAlign: 'left' }}>الإجمالي</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items.map((item, index) => {
+                        const itemNo = (() => {
+                            const rawId = String((item as any)?.item_id || '').trim();
+                            if (!rawId) return '—';
+                            return rawId.replace(/-/g, '').slice(-6).toUpperCase();
+                        })();
+                        const soldUnit = uomLabel(String((item as any)?.uomCode || (item as any)?.unit_type || 'piece'));
+                        const soldQty = Number(item.quantity) || 0;
+                        const invoiceCurrencyLabel = currencyLabelAr(currency);
+                        const soldUnitPrice = Number(item.unitCost) || 0;
+                        const lineTotal = soldQty * soldUnitPrice;
+
+                        return (
+                            <tr key={index}>
+                                <td className="tabular" dir="ltr">{itemNo}</td>
+                                <td>
+                                    <div className="item-name">{item.itemName || 'صنف غير معروف'}</div>
+                                    <div className="item-meta">
+                                        <span>الوحدة: {soldUnit}</span>
+                                    </div>
+                                </td>
+                                <td className="text-center tabular" dir="ltr">{soldQty}</td>
+                                <td className="text-center tabular" dir="ltr">{formatAmount(soldUnitPrice)}</td>
+                                <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+
+            <div className="border-t pt-2 mb-2">
+                <div className="flex mb-1">
+                    <span>المجموع الفرعي:</span>
+                    <span className="tabular" dir="ltr">
+                        {formatAmount(calcSubtotal)} {currencyLabelAr(currency)}
+                    </span>
+                </div>
+                {calcDiscount > 0 && (
+                    <div className="flex mb-1">
+                        <span>الخصم:</span>
+                        <span className="tabular" dir="ltr">
+                            - {formatAmount(calcDiscount)} {currencyLabelAr(currency)}
+                        </span>
+                    </div>
+                )}
+                <div className="flex mb-1">
+                    <span>الضريبة (15%):</span>
+                    <span className="tabular" dir="ltr">
+                        {formatAmount(calcTax)} {currencyLabelAr(currency)}
+                    </span>
+                </div>
+            </div>
+
+            <div className="total-box text-center mb-4">
+                <div className="text-sm font-bold mb-1">الإجمالي النهائي</div>
+                <div className="text-xl font-bold tabular" dir="ltr">
+                    {formatAmount(calcTotal)} {currencyLabelAr(currency)}
+                </div>
+            </div>
+
+            <div className="mb-4 text-sm border-b pb-2">
+                {String((order as any)?.currency || '').trim() ? (
+                    <div className="flex mt-1">
+                        <span>العملة:</span>
+                        <span className="tabular" dir="ltr">{String((order as any).currency || '').toUpperCase()}</span>
+                    </div>
+                ) : null}
+                {fx > 0 ? (
+                    <div className="flex mt-1">
+                        <span>سعر الصرف:</span>
+                        <span className="tabular" dir="ltr">{formatAmount(fx)}</span>
+                    </div>
+                ) : null}
+            </div>
+
+            <div className="text-center mb-4">
+                <div style={{ display: 'inline-block', padding: '5px', background: 'white' }}>
+                    {qrData && <QRImage value={qrData} size={120} />}
+                </div>
+                <div className="text-xs mt-1">امسح للتحقق (ZATCA)</div>
+            </div>
+
+            <div className="mb-3 text-xs">
+                <div className="border border-black rounded-md p-2">
+                    <div className="mt-2 flex justify-between">
+                        <div>توقيع المستلم:</div>
+                        <div style={{ width: 120, borderBottom: '1px solid #000' }} />
+                    </div>
+                </div>
+            </div>
+
+            <div className="text-center text-xs mt-2">
+                <div className="mt-1 tabular" dir="ltr">{new Date().toLocaleString('en-GB')}</div>
+                <div className="mt-1">
+                    <span className="tabular" dir="ltr">Ref: {referenceId || order.id.slice(-8).toUpperCase()}</span>
+                    {printedBy ? (
+                        <>
+                            <span> • </span>
+                            <span>طبع بواسطة: {printedBy}</span>
+                        </>
+                    ) : null}
+                    {printNumber && printNumber > 0 ? (
+                        <>
+                            <span> • </span>
+                            <span className="tabular" dir="ltr">{`نسخة رقم ${printNumber}`}</span>
+                        </>
+                    ) : null}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+const QRImage: React.FC<{ value: string; size?: number }> = ({ value, size = 120 }) => {
+    const [url, setUrl] = useState<string>('');
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const dataUrl = await QRCode.toDataURL(value, { width: size, margin: 1 });
+                if (active) setUrl(dataUrl);
+            } catch {
+                if (active) setUrl('');
+            }
+        })();
+        return () => { active = false; };
+    }, [value, size]);
+    if (!url) return null;
+    return <img src={url} alt="QR" style={{ width: size, height: size }} />;
+};

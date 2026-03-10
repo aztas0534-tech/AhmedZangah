@@ -1,11 +1,11 @@
 {
   "period": {
     "start": "1970-01-01T00:00:00.000Z",
-    "end": "2026-03-10T03:21:26.671Z"
+    "end": "2026-03-10T19:16:19.014Z"
   },
-  "anomalies_total": 11,
-  "high_priority": 8,
-  "medium_priority": 3,
+  "anomalies_total": 4,
+  "high_priority": 2,
+  "medium_priority": 2,
   "items": [
     {
       "item_id": "2efb484a-39cb-43b2-a7a8-f9c2a9b6de3f",
@@ -14,47 +14,21 @@
         "en": ""
       },
       "quantity_sold": 0,
-      "total_sales": 4257.55,
-      "total_cost": 7293.32,
-      "total_profit": -3035.77,
-      "cost_to_sales_pct": 171.3,
+      "total_sales": 6706.18,
+      "total_cost": 6842.4,
+      "total_profit": -136.22,
+      "cost_to_sales_pct": 102.03,
       "diagnostics": {
         "cogs_rows": 44,
         "cogs_sum": 9023.3,
         "saleout_qty": 725,
         "saleout_cost": 9023.3,
         "returnin_qty": 139,
-        "avg_cost": 12.45
+        "avg_cost": 12.17
       },
       "probable_reasons": [
         "تكلفة أعلى من صافي المبيعات",
-        "كمية صافية غير منطقية مقابل مبيعات",
-        "نسبة تكلفة إلى مبيعات مرتفعة جداً"
-      ],
-      "priority": "عالية"
-    },
-    {
-      "item_id": "b16e59e7-63a2-41b2-b865-9de89b444524",
-      "item_name": {
-        "ar": "شوكلاته الفيدو تايم *150جم*24باغة",
-        "en": ""
-      },
-      "quantity_sold": 11,
-      "total_sales": 349.27,
-      "total_cost": 983.18,
-      "total_profit": -633.91,
-      "cost_to_sales_pct": 281.49,
-      "diagnostics": {
-        "cogs_rows": 4,
-        "cogs_sum": 983.18,
-        "saleout_qty": 218,
-        "saleout_cost": 983.18,
-        "returnin_qty": 0,
-        "avg_cost": 4.51
-      },
-      "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات",
-        "نسبة تكلفة إلى مبيعات مرتفعة جداً"
+        "كمية صافية غير منطقية مقابل مبيعات"
       ],
       "priority": "عالية"
     },
@@ -65,218 +39,68 @@
         "en": ""
       },
       "quantity_sold": 0,
-      "total_sales": 0,
-      "total_cost": 464.86,
-      "total_profit": -464.86,
-      "cost_to_sales_pct": 0,
+      "total_sales": 690.43,
+      "total_cost": 672.54,
+      "total_profit": 17.89,
+      "cost_to_sales_pct": 97.41,
       "diagnostics": {
         "cogs_rows": 4,
         "cogs_sum": 878.06,
         "saleout_qty": 102,
         "saleout_cost": 878.06,
         "returnin_qty": 48,
-        "avg_cost": 8.61
+        "avg_cost": 32.65
       },
       "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات"
+        "كمية صافية غير منطقية مقابل مبيعات"
       ],
       "priority": "عالية"
     },
     {
-      "item_id": "7b94bb65-255c-49b7-9089-e556de0938ef",
+      "item_id": "f5b5ed03-2295-4bb5-86aa-ed58724f799b",
       "item_name": {
-        "ar": "كريمة جاهزه صفاء منوع*1*72باكت",
+        "ar": "جوي سفن اب  *24علبة*250ملي",
         "en": ""
       },
-      "quantity_sold": 3,
-      "total_sales": 37.28,
-      "total_cost": 450,
-      "total_profit": -412.72,
-      "cost_to_sales_pct": 1206.94,
-      "diagnostics": {
-        "cogs_rows": 3,
-        "cogs_sum": 450,
-        "saleout_qty": 145,
-        "saleout_cost": 302.08,
-        "returnin_qty": 0,
-        "avg_cost": 2.08
-      },
-      "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات",
-        "نسبة تكلفة إلى مبيعات مرتفعة جداً",
-        "فرق بين COGS وتكلفة sale_out"
-      ],
-      "priority": "عالية"
-    },
-    {
-      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
-      "item_name": {
-        "ar": "تونة حلوة كبير *48حبة*160جم",
-        "en": ""
-      },
-      "quantity_sold": 0,
-      "total_sales": 0,
-      "total_cost": 100,
-      "total_profit": -100,
-      "cost_to_sales_pct": 0,
-      "diagnostics": {
-        "cogs_rows": 3,
-        "cogs_sum": 300,
-        "saleout_qty": 144,
-        "saleout_cost": 300,
-        "returnin_qty": 96,
-        "avg_cost": 2.08
-      },
-      "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات"
-      ],
-      "priority": "عالية"
-    },
-    {
-      "item_id": "08335762-4ac5-4ece-ba20-4a8e26741925",
-      "item_name": {
-        "ar": "شراب صفاء برتقال صغير *15*750جم",
-        "en": ""
-      },
-      "quantity_sold": 1,
-      "total_sales": 48.18,
-      "total_cost": 106,
-      "total_profit": -57.82,
-      "cost_to_sales_pct": 219.99,
-      "diagnostics": {
-        "cogs_rows": 1,
-        "cogs_sum": 106,
-        "saleout_qty": 15,
-        "saleout_cost": 106,
-        "returnin_qty": 0,
-        "avg_cost": 7.07
-      },
-      "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات",
-        "نسبة تكلفة إلى مبيعات مرتفعة جداً"
-      ],
-      "priority": "عالية"
-    },
-    {
-      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
-      "item_name": {
-        "ar": "شوكلاته بوكي بار اصابع 12*24*20جم",
-        "en": ""
-      },
-      "quantity_sold": 0,
-      "total_sales": 0,
-      "total_cost": 0.06,
-      "total_profit": -0.06,
-      "cost_to_sales_pct": 0,
+      "quantity_sold": 35,
+      "total_sales": 727.94,
+      "total_cost": 737.45,
+      "total_profit": -9.51,
+      "cost_to_sales_pct": 101.31,
       "diagnostics": {
         "cogs_rows": 2,
-        "cogs_sum": 2.31,
-        "saleout_qty": 16,
-        "saleout_cost": 2.31,
-        "returnin_qty": 12,
-        "avg_cost": 4.51
+        "cogs_sum": 737.45,
+        "saleout_qty": 35,
+        "saleout_cost": 737.45,
+        "returnin_qty": 0,
+        "avg_cost": 21.07
       },
       "probable_reasons": [
         "تكلفة أعلى من صافي المبيعات"
       ],
-      "priority": "عالية"
-    },
-    {
-      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
-      "item_name": {
-        "ar": "ماء طيبة صغير صغير12*750ملي",
-        "en": ""
-      },
-      "quantity_sold": 5,
-      "total_sales": 36.15,
-      "total_cost": 0,
-      "total_profit": 36.15,
-      "cost_to_sales_pct": 0,
-      "diagnostics": {
-        "cogs_rows": 10,
-        "cogs_sum": 67.76,
-        "saleout_qty": 10,
-        "saleout_cost": 67.76,
-        "returnin_qty": 5,
-        "avg_cost": 84.97
-      },
-      "probable_reasons": [
-        "مبيعات بدون تكلفة"
-      ],
-      "priority": "عالية"
-    },
-    {
-      "item_id": "81e85ebf-1415-49a3-b9fa-0fcae3af6b8a",
-      "item_name": {
-        "ar": "شوكلاته الفيدو اصبع واحدة*12باكت*36حبه*12جم",
-        "en": ""
-      },
-      "quantity_sold": 11,
-      "total_sales": 910.18,
-      "total_cost": 1470.15,
-      "total_profit": -559.97,
-      "cost_to_sales_pct": 161.52,
-      "diagnostics": {
-        "cogs_rows": 7,
-        "cogs_sum": 1494.45,
-        "saleout_qty": 123,
-        "saleout_cost": 1494.45,
-        "returnin_qty": 2,
-        "avg_cost": 12.15
-      },
-      "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات",
-        "نسبة تكلفة إلى مبيعات مرتفعة جداً"
-      ],
       "priority": "متوسطة"
     },
     {
-      "item_id": "a78e6f78-f060-4abe-9e21-5f9da8700bda",
+      "item_id": "adacd98e-4f9f-4d78-b83d-c1c64fe3b517",
       "item_name": {
-        "ar": "شوكلاته الفيدو ويفر علب 250جم*12علبة",
+        "ar": "جوي مشروب غازي برتقال 24علبة*250ملي",
         "en": ""
       },
-      "quantity_sold": 7,
-      "total_sales": 498.85,
-      "total_cost": 857.75,
-      "total_profit": -358.9,
-      "cost_to_sales_pct": 171.94,
+      "quantity_sold": 35,
+      "total_sales": 727.94,
+      "total_cost": 737.45,
+      "total_profit": -9.51,
+      "cost_to_sales_pct": 101.31,
       "diagnostics": {
-        "cogs_rows": 3,
-        "cogs_sum": 857.75,
-        "saleout_qty": 73,
-        "saleout_cost": 857.75,
+        "cogs_rows": 2,
+        "cogs_sum": 737.45,
+        "saleout_qty": 35,
+        "saleout_cost": 737.45,
         "returnin_qty": 0,
-        "avg_cost": 11.75
+        "avg_cost": 21.07
       },
       "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات",
-        "نسبة تكلفة إلى مبيعات مرتفعة جداً"
-      ],
-      "priority": "متوسطة"
-    },
-    {
-      "item_id": "aab26104-f64d-4c16-974e-242e994555a7",
-      "item_name": {
-        "ar": "رز الامارة مزه ابو 5كيلو ",
-        "en": ""
-      },
-      "quantity_sold": 8,
-      "total_sales": 807.03,
-      "total_cost": 1031.25,
-      "total_profit": -224.22,
-      "cost_to_sales_pct": 127.78,
-      "diagnostics": {
-        "cogs_rows": 4,
-        "cogs_sum": 1031.25,
-        "saleout_qty": 36,
-        "saleout_cost": 742.5,
-        "returnin_qty": 0,
-        "avg_cost": 20.63
-      },
-      "probable_reasons": [
-        "تكلفة أعلى من صافي المبيعات",
-        "فرق بين COGS وتكلفة sale_out"
+        "تكلفة أعلى من صافي المبيعات"
       ],
       "priority": "متوسطة"
     }

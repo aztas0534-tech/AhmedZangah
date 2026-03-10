@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-03-10T18:54:19.926Z",
+  "affected_items": [
+    "2efb484a-39cb-43b2-a7a8-f9c2a9b6de3f",
+    "81e85ebf-1415-49a3-b9fa-0fcae3af6b8a",
+    "aab26104-f64d-4c16-974e-242e994555a7",
+    "a78e6f78-f060-4abe-9e21-5f9da8700bda",
+    "b16e59e7-63a2-41b2-b865-9de89b444524",
+    "08335762-4ac5-4ece-ba20-4a8e26741925",
+    "7b94bb65-255c-49b7-9089-e556de0938ef",
+    "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+    "66530237-b448-4bd2-a53e-110b599b799b",
+    "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+    "88341c63-94c9-4a4c-87cc-e875fd573d03"
+  ],
+  "candidate_movements": 1,
+  "repaired_entries": 1,
+  "skipped": 0,
+  "total_abs_delta": 2893.22,
+  "samples": [
+    {
+      "movement_id": "bb696e1f-7a3f-45f1-b24a-bf8f6a6d065d",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "movement_type": "sale_out",
+      "delta": -2893.22,
+      "journal_entry_id": "0be3425e-b75f-4fb1-b133-5ee39e39f43c"
+    }
+  ]
+}

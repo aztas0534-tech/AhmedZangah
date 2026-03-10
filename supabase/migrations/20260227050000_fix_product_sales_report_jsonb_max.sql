@@ -1085,6 +1085,9 @@ begin
       sum(im.total_cost) as returned_cost
 
     from public.inventory_movements im
+    join public.sales_returns sr
+      on sr.id::text = im.reference_id
+     and sr.status = 'completed'
 
     where im.reference_table = 'sales_returns'
 
@@ -1230,26 +1233,52 @@ begin
 
     coalesce(nullif(mi.unit_type, ''), nullif(sl.any_unit, ''), 'piece') as unit_type,
 
-    greatest(coalesce(sl.qty_sold, 0) - coalesce(rs.qty_returned, 0), 0) as quantity_sold,
+    greatest(
+      coalesce(sl.qty_sold, 0) - coalesce(rs.qty_returned, 0),
+      coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0),
+      0
+    ) as quantity_sold,
 
     greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) as total_sales,
 
     greatest(
-
-      coalesce(
-
-        cr.recorded_cost,
-
-        coalesce(sa.avg_cost, mi.cost_price, 0)
-
-          * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
-
+      (
+        coalesce(
+          cr.recorded_cost,
+          coalesce(sa.avg_cost, mi.cost_price, 0)
+            * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+        )
       )
-
-      - coalesce(rc.returned_cost, 0),
-
+      -
+      (
+        case
+          when coalesce(sl.net_sales, 0) > 0 then
+            least(
+              coalesce(
+                cr.recorded_cost,
+                coalesce(sa.avg_cost, mi.cost_price, 0)
+                  * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+              ),
+              coalesce(
+                cr.recorded_cost,
+                coalesce(sa.avg_cost, mi.cost_price, 0)
+                  * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+              )
+              * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+              / nullif(coalesce(sl.net_sales, 0), 0)
+            )
+          else
+            least(
+              coalesce(rc.returned_cost, 0),
+              coalesce(
+                cr.recorded_cost,
+                coalesce(sa.avg_cost, mi.cost_price, 0)
+                  * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+              )
+            )
+        end
+      ),
       0
-
     ) as total_cost,
 
     (
@@ -1257,21 +1286,43 @@ begin
       greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
 
       - greatest(
-
-          coalesce(
-
-            cr.recorded_cost,
-
-            coalesce(sa.avg_cost, mi.cost_price, 0)
-
-              * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
-
+          (
+            coalesce(
+              cr.recorded_cost,
+              coalesce(sa.avg_cost, mi.cost_price, 0)
+                * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+            )
           )
-
-          - coalesce(rc.returned_cost, 0),
-
+          -
+          (
+            case
+              when coalesce(sl.net_sales, 0) > 0 then
+                least(
+                  coalesce(
+                    cr.recorded_cost,
+                    coalesce(sa.avg_cost, mi.cost_price, 0)
+                      * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                  ),
+                  coalesce(
+                    cr.recorded_cost,
+                    coalesce(sa.avg_cost, mi.cost_price, 0)
+                      * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                  )
+                  * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                  / nullif(coalesce(sl.net_sales, 0), 0)
+                )
+              else
+                least(
+                  coalesce(rc.returned_cost, 0),
+                  coalesce(
+                    cr.recorded_cost,
+                    coalesce(sa.avg_cost, mi.cost_price, 0)
+                      * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                  )
+                )
+            end
+          ),
           0
-
         )
 
     ) as total_profit,
