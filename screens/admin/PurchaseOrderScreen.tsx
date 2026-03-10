@@ -1030,8 +1030,6 @@ const PurchaseOrderScreen: React.FC = () => {
     const [formErrors, setFormErrors] = useState<string[]>([]);
 
     useEffect(() => {
-        const supabase = getSupabaseClient();
-        if (!supabase) return;
         const orderIds = Array.from(new Set((purchaseOrders || []).map((o: any) => String(o?.id || '').trim()).filter(Boolean)));
         if (!orderIds.length) {
             setReturnStatusByOrderId({});
@@ -1040,71 +1038,20 @@ const PurchaseOrderScreen: React.FC = () => {
         let cancelled = false;
         void (async () => {
             try {
-                const CHUNK = 80;
-                const chunks: string[][] = [];
-                for (let i = 0; i < orderIds.length; i += CHUNK) chunks.push(orderIds.slice(i, i + CHUNK));
-
-                const receiptIdsByOrder = new Map<string, string[]>();
-                const returnIdsByOrder = new Map<string, string[]>();
-
-                for (const chunk of chunks) {
-                    const [receiptsRes, returnsRes] = await Promise.all([
-                        supabase.from('purchase_receipts').select('id,purchase_order_id').in('purchase_order_id', chunk),
-                        supabase.from('purchase_returns').select('id,purchase_order_id').in('purchase_order_id', chunk),
-                    ]);
-                    if (receiptsRes.error) throw receiptsRes.error;
-                    if (returnsRes.error) throw returnsRes.error;
-                    for (const r of (Array.isArray(receiptsRes.data) ? receiptsRes.data : []) as any[]) {
-                        const oid = String((r as any)?.purchase_order_id || '');
-                        const rid = String((r as any)?.id || '');
-                        if (!oid || !rid) continue;
-                        const arr = receiptIdsByOrder.get(oid) || [];
-                        arr.push(rid);
-                        receiptIdsByOrder.set(oid, arr);
-                    }
-                    for (const r of (Array.isArray(returnsRes.data) ? returnsRes.data : []) as any[]) {
-                        const oid = String((r as any)?.purchase_order_id || '');
-                        const rid = String((r as any)?.id || '');
-                        if (!oid || !rid) continue;
-                        const arr = returnIdsByOrder.get(oid) || [];
-                        arr.push(rid);
-                        returnIdsByOrder.set(oid, arr);
-                    }
-                }
-
-                const allReceiptIds = Array.from(new Set(Array.from(receiptIdsByOrder.values()).flat()));
-                const allReturnIds = Array.from(new Set(Array.from(returnIdsByOrder.values()).flat()));
-                const receivedByReceiptId = new Map<string, number>();
-                const returnedByReturnId = new Map<string, number>();
-
-                const sumByIds = async (table: 'purchase_receipt_items' | 'purchase_return_items', ids: string[], idField: 'receipt_id' | 'return_id', sink: Map<string, number>) => {
-                    if (!ids.length) return;
-                    for (let i = 0; i < ids.length; i += CHUNK) {
-                        const chunk = ids.slice(i, i + CHUNK);
-                        const res = await supabase.from(table).select(`${idField},quantity`).in(idField, chunk);
-                        if (res.error) throw res.error;
-                        for (const row of (Array.isArray(res.data) ? res.data : []) as any[]) {
-                            const key = String((row as any)?.[idField] || '');
-                            if (!key) continue;
-                            const q = Number((row as any)?.quantity || 0) || 0;
-                            sink.set(key, (sink.get(key) || 0) + q);
-                        }
-                    }
-                };
-
-                await sumByIds('purchase_receipt_items', allReceiptIds, 'receipt_id', receivedByReceiptId);
-                await sumByIds('purchase_return_items', allReturnIds, 'return_id', returnedByReturnId);
-
                 const next: Record<string, { isFull: boolean; receivedQty: number; returnedQty: number }> = {};
-                for (const oid of orderIds) {
-                    const receiptQty = (receiptIdsByOrder.get(oid) || []).reduce((s, rid) => s + (receivedByReceiptId.get(rid) || 0), 0);
-                    const returnQty = (returnIdsByOrder.get(oid) || []).reduce((s, rid) => s + (returnedByReturnId.get(rid) || 0), 0);
+                await Promise.all(orderIds.map(async (oid) => {
+                    const [receivedSummary, returnedSummary] = await Promise.all([
+                        getPurchaseReceivedSummary(oid),
+                        getPurchaseReturnSummary(oid),
+                    ]);
+                    const receiptQty = Object.values(receivedSummary || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+                    const returnQty = Object.values(returnedSummary || {}).reduce((s, v) => s + (Number(v) || 0), 0);
                     next[oid] = {
                         isFull: receiptQty > 0 && (returnQty + 1e-9) >= receiptQty,
                         receivedQty: receiptQty,
                         returnedQty: returnQty,
                     };
-                }
+                }));
                 if (!cancelled) setReturnStatusByOrderId(next);
             } catch {
                 if (!cancelled) setReturnStatusByOrderId({});
