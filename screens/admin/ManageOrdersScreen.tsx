@@ -1614,9 +1614,15 @@ const ManageOrdersScreen: React.FC = () => {
             } catch { /* non-critical */ }
             await loadPaidSums(filteredAndSortedOrders.map(o => o.id));
         } catch (error) {
-            const localized = localizeSupabaseError(error);
-            const raw = error instanceof Error ? error.message : '';
-            showNotification(localized || raw || 'فشل مسح الدفعة.', 'error');
+            const anyErr = error as any;
+            const rawMsg = [
+                `code=${anyErr?.code || '?'}`,
+                `msg=${anyErr?.message || '?'}`,
+                `details=${anyErr?.details || '?'}`,
+                `hint=${anyErr?.hint || '?'}`,
+            ].join(' | ');
+            console.error('purge_order_payment error', error);
+            showNotification(`خطأ مسح الدفعة: ${rawMsg}`, 'error');
         }
     };
 
