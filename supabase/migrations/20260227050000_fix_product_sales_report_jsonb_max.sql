@@ -1261,10 +1261,10 @@ begin
       0
     ) as quantity_sold,
 
-    greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) as total_sales,
+    greatest(coalesce(sl.net_sales, 0) - coalesce(adj.returned_sales_effective, 0), 0) as total_sales,
 
     case
-      when greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) > 0
+      when greatest(coalesce(sl.net_sales, 0) - coalesce(adj.returned_sales_effective, 0), 0) > 0
         and greatest(
           (
             coalesce(
@@ -1303,7 +1303,7 @@ begin
             end
           ),
           0
-        ) > greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+        ) > greatest(coalesce(sl.net_sales, 0) - coalesce(adj.returned_sales_effective, 0), 0)
         and greatest(
           (
             coalesce(
@@ -1342,8 +1342,8 @@ begin
             end
           ),
           0
-        ) <= greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) * 1.03
-      then greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+        ) <= greatest(coalesce(sl.net_sales, 0) - coalesce(adj.returned_sales_effective, 0), 0) * 1.03
+      then greatest(coalesce(sl.net_sales, 0) - coalesce(adj.returned_sales_effective, 0), 0)
       else greatest(
         (
           coalesce(
@@ -1387,7 +1387,7 @@ begin
 
     (
 
-      greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+      greatest(coalesce(sl.net_sales, 0) - coalesce(adj.returned_sales_effective, 0), 0)
 
       - (
         case
@@ -1558,6 +1558,54 @@ begin
   left join cogs_recorded cr on cr.item_id_text = k.item_id_text
 
   left join sales_qty_cost sqc on sqc.item_id_text = k.item_id_text
+
+  left join lateral (
+    select
+      greatest(
+        coalesce(sl.qty_sold, 0),
+        coalesce(sl.qty_base, 0),
+        coalesce(cr.recorded_qty, 0),
+        coalesce(sqc.qty_sold_cost, 0),
+        0
+      ) as sold_qty_ref,
+      case
+        when greatest(
+          coalesce(sl.qty_sold, 0),
+          coalesce(sl.qty_base, 0),
+          coalesce(cr.recorded_qty, 0),
+          coalesce(sqc.qty_sold_cost, 0),
+          0
+        ) > 0
+        then least(
+          coalesce(rs.returned_sales, 0),
+          greatest(coalesce(sl.net_sales, 0), 0)
+          * greatest(
+              least(
+                coalesce(rc.qty_returned_cost, 0),
+                greatest(
+                  coalesce(sl.qty_sold, 0),
+                  coalesce(sl.qty_base, 0),
+                  coalesce(cr.recorded_qty, 0),
+                  coalesce(sqc.qty_sold_cost, 0),
+                  0
+                )
+              ),
+              0
+            )
+          / nullif(
+              greatest(
+                coalesce(sl.qty_sold, 0),
+                coalesce(sl.qty_base, 0),
+                coalesce(cr.recorded_qty, 0),
+                coalesce(sqc.qty_sold_cost, 0),
+                0
+              ),
+              0
+            )
+        )
+        else 0
+      end as returned_sales_effective
+  ) adj on true
 
   where (coalesce(sl.qty_sold, 0) + coalesce(rs.qty_returned, 0)) > 0
 

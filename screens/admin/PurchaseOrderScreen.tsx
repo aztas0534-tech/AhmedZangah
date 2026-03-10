@@ -147,7 +147,20 @@ const PurchaseOrderScreen: React.FC = () => {
         }
         const content = renderToString(
             <PrintablePurchaseOrder
-                order={order}
+                order={{
+                    ...order,
+                    items: (order.items || []).map((it: any) => {
+                        const existingUom = String(it?.uomCode || it?.uom_code || it?.unit || '').trim();
+                        if (existingUom && /[\u0600-\u06FF]/.test(existingUom)) return it;
+                        const itemId = String(it?.itemId || '').trim();
+                        const mi = menuItems.find((m: any) => String(m?.id) === itemId);
+                        const unitTypeKey = String((mi as any)?.unitType || (mi as any)?.unit_type || existingUom || '').trim();
+                        if (!unitTypeKey) return it;
+                        const arLabel = getUnitLabel(unitTypeKey as any, 'ar');
+                        const resolved = (arLabel && /[\u0600-\u06FF]/.test(String(arLabel))) ? String(arLabel) : unitTypeKey;
+                        return { ...it, uomCode: resolved };
+                    }),
+                }}
                 language="ar"
                 brand={{
                     ...brand,
@@ -656,10 +669,20 @@ const PurchaseOrderScreen: React.FC = () => {
             const uomCode = String((poItem as any)?.uomCode || (poItem as any)?.uom_code || (poItem as any)?.unit || (poItem as any)?.uom || '').trim();
             if (itemId && uomCode) poUomByItemId.set(itemId, uomCode);
         }
-        const grnItems = normalizedItems.map((it: any) => ({
-            ...it,
-            uomCode: poUomByItemId.get(String(it.itemId || '').trim()) || '',
-        }));
+        const grnItems = normalizedItems.map((it: any) => {
+            const rawUom = poUomByItemId.get(String(it.itemId || '').trim()) || '';
+            let resolvedUom = rawUom;
+            if (!resolvedUom || !/[\u0600-\u06FF]/.test(resolvedUom)) {
+                const itemId = String(it.itemId || '').trim();
+                const mi = menuItems.find((m: any) => String(m?.id) === itemId);
+                const unitTypeKey = String((mi as any)?.unitType || (mi as any)?.unit_type || resolvedUom || '').trim();
+                if (unitTypeKey) {
+                    const arLabel = getUnitLabel(unitTypeKey as any, 'ar');
+                    resolvedUom = (arLabel && /[\u0600-\u06FF]/.test(String(arLabel))) ? String(arLabel) : unitTypeKey;
+                }
+            }
+            return { ...it, uomCode: resolvedUom };
+        });
 
         const grn: PrintableGrnData = {
             grnNumber: String((receipt as any)?.grn_number || `GRN-${receiptId.slice(-6).toUpperCase()}`),
