@@ -1,0 +1,173 @@
+{
+  "period": {
+    "start": "1970-01-01T00:00:00.000Z",
+    "end": "2026-03-10T02:34:03.965Z"
+  },
+  "totals": {
+    "items_count": 54,
+    "qty_sold": 2377,
+    "net_sales_sum": 117069.92,
+    "total_cost_sum": 115606.03,
+    "total_profit_sum": 1463.89,
+    "gross_margin_pct": 1.25
+  },
+  "reconciliation": {
+    "sales_summary": {
+      "gross_subtotal": 146764.46,
+      "discounts": 12385.51,
+      "returns": 24672.64,
+      "cogs": 103562.72,
+      "derived_net_sales": 109706.31
+    },
+    "product_report": {
+      "net_sales_sum": 117069.92,
+      "cost_sum": 115606.03
+    },
+    "diff": {
+      "net_sales_diff": 7363.61,
+      "cogs_diff": 12043.31
+    }
+  },
+  "anomalies_count": {
+    "zero_cost_positive_sales": 1,
+    "loss_items": 12,
+    "near_zero_margin": 0,
+    "missing_name": 0,
+    "nonpositive_qty_with_sales": 1,
+    "severe_cost_ratio": 7
+  },
+  "top_loss_items": [
+    {
+      "item_id": "b16e59e7-63a2-41b2-b865-9de89b444524",
+      "item_name": "شوكلاته الفيدو تايم *150جم*24باغة",
+      "quantity_sold": 11,
+      "total_sales": 349.2722183896388,
+      "total_cost": 8144.441336,
+      "total_profit": -7795.169117610361,
+      "margin_pct": -2231.83,
+      "cost_to_sales_pct": 2331.83
+    },
+    {
+      "item_id": "81e85ebf-1415-49a3-b9fa-0fcae3af6b8a",
+      "item_name": "شوكلاته الفيدو اصبع واحدة*12باكت*36حبه*12جم",
+      "quantity_sold": 11,
+      "total_sales": 910.1789937046094,
+      "total_cost": 6079.478976,
+      "total_profit": -5169.299982295391,
+      "margin_pct": -567.94,
+      "cost_to_sales_pct": 667.94
+    },
+    {
+      "item_id": "2efb484a-39cb-43b2-a7a8-f9c2a9b6de3f",
+      "item_name": "بيض كبير رقم واحد12*30حبة",
+      "quantity_sold": 0,
+      "total_sales": 4257.546038218298,
+      "total_cost": 7293.318842546407,
+      "total_profit": -3035.772804328108,
+      "margin_pct": -71.3,
+      "cost_to_sales_pct": 171.3
+    },
+    {
+      "item_id": "228cb9a5-58ea-471d-a3ca-f381ca4c4d8a",
+      "item_name": "شوكلاته الفيدو اصبعين *35جم*6باكت*24حبة",
+      "quantity_sold": 11,
+      "total_sales": 1971.4871845688474,
+      "total_cost": 3865.834862,
+      "total_profit": -1894.3476774311528,
+      "margin_pct": -96.09,
+      "cost_to_sales_pct": 196.09
+    },
+    {
+      "item_id": "66530237-b448-4bd2-a53e-110b599b799b",
+      "item_name": "زيت امل ابو 1.5لتر",
+      "quantity_sold": 0,
+      "total_sales": 0,
+      "total_cost": 464.8558878504673,
+      "total_profit": -464.8558878504673,
+      "margin_pct": 0,
+      "cost_to_sales_pct": 0
+    },
+    {
+      "item_id": "7b94bb65-255c-49b7-9089-e556de0938ef",
+      "item_name": "كريمة جاهزه صفاء منوع*1*72باكت",
+      "quantity_sold": 3,
+      "total_sales": 37.284367106371036,
+      "total_cost": 450,
+      "total_profit": -412.71563289362894,
+      "margin_pct": -1106.94,
+      "cost_to_sales_pct": 1206.94
+    },
+    {
+      "item_id": "a78e6f78-f060-4abe-9e21-5f9da8700bda",
+      "item_name": "شوكلاته الفيدو ويفر علب 250جم*12علبة",
+      "quantity_sold": 7,
+      "total_sales": 498.8533914154658,
+      "total_cost": 857.75,
+      "total_profit": -358.8966085845342,
+      "margin_pct": -71.94,
+      "cost_to_sales_pct": 171.94
+    },
+    {
+      "item_id": "aab26104-f64d-4c16-974e-242e994555a7",
+      "item_name": "رز الامارة مزه ابو 5كيلو",
+      "quantity_sold": 8,
+      "total_sales": 807.0289082234073,
+      "total_cost": 1031.25,
+      "total_profit": -224.22109177659274,
+      "margin_pct": -27.78,
+      "cost_to_sales_pct": 127.78
+    },
+    {
+      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+      "item_name": "تونة حلوة كبير *48حبة*160جم",
+      "quantity_sold": 0,
+      "total_sales": 0,
+      "total_cost": 100,
+      "total_profit": -100,
+      "margin_pct": 0,
+      "cost_to_sales_pct": 0
+    },
+    {
+      "item_id": "08335762-4ac5-4ece-ba20-4a8e26741925",
+      "item_name": "شراب صفاء برتقال صغير *15*750جم",
+      "quantity_sold": 1,
+      "total_sales": 48.18401937046005,
+      "total_cost": 106,
+      "total_profit": -57.81598062953995,
+      "margin_pct": -119.99,
+      "cost_to_sales_pct": 219.99
+    },
+    {
+      "item_id": "ec386005-d8e1-4ee5-838a-d74b0f0f7a32",
+      "item_name": "شوكلاته الفيدو 1000جم*4باغات",
+      "quantity_sold": 10,
+      "total_sales": 1994.8466322195277,
+      "total_cost": 2004.783556,
+      "total_profit": -9.936923780472409,
+      "margin_pct": -0.5,
+      "cost_to_sales_pct": 100.5
+    },
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "item_name": "شوكلاته بوكي بار اصابع 12*24*20جم",
+      "quantity_sold": 0,
+      "total_sales": 0,
+      "total_cost": 0.062304,
+      "total_profit": -0.062304,
+      "margin_pct": 0,
+      "cost_to_sales_pct": 0
+    }
+  ],
+  "top_zero_cost_with_sales": [
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "item_name": "ماء طيبة صغير صغير12*750ملي",
+      "quantity_sold": 5,
+      "total_sales": 36.150000000000006,
+      "total_cost": 0,
+      "total_profit": 36.150000000000006,
+      "margin_pct": 100,
+      "cost_to_sales_pct": 0
+    }
+  ]
+}

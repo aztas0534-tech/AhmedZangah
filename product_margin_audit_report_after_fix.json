@@ -1,0 +1,31 @@
+{
+  "period": {
+    "start": "1970-01-01T00:00:00.000Z",
+    "end": "2026-03-10T03:13:42.545Z"
+  },
+  "totals": {
+    "items_count": 54,
+    "qty_sold": 2377,
+    "net_sales_sum": 117069.92,
+    "total_cost_sum": 100652.55,
+    "total_profit_sum": 16417.36,
+    "gross_margin_pct": 14.02
+  },
+  "reconciliation": {
+    "sales_summary": {
+      "gross_subtotal": 146764.46,
+      "discounts": 12385.51,
+      "returns": 24672.64,
+      "cogs": 88609.24,
+      "derived_net_sales": 109706.31
+    },
+    "product_report": {
+      "net_sales_sum": 117069.92,
+      "cost_sum": 100652.55
+    },
+    "diff": {
+      "net_sales_diff": 7363.61,
+      "cogs_diff": 12043.31
+    }
+  }
+}

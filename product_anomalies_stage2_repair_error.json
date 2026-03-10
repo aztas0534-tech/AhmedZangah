@@ -1,0 +1,5 @@
+{
+  "message": "cannot modify posted inventory movement; create reversal instead",
+  "stack": "error: cannot modify posted inventory movement; create reversal instead\n    at C:\\nasrflash\\AhmedZ\\node_modules\\pg\\lib\\client.js:631:17\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///C:/nasrflash/AhmedZ/scripts/repair-stage2-historical-cogs-prod.mjs:77:16",
+  "code": "P0001"
+}
