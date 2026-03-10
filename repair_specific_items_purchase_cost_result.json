@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-03-10T20:03:24.453Z",
+  "dry_run": [
+    {
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "result": {
+        "dryRun": true,
+        "itemId": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+        "warehouseId": "7628598d-3c02-4a55-b7db-76df1c421175",
+        "batchesNeedingFix": 0,
+        "receiptItemsNeedingFix": 0
+      }
+    },
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "result": {
+        "dryRun": true,
+        "itemId": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+        "warehouseId": "7628598d-3c02-4a55-b7db-76df1c421175",
+        "batchesNeedingFix": 0,
+        "receiptItemsNeedingFix": 0
+      }
+    }
+  ],
+  "applied": [
+    {
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "result": {
+        "dryRun": false,
+        "itemId": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+        "warehouseId": "7628598d-3c02-4a55-b7db-76df1c421175",
+        "batchesUpdated": 0,
+        "menuItemCostUpdated": 1,
+        "receiptItemsUpdated": 0,
+        "stockAvgCostUpdated": 1,
+        "purchaseInMovementsUpdated": 0
+      }
+    },
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "result": {
+        "dryRun": false,
+        "itemId": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+        "warehouseId": "7628598d-3c02-4a55-b7db-76df1c421175",
+        "batchesUpdated": 0,
+        "menuItemCostUpdated": 1,
+        "receiptItemsUpdated": 0,
+        "stockAvgCostUpdated": 1,
+        "purchaseInMovementsUpdated": 0
+      }
+    }
+  ]
+}

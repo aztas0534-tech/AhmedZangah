@@ -161,7 +161,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
 
   const { data: po, error: poErr } = await supabase
     .from('purchase_orders')
-    .select('id,currency,fx_rate,reference_number,supplier_id,suppliers(name)')
+    .select('id,po_number,currency,fx_rate,reference_number,warehouse_id,supplier_id,suppliers(name)')
     .eq('id', poId)
     .maybeSingle();
   if (poErr) throw poErr;
@@ -170,12 +170,23 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
   const currency = String((po as any)?.currency || baseCurrency).trim().toUpperCase() || baseCurrency;
   const fxRate = Number((po as any)?.fx_rate || 1) || 1;
   const safeFx = fxRate > 0 ? fxRate : 1;
+  const poNumber = String((po as any)?.po_number || '').trim() || null;
+
+  // Fetch warehouse name
+  let warehouseName: string | null = null;
+  const warehouseId = String((po as any)?.warehouse_id || '').trim();
+  if (warehouseId) {
+    try {
+      const { data: wh } = await supabase.from('warehouses').select('name').eq('id', warehouseId).maybeSingle();
+      warehouseName = String((wh as any)?.name || '').trim() || null;
+    } catch { /* non-critical */ }
+  }
 
   let retItems: any[] = [];
   try {
     const { data, error: riErr } = await supabase
       .from('purchase_return_items')
-      .select('item_id,quantity,menu_items(name,unit_type)')
+      .select('item_id,quantity,unit_cost,total_cost,menu_items(name,unit_type)')
       .eq('return_id', rid)
       .order('created_at', { ascending: true });
     if (riErr) throw riErr;
@@ -184,7 +195,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     try {
       const { data, error: riErr2 } = await supabase
         .from('purchase_return_items')
-        .select('item_id,quantity,menu_items(name,unit_type)')
+        .select('item_id,quantity,unit_cost,total_cost,menu_items(name,unit_type)')
         .eq('purchase_return_id', rid)
         .order('created_at', { ascending: true });
       if (riErr2) throw riErr2;
@@ -223,10 +234,8 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     if (!unitTypeKey) return undefined;
     const raw = String(unitTypeKey).trim();
     if (!raw) return undefined;
-    // Try exact match from unit_types table
     const fromDb = unitLabelMap.get(raw);
     if (fromDb) return fromDb;
-    // Already Arabic
     if (/[\u0600-\u06FF]/.test(raw)) return raw;
     return raw;
   };
@@ -234,8 +243,10 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
   const data: PrintablePurchaseReturnNoteData = {
     returnId: String((ret as any).id),
     purchaseOrderId: poId,
+    poNumber,
     supplierName: String((po as any)?.suppliers?.name || '').trim() || null,
     referenceNumber: String((po as any)?.reference_number || '').trim() || null,
+    warehouseName,
     returnDate: String((ret as any)?.returned_at || (ret as any)?.created_at || new Date().toISOString()),
     reason: String((ret as any)?.reason || '').trim() || null,
     currency,
@@ -249,6 +260,8 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
         ? String(it?.menu_items?.name?.ar || it?.menu_items?.name?.en || '') 
         : String(it?.menu_items?.name || ''),
       quantity: Number(it?.quantity || 0) || 0,
+      unitCost: Number(it?.unit_cost || 0) || 0,
+      totalCost: Number(it?.total_cost || 0) || 0,
       uomCode: resolveUnitLabel(it?.menu_items?.unit_type),
     })),
   };

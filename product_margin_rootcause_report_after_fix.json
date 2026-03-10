@@ -1,10 +1,60 @@
 {
   "period": {
     "start": "1970-01-01T00:00:00.000Z",
-    "end": "2026-03-10T19:35:14.992Z"
+    "end": "2026-03-10T20:08:21.945Z"
   },
-  "anomalies_total": 0,
-  "high_priority": 0,
+  "anomalies_total": 2,
+  "high_priority": 2,
   "medium_priority": 0,
-  "items": []
+  "items": [
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "item_name": {
+        "ar": "شوكلاته بوكي بار اصابع 12*24*20جم",
+        "en": ""
+      },
+      "quantity_sold": 4,
+      "total_sales": 27.69,
+      "total_cost": 0,
+      "total_profit": 27.69,
+      "cost_to_sales_pct": 0,
+      "diagnostics": {
+        "cogs_rows": 2,
+        "cogs_sum": 106.67,
+        "saleout_qty": 16,
+        "saleout_cost": 2.31,
+        "returnin_qty": 12,
+        "avg_cost": 4.57
+      },
+      "probable_reasons": [
+        "مبيعات بدون تكلفة",
+        "فرق بين COGS وتكلفة sale_out"
+      ],
+      "priority": "عالية"
+    },
+    {
+      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+      "item_name": {
+        "ar": "تونة حلوة كبير *48حبة*160جم",
+        "en": ""
+      },
+      "quantity_sold": 48,
+      "total_sales": 114.95,
+      "total_cost": 0,
+      "total_profit": 114.95,
+      "cost_to_sales_pct": 0,
+      "diagnostics": {
+        "cogs_rows": 3,
+        "cogs_sum": 300,
+        "saleout_qty": 144,
+        "saleout_cost": 300,
+        "returnin_qty": 96,
+        "avg_cost": 2.08
+      },
+      "probable_reasons": [
+        "مبيعات بدون تكلفة"
+      ],
+      "priority": "عالية"
+    }
+  ]
 }
