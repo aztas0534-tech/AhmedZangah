@@ -47,11 +47,15 @@ try {
   if (!poIds.length) throw new Error('Purchase orders not found');
 
   const rec = (await client.query(`
-    select pr.purchase_order_id::text po_id, pri.item_id::text item_id, sum(coalesce(pri.quantity,0)) qty_received
-    from public.purchase_receipts pr
-    join public.purchase_receipt_items pri on pri.receipt_id = pr.id
-    where pr.purchase_order_id = any($1::uuid[])
-    group by pr.purchase_order_id::text, pri.item_id::text
+    select
+      pi.purchase_order_id::text po_id,
+      pi.item_id::text item_id,
+      sum(coalesce(pi.received_quantity, pi.quantity, 0)) qty_received_purchase_uom,
+      sum(coalesce(pi.quantity, 0)) qty_po_uom_total,
+      sum(coalesce(pi.qty_base, 0)) qty_base_total
+    from public.purchase_items pi
+    where pi.purchase_order_id = any($1::uuid[])
+    group by pi.purchase_order_id::text, pi.item_id::text
   `, [poIds])).rows;
 
   const ret = (await client.query(`
@@ -66,7 +70,7 @@ try {
     select
       pr.purchase_order_id::text po_id,
       b.item_id::text item_id,
-      sum(greatest(coalesce(b.quantity_received,0)-coalesce(b.quantity_consumed,0)-coalesce(b.quantity_transferred,0),0)) qty_batch_remaining
+      sum(greatest(coalesce(b.quantity_received,0)-coalesce(b.quantity_consumed,0)-coalesce(b.quantity_transferred,0),0)) qty_batch_remaining_base
     from public.batches b
     join public.purchase_receipts pr on pr.id = b.receipt_id
     where pr.purchase_order_id = any($1::uuid[])
@@ -74,18 +78,22 @@ try {
   `, [poIds])).rows;
 
   const retMap = new Map(ret.map((x) => [`${x.po_id}|${x.item_id}`, n(x.qty_returned)]));
-  const batchMap = new Map(batch.map((x) => [`${x.po_id}|${x.item_id}`, n(x.qty_batch_remaining)]));
+  const batchMap = new Map(batch.map((x) => [`${x.po_id}|${x.item_id}`, n(x.qty_batch_remaining_base)]));
 
   const planByPo = new Map();
   for (const r of rec) {
     const k = `${r.po_id}|${r.item_id}`;
-    const qtyReceived = n(r.qty_received);
+    const qtyReceived = n(r.qty_received_purchase_uom);
     const qtyReturned = retMap.get(k) || 0;
     const qtyRemaining = Math.max(qtyReceived - qtyReturned, 0);
     if (qtyRemaining <= 0) continue;
 
-    const qtyBatchRemaining = batchMap.get(k) || 0;
-    const qtyToReturn = Math.max(Math.min(qtyRemaining, qtyBatchRemaining), 0);
+    const qtyPoUom = n(r.qty_po_uom_total);
+    const qtyBase = n(r.qty_base_total);
+    const factor = qtyPoUom > 0 ? (qtyBase / qtyPoUom) : 1;
+    const qtyBatchRemainingBase = batchMap.get(k) || 0;
+    const qtyBatchRemainingUom = factor > 0 ? (qtyBatchRemainingBase / factor) : qtyBatchRemainingBase;
+    const qtyToReturn = Math.max(Math.min(qtyRemaining, qtyBatchRemainingUom), 0);
 
     if (!planByPo.has(r.po_id)) planByPo.set(r.po_id, []);
     planByPo.get(r.po_id).push({
@@ -93,7 +101,9 @@ try {
       qty_received: qtyReceived,
       qty_returned: qtyReturned,
       qty_remaining: qtyRemaining,
-      qty_batch_remaining: qtyBatchRemaining,
+      qty_batch_remaining_base: qtyBatchRemainingBase,
+      uom_to_base_factor: factor,
+      qty_batch_remaining_uom: qtyBatchRemainingUom,
       qty_to_return: qtyToReturn,
     });
 

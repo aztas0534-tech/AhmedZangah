@@ -2929,7 +2929,7 @@ const ManageOrdersScreen: React.FC = () => {
                     )}
 
                     {/* Purge Payment — owner/accounting only */}
-                    {order.status === 'delivered' && Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt) && canManageAccounting && !isVoided && (
+                    {order.status === 'delivered' && (paid > tol || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && canManageAccounting && !isVoided && (
                         <div className="col-span-2">
                             <button
                                 onClick={() => handlePurgePayment(order.id)}
@@ -3575,7 +3575,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                     ) : null;
 
                                                     const hasPaidAtTbl = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
-                                                    const purgeAction = order.status === 'delivered' && hasPaidAtTbl && canManageAccounting && !isVoidedTbl ? (
+                                                    const { paid: paidTbl, tol: tolTbl } = getOrderPaymentSnapshot(order);
+                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || hasPaidAtTbl) && canManageAccounting && !isVoidedTbl ? (
                                                         <button
                                                             onClick={() => handlePurgePayment(order.id)}
                                                             className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs"
