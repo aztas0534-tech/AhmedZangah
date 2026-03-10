@@ -175,7 +175,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
   try {
     const { data, error: riErr } = await supabase
       .from('purchase_return_items')
-      .select('item_id,quantity,uom_code,menu_items(name)')
+      .select('item_id,quantity,menu_items(name,unit_type)')
       .eq('return_id', rid)
       .order('created_at', { ascending: true });
     if (riErr) throw riErr;
@@ -184,7 +184,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     try {
       const { data, error: riErr2 } = await supabase
         .from('purchase_return_items')
-        .select('item_id,quantity,uom_code,menu_items(name)')
+        .select('item_id,quantity,menu_items(name,unit_type)')
         .eq('purchase_return_id', rid)
         .order('created_at', { ascending: true });
       if (riErr2) throw riErr2;
@@ -223,7 +223,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
         ? String(it?.menu_items?.name?.ar || it?.menu_items?.name?.en || '') 
         : String(it?.menu_items?.name || ''),
       quantity: Number(it?.quantity || 0) || 0,
-      uomCode: it?.uom_code ? String(it.uom_code) : undefined,
+      uomCode: it?.menu_items?.unit_type ? String(it.menu_items.unit_type) : undefined,
     })),
   };
 

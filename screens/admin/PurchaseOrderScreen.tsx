@@ -91,8 +91,9 @@ const PurchaseOrderScreen: React.FC = () => {
     const [forcingStatusOnly, setForcingStatusOnly] = useState(false);
     const [repairingPurchaseInJournals, setRepairingPurchaseInJournals] = useState(false);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
+        const companyName = (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '';
         const fallback = {
-            name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
+            name: companyName,
             address: settings?.address || '',
             contactNumber: settings?.contactNumber || '',
             logoUrl: settings?.logoUrl || '',
@@ -101,10 +102,11 @@ const PurchaseOrderScreen: React.FC = () => {
         const wh = wid ? warehouses.find(w => String(w.id) === wid) : undefined;
         const override = wid ? settings?.branchBranding?.[wid] : undefined;
         return {
-            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            name: (override?.name || fallback.name || '').trim(),
             address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
             contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+            branchName: (wh?.name || '').trim(),
         };
     };
 
