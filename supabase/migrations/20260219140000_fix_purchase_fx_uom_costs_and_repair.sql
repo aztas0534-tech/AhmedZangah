@@ -5,7 +5,7 @@
 set app.allow_ledger_ddl = '1';
 
 -- 1) Unify purchase_items cost/qty trigger: UOM + FX aware
-create or replace function.trg_purchase_items_set_qty_costs()
+create or replace function public.trg_purchase_items_set_qty_costs()
 returns trigger
 language plpgsql
 security definer

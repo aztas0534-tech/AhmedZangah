@@ -1,4 +1,4 @@
-﻿-- Fix get_product_sales_report_v10 to apply FX rate conversion (base currency)
+-- Fix get_product_sales_report_v10 to apply FX rate conversion (base currency)
 -- This prevents inflation when orders are in foreign currencies (YER, USD, etc.)
 -- The sales summary RPC already converts via order_fx_rate(), this aligns the product report.
 
