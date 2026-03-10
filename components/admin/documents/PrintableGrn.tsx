@@ -158,8 +158,9 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
                 text-transform: uppercase !important; letter-spacing: 0.3px !important; border: none !important;
             }
             .luxury-table td {
-                padding: 1.5px 3px !important; font-size: 9px !important; font-weight: 600 !important;
+                padding: 1.5px 3px !important; font-size: 8px !important; font-weight: 600 !important;
                 border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
+                word-break: break-word !important; overflow-wrap: anywhere !important;
             }
             .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
             .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }

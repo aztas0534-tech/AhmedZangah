@@ -12,10 +12,13 @@ type Brand = {
   branchCode?: string;
 };
 
+import { localizeUomCodeAr } from '../../../utils/displayLabels';
+
 type ReturnItem = {
   itemId: string;
   itemName: string;
   quantity: number;
+  uomCode?: string;
 };
 
 export type PrintablePurchaseReturnNoteData = {
@@ -55,6 +58,25 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
   const title = 'إشعار مرتجع مشتريات (Supplier Return Note)';
   const idShort = String(data.returnId || '').replace(/-/g, '').slice(-8).toUpperCase();
   const hasForeign = cur && baseCur && cur !== baseCur && Number(data.fxRate || 0) > 0;
+
+  const uomLabel = (code?: string) => {
+    const raw = String(code || '').trim();
+    if (!raw) return '—';
+    if (/[\u0600-\u06FF]/.test(raw)) return raw;
+    const mapped = localizeUomCodeAr(raw);
+    if (mapped && mapped !== '—' && mapped !== raw) return mapped;
+    const lower = raw.toLowerCase();
+    if (lower === 'piece' || lower === 'pcs' || lower === 'pc') return 'حبة';
+    if (lower === 'carton' || lower === 'ctn') return 'كرتون';
+    if (lower === 'box') return 'صندوق';
+    if (lower === 'pack' || lower === 'pkt') return 'عبوة';
+    if (lower === 'bottle') return 'زجاجة';
+    if (lower === 'kg') return 'كجم';
+    if (lower === 'gram' || lower === 'g') return 'جرام';
+    if (lower === 'bag') return 'كيس';
+    if (lower === 'bundle') return 'ربطة';
+    return raw;
+  };
 
   return (
     <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
@@ -230,7 +252,8 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
             <thead>
               <tr>
                 <th style={{ width: '15%' }}>الرمز</th>
-                <th style={{ width: '70%' }}>الصنف</th>
+                <th style={{ width: '55%' }}>الصنف</th>
+                <th style={{ width: '15%' }} className="text-center">الوحدة UNIT</th>
                 <th style={{ width: '15%' }} className="text-center">الكمية المسترجعة</th>
               </tr>
             </thead>
@@ -246,6 +269,7 @@ const PrintablePurchaseReturnNote: React.FC<{ data: PrintablePurchaseReturnNoteD
                     <td>
                       <div className="font-bold-value text-charcoal">{it.itemName || '—'}</div>
                     </td>
+                    <td className="text-center font-bold-value text-charcoal">{uomLabel(it.uomCode)}</td>
                     <td className="text-center tabular font-mono font-bold text-blue-950" dir="ltr">
                       {String(Number(it.quantity || 0))}
                     </td>
