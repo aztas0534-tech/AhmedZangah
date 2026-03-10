@@ -132,6 +132,9 @@ const ManageOrdersScreen: React.FC = () => {
     const [adminUserMap, setAdminUserMap] = useState<Record<string, string>>({});
     const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [purgePaymentOrderId, setPurgePaymentOrderId] = useState<string | null>(null);
+    const [isPurgingPayment, setIsPurgingPayment] = useState(false);
+    const [purgePaymentReason, setPurgePaymentReason] = useState('');
     const [expandedAuditOrderId, setExpandedAuditOrderId] = useState<string | null>(null);
     const [auditLoadingOrderId, setAuditLoadingOrderId] = useState<string | null>(null);
     const [auditByOrderId, setAuditByOrderId] = useState<Record<string, OrderAuditEvent[]>>({});
@@ -733,6 +736,7 @@ const ManageOrdersScreen: React.FC = () => {
 
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
+    const isOwner = adminUser?.role === 'owner';
     const canVoidDelivered = hasPermission('accounting.void');
 
     const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
@@ -1592,23 +1596,27 @@ const ManageOrdersScreen: React.FC = () => {
         }
     };
 
-    const handlePurgePayment = async (orderId: string) => {
-        const confirmed = window.confirm(
-            '⚠️ تحذير: سيتم حذف جميع سجلات الدفع والقيود المحاسبية لهذا الطلب نهائياً.\n' +
-            'لن تظهر أي حركة في كشف حساب الطرف المالي.\n\n' +
-            'هذا الإجراء لا يمكن التراجع عنه. هل تريد المتابعة؟'
-        );
-        if (!confirmed) return;
+    const handlePurgePayment = (orderId: string) => {
+        setPurgePaymentOrderId(orderId);
+        setPurgePaymentReason('');
+    };
+
+    const executePurgePayment = async () => {
+        if (!purgePaymentOrderId || isPurgingPayment) return;
+        setIsPurgingPayment(true);
         try {
             const supabase = getSupabaseClient();
             if (!supabase) throw new Error('Supabase غير مهيأ.');
+            const reason = purgePaymentReason.trim() || 'دفعة خاطئة — حذف يدوي';
             const { data: result, error } = await supabase.rpc('purge_order_payment', {
-                p_order_id: orderId,
-                p_reason: 'دفعة خاطئة — حذف يدوي',
+                p_order_id: purgePaymentOrderId,
+                p_reason: reason,
             });
             if (error) throw error;
             const deleted = Number((result as any)?.deletedPayments ?? 0);
             showNotification(`تم مسح ${deleted} دفعة وقيودها المحاسبية نهائياً.`, 'success');
+            setPurgePaymentOrderId(null);
+            setPurgePaymentReason('');
             try {
                 await fetchOrders();
             } catch { /* non-critical */ }
@@ -1623,6 +1631,8 @@ const ManageOrdersScreen: React.FC = () => {
             ].join(' | ');
             console.error('purge_order_payment error', error);
             showNotification(`خطأ مسح الدفعة: ${rawMsg}`, 'error');
+        } finally {
+            setIsPurgingPayment(false);
         }
     };
 
@@ -2934,12 +2944,13 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Purge Payment — owner/accounting only */}
-                    {order.status === 'delivered' && (paid > tol || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && canManageAccounting && !isVoided && (
+                    {/* Purge Payment — owner only */}
+                    {order.status === 'delivered' && (paid > tol || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && isOwner && !isVoided && (
                         <div className="col-span-2">
                             <button
                                 onClick={() => handlePurgePayment(order.id)}
-                                className="w-full py-2 bg-red-700 text-white rounded hover:bg-red-800 transition text-sm font-semibold"
+                                disabled={isPurgingPayment}
+                                className="w-full py-2 bg-red-700 text-white rounded hover:bg-red-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 🗑️ مسح الدفعة نهائياً
                             </button>
@@ -3582,10 +3593,11 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                     const hasPaidAtTbl = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
                                                     const { paid: paidTbl, tol: tolTbl } = getOrderPaymentSnapshot(order);
-                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || hasPaidAtTbl) && canManageAccounting && !isVoidedTbl ? (
+                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || hasPaidAtTbl) && isOwner && !isVoidedTbl ? (
                                                         <button
                                                             onClick={() => handlePurgePayment(order.id)}
-                                                            className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs"
+                                                            disabled={isPurgingPayment}
+                                                            className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
                                                             🗑️ مسح الدفعة
                                                         </button>
@@ -6247,6 +6259,49 @@ const ManageOrdersScreen: React.FC = () => {
                         )}
                     </div>
                 )}
+            </ConfirmationModal>
+
+            {/* Purge Payment Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={Boolean(purgePaymentOrderId)}
+                onClose={() => {
+                    if (isPurgingPayment) return;
+                    setPurgePaymentOrderId(null);
+                    setPurgePaymentReason('');
+                }}
+                onConfirm={executePurgePayment}
+                title="⚠️ مسح الدفعة نهائياً"
+                message=""
+                isConfirming={isPurgingPayment}
+                confirmText="مسح نهائي"
+                confirmingText="جاري المسح..."
+                confirmButtonClassName="bg-red-700 hover:bg-red-800 disabled:bg-red-400"
+            >
+                <div className="space-y-4">
+                    <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-800 dark:text-red-200 leading-relaxed">
+                        <p className="font-semibold mb-1">سيتم حذف:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                            <li>جميع سجلات الدفع لهذا الطلب</li>
+                            <li>جميع القيود المحاسبية المرتبطة</li>
+                            <li>جميع حركات كشف حساب الطرف المالي</li>
+                        </ul>
+                        <p className="mt-2 font-bold">هذا الإجراء لا يمكن التراجع عنه.</p>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">سبب المسح (اختياري)</label>
+                        <input
+                            type="text"
+                            value={purgePaymentReason}
+                            onChange={(e) => setPurgePaymentReason(e.target.value)}
+                            placeholder="دفعة خاطئة — حذف يدوي"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                            disabled={isPurgingPayment}
+                        />
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                        الطلب: #{purgePaymentOrderId?.slice(-6).toUpperCase()}
+                    </div>
+                </div>
             </ConfirmationModal>
         </div >
     );
