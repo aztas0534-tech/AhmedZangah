@@ -134,6 +134,14 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
   `;
 };
 
+// Helper: inject current page styles into the print window
+const injectStylesheets = (targetWindow: Window) => {
+  const styles = document.querySelectorAll('style, link[rel="stylesheet"]');
+  styles.forEach((node) => {
+    targetWindow.document.head.appendChild(node.cloneNode(true));
+  });
+};
+
 export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto' }) => {
   const html = buildPrintHtml(content, title, options);
 
@@ -141,6 +149,9 @@ export const printContent = (content: string, title: string = 'طباعة', opti
     targetWindow.document.open();
     targetWindow.document.write(html);
     targetWindow.document.close();
+    
+    // Inject all tailwind/custom styles from the main window
+    injectStylesheets(targetWindow);
 
     let didTrigger = false;
     const triggerPrint = () => {

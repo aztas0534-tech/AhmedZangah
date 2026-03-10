@@ -240,7 +240,7 @@ export default function PrintablePartyLedgerStatement(props: {
             }
             .luxury-table td {
                 padding: 1.5px 3px !important;
-                font-size: 7.5px !important;
+                font-size: 7px !important;
                 font-weight: 600 !important;
                 border-bottom: 0.5pt solid #E5E7EB !important;
                 color: #0F172A !important;
@@ -409,7 +409,10 @@ export default function PrintablePartyLedgerStatement(props: {
               ) : (
                 filteredRows.map((r) => (
                   <tr key={r.journal_line_id} style={{ pageBreakInside: 'avoid' }}>
-                    <td className="tabular font-thin-label text-slate-600" dir="ltr">{new Date(r.occurred_at).toLocaleString('en-GB')}</td>
+                    <td className="tabular font-thin-label text-slate-600 leading-tight" dir="ltr">
+                      <div>{new Date(r.occurred_at).toLocaleDateString('en-GB')}</div>
+                      <div className="text-[5.5px] mt-0.5">{new Date(r.occurred_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+                    </td>
                     <td className="tabular font-bold-value text-blue-900 font-mono" dir="ltr">{r.account_code}</td>
                     <td>
                       <div className="font-bold-value text-charcoal">{r.account_name}</div>
