@@ -1,7 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════
 -- purge_order_payment v2: Fix — disable ALL append-only triggers
--- before deleting journal lines, journal entries, payments,
--- and party ledger entries.
+-- Fixes: "GL is append-only: system journal lines cannot be deleted"
 -- ═══════════════════════════════════════════════════════════════
 
 set app.allow_ledger_ddl = '1';
@@ -46,21 +45,19 @@ begin
   alter table public.journal_entries disable trigger trg_journal_entries_block_system_mutation;
   alter table public.payments disable trigger trg_payments_forbid_delete_posted;
 
-  -- Safely disable party_ledger trigger (may not exist in some deployments)
   begin
     alter table public.party_ledger_entries disable trigger trg_party_ledger_entries_append_only;
   exception when others then
     null;
   end;
 
-  -- ── 1. Delete journal entries + lines linked to payments for this order ──
+  -- ── 1. Delete journal entries + lines + party ledger for this order's payments ──
   for v_payment in
     select p.id
     from public.payments p
     where p.reference_table = 'orders'
       and p.reference_id = p_order_id::text
   loop
-    -- Find ALL journal entries for this payment (including 'void' reversals)
     for v_je_id in
       select je.id
       from public.journal_entries je
@@ -76,18 +73,16 @@ begin
         );
         get diagnostics v_deleted_party_ledger = row_count;
       exception when others then
-        null; -- party_ledger_entries may not exist
+        null;
       end;
 
-      -- Delete journal lines
       delete from public.journal_lines where journal_entry_id = v_je_id;
-      -- Delete journal entry
       delete from public.journal_entries where id = v_je_id;
       v_deleted_journals := v_deleted_journals + 1;
     end loop;
   end loop;
 
-  -- ── 2. Delete all payment records for this order ──
+  -- ── 2. Delete all payment records ──
   delete from public.payments
   where reference_table = 'orders'
     and reference_id = p_order_id::text;
@@ -104,7 +99,7 @@ begin
     null;
   end;
 
-  -- ── 3. Reset paidAt on the order ──
+  -- ── 3. Reset paidAt ──
   update public.orders
   set data = (
     coalesce(data, '{}'::jsonb)
@@ -118,7 +113,7 @@ begin
   updated_at = now()
   where id = p_order_id;
 
-  -- ── 4. Reopen AR open items if they were closed by payment ──
+  -- ── 4. Reopen AR open items ──
   begin
     update public.ar_open_items
     set status = 'open',

@@ -804,6 +804,10 @@ export interface ItemBatch {
   receivedQuantity: number;
   consumedQuantity: number;
   remainingQuantity: number;
+  returnedQuantity?: number;
+  soldQuantity?: number;
+  wastageQuantity?: number;
+  adjustOutQuantity?: number;
   qcStatus?: string;
   lastQcResult?: 'pass' | 'fail';
   lastQcAt?: string;

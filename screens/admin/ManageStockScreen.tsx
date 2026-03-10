@@ -79,15 +79,37 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
         }
     }, [canQc, qcHold]);
 
-    useEffect(() => {
-        const loadBatches = async () => {
-            try {
-                const supabase = getSupabaseClient();
-                if (!supabase) return;
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-                if (error) return;
-                const rows = (data || []) as any[];
-                const mapped = rows.map(r => ({
+    const loadBatchesDetailed = async () => {
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
+            if (error) return;
+            const rows = (data || []) as any[];
+            const batchIds = rows.map((r: any) => String(r.batch_id || '')).filter(Boolean);
+            const movementMap: Record<string, { sale: number; ret: number; wastage: number; adjust: number }> = {};
+            if (batchIds.length > 0) {
+                const { data: mvRows } = await supabase
+                    .from('inventory_movements')
+                    .select('batch_id,movement_type,quantity')
+                    .in('batch_id', batchIds as any)
+                    .in('movement_type', ['sale_out', 'return_out', 'wastage_out', 'adjust_out']);
+                for (const m of (mvRows || []) as any[]) {
+                    const bid = String((m as any)?.batch_id || '');
+                    if (!bid) continue;
+                    if (!movementMap[bid]) movementMap[bid] = { sale: 0, ret: 0, wastage: 0, adjust: 0 };
+                    const qty = Number((m as any)?.quantity || 0) || 0;
+                    const t = String((m as any)?.movement_type || '');
+                    if (t === 'sale_out') movementMap[bid].sale += qty;
+                    if (t === 'return_out') movementMap[bid].ret += qty;
+                    if (t === 'wastage_out') movementMap[bid].wastage += qty;
+                    if (t === 'adjust_out') movementMap[bid].adjust += qty;
+                }
+            }
+            const mapped = rows.map(r => {
+                const bid = String(r.batch_id || '');
+                const mv = movementMap[bid] || { sale: 0, ret: 0, wastage: 0, adjust: 0 };
+                return {
                     batchId: r.batch_id,
                     occurredAt: r.occurred_at,
                     unitCost: Number(r.unit_cost) || 0,
@@ -106,17 +128,24 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                     receivedQuantity: Number(r.received_quantity) || 0,
                     consumedQuantity: Number(r.consumed_quantity) || 0,
                     remainingQuantity: Number(r.remaining_quantity) || 0,
+                    returnedQuantity: Number(mv.ret || 0),
+                    soldQuantity: Number(mv.sale || 0),
+                    wastageQuantity: Number(mv.wastage || 0),
+                    adjustOutQuantity: Number(mv.adjust || 0),
                     qcStatus: String(r.qc_status || ''),
                     lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
                     lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
                     productionDate: r.production_date ? String(r.production_date) : undefined,
                     expiryDate: r.expiry_date ? String(r.expiry_date) : undefined,
-                })) as ItemBatch[];
-                setBatches(mapped);
-            } catch (_) {
-            }
-        };
-        loadBatches();
+                };
+            }) as ItemBatch[];
+            setBatches(mapped);
+        } catch (_) {
+        }
+    };
+
+    useEffect(() => {
+        loadBatchesDetailed();
     }, [item.id, warehouseId]);
 
     const qcStatusLabel = (s: string) => {
@@ -128,40 +157,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     };
 
     const refreshBatches = async () => {
-        try {
-            const supabase = getSupabaseClient();
-            if (!supabase) return;
-            const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-            if (error) return;
-            const rows = (data || []) as any[];
-            const mapped = rows.map(r => ({
-                batchId: r.batch_id,
-                occurredAt: r.occurred_at,
-                unitCost: Number(r.unit_cost) || 0,
-                unitCostOriginal: ((): number | undefined => {
-                    const c = Number((r as any)?.unit_cost_original);
-                    return Number.isFinite(c) && c > 0 ? c : undefined;
-                })(),
-                unitCostCurrency: ((): string | undefined => {
-                    const cur = String(((r as any)?.currency) || '').trim().toUpperCase();
-                    return cur || undefined;
-                })(),
-                fxAtReceipt: ((): number | undefined => {
-                    const fx = Number((r as any)?.fx_rate_at_receipt);
-                    return Number.isFinite(fx) && fx > 0 ? fx : undefined;
-                })(),
-                receivedQuantity: Number(r.received_quantity) || 0,
-                consumedQuantity: Number(r.consumed_quantity) || 0,
-                remainingQuantity: Number(r.remaining_quantity) || 0,
-                qcStatus: String(r.qc_status || ''),
-                lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
-                lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
-                productionDate: r.production_date ? String(r.production_date) : undefined,
-                expiryDate: r.expiry_date ? String(r.expiry_date) : undefined,
-            })) as ItemBatch[];
-            setBatches(mapped);
-        } catch (_) {
-        }
+        await loadBatchesDetailed();
     };
 
     const runQcInspect = async (batchId: string, result: 'pass' | 'fail') => {
@@ -177,25 +173,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
             showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل تنفيذ فحص QC.', 'error');
         } finally {
             setQcBusyBatchId(null);
-            try {
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-                if (!error) {
-                    const rows = (data || []) as any[];
-                    const mapped = rows.map(r => ({
-                        batchId: r.batch_id,
-                        occurredAt: r.occurred_at,
-                        unitCost: Number(r.unit_cost) || 0,
-                        receivedQuantity: Number(r.received_quantity) || 0,
-                        consumedQuantity: Number(r.consumed_quantity) || 0,
-                        remainingQuantity: Number(r.remaining_quantity) || 0,
-                        qcStatus: String(r.qc_status || ''),
-                        lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
-                        lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
-                    })) as ItemBatch[];
-                    setBatches(mapped);
-                }
-            } catch {
-            }
+            await refreshBatches();
         }
     };
 
@@ -212,25 +190,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
             showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل إفراج الدُفعة.', 'error');
         } finally {
             setQcBusyBatchId(null);
-            try {
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-                if (!error) {
-                    const rows = (data || []) as any[];
-                    const mapped = rows.map(r => ({
-                        batchId: r.batch_id,
-                        occurredAt: r.occurred_at,
-                        unitCost: Number(r.unit_cost) || 0,
-                        receivedQuantity: Number(r.received_quantity) || 0,
-                        consumedQuantity: Number(r.consumed_quantity) || 0,
-                        remainingQuantity: Number(r.remaining_quantity) || 0,
-                        qcStatus: String(r.qc_status || ''),
-                        lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
-                        lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
-                    })) as ItemBatch[];
-                    setBatches(mapped);
-                }
-            } catch {
-            }
+            await refreshBatches();
         }
     };
 
@@ -466,6 +426,9 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                 </div>
                                                 <div className="text-gray-500 dark:text-gray-400">
                                                     وارد {Number(b.receivedQuantity || 0).toLocaleString('en-US')} • مستهلك {Number(b.consumedQuantity || 0).toLocaleString('en-US')} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
+                                                </div>
+                                                <div className="text-gray-500 dark:text-gray-400">
+                                                    مرتجع مشتريات {Number((b as any).returnedQuantity || 0).toLocaleString('en-US')} • مباع {Number((b as any).soldQuantity || 0).toLocaleString('en-US')} • هالك/تعديل {Number(((b as any).wastageQuantity || 0) + ((b as any).adjustOutQuantity || 0)).toLocaleString('en-US')}
                                                 </div>
                                                 <div className="text-gray-500 dark:text-gray-400 mt-1">
                                                     QC: {qcStatusLabel(String((b as any).qcStatus || ''))}

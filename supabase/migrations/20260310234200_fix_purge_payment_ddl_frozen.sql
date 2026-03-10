@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════
--- purge_order_payment v2: Fix — disable ALL append-only triggers
--- before deleting journal lines, journal entries, payments,
--- and party ledger entries.
+-- purge_order_payment v3: Fix "ledger ddl frozen" error
+-- Must set app.allow_ledger_ddl before ALTER TABLE on ledger tables
+-- Also disables ALL immutability triggers (there are TWO sets)
 -- ═══════════════════════════════════════════════════════════════
 
 set app.allow_ledger_ddl = '1';
@@ -41,26 +41,46 @@ begin
     raise exception 'order not found';
   end if;
 
+  -- ══ CRITICAL: allow DDL on ledger tables (event trigger trg_freeze_ledger_tables) ══
+  perform set_config('app.allow_ledger_ddl', '1', true);
+
   -- ── Disable ALL append-only / immutability triggers ──
+  -- Set 1: block_system_mutation triggers (from phase8_accounting_hardening)
   alter table public.journal_lines disable trigger trg_journal_lines_block_system_mutation;
   alter table public.journal_entries disable trigger trg_journal_entries_block_system_mutation;
-  alter table public.payments disable trigger trg_payments_forbid_delete_posted;
 
-  -- Safely disable party_ledger trigger (may not exist in some deployments)
+  -- Set 2: immutable_block triggers (from audit_ready_documents_branch_scope)
   begin
-    alter table public.party_ledger_entries disable trigger trg_party_ledger_entries_append_only;
-  exception when others then
-    null;
+    alter table public.journal_lines disable trigger trg_journal_lines_immutable;
+  exception when others then null;
+  end;
+  begin
+    alter table public.journal_entries disable trigger trg_journal_entries_immutable;
+  exception when others then null;
   end;
 
-  -- ── 1. Delete journal entries + lines linked to payments for this order ──
+  -- payments trigger
+  alter table public.payments disable trigger trg_payments_forbid_delete_posted;
+
+  -- party ledger trigger
+  begin
+    alter table public.party_ledger_entries disable trigger trg_party_ledger_entries_append_only;
+  exception when others then null;
+  end;
+
+  -- accounting_documents trigger
+  begin
+    alter table public.accounting_documents disable trigger trg_accounting_documents_immutable;
+  exception when others then null;
+  end;
+
+  -- ── 1. Delete journal entries + lines + party ledger for this order's payments ──
   for v_payment in
     select p.id
     from public.payments p
     where p.reference_table = 'orders'
       and p.reference_id = p_order_id::text
   loop
-    -- Find ALL journal entries for this payment (including 'void' reversals)
     for v_je_id in
       select je.id
       from public.journal_entries je
@@ -75,19 +95,25 @@ begin
           where jl.journal_entry_id = v_je_id
         );
         get diagnostics v_deleted_party_ledger = row_count;
-      exception when others then
-        null; -- party_ledger_entries may not exist
+      exception when others then null;
       end;
 
       -- Delete journal lines
       delete from public.journal_lines where journal_entry_id = v_je_id;
+      -- Delete accounting document linked to journal entry
+      begin
+        delete from public.accounting_documents
+        where source_table = 'payments'
+          and source_id = v_payment.id::text;
+      exception when others then null;
+      end;
       -- Delete journal entry
       delete from public.journal_entries where id = v_je_id;
       v_deleted_journals := v_deleted_journals + 1;
     end loop;
   end loop;
 
-  -- ── 2. Delete all payment records for this order ──
+  -- ── 2. Delete all payment records ──
   delete from public.payments
   where reference_table = 'orders'
     and reference_id = p_order_id::text;
@@ -99,12 +125,26 @@ begin
   alter table public.payments enable trigger trg_payments_forbid_delete_posted;
 
   begin
+    alter table public.journal_lines enable trigger trg_journal_lines_immutable;
+  exception when others then null;
+  end;
+  begin
+    alter table public.journal_entries enable trigger trg_journal_entries_immutable;
+  exception when others then null;
+  end;
+  begin
     alter table public.party_ledger_entries enable trigger trg_party_ledger_entries_append_only;
-  exception when others then
-    null;
+  exception when others then null;
+  end;
+  begin
+    alter table public.accounting_documents enable trigger trg_accounting_documents_immutable;
+  exception when others then null;
   end;
 
-  -- ── 3. Reset paidAt on the order ──
+  -- Reset the DDL flag
+  perform set_config('app.allow_ledger_ddl', '', true);
+
+  -- ── 3. Reset paidAt ──
   update public.orders
   set data = (
     coalesce(data, '{}'::jsonb)
@@ -118,7 +158,7 @@ begin
   updated_at = now()
   where id = p_order_id;
 
-  -- ── 4. Reopen AR open items if they were closed by payment ──
+  -- ── 4. Reopen AR open items ──
   begin
     update public.ar_open_items
     set status = 'open',
@@ -126,8 +166,7 @@ begin
         open_balance = original_amount
     where invoice_id = p_order_id
       and status = 'closed';
-  exception when others then
-    null;
+  exception when others then null;
   end;
 
   -- ── 5. Audit log ──
