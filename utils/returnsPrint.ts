@@ -205,6 +205,32 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
   const totalBase = (Array.isArray(mv) ? mv : []).reduce((s: number, r: any) => s + Number(r?.total_cost || 0), 0);
   const totalForeign = currency && currency !== baseCurrency ? (safeFx > 0 ? totalBase / safeFx : 0) : totalBase;
 
+  // Build unit_type key → Arabic label lookup
+  const unitLabelMap = new Map<string, string>();
+  try {
+    const { data: utRows } = await supabase.from('unit_types').select('key,data');
+    for (const row of (utRows || []) as any[]) {
+      const k = String(row?.key || '').trim();
+      if (!k) continue;
+      const d: any = row?.data || {};
+      const labelObj: any = d?.label && typeof d.label === 'object' ? d.label : (d?.name && typeof d.name === 'object' ? d.name : {});
+      const ar = typeof labelObj?.ar === 'string' ? labelObj.ar.trim() : '';
+      if (ar) unitLabelMap.set(k, ar);
+    }
+  } catch { /* non-critical */ }
+
+  const resolveUnitLabel = (unitTypeKey?: string | null): string | undefined => {
+    if (!unitTypeKey) return undefined;
+    const raw = String(unitTypeKey).trim();
+    if (!raw) return undefined;
+    // Try exact match from unit_types table
+    const fromDb = unitLabelMap.get(raw);
+    if (fromDb) return fromDb;
+    // Already Arabic
+    if (/[\u0600-\u06FF]/.test(raw)) return raw;
+    return raw;
+  };
+
   const data: PrintablePurchaseReturnNoteData = {
     returnId: String((ret as any).id),
     purchaseOrderId: poId,
@@ -223,7 +249,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
         ? String(it?.menu_items?.name?.ar || it?.menu_items?.name?.en || '') 
         : String(it?.menu_items?.name || ''),
       quantity: Number(it?.quantity || 0) || 0,
-      uomCode: it?.menu_items?.unit_type ? String(it.menu_items.unit_type) : undefined,
+      uomCode: resolveUnitLabel(it?.menu_items?.unit_type),
     })),
   };
 
