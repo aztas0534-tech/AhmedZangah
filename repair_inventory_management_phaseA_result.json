@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-03-10T21:06:17.509Z",
+  "generated_at": "2026-03-10T22:17:29.675Z",
   "pre": {
-    "bad_batch_consumed_count": "26",
+    "bad_batch_consumed_count": "31",
     "fx_anomaly_count": "4"
   },
   "steps": {
-    "recompute_batches_quantity_consumed_rows": 26,
-    "recompute_batch_balances_rows": 66,
+    "recompute_batches_quantity_consumed_rows": 31,
+    "recompute_batch_balances_rows": 0,
     "recompute_stock_for_item_rows": 87
   },
   "post": {
-    "bad_batch_consumed_count": "4",
+    "bad_batch_consumed_count": "0",
     "fx_anomaly_count": "4"
   },
   "revalue_batches": [
