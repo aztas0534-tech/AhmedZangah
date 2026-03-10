@@ -24,6 +24,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
     <head>
+      <base href="${window.location.origin}">
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${title}</title>
@@ -138,7 +139,11 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
 const injectStylesheets = (targetWindow: Window) => {
   const styles = document.querySelectorAll('style, link[rel="stylesheet"]');
   styles.forEach((node) => {
-    targetWindow.document.head.appendChild(node.cloneNode(true));
+    const clone = node.cloneNode(true) as HTMLElement;
+    if (clone.tagName === 'LINK') {
+      (clone as HTMLLinkElement).href = (node as HTMLLinkElement).href; // Force absolute URL
+    }
+    targetWindow.document.head.appendChild(clone);
   });
 };
 
@@ -171,8 +176,8 @@ export const printContent = (content: string, title: string = 'طباعة', opti
       setTimeout(cleanup, 60000);
     };
 
-    targetWindow.addEventListener('load', () => setTimeout(triggerPrint, 50), { once: true });
-    setTimeout(triggerPrint, 250);
+    targetWindow.addEventListener('load', () => setTimeout(triggerPrint, 100), { once: true });
+    setTimeout(triggerPrint, 800);
   };
 
   const printWindow = window.open('about:blank', '_blank');
