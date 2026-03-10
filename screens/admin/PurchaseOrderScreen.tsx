@@ -90,6 +90,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const [finalizingNoShortages, setFinalizingNoShortages] = useState(false);
     const [forcingStatusOnly, setForcingStatusOnly] = useState(false);
     const [repairingPurchaseInJournals, setRepairingPurchaseInJournals] = useState(false);
+    const [returnPickerOrder, setReturnPickerOrder] = useState<PurchaseOrder | null>(null);
+    const [returnPickerList, setReturnPickerList] = useState<Array<{ id: string; returnedAt: string; reason: string | null; itemCount: number }>>([]);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const companyName = (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '';
         const fallback = {
@@ -734,37 +736,52 @@ const PurchaseOrderScreen: React.FC = () => {
         };
     };
 
-    const getLatestPurchaseReturnForOrder = async (orderId: string) => {
+    const getAllPurchaseReturnsForOrder = async (orderId: string) => {
         const supabase = getSupabaseClient();
-        if (!supabase) return null;
+        if (!supabase) return [];
         const { data, error } = await supabase
             .from('purchase_returns')
-            .select('id,returned_at,created_at')
+            .select('id,returned_at,reason,created_at,purchase_return_items(id)')
             .eq('purchase_order_id', orderId)
             .order('returned_at', { ascending: false, nullsFirst: false })
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .order('created_at', { ascending: false });
         if (error) throw error;
-        if (!data?.id) return null;
-        return {
-            id: String((data as any).id),
-            returnedAt: String((data as any).returned_at || ''),
-            createdAt: String((data as any).created_at || ''),
-        };
+        return (Array.isArray(data) ? data : []).map((r: any) => ({
+            id: String(r.id),
+            returnedAt: String(r.returned_at || r.created_at || ''),
+            reason: r.reason ? String(r.reason) : null,
+            itemCount: Array.isArray(r.purchase_return_items) ? r.purchase_return_items.length : 0,
+        }));
     };
 
-    const handleReprintLatestPurchaseReturn = async (order: PurchaseOrder) => {
-        const latest = await getLatestPurchaseReturnForOrder(order.id);
-        if (!latest?.id) {
-            showNotification('لا يوجد مرتجع مشتريات لهذا الأمر.', 'info');
-            return;
+    const openReturnPrintPicker = async (order: PurchaseOrder) => {
+        setReturnPickerOrder(order);
+        try {
+            const list = await getAllPurchaseReturnsForOrder(order.id);
+            if (list.length === 0) {
+                showNotification('لا يوجد مرتجعات لهذا الأمر.', 'info');
+                setReturnPickerOrder(null);
+                return;
+            }
+            if (list.length === 1) {
+                // Only one return — print directly without modal
+                await handlePrintSelectedReturn(order, list[0].id);
+                setReturnPickerOrder(null);
+                return;
+            }
+            setReturnPickerList(list);
+        } catch (e) {
+            showNotification(getErrorMessage(e, 'تعذر جلب المرتجعات'), 'error');
+            setReturnPickerOrder(null);
         }
+    };
+
+    const handlePrintSelectedReturn = async (order: PurchaseOrder, returnId: string) => {
         const brand = resolveBrandingForWarehouseId(order.warehouseId);
         const branchHdr = await fetchBranchHeader(scope?.branchId);
         const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
         await printPurchaseReturnById(
-            latest.id,
+            returnId,
             { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode },
             baseCode,
             { printedBy }
@@ -2967,15 +2984,15 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                             setOpenRowDropdownId(null);
                                                                             void (async () => {
                                                                                 try {
-                                                                                    await handleReprintLatestPurchaseReturn(order);
+                                                                                    await openReturnPrintPicker(order);
                                                                                 } catch (e) {
-                                                                                    alert(getErrorMessage(e, 'تعذر إعادة طباعة سند مرتجع المشتريات.'));
+                                                                                    alert(getErrorMessage(e, 'تعذر جلب سندات مرتجع المشتريات.'));
                                                                                 }
                                                                             })();
                                                                         }}
                                                                         className="w-full text-right px-4 py-2 text-sm text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50"
                                                                     >
-                                                                        إعادة طباعة آخر مرتجع
+                                                                        طباعة سند مرتجع
                                                                     </button>
                                                                 )}
                                                                 {canManageImports && (
@@ -4133,6 +4150,57 @@ const PurchaseOrderScreen: React.FC = () => {
                     </div>
                 )
             }
+            {/* ▬▬▬ RETURN PRINT PICKER MODAL ▬▬▬ */}
+            {returnPickerOrder && returnPickerList.length > 1 && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => { setReturnPickerOrder(null); setReturnPickerList([]); }}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">اختر سند مرتجع للطباعة</h3>
+                            <button type="button" onClick={() => { setReturnPickerOrder(null); setReturnPickerList([]); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl font-bold">✕</button>
+                        </div>
+                        <div className="px-6 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                            أمر الشراء: <span className="font-mono font-bold text-gray-700 dark:text-gray-300">{String(returnPickerOrder.id || '').slice(-8).toUpperCase()}</span>
+                            {' • '}{returnPickerList.length} مرتجع
+                        </div>
+                        <div className="overflow-y-auto max-h-[55vh] divide-y divide-gray-100 dark:divide-gray-700">
+                            {returnPickerList.map((ret, idx) => (
+                                <div key={ret.id} className="px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-between gap-4 transition-colors">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-xs font-bold px-2 py-0.5 rounded-full">#{idx + 1}</span>
+                                            <span className="font-mono text-xs text-gray-500 dark:text-gray-400" dir="ltr">{String(ret.id).slice(-8).toUpperCase()}</span>
+                                        </div>
+                                        <div className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-3 flex-wrap">
+                                            <span className="flex items-center gap-1">
+                                                <span className="text-gray-400">📅</span>
+                                                <span dir="ltr" className="font-mono text-xs">{new Date(ret.returnedAt).toLocaleDateString('en-GB')} {new Date(ret.returnedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                                            </span>
+                                            <span className="text-gray-400 text-xs">{ret.itemCount} صنف</span>
+                                        </div>
+                                        {ret.reason && <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">السبب: {ret.reason}</div>}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                await handlePrintSelectedReturn(returnPickerOrder!, ret.id);
+                                            } catch (e) {
+                                                alert(getErrorMessage(e, 'تعذر الطباعة'));
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-blue-950 text-white rounded-lg hover:bg-blue-900 text-sm font-bold whitespace-nowrap flex-shrink-0 transition-colors"
+                                    >
+                                        🖨️ طباعة
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                            <button type="button" onClick={() => { setReturnPickerOrder(null); setReturnPickerList([]); }} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">إغلاق</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 };

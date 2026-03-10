@@ -30,15 +30,15 @@ try {
      from public.admin_users
      where is_active = true
        and role in ('owner','manager','employee','cashier','delivery')
-     order by created_at asc nulls last
+     order by (case when role = 'owner' then 1 else 0 end) desc, created_at asc nulls last
      limit 1`
   );
   if (!actor?.auth_user_id) throw new Error('No active staff user found in production');
   await client.query(
     `select
-       set_config('request.jwt.claim.sub', $1::text, true),
-       set_config('request.jwt.claim.role', 'authenticated', true),
-       set_config('request.jwt.claims', json_build_object('sub',$1::text,'role','authenticated')::text, true)`,
+       set_config('request.jwt.claim.sub', $1::text, false),
+       set_config('request.jwt.claim.role', 'authenticated', false),
+       set_config('request.jwt.claims', json_build_object('sub',$1::text,'role','authenticated')::text, false)`,
     [actor.auth_user_id]
   );
 
