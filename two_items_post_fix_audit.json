@@ -1,0 +1,179 @@
+{
+  "stock": [
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "available_quantity": "16",
+      "qc_hold_quantity": "0",
+      "avg_cost": "51.339279"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "available_quantity": "32",
+      "qc_hold_quantity": "0",
+      "avg_cost": "6.775701"
+    }
+  ],
+  "batches": [
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "batch_short": "847236e2",
+      "status": "active",
+      "qc_status": "released",
+      "quantity_received": "20",
+      "quantity_consumed": "20",
+      "remaining": "0",
+      "unit_cost": "0.116822",
+      "sale_out": "0",
+      "return_out": "20"
+    },
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "batch_short": "6b38e6de",
+      "status": "active",
+      "qc_status": "released",
+      "quantity_received": "20",
+      "quantity_consumed": "20",
+      "remaining": "0",
+      "unit_cost": "50.0000000000000000",
+      "sale_out": "0",
+      "return_out": "20"
+    },
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "batch_short": "e15a39e7",
+      "status": "active",
+      "qc_status": "released",
+      "quantity_received": "20",
+      "quantity_consumed": "4",
+      "remaining": "16",
+      "unit_cost": "51.33927890996878101390983313022151449640",
+      "sale_out": "4",
+      "return_out": "0"
+    },
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "batch_short": "4737d30f",
+      "status": "inactive",
+      "qc_status": "pending",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "0.116822",
+      "sale_out": "0",
+      "return_out": "0"
+    },
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "batch_short": "978e0453",
+      "status": "inactive",
+      "qc_status": "inspected",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "0.116822",
+      "sale_out": "0",
+      "return_out": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "batch_short": "9c35b7c0",
+      "status": "active",
+      "qc_status": "released",
+      "quantity_received": "100",
+      "quantity_consumed": "68",
+      "remaining": "32",
+      "unit_cost": "6.775701",
+      "sale_out": "68",
+      "return_out": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "batch_short": "36d60fe3",
+      "status": "inactive",
+      "qc_status": "released",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "2900.0000000000000000",
+      "sale_out": "0",
+      "return_out": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "batch_short": "06de5453",
+      "status": "inactive",
+      "qc_status": "inspected",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "return_out": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "batch_short": "687ffd79",
+      "status": "inactive",
+      "qc_status": "pending",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "return_out": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "batch_short": "72b69a5a",
+      "status": "inactive",
+      "qc_status": "pending",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "return_out": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "batch_short": "f81cd057",
+      "status": "inactive",
+      "qc_status": "pending",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "return_out": "0"
+    }
+  ],
+  "biscuit_recent_sale_cogs": [
+    {
+      "movement_id": "57ddc637-74d5-4a2e-b344-49dc9c371739",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "quantity": "2",
+      "unit_cost": "51.33927890996878",
+      "total_cost": "102.678558",
+      "batch_short": "e15a39e7",
+      "occurred_at": "2026-03-01T04:23:34.929Z"
+    },
+    {
+      "movement_id": "a03e3c89-f758-4cd3-aa0a-9a2e4f670a8f",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "quantity": "1",
+      "unit_cost": "51.33927890996878",
+      "total_cost": "51.339279",
+      "batch_short": "e15a39e7",
+      "occurred_at": "2026-02-17T01:06:17.388Z"
+    },
+    {
+      "movement_id": "8b535d62-832f-43bd-b9c7-f0534e0ebf47",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "quantity": "1",
+      "unit_cost": "51.33927890996878",
+      "total_cost": "51.339279",
+      "batch_short": "e15a39e7",
+      "occurred_at": "2026-02-16T23:57:43.912Z"
+    }
+  ]
+}

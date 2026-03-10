@@ -1,0 +1,90 @@
+{
+  "generated_at": "2026-03-10T23:34:08.683Z",
+  "orphan_batches_deactivated": [
+    {
+      "batch_id": "687ffd79-ef74-4764-9c64-786b73b2f16d",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "old_qty": 1,
+      "old_unit_cost": 6.775701
+    },
+    {
+      "batch_id": "06de5453-f31f-4d2f-9fe9-72135d295ef7",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "old_qty": 1,
+      "old_unit_cost": 6.775701
+    },
+    {
+      "batch_id": "36d60fe3-5014-48b6-b05d-2ca6a7b2a39e",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "old_qty": 1,
+      "old_unit_cost": 2900
+    },
+    {
+      "batch_id": "72b69a5a-d46d-488b-89b0-d19e8edbeefd",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "old_qty": 1,
+      "old_unit_cost": 6.775701
+    },
+    {
+      "batch_id": "f81cd057-2ad6-4d55-91fc-d7c0206dd508",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "old_qty": 1,
+      "old_unit_cost": 6.775701
+    },
+    {
+      "batch_id": "978e0453-d2d0-4acc-bb75-2aefd38e8d5c",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "old_qty": 1,
+      "old_unit_cost": 0.116822
+    },
+    {
+      "batch_id": "4737d30f-c5db-492f-bcff-1ed54df2dd75",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "old_qty": 1,
+      "old_unit_cost": 0.116822
+    }
+  ],
+  "sale_cogs_fixed": [
+    {
+      "movement_id": "8b535d62-832f-43bd-b9c7-f0534e0ebf47",
+      "order_id": "01eb3d69-65d6-4cd1-b644-780adc067c59",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "qty": 1,
+      "old_unit_cost": 0.116822,
+      "new_unit_cost": 51.33927890996878
+    },
+    {
+      "movement_id": "57ddc637-74d5-4a2e-b344-49dc9c371739",
+      "order_id": "03cb261c-19ed-48bd-bbc5-8ec93a2478ed",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "qty": 2,
+      "old_unit_cost": 0.116822,
+      "new_unit_cost": 51.33927890996878
+    },
+    {
+      "movement_id": "a03e3c89-f758-4cd3-aa0a-9a2e4f670a8f",
+      "order_id": "3b842d22-5f04-4089-b1eb-052aa39d10f9",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "qty": 1,
+      "old_unit_cost": 0.116822,
+      "new_unit_cost": 51.33927890996878
+    }
+  ],
+  "stock_after": [
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "available_quantity": "16",
+      "qc_hold_quantity": "0",
+      "avg_cost": "33.818700"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "available_quantity": "32",
+      "qc_hold_quantity": "0",
+      "avg_cost": "84.970952"
+    }
+  ],
+  "failures": []
+}

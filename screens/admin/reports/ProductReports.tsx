@@ -361,6 +361,7 @@ const ProductReports: React.FC = () => {
                 }
 
                 const ordersById = new Map<string, any>();
+                const reportAllowedStatuses = new Set(['delivered', 'completed', 'paid', 'invoiced']);
                 for (const ids of chunk(orderIds, 200)) {
                     const { data: orders, error: oErr } = await supabase
                         .from('orders')
@@ -368,6 +369,8 @@ const ProductReports: React.FC = () => {
                         .in('id', ids);
                     if (oErr) throw oErr;
                     for (const o of orders || []) {
+                        const st = String((o as any)?.status || '').toLowerCase();
+                        if (!reportAllowedStatuses.has(st)) continue;
                         ordersById.set(String((o as any).id), o);
                     }
                 }
