@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-03-10T22:49:53.275Z",
+  "anomalies_before": 11,
+  "total_delta_before": 67332,
+  "sale_moves": [],
+  "return_increments": [],
+  "failures": [
+    {
+      "return_id": "414ef233-8fce-4b7b-a771-e93940b34938",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 56943,
+      "totalCap": 0
+    },
+    {
+      "return_id": "22c1f460-79a9-45d7-9be0-182a239cef8a",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 3960,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "c383531c-733e-41e2-9601-fb48047451be",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 2760,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "85c83f4b-68b4-4fd4-8ea2-edf7f033fe81",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 1656,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "0ae5015a-5faf-4a73-9a05-9e834d879e73",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 1320,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "1471efad-5bb9-497f-ba55-59c4368fd5b5",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 396,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "6e6a6b0f-ff46-44ba-aa96-d6cce4f468e4",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 120,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "71c47b1c-05e9-4462-a8ea-3f4f4afd291b",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 90,
+      "totalCap": 0
+    },
+    {
+      "return_id": "cee05545-3c12-4a59-a0a5-ff5ff53b7197",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 57,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "c170af40-ed18-40f8-92e6-260dd64b91b1",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 20,
+      "totalCap": 0
+    },
+    {
+      "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+      "item_id": "877860ff-bde9-4270-ae14-60f3ef3e3509",
+      "reason": "INSUFFICIENT_CAPACITY_AFTER_SALE_MOVES",
+      "need": 10,
+      "totalCap": 0
+    }
+  ],
+  "anomalies_after": 11,
+  "total_delta_after": 67332
+}

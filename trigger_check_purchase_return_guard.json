@@ -1,0 +1,11 @@
+[
+  {
+    "tgname": "trg_validate_purchase_return_consistency_from_items"
+  },
+  {
+    "tgname": "trg_validate_purchase_return_consistency_from_movements"
+  },
+  {
+    "tgname": "trg_validate_purchase_return_consistency_from_returns"
+  }
+]

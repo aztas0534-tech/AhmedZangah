@@ -1469,29 +1469,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const summary: Record<string, number> = {};
     if (!supabase) return summary;
     try {
-      const factorByItem: Record<string, number> = {};
-      try {
-        const { data: poItems, error: poErr } = await supabase
-          .from('purchase_items')
-          .select('item_id, quantity, qty_base')
-          .eq('purchase_order_id', purchaseOrderId);
-        if (poErr) throw poErr;
-        const agg: Record<string, { q: number; qb: number }> = {};
-        for (const row of (poItems || []) as any[]) {
-          const key = String((row as any)?.item_id || '');
-          if (!key) continue;
-          const q = Number((row as any)?.quantity || 0) || 0;
-          const qb = Number((row as any)?.qty_base || (row as any)?.quantity || 0) || 0;
-          if (!agg[key]) agg[key] = { q: 0, qb: 0 };
-          agg[key].q += q;
-          agg[key].qb += qb;
-        }
-        for (const [key, v] of Object.entries(agg)) {
-          factorByItem[key] = v.q > 0 ? (v.qb / v.q) : 1;
-        }
-      } catch {
-      }
-
       const { data: returns, error: rErr } = await supabase
         .from('purchase_returns')
         .select('id')
@@ -1499,20 +1476,21 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (rErr) throw rErr;
       const ids = (returns || []).map((r: any) => r?.id).filter(Boolean);
       if (ids.length === 0) return summary;
-      const { data: items, error: iErr } = await supabase
-        .from('purchase_return_items')
-        .select('item_id, quantity, return_id')
-        .in('return_id', ids);
-      if (iErr) throw iErr;
-      for (const row of items || []) {
+      const idStrings = ids.map((x: any) => String(x)).filter(Boolean);
+      const { data: movements, error: mvErr } = await supabase
+        .from('inventory_movements')
+        .select('item_id, quantity, movement_type, reference_table, reference_id')
+        .eq('movement_type', 'return_out')
+        .eq('reference_table', 'purchase_returns')
+        .in('reference_id', idStrings as any);
+      if (mvErr) throw mvErr;
+      for (const row of movements || []) {
         const key = String((row as any)?.item_id || '');
         const qty = Number((row as any)?.quantity) || 0;
-        if (!key) continue;
-        const factor = Number(factorByItem[key] || 1) || 1;
-        summary[key] = (summary[key] || 0) + (qty * factor);
+        if (!key || !(qty > 0)) continue;
+        summary[key] = (summary[key] || 0) + qty;
       }
     } catch (err) {
-      // Return empty summary on error; UI will still be capped by server
     }
     return summary;
   };

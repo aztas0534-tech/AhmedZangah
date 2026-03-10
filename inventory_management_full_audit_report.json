@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-10T22:19:13.243Z",
+  "generated_at": "2026-03-10T22:24:36.750Z",
   "environment": "production",
   "overview": {
     "items_count": "87",
@@ -13,7 +13,7 @@
     "stock_vs_batches_mismatch_count": 20,
     "batch_movement_consistency_count": 0,
     "unbatched_out_movements_count": 0,
-    "fx_cost_anomalies_count": 4,
+    "fx_cost_anomalies_count": 0,
     "uom_factor_anomalies_count": 0,
     "returned_batches_count": 41
   },
@@ -123,15 +123,15 @@
       "delta_vs_released": "0"
     },
     {
-      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
-      "item_name": "بسكويت ابو برنس عائلي *1*12حبة*500جم",
+      "item_id": "4d97f605-0c0a-479a-8e99-4ad3ffd669de",
+      "item_name": "رز الامارة مزه ابو 10كيلو",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
       "warehouse_name": "المشتريات",
-      "available_qty": "16",
+      "available_qty": "91",
       "qc_hold_qty": "2",
       "reserved_qty": "0",
-      "batches_remaining_all": "18",
-      "batches_remaining_released": "16",
+      "batches_remaining_all": "93",
+      "batches_remaining_released": "91",
       "delta_vs_all": "-2",
       "delta_vs_released": "0"
     },
@@ -149,19 +149,6 @@
       "delta_vs_released": "0"
     },
     {
-      "item_id": "81e85ebf-1415-49a3-b9fa-0fcae3af6b8a",
-      "item_name": "شوكلاته الفيدو اصبع واحدة*12باكت*36حبه*12جم",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "available_qty": "381",
-      "qc_hold_qty": "2",
-      "reserved_qty": "0",
-      "batches_remaining_all": "383",
-      "batches_remaining_released": "381",
-      "delta_vs_all": "-2",
-      "delta_vs_released": "0"
-    },
-    {
       "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
       "item_name": "ببسي جوي كولا *24علبة حديد*250ملي",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -175,29 +162,29 @@
       "delta_vs_released": "0"
     },
     {
-      "item_id": "4d97f605-0c0a-479a-8e99-4ad3ffd669de",
-      "item_name": "رز الامارة مزه ابو 10كيلو",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "item_name": "بسكويت ابو برنس عائلي *1*12حبة*500جم",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
       "warehouse_name": "المشتريات",
-      "available_qty": "91",
+      "available_qty": "16",
       "qc_hold_qty": "2",
       "reserved_qty": "0",
-      "batches_remaining_all": "93",
-      "batches_remaining_released": "91",
+      "batches_remaining_all": "18",
+      "batches_remaining_released": "16",
       "delta_vs_all": "-2",
       "delta_vs_released": "0"
     },
     {
-      "item_id": "c383531c-733e-41e2-9601-fb48047451be",
-      "item_name": "حليب صفاء اكياس صغير 24*400جم",
+      "item_id": "81e85ebf-1415-49a3-b9fa-0fcae3af6b8a",
+      "item_name": "شوكلاته الفيدو اصبع واحدة*12باكت*36حبه*12جم",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
       "warehouse_name": "المشتريات",
-      "available_qty": "238",
-      "qc_hold_qty": "1",
+      "available_qty": "381",
+      "qc_hold_qty": "2",
       "reserved_qty": "0",
-      "batches_remaining_all": "239",
-      "batches_remaining_released": "238",
-      "delta_vs_all": "-1",
+      "batches_remaining_all": "383",
+      "batches_remaining_released": "381",
+      "delta_vs_all": "-2",
       "delta_vs_released": "0"
     },
     {
@@ -277,64 +264,24 @@
       "batches_remaining_released": "14",
       "delta_vs_all": "-1",
       "delta_vs_released": "0"
+    },
+    {
+      "item_id": "c383531c-733e-41e2-9601-fb48047451be",
+      "item_name": "حليب صفاء اكياس صغير 24*400جم",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "available_qty": "238",
+      "qc_hold_qty": "1",
+      "reserved_qty": "0",
+      "batches_remaining_all": "239",
+      "batches_remaining_released": "238",
+      "delta_vs_all": "-1",
+      "delta_vs_released": "0"
     }
   ],
   "batch_movement_consistency_top": [],
   "unbatched_out_movements_top": [],
-  "fx_cost_anomalies_top": [
-    {
-      "batch_id": "56f4a339-f753-4e27-bf77-d797ce095562",
-      "item_id": "81e85ebf-1415-49a3-b9fa-0fcae3af6b8a",
-      "item_name": "شوكلاته الفيدو اصبع واحدة*12باكت*36حبه*12جم",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "foreign_currency": "YER",
-      "fx_rate_at_receipt": "0.002336448598130841",
-      "foreign_unit_cost": "60000.000000",
-      "unit_cost": "12.15",
-      "expected_unit_cost": "140.186916",
-      "unit_cost_delta": "-128.036916"
-    },
-    {
-      "batch_id": "a048f473-459c-492b-877d-cdf5f825d283",
-      "item_id": "228cb9a5-58ea-471d-a3ca-f381ca4c4d8a",
-      "item_name": "شوكلاته الفيدو اصبعين *35جم*6باكت*24حبة",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "foreign_currency": "YER",
-      "fx_rate_at_receipt": "0.002336448598130841",
-      "foreign_unit_cost": "65000.000000",
-      "unit_cost": "26.330000",
-      "expected_unit_cost": "151.869159",
-      "unit_cost_delta": "-125.539159"
-    },
-    {
-      "batch_id": "8b106f66-814e-4e30-bddb-35539e8f13a4",
-      "item_id": "b16e59e7-63a2-41b2-b865-9de89b444524",
-      "item_name": "شوكلاته الفيدو تايم *150جم*24باغة",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "foreign_currency": "YER",
-      "fx_rate_at_receipt": "0.002336448598130841",
-      "foreign_unit_cost": "44500.000000",
-      "unit_cost": "4.510000",
-      "expected_unit_cost": "103.971963",
-      "unit_cost_delta": "-99.461963"
-    },
-    {
-      "batch_id": "48cd68d4-70d9-4698-964a-84e460ed7c41",
-      "item_id": "ec386005-d8e1-4ee5-838a-d74b0f0f7a32",
-      "item_name": "شوكلاته الفيدو 1000جم*4باغات",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "foreign_currency": "YER",
-      "fx_rate_at_receipt": "0.002336448598130841",
-      "foreign_unit_cost": "44500.000000",
-      "unit_cost": "27.040000",
-      "expected_unit_cost": "103.971963",
-      "unit_cost_delta": "-76.931963"
-    }
-  ],
+  "fx_cost_anomalies_top": [],
   "uom_factor_anomalies_top": [],
   "returned_batches_top": [
     {
@@ -1113,21 +1060,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
-      "item_name": "بسكويت اني براو ستار ابو نجمة *6باكت*24حبة*60جم",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "1800",
-      "return_out_qty": "200",
-      "sale_out_qty": "13",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "1588",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
       "item_name": "ويفر ريتشوكو اصابع  بالشوكلاتة12باكت*24حبة",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -1139,6 +1071,21 @@
       "adjust_out_qty": "0",
       "adjust_in_qty": "0",
       "available_qty": "1662",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "item_name": "بسكويت اني براو ستار ابو نجمة *6باكت*24حبة*60جم",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "1800",
+      "return_out_qty": "200",
+      "sale_out_qty": "13",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "1588",
       "qc_hold_qty": "0",
       "reserved_qty": "0"
     },
@@ -1218,21 +1165,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "878310b8-d146-4684-a6b2-5cbf72961c9d",
-      "item_name": "شراب سفري منووع *24باكت*24حبه*9جم ",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "1200",
-      "return_out_qty": "0",
-      "sale_out_qty": "3650",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "2400",
-      "available_qty": "0",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "e7445bf6-86f1-47b7-9a80-f0178347964d",
       "item_name": "زيت حياة( 1.5 لتر)",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -1244,6 +1176,21 @@
       "adjust_out_qty": "0",
       "adjust_in_qty": "0",
       "available_qty": "1200",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "878310b8-d146-4684-a6b2-5cbf72961c9d",
+      "item_name": "شراب سفري منووع *24باكت*24حبه*9جم ",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "1200",
+      "return_out_qty": "0",
+      "sale_out_qty": "3650",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "2400",
+      "available_qty": "0",
       "qc_hold_qty": "0",
       "reserved_qty": "0"
     },
@@ -1263,36 +1210,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
-      "item_name": "فطائر جاسمين اني *12باكت*40حبه*10جم",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "1080",
-      "return_out_qty": "60",
-      "sale_out_qty": "14",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "1006",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
-      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
-      "item_name": "كيك جونيور 6باكت *24قطعه*40جم بالحليب",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "1080",
-      "return_out_qty": "120",
-      "sale_out_qty": "24",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "936",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
       "item_name": "كيك هاو فنجر اني *12باكت*24حبة*22جم نوعين",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -1308,6 +1225,21 @@
       "reserved_qty": "0"
     },
     {
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "item_name": "فطائر جاسمين اني *12باكت*40حبه*10جم",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "1080",
+      "return_out_qty": "60",
+      "sale_out_qty": "14",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "1006",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
       "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
       "item_name": "كيك باندا 12باكت *12حبه*30جم",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -1319,6 +1251,21 @@
       "adjust_out_qty": "0",
       "adjust_in_qty": "0",
       "available_qty": "654",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "item_name": "كيك جونيور 6باكت *24قطعه*40جم بالحليب",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "1080",
+      "return_out_qty": "120",
+      "sale_out_qty": "24",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "936",
       "qc_hold_qty": "0",
       "reserved_qty": "0"
     },
@@ -1383,36 +1330,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
-      "item_name": "بسكويت مون كبير*4باكت*24حبة*155جم ",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "600",
-      "return_out_qty": "100",
-      "sale_out_qty": "8",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "492",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
-      "item_id": "a78e6f78-f060-4abe-9e21-5f9da8700bda",
-      "item_name": "شوكلاته الفيدو ويفر علب 250جم*12علبة",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "600",
-      "return_out_qty": "0",
-      "sale_out_qty": "73",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "527",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "5b8f3ed5-7125-40bf-8277-03751a960b63",
       "item_name": "سكر الامارة ناعم ابو 5كيلو",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -1454,6 +1371,36 @@
       "adjust_out_qty": "0",
       "adjust_in_qty": "0",
       "available_qty": "600",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "item_name": "بسكويت مون كبير*4باكت*24حبة*155جم ",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "600",
+      "return_out_qty": "100",
+      "sale_out_qty": "8",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "492",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "a78e6f78-f060-4abe-9e21-5f9da8700bda",
+      "item_name": "شوكلاته الفيدو ويفر علب 250جم*12علبة",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "600",
+      "return_out_qty": "0",
+      "sale_out_qty": "73",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "527",
       "qc_hold_qty": "0",
       "reserved_qty": "0"
     },
@@ -1803,21 +1750,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "eec58aa2-56c6-4fe3-9d87-bb7a0c426d8b",
-      "item_name": "مكرونه طويل ملك الباشاه*20*400جم",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "200",
-      "return_out_qty": "0",
-      "sale_out_qty": "22",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "179",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "ec386005-d8e1-4ee5-838a-d74b0f0f7a32",
       "item_name": "شوكلاته الفيدو 1000جم*4باغات",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -1833,8 +1765,23 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "2ed726f7-b036-4194-91a1-7a2b400c6c8e",
-      "item_name": "شراب صفاء اناناس كبير *6*2.5كيلو",
+      "item_id": "eec58aa2-56c6-4fe3-9d87-bb7a0c426d8b",
+      "item_name": "مكرونه طويل ملك الباشاه*20*400جم",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "200",
+      "return_out_qty": "0",
+      "sale_out_qty": "22",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "179",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "98d5f3d0-ef41-4167-a6f5-24df81f4824b",
+      "item_name": "شراب صفاء برتقال كبير *6*2.5كيلو",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
       "warehouse_name": "المشتريات",
       "purchase_in_qty": "180",
@@ -1848,8 +1795,8 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "98d5f3d0-ef41-4167-a6f5-24df81f4824b",
-      "item_name": "شراب صفاء برتقال كبير *6*2.5كيلو",
+      "item_id": "2ed726f7-b036-4194-91a1-7a2b400c6c8e",
+      "item_name": "شراب صفاء اناناس كبير *6*2.5كيلو",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
       "warehouse_name": "المشتريات",
       "purchase_in_qty": "180",
@@ -1908,21 +1855,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "a6fdd739-3554-4579-84f8-a0b7706e87b6",
-      "item_name": "جيلي صفاء 6درزن*12*72باكت",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "120",
-      "return_out_qty": "0",
-      "sale_out_qty": "5",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "116",
-      "qc_hold_qty": "1",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "4d97f605-0c0a-479a-8e99-4ad3ffd669de",
       "item_name": "رز الامارة مزه ابو 10كيلو",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -1935,6 +1867,21 @@
       "adjust_in_qty": "0",
       "available_qty": "91",
       "qc_hold_qty": "2",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "a6fdd739-3554-4579-84f8-a0b7706e87b6",
+      "item_name": "جيلي صفاء 6درزن*12*72باكت",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "120",
+      "return_out_qty": "0",
+      "sale_out_qty": "5",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "116",
+      "qc_hold_qty": "1",
       "reserved_qty": "0"
     },
     {
@@ -1983,21 +1930,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
-      "item_name": "بسكويت ابو برنس عائلي *1*12حبة*500جم",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "60",
-      "return_out_qty": "40",
-      "sale_out_qty": "4",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "16",
-      "qc_hold_qty": "2",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "5fd5c8a5-2ace-433b-8a40-93ff181edb61",
       "item_name": "شراب صفاء شمام كبير *6*2.5كيلو",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -2010,6 +1942,21 @@
       "adjust_in_qty": "0",
       "available_qty": "60",
       "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "item_name": "بسكويت ابو برنس عائلي *1*12حبة*500جم",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "60",
+      "return_out_qty": "40",
+      "sale_out_qty": "4",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "16",
+      "qc_hold_qty": "2",
       "reserved_qty": "0"
     },
     {
@@ -2088,21 +2035,6 @@
       "reserved_qty": "0"
     },
     {
-      "item_id": "c170af40-ed18-40f8-92e6-260dd64b91b1",
-      "item_name": "مكرونة طويل ملك الباشا 2.5*300",
-      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
-      "warehouse_name": "المشتريات",
-      "purchase_in_qty": "20",
-      "return_out_qty": "20",
-      "sale_out_qty": "0",
-      "wastage_out_qty": "0",
-      "adjust_out_qty": "0",
-      "adjust_in_qty": "0",
-      "available_qty": "0",
-      "qc_hold_qty": "0",
-      "reserved_qty": "0"
-    },
-    {
       "item_id": "877860ff-bde9-4270-ae14-60f3ef3e3509",
       "item_name": "حليب شاهي منابع الخير كبير 24*410",
       "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
@@ -2114,6 +2046,21 @@
       "adjust_out_qty": "0",
       "adjust_in_qty": "0",
       "available_qty": "10",
+      "qc_hold_qty": "0",
+      "reserved_qty": "0"
+    },
+    {
+      "item_id": "c170af40-ed18-40f8-92e6-260dd64b91b1",
+      "item_name": "مكرونة طويل ملك الباشا 2.5*300",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "warehouse_name": "المشتريات",
+      "purchase_in_qty": "20",
+      "return_out_qty": "20",
+      "sale_out_qty": "0",
+      "wastage_out_qty": "0",
+      "adjust_out_qty": "0",
+      "adjust_in_qty": "0",
+      "available_qty": "0",
       "qc_hold_qty": "0",
       "reserved_qty": "0"
     }

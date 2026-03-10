@@ -212,6 +212,9 @@ export const localizeError = (message: string): string => {
   if (raw.includes('cannot_cancel_settled')) {
     return 'لا يمكن إلغاء الطلب لأنه يعتبر مسددًا أو عليه بيانات فاتورة. أزل بيانات التسوية أولاً ثم أعد المحاولة.';
   }
+  if (raw.includes('purchase_return_base_qty_mismatch')) {
+    return 'لا يمكن حفظ مرتجع الشراء بسبب عدم تطابق كمية المرتجع مع حركة المخزون (UOM/Base). راجع وحدة الصنف والكمية ثم أعد المحاولة.';
+  }
   if (raw.includes('cash_refund_requires_open_shift')) {
     return 'لا يمكن إلغاء الطلب النقدي بدون وردية نقدية مفتوحة لاسترجاع الحركة.';
   }

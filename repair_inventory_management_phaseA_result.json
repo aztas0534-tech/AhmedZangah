@@ -1,38 +1,17 @@
 {
-  "generated_at": "2026-03-10T22:17:29.675Z",
+  "generated_at": "2026-03-10T22:52:31.778Z",
   "pre": {
-    "bad_batch_consumed_count": "31",
-    "fx_anomaly_count": "4"
+    "bad_batch_consumed_count": "38",
+    "fx_anomaly_count": "0"
   },
   "steps": {
-    "recompute_batches_quantity_consumed_rows": 31,
+    "recompute_batches_quantity_consumed_rows": 38,
     "recompute_batch_balances_rows": 0,
     "recompute_stock_for_item_rows": 87
   },
   "post": {
     "bad_batch_consumed_count": "0",
-    "fx_anomaly_count": "4"
+    "fx_anomaly_count": "0"
   },
-  "revalue_batches": [
-    {
-      "batch_id": "48cd68d4-70d9-4698-964a-84e460ed7c41",
-      "ok": false,
-      "error": "Foreign cost snapshot cannot be modified after receipt"
-    },
-    {
-      "batch_id": "56f4a339-f753-4e27-bf77-d797ce095562",
-      "ok": false,
-      "error": "Foreign cost snapshot cannot be modified after receipt"
-    },
-    {
-      "batch_id": "8b106f66-814e-4e30-bddb-35539e8f13a4",
-      "ok": false,
-      "error": "Foreign cost snapshot cannot be modified after receipt"
-    },
-    {
-      "batch_id": "a048f473-459c-492b-877d-cdf5f825d283",
-      "ok": false,
-      "error": "Foreign cost snapshot cannot be modified after receipt"
-    }
-  ]
+  "revalue_batches": []
 }
