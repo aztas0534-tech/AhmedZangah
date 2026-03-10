@@ -56,18 +56,18 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
     <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir={isArabic ? 'rtl' : 'ltr'}>
       <style>{`
         @media print {
-            @page { size: A5 portrait; margin: 0; }
+            @page { size: A5 landscape; margin: 0; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
             * { box-sizing: border-box; }
 
             .document-container { 
                 width: 100% !important; 
-                padding: 5mm 5mm 4mm 5mm !important;
+                padding: 4mm 4mm 3mm 4mm !important;
                 display: flex !important; flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important; line-height: 1.2 !important;
                 position: relative !important;
-                min-height: 210mm !important; overflow: visible !important;
+                min-height: 148mm !important; overflow: visible !important;
                 background-color: #FAFAFA !important;
             }
 
@@ -244,7 +244,7 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
         </div>
 
         {/* ▬▬▬ TABLE ▬▬▬ */}
-        <div className="relative z-10 w-full overflow-hidden mb-8 print:mb-4">
+        <div className="relative z-10 w-full overflow-visible mb-8 print:mb-4">
           <table className={`luxury-table print:w-full ${isArabic ? 'text-right' : 'text-left'}`}>
             <thead>
               <tr>
