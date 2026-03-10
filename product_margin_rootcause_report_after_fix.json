@@ -1,7 +1,7 @@
 {
   "period": {
     "start": "1970-01-01T00:00:00.000Z",
-    "end": "2026-03-10T20:08:21.945Z"
+    "end": "2026-03-10T20:14:39.792Z"
   },
   "anomalies_total": 2,
   "high_priority": 2,
@@ -16,7 +16,7 @@
       "quantity_sold": 4,
       "total_sales": 27.69,
       "total_cost": 0,
-      "total_profit": 27.69,
+      "total_profit": 1.02,
       "cost_to_sales_pct": 0,
       "diagnostics": {
         "cogs_rows": 2,
@@ -41,7 +41,7 @@
       "quantity_sold": 48,
       "total_sales": 114.95,
       "total_cost": 0,
-      "total_profit": 114.95,
+      "total_profit": 14.95,
       "cost_to_sales_pct": 0,
       "diagnostics": {
         "cogs_rows": 3,

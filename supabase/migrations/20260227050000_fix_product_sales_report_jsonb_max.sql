@@ -1288,7 +1288,7 @@ begin
                     coalesce(sa.avg_cost, mi.cost_price, 0)
                       * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
                   )
-                  * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                  * greatest(least(coalesce(adj.returned_sales_effective, 0), coalesce(sl.net_sales, 0)), 0)
                   / nullif(coalesce(sl.net_sales, 0), 0)
                 )
               else
@@ -1415,7 +1415,7 @@ begin
                         coalesce(sa.avg_cost, mi.cost_price, 0)
                           * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
                       )
-                      * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                      * greatest(least(coalesce(adj.returned_sales_effective, 0), coalesce(sl.net_sales, 0)), 0)
                       / nullif(coalesce(sl.net_sales, 0), 0)
                     )
                   else
@@ -1494,7 +1494,7 @@ begin
                       coalesce(sa.avg_cost, mi.cost_price, 0)
                         * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
                     )
-                    * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                    * greatest(least(coalesce(adj.returned_sales_effective, 0), coalesce(sl.net_sales, 0)), 0)
                     / nullif(coalesce(sl.net_sales, 0), 0)
                   )
                 else

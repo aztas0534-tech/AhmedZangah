@@ -1,0 +1,702 @@
+{
+  "po": [
+    {
+      "id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "po_number": "PO-MAIN-2026-000002",
+      "status": "completed",
+      "currency": "YER",
+      "fx_rate": "0.002336448598130841",
+      "total_amount": "70515",
+      "purchase_date": "2026-01-27T21:00:00.000Z"
+    },
+    {
+      "id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "po_number": "PO-MAIN-2026-000003",
+      "status": "completed",
+      "currency": "SAR",
+      "fx_rate": "1",
+      "total_amount": "70515",
+      "purchase_date": "2026-02-12T21:00:00.000Z"
+    }
+  ],
+  "rec": [
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "qty_received": "900",
+      "received_cost": "151.401600"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "qty_received": "3000",
+      "received_cost": "4200.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "qty_received": "480",
+      "received_cost": "2799.9999999999999840"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "qty_received": "1200",
+      "received_cost": "8000.0000000000000400"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+      "qty_received": "325",
+      "received_cost": "6825.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "qty_received": "360",
+      "received_cost": "1890.0000000000000000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "qty_received": "600",
+      "received_cost": "133.177800"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "qty_received": "3000",
+      "received_cost": "196.263000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+      "qty_received": "325",
+      "received_cost": "15.946125"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "qty_received": "480",
+      "received_cost": "2499.9999999999999840"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "qty_received": "20",
+      "received_cost": "1000.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "qty_received": "600",
+      "received_cost": "9499.9999999999999800"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "qty_received": "600",
+      "received_cost": "58.878600"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "qty_received": "600",
+      "received_cost": "9100.0000000000000200"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "qty_received": "360",
+      "received_cost": "2009.9999999999999880"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "qty_received": "200",
+      "received_cost": "65.420600"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "qty_received": "360",
+      "received_cost": "2189.9999999999999880"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "qty_received": "20",
+      "received_cost": "2.336440"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "qty_received": "900",
+      "received_cost": "5400.0000000000000000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "qty_received": "480",
+      "received_cost": "140.186880"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "qty_received": "200",
+      "received_cost": "7000.0000000000000000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "qty_received": "600",
+      "received_cost": "127.570200"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "qty_received": "150",
+      "received_cost": "1800.0000000000000000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "qty_received": "1200",
+      "received_cost": "224.299200"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "qty_received": "150",
+      "received_cost": "25.233600"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "qty_received": "480",
+      "received_cost": "78.504480"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "qty_received": "360",
+      "received_cost": "4200.0000000000000120"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "qty_received": "360",
+      "received_cost": "58.878360"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "qty_received": "360",
+      "received_cost": "56.355120"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "qty_received": "360",
+      "received_cost": "61.401960"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "qty_received": "360",
+      "received_cost": "52.990560"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "qty_received": "600",
+      "received_cost": "2100.0000000000000000"
+    }
+  ],
+  "ret": [
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "qty_returned": "75",
+      "returned_cost": "5400"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "qty_returned": "40",
+      "returned_cost": "2800"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "qty_returned": "30",
+      "returned_cost": "1890"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "qty_returned": "150",
+      "returned_cost": "4200"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "qty_returned": "100",
+      "returned_cost": "9500"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "qty_returned": "50",
+      "returned_cost": "2100"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "qty_returned": "20",
+      "returned_cost": "2500"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "qty_returned": "100",
+      "returned_cost": "8000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "qty_returned": "60",
+      "returned_cost": "4200"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "qty_returned": "360",
+      "returned_cost": "24120"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "qty_returned": "50",
+      "returned_cost": "2100"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "qty_returned": "30",
+      "returned_cost": "2010"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "qty_returned": "20",
+      "returned_cost": "1000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "qty_returned": "40",
+      "returned_cost": "2800"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "qty_returned": "100",
+      "returned_cost": "9500"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "qty_returned": "100",
+      "returned_cost": "9100"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "qty_returned": "75",
+      "returned_cost": "5400"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "qty_returned": "50",
+      "returned_cost": "7000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "qty_returned": "60",
+      "returned_cost": "4200"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "qty_returned": "30",
+      "returned_cost": "2190"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "qty_returned": "3000",
+      "returned_cost": "84000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "qty_returned": "100",
+      "returned_cost": "8000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+      "qty_returned": "325",
+      "returned_cost": "6825"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+      "qty_returned": "325",
+      "returned_cost": "6825"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "qty_returned": "20",
+      "returned_cost": "2500"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "qty_returned": "20",
+      "returned_cost": "1000"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "qty_returned": "50",
+      "returned_cost": "7000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "qty_returned": "30",
+      "returned_cost": "2190"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "qty_returned": "100",
+      "returned_cost": "9100"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "qty_returned": "25",
+      "returned_cost": "1800"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "qty_returned": "25",
+      "returned_cost": "1800"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "qty_returned": "30",
+      "returned_cost": "1890"
+    }
+  ],
+  "batches": [
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "f4d39978-5f43-4969-a3ff-35b144450fd4",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "remaining_qty": "131",
+      "unit_cost": "0.168224"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "85863a99-2f7c-4b73-8ffb-48c3ae421344",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "remaining_qty": "3000",
+      "unit_cost": "0.065421"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "remaining_qty": "562",
+      "unit_cost": "0.098131"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "8d023639-f2fa-4ff0-90e6-9854569cc675",
+      "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+      "remaining_qty": "323",
+      "unit_cost": "0.049065"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "df50c459-31f0-435d-9b41-1fbbf30d15d4",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "remaining_qty": "336",
+      "unit_cost": "0.163551"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "ca20926d-9e9c-442a-8662-926e7232d50d",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "remaining_qty": "324",
+      "unit_cost": "0.156542"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "91c4b45c-80ae-4f30-8adf-f6f058d2ba8a",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "remaining_qty": "840",
+      "unit_cost": "0.168224"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "b9ce6039-7b9b-4f8a-9d2f-d703dc2dbcf4",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "remaining_qty": "346",
+      "unit_cost": "0.147196"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "f64960ce-b721-4c96-bd28-feb18e3b38cd",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "remaining_qty": "1184",
+      "unit_cost": "0.186916"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "1d552954-45d7-428a-a049-b2949059a498",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "remaining_qty": "192",
+      "unit_cost": "0.327103"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "758ac83f-c73e-48fe-b072-d3772a1c5851",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "remaining_qty": "588",
+      "unit_cost": "0.221963"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "db70c252-cf81-49e0-bad4-d5c93bd0180c",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "remaining_qty": "312",
+      "unit_cost": "0.170561"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "847236e2-89c2-4691-9ed6-0038eb176a10",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "remaining_qty": "16",
+      "unit_cost": "0.116822"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "5ebf0688-0697-4377-9871-95843188f147",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "remaining_qty": "480",
+      "unit_cost": "0.292056"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "da497bc0-9e7a-4d56-8e7a-378de4950434",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "remaining_qty": "480",
+      "unit_cost": "0.163551"
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "batch_id": "575b8ee8-ea53-47f4-af2a-b70004334517",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "remaining_qty": "587",
+      "unit_cost": "0.212617"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "d556cee1-9460-4f94-bd9a-1166dc9270b0",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "remaining_qty": "150",
+      "unit_cost": "12.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "3887e142-0cab-4e39-aac3-7ac66177a8f9",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "remaining_qty": "3000",
+      "unit_cost": "1.4000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "0e92b972-8333-41e8-9ddc-cb2e34e8e7f9",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "remaining_qty": "600",
+      "unit_cost": "3.5000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "e162049b-0635-4660-bf6c-9179a9db4f02",
+      "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+      "remaining_qty": "325",
+      "unit_cost": "21.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "ce37ae84-c148-485b-a4b0-a06431f25f79",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "remaining_qty": "360",
+      "unit_cost": "11.6666666666666667"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "793cae3c-1057-48b5-a36b-af21a9f33dc4",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "remaining_qty": "360",
+      "unit_cost": "5.5833333333333333"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "315aaf05-bea9-4263-a30a-cfff2a279be3",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "remaining_qty": "900",
+      "unit_cost": "6.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "b4002921-55e3-423e-a3c1-886099319c6c",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "remaining_qty": "360",
+      "unit_cost": "5.2500000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "9be3a5d3-6335-409c-ab19-7653ac8e7315",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "remaining_qty": "1200",
+      "unit_cost": "6.6666666666666667"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "ed4400aa-cfb7-4807-913b-f77d60726d06",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "remaining_qty": "200",
+      "unit_cost": "35.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "1a20ee3b-68e0-4515-bf81-9a0f85e94197",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "remaining_qty": "600",
+      "unit_cost": "15.8333333333333333"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "3eef0dbb-de2a-410b-a419-c67e87db930d",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "remaining_qty": "360",
+      "unit_cost": "6.0833333333333333"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "6b38e6de-ee38-4240-a695-fe2d9b1d2cc4",
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "remaining_qty": "20",
+      "unit_cost": "50.0000000000000000"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "80ed9075-f0bc-433c-889c-138d83568289",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "remaining_qty": "480",
+      "unit_cost": "5.2083333333333333"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "ccc68aa7-e787-4b9a-bbc6-f8090d3d82e6",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "remaining_qty": "480",
+      "unit_cost": "5.8333333333333333"
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "batch_id": "70feaf7d-fc3a-4b34-89f5-e77ac29517d3",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "remaining_qty": "600",
+      "unit_cost": "15.1666666666666667"
+    }
+  ],
+  "names": [
+    {
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "name_ar": "ويفر ريتشوكو اصابع  بالشوكلاتة12باكت*24حبة"
+    },
+    {
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "name_ar": "حلوى ابو ملعقة نيو شوكو*12باكت*24حبة*18جم"
+    },
+    {
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "name_ar": "بسكويت اني براو ستار ابو نجمة *6باكت*24حبة*60جم"
+    },
+    {
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "name_ar": "مكرونة هوم سباجيتي طويل 20كيس*400جم"
+    },
+    {
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "name_ar": "كيك باندا 12باكت *12حبه*30جم"
+    },
+    {
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "name_ar": "بسكويت مون كبير*4باكت*24حبة*155جم "
+    },
+    {
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "name_ar": "كيك شوكو رول 12باكت*24**20جم"
+    },
+    {
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "name_ar": "لبان نيو بالون سارجل *24باكت*24*5حبات"
+    },
+    {
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "name_ar": "كيك جونيور 6باكت *24قطعه*40جم بالحليب"
+    },
+    {
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "name_ar": "بسكويت مون وسط*6باكت*60جم*24حبة*"
+    },
+    {
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "name_ar": "كيك اني براو هاو (حليب) *6باكت*24حبة*40جم"
+    },
+    {
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "name_ar": "كيك هاو فنجر اني *12باكت*24حبة*22جم نوعين"
+    },
+    {
+      "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+      "name_ar": "ببسي جوي كولا *24علبة حديد*250ملي"
+    },
+    {
+      "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+      "name_ar": "بسكويت ابو برنس عائلي *1*12حبة*500جم"
+    },
+    {
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "name_ar": "فطائر جاسمين اني *12باكت*40حبه*10جم"
+    },
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "name_ar": "شوكلاته بوكي بار اصابع 12*24*20جم"
+    }
+  ]
+}

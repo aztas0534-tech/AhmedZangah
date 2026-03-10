@@ -1592,6 +1592,34 @@ const ManageOrdersScreen: React.FC = () => {
         }
     };
 
+    const handlePurgePayment = async (orderId: string) => {
+        const confirmed = window.confirm(
+            '⚠️ تحذير: سيتم حذف جميع سجلات الدفع والقيود المحاسبية لهذا الطلب نهائياً.\n' +
+            'لن تظهر أي حركة في كشف حساب الطرف المالي.\n\n' +
+            'هذا الإجراء لا يمكن التراجع عنه. هل تريد المتابعة؟'
+        );
+        if (!confirmed) return;
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('Supabase غير مهيأ.');
+            const { data: result, error } = await supabase.rpc('purge_order_payment', {
+                p_order_id: orderId,
+                p_reason: 'دفعة خاطئة — حذف يدوي',
+            });
+            if (error) throw error;
+            const deleted = Number((result as any)?.deletedPayments ?? 0);
+            showNotification(`تم مسح ${deleted} دفعة وقيودها المحاسبية نهائياً.`, 'success');
+            try {
+                await fetchOrders();
+            } catch { /* non-critical */ }
+            await loadPaidSums(filteredAndSortedOrders.map(o => o.id));
+        } catch (error) {
+            const localized = localizeSupabaseError(error);
+            const raw = error instanceof Error ? error.message : '';
+            showNotification(localized || raw || 'فشل مسح الدفعة.', 'error');
+        }
+    };
+
     const addInStoreLine = () => {
         const id = inStoreSelectedItemId;
         if (!id) return;
@@ -2900,6 +2928,18 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Purge Payment — owner/accounting only */}
+                    {order.status === 'delivered' && Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt) && canManageAccounting && !isVoided && (
+                        <div className="col-span-2">
+                            <button
+                                onClick={() => handlePurgePayment(order.id)}
+                                className="w-full py-2 bg-red-700 text-white rounded hover:bg-red-800 transition text-sm font-semibold"
+                            >
+                                🗑️ مسح الدفعة نهائياً
+                            </button>
+                        </div>
+                    )}
+
                     {/* Quotation Actions */}
                     {Boolean((order as any).isDraft) && (
                         <div className="col-span-2 flex gap-2">
@@ -3534,6 +3574,16 @@ const ManageOrdersScreen: React.FC = () => {
                                                         </div>
                                                     ) : null;
 
+                                                    const hasPaidAtTbl = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
+                                                    const purgeAction = order.status === 'delivered' && hasPaidAtTbl && canManageAccounting && !isVoidedTbl ? (
+                                                        <button
+                                                            onClick={() => handlePurgePayment(order.id)}
+                                                            className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs"
+                                                        >
+                                                            🗑️ مسح الدفعة
+                                                        </button>
+                                                    ) : null;
+
                                                     if (Boolean((order as any).isDraft)) {
                                                         return (
                                                             <div className="flex flex-col gap-2">
@@ -3593,6 +3643,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     </button>
                                                                 )}
                                                                 {paymentActions}
+                                                                {purgeAction}
                                                             </div>
                                                         );
                                                     }
@@ -3632,6 +3683,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     </button>
                                                                 )}
                                                                 {paymentActions}
+                                                                {purgeAction}
                                                             </div>
                                                         );
                                                     }

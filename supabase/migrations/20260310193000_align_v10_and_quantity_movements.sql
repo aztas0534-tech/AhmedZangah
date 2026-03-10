@@ -21,13 +21,42 @@ language sql
 security definer
 set search_path = public
 as $$
-  select *
-  from public.get_product_sales_report_v9(
-    p_start_date,
-    p_end_date,
-    p_zone_id,
-    p_invoice_only
-  );
+  with base as (
+    select *
+    from public.get_product_sales_report_v9(
+      p_start_date,
+      p_end_date,
+      p_zone_id,
+      p_invoice_only
+    )
+  )
+  select
+    b.item_id,
+    b.item_name,
+    b.unit_type,
+    b.quantity_sold,
+    b.total_sales,
+    case
+      when coalesce(b.total_cost, 0) <= 0
+           and coalesce(b.total_sales, 0) > 0
+           and coalesce(b.total_profit, 0) >= 0
+           and coalesce(b.total_profit, 0) < coalesce(b.total_sales, 0)
+      then greatest(coalesce(b.total_sales, 0) - coalesce(b.total_profit, 0), 0)
+      else b.total_cost
+    end as total_cost,
+    case
+      when coalesce(b.total_cost, 0) <= 0
+           and coalesce(b.total_sales, 0) > 0
+           and coalesce(b.total_profit, 0) >= 0
+           and coalesce(b.total_profit, 0) < coalesce(b.total_sales, 0)
+      then coalesce(b.total_profit, 0)
+      else b.total_profit
+    end as total_profit,
+    b.current_stock,
+    b.reserved_stock,
+    b.current_cost_price,
+    b.avg_inventory
+  from base b;
 $$;
 
 revoke all on function public.get_product_sales_report_v10(timestamptz, timestamptz, uuid, boolean) from public;
