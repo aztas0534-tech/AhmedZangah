@@ -1151,6 +1151,26 @@ begin
 
   ),
 
+  sales_qty_cost as (
+
+    select
+
+      im.item_id::text as item_id_text,
+
+      sum(im.quantity) as qty_sold_cost
+
+    from public.inventory_movements im
+
+    join sales_orders so on so.id::text = im.reference_id
+
+    where im.reference_table = 'orders'
+
+      and im.movement_type = 'sale_out'
+
+    group by im.item_id::text
+
+  ),
+
   period_movements as (
 
     select
@@ -1236,56 +1256,16 @@ begin
     greatest(
       coalesce(sl.qty_sold, 0) - coalesce(rs.qty_returned, 0),
       coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0),
+      coalesce(cr.recorded_qty, 0) - coalesce(rqb.qty_returned_base, 0),
+      coalesce(sqc.qty_sold_cost, 0) - coalesce(rc.qty_returned_cost, 0),
       0
     ) as quantity_sold,
 
     greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) as total_sales,
 
-    greatest(
-      (
-        coalesce(
-          cr.recorded_cost,
-          coalesce(sa.avg_cost, mi.cost_price, 0)
-            * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
-        )
-      )
-      -
-      (
-        case
-          when coalesce(sl.net_sales, 0) > 0 then
-            least(
-              coalesce(
-                cr.recorded_cost,
-                coalesce(sa.avg_cost, mi.cost_price, 0)
-                  * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
-              ),
-              coalesce(
-                cr.recorded_cost,
-                coalesce(sa.avg_cost, mi.cost_price, 0)
-                  * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
-              )
-              * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
-              / nullif(coalesce(sl.net_sales, 0), 0)
-            )
-          else
-            least(
-              coalesce(rc.returned_cost, 0),
-              coalesce(
-                cr.recorded_cost,
-                coalesce(sa.avg_cost, mi.cost_price, 0)
-                  * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
-              )
-            )
-        end
-      ),
-      0
-    ) as total_cost,
-
-    (
-
-      greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
-
-      - greatest(
+    case
+      when greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) > 0
+        and greatest(
           (
             coalesce(
               cr.recorded_cost,
@@ -1323,7 +1303,215 @@ begin
             end
           ),
           0
+        ) > greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+        and greatest(
+          (
+            coalesce(
+              cr.recorded_cost,
+              coalesce(sa.avg_cost, mi.cost_price, 0)
+                * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+            )
+          )
+          -
+          (
+            case
+              when coalesce(sl.net_sales, 0) > 0 then
+                least(
+                  coalesce(
+                    cr.recorded_cost,
+                    coalesce(sa.avg_cost, mi.cost_price, 0)
+                      * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                  ),
+                  coalesce(
+                    cr.recorded_cost,
+                    coalesce(sa.avg_cost, mi.cost_price, 0)
+                      * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                  )
+                  * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                  / nullif(coalesce(sl.net_sales, 0), 0)
+                )
+              else
+                least(
+                  coalesce(rc.returned_cost, 0),
+                  coalesce(
+                    cr.recorded_cost,
+                    coalesce(sa.avg_cost, mi.cost_price, 0)
+                      * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                  )
+                )
+            end
+          ),
+          0
+        ) <= greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) * 1.03
+      then greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+      else greatest(
+        (
+          coalesce(
+            cr.recorded_cost,
+            coalesce(sa.avg_cost, mi.cost_price, 0)
+              * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+          )
         )
+        -
+        (
+          case
+            when coalesce(sl.net_sales, 0) > 0 then
+              least(
+                coalesce(
+                  cr.recorded_cost,
+                  coalesce(sa.avg_cost, mi.cost_price, 0)
+                    * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                ),
+                coalesce(
+                  cr.recorded_cost,
+                  coalesce(sa.avg_cost, mi.cost_price, 0)
+                    * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                )
+                * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                / nullif(coalesce(sl.net_sales, 0), 0)
+              )
+            else
+              least(
+                coalesce(rc.returned_cost, 0),
+                coalesce(
+                  cr.recorded_cost,
+                  coalesce(sa.avg_cost, mi.cost_price, 0)
+                    * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                )
+              )
+          end
+        ),
+        0
+      )
+    end as total_cost,
+
+    (
+
+      greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+
+      - (
+        case
+          when greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) > 0
+            and greatest(
+              (
+                coalesce(
+                  cr.recorded_cost,
+                  coalesce(sa.avg_cost, mi.cost_price, 0)
+                    * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                )
+              )
+              -
+              (
+                case
+                  when coalesce(sl.net_sales, 0) > 0 then
+                    least(
+                      coalesce(
+                        cr.recorded_cost,
+                        coalesce(sa.avg_cost, mi.cost_price, 0)
+                          * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                      ),
+                      coalesce(
+                        cr.recorded_cost,
+                        coalesce(sa.avg_cost, mi.cost_price, 0)
+                          * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                      )
+                      * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                      / nullif(coalesce(sl.net_sales, 0), 0)
+                    )
+                  else
+                    least(
+                      coalesce(rc.returned_cost, 0),
+                      coalesce(
+                        cr.recorded_cost,
+                        coalesce(sa.avg_cost, mi.cost_price, 0)
+                          * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                      )
+                    )
+                end
+              ),
+              0
+            ) > greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+            and greatest(
+              (
+                coalesce(
+                  cr.recorded_cost,
+                  coalesce(sa.avg_cost, mi.cost_price, 0)
+                    * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                )
+              )
+              -
+              (
+                case
+                  when coalesce(sl.net_sales, 0) > 0 then
+                    least(
+                      coalesce(
+                        cr.recorded_cost,
+                        coalesce(sa.avg_cost, mi.cost_price, 0)
+                          * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                      ),
+                      coalesce(
+                        cr.recorded_cost,
+                        coalesce(sa.avg_cost, mi.cost_price, 0)
+                          * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                      )
+                      * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                      / nullif(coalesce(sl.net_sales, 0), 0)
+                    )
+                  else
+                    least(
+                      coalesce(rc.returned_cost, 0),
+                      coalesce(
+                        cr.recorded_cost,
+                        coalesce(sa.avg_cost, mi.cost_price, 0)
+                          * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                      )
+                    )
+                end
+              ),
+              0
+            ) <= greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) * 1.03
+          then greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
+          else greatest(
+            (
+              coalesce(
+                cr.recorded_cost,
+                coalesce(sa.avg_cost, mi.cost_price, 0)
+                  * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+              )
+            )
+            -
+            (
+              case
+                when coalesce(sl.net_sales, 0) > 0 then
+                  least(
+                    coalesce(
+                      cr.recorded_cost,
+                      coalesce(sa.avg_cost, mi.cost_price, 0)
+                        * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                    ),
+                    coalesce(
+                      cr.recorded_cost,
+                      coalesce(sa.avg_cost, mi.cost_price, 0)
+                        * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                    )
+                    * greatest(least(coalesce(rs.returned_sales, 0), coalesce(sl.net_sales, 0)), 0)
+                    / nullif(coalesce(sl.net_sales, 0), 0)
+                  )
+                else
+                  least(
+                    coalesce(rc.returned_cost, 0),
+                    coalesce(
+                      cr.recorded_cost,
+                      coalesce(sa.avg_cost, mi.cost_price, 0)
+                        * greatest(coalesce(sl.qty_base, 0) - coalesce(rqb.qty_returned_base, 0), 0)
+                    )
+                  )
+              end
+            ),
+            0
+          )
+        end
+      )
 
     ) as total_profit,
 
@@ -1368,6 +1556,8 @@ begin
   left join period_movements pm on pm.item_id_text = k.item_id_text
 
   left join cogs_recorded cr on cr.item_id_text = k.item_id_text
+
+  left join sales_qty_cost sqc on sqc.item_id_text = k.item_id_text
 
   where (coalesce(sl.qty_sold, 0) + coalesce(rs.qty_returned, 0)) > 0
 

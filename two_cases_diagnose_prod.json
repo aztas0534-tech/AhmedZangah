@@ -1,0 +1,97 @@
+{
+  "generated_at": "2026-03-10T19:48:25.047Z",
+  "items": [
+    {
+      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+      "item_name": {
+        "ar": "تونة حلوة كبير *48حبة*160جم",
+        "en": ""
+      },
+      "unit_type": "unit_1770928368342",
+      "cost_price": "0"
+    },
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "item_name": {
+        "ar": "شوكلاته بوكي بار اصابع 12*24*20جم",
+        "en": ""
+      },
+      "unit_type": "unit_1770927292556",
+      "cost_price": "0"
+    }
+  ],
+  "report": [
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "item_name": {
+        "ar": "شوكلاته بوكي بار اصابع 12*24*20جم",
+        "en": ""
+      },
+      "quantity_sold": "4",
+      "total_sales": "0",
+      "total_cost": "0.000000",
+      "total_profit": "0.000000"
+    },
+    {
+      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+      "item_name": {
+        "ar": "تونة حلوة كبير *48حبة*160جم",
+        "en": ""
+      },
+      "quantity_sold": "48",
+      "total_sales": "0",
+      "total_cost": "0",
+      "total_profit": "0"
+    }
+  ],
+  "movement": [
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "sale_out_qty": "16",
+      "sale_out_cost": "2.305296",
+      "return_in_qty": "12",
+      "return_in_cost": "2.242992"
+    },
+    {
+      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+      "sale_out_qty": "144",
+      "sale_out_cost": "299.9999999999999952",
+      "return_in_qty": "96",
+      "return_in_cost": "199.9999999999999968"
+    }
+  ],
+  "oic": [
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "oic_qty": "16",
+      "oic_cost": "2.305296"
+    },
+    {
+      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+      "oic_qty": "144",
+      "oic_cost": "300"
+    }
+  ],
+  "purchase": [
+    {
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "purchase_in_rows": "3",
+      "first_purchase_at": "2026-02-12T22:41:38.360Z",
+      "last_purchase_at": "2026-02-12T23:10:11.971Z",
+      "sample_currency": "YER",
+      "sample_fx_rate": "0.002336448598130841",
+      "max_purchase_unit_cost": "6.84523718799583750279903694072735453172",
+      "min_purchase_unit_cost": "0.186916"
+    },
+    {
+      "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+      "purchase_in_rows": "1",
+      "first_purchase_at": "2026-02-20T18:34:25.356Z",
+      "last_purchase_at": "2026-02-20T18:34:25.356Z",
+      "sample_currency": "",
+      "sample_fx_rate": "0",
+      "max_purchase_unit_cost": "2.0833333333333333",
+      "min_purchase_unit_cost": "2.0833333333333333"
+    }
+  ]
+}
