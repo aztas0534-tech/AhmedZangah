@@ -3,11 +3,12 @@ import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supaba
 import { localizeSupabaseError } from '../utils/errorUtils';
 import { SalesReturn, SalesReturnItem, Order } from '../types';
 import { useAuth } from './AuthContext';
+import { roundMoneyByCode as sharedRoundMoneyByCode } from '../utils/currencyDecimals';
 
 interface SalesReturnContextType {
   returns: SalesReturn[];
   loading: boolean;
-  createReturn: (order: Order, items: SalesReturnItem[], reason?: string, refundMethod?: 'cash' | 'network' | 'kuraimi') => Promise<SalesReturn>;
+  createReturn: (order: Order, items: SalesReturnItem[], reason?: string, refundMethod?: 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit') => Promise<SalesReturn>;
   processReturn: (returnId: string) => Promise<void>;
   getReturnsByOrder: (orderId: string) => Promise<SalesReturn[]>;
 }
@@ -19,6 +20,10 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
   const supabase = getSupabaseClient();
+
+  const roundMoneyByCode = (value: number, code: string) => {
+    return sharedRoundMoneyByCode(value, code);
+  };
 
   const mapRowToSalesReturn = (row: any): SalesReturn => {
     return {
@@ -105,13 +110,23 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, [fetchReturns, supabase, user?.id]);
 
-  const createReturn = async (order: Order, items: SalesReturnItem[], reason?: string, refundMethod: 'cash' | 'network' | 'kuraimi' = 'cash') => {
+  const createReturn = async (order: Order, items: SalesReturnItem[], reason?: string, refundMethod: 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit' = 'cash') => {
     try {
       setLoading(true);
-      
-      const itemsTotal = items.reduce((sum, item) => sum + item.total, 0);
+      const currency = String((order as any)?.currency || '').trim().toUpperCase() || 'YER';
+      const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      const itemsTotal = items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
       const deliveryFee = Number((order as any)?.deliveryFee ?? (order as any)?.delivery_fee ?? 0) || 0;
-      const totalRefundAmount = Math.max(0, itemsTotal - Math.max(0, deliveryFee));
+      const itemsTotalRounded = roundMoneyByCode(itemsTotal, currency);
+      const deliveryFeeRounded = roundMoneyByCode(Math.max(0, deliveryFee), currency);
+      const grossSubtotal = Number((order as any)?.subtotal ?? 0) || 0;
+      const discountAmount = Number((order as any)?.discountAmount ?? (order as any)?.discount_amount ?? 0) || 0;
+      const netSubtotal = Math.max(0, grossSubtotal - discountAmount);
+      const netSubtotalRounded = roundMoneyByCode(netSubtotal, currency);
+      const totalRefundAmount = Math.min(
+        netSubtotalRounded,
+        Math.max(0, itemsTotalRounded - deliveryFeeRounded)
+      );
 
       const returnData = {
         order_id: order.id,
@@ -143,21 +158,44 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       })();
 
+      const existingKey = typeof (recentDraft as any)?.idempotency_key === 'string' ? String((recentDraft as any).idempotency_key) : '';
+      const payload: any = { ...returnData, idempotency_key: existingKey || idempotencyKey };
+
       const { data, error } = recentDraft?.id
         ? await supabase!
           .from('sales_returns')
-          .update({ ...returnData, updated_at: new Date().toISOString() } as any)
+          .update({ ...payload, updated_at: new Date().toISOString() } as any)
           .eq('id', recentDraft.id)
           .select()
           .single()
         : await supabase!
           .from('sales_returns')
-          .insert([returnData])
+          .insert([payload])
           .select()
           .single();
 
-      if (error) throw error;
-      
+      if (error) {
+        const code = String((error as any)?.code || '');
+        if (code === '23505') {
+          const { data: existing, error: existingErr } = await supabase!
+            .from('sales_returns')
+            .select('*')
+            .eq('order_id', order.id)
+            .eq('idempotency_key', payload.idempotency_key)
+            .limit(1)
+            .maybeSingle();
+          if (!existingErr && existing) {
+            const mapped = mapRowToSalesReturn(existing);
+            setReturns(prev => {
+              const next = prev.filter(r => r.id !== mapped.id);
+              return [mapped, ...next];
+            });
+            return mapped;
+          }
+        }
+        throw error;
+      }
+
       const mapped = mapRowToSalesReturn(data);
       setReturns(prev => {
         const next = prev.filter(r => r.id !== mapped.id);
@@ -175,16 +213,55 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const processReturn = async (returnId: string) => {
     try {
       setLoading(true);
-      
-      // Call the RPC function we defined in the migration
-      const { error } = await supabase!.rpc('process_sales_return', {
-        p_return_id: returnId
-      });
 
-      if (error) throw error;
+      const attemptProcess = async () => {
+        const { error } = await supabase!.rpc('process_sales_return', { p_return_id: returnId });
+        if (error) throw error;
+      };
+
+      try {
+        await attemptProcess();
+      } catch (err: any) {
+        const raw = String(err?.message || '');
+        if (!/return amount exceeds order net subtotal/i.test(raw)) throw err;
+
+        const { data: retRow, error: retErr } = await supabase!
+          .from('sales_returns')
+          .select('id,order_id,total_refund_amount,status')
+          .eq('id', returnId)
+          .maybeSingle();
+        if (retErr) throw err;
+        if (!retRow || String((retRow as any).status || '') !== 'draft') throw err;
+
+        const orderId = String((retRow as any).order_id || '').trim();
+        if (!orderId) throw err;
+
+        const { data: orderRow, error: orderErr } = await supabase!
+          .from('orders')
+          .select('id,subtotal,discount,tax_amount,currency,data')
+          .eq('id', orderId)
+          .maybeSingle();
+        if (orderErr || !orderRow) throw err;
+
+        const currency = String((orderRow as any)?.currency || (orderRow as any)?.data?.currency || '').trim().toUpperCase() || 'YER';
+        const grossSubtotal = Number((orderRow as any)?.data?.subtotal ?? (orderRow as any)?.subtotal ?? 0) || 0;
+        const discountAmount = Number((orderRow as any)?.data?.discountAmount ?? (orderRow as any)?.discount ?? 0) || 0;
+        const netSubtotalRounded = roundMoneyByCode(Math.max(0, grossSubtotal - discountAmount), currency);
+        const existing = roundMoneyByCode(Number((retRow as any)?.total_refund_amount ?? 0) || 0, currency);
+        const corrected = Math.min(existing, netSubtotalRounded);
+
+        const { error: updErr } = await supabase!
+          .from('sales_returns')
+          .update({ total_refund_amount: corrected, updated_at: new Date().toISOString() } as any)
+          .eq('id', returnId)
+          .eq('status', 'draft');
+        if (updErr) throw err;
+
+        await attemptProcess();
+      }
 
       // Update local state
-      setReturns(prev => 
+      setReturns(prev =>
         prev.map(r => r.id === returnId ? { ...r, status: 'completed' } : r)
       );
 
@@ -202,10 +279,10 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
       .from('sales_returns')
       .select('*')
       .eq('order_id', orderId);
-      
+
     if (error) {
-        console.error("Error fetching returns for order:", error);
-        return [];
+      console.error("Error fetching returns for order:", error);
+      return [];
     }
     return (data || []).map(mapRowToSalesReturn);
   };

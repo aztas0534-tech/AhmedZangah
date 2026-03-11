@@ -1,0 +1,18 @@
+stock_management cols: {
+  code: 'PGRST202',
+  details: 'Searched for the function public.check_db_state with parameter p_query or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.',
+  hint: 'Perhaps you meant to call the function public.get_fx_rate',
+  message: 'Could not find the function public.check_db_state(p_query) in the schema cache'
+}
+orders triggers: {
+  code: 'PGRST202',
+  details: 'Searched for the function public.check_db_state with parameter p_query or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.',
+  hint: 'Perhaps you meant to call the function public.get_fx_rate',
+  message: 'Could not find the function public.check_db_state(p_query) in the schema cache'
+}
+IM triggers: {
+  code: 'PGRST202',
+  details: 'Searched for the function public.check_db_state with parameter p_query or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.',
+  hint: 'Perhaps you meant to call the function public.get_fx_rate',
+  message: 'Could not find the function public.check_db_state(p_query) in the schema cache'
+}

@@ -9,6 +9,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { printContent } from '../../utils/printUtils';
 import PrintablePartyLedgerStatement from '../../components/admin/documents/PrintablePartyLedgerStatement';
 import { formatSourceRefAr, localizeOpenStatusAr } from '../../utils/displayLabels';
+import { translateAccountName } from '../../utils/accountUtils';
 
 type StatementRow = {
   occurred_at: string;
@@ -29,6 +30,8 @@ type StatementRow = {
   open_base_amount: number | null;
   open_foreign_amount: number | null;
   open_status: string | null;
+  account_normal_balance?: string | null;
+  running_foreign_balance?: number | null;
   allocations?: any;
 };
 
@@ -37,7 +40,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const location = useLocation();
   const { settings } = useSettings();
   const { showNotification } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [partyName, setPartyName] = useState<string>('—');
   const [partyType, setPartyType] = useState<string>('party');
@@ -57,7 +60,22 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const canManageAccounting = Boolean(hasPermission?.('accounting.manage'));
   const [baseCurrency, setBaseCurrency] = useState<string>('');
   const [printCurrency, setPrintCurrency] = useState<string>('');
-  const [printFxRate, setPrintFxRate] = useState<number>(1);
+  const [currencyBalances, setCurrencyBalances] = useState<{ currency_code: string; account_code: string; account_name: string; foreign_balance: number; base_balance: number }[]>([]);
+  const [partyCurrencies, setPartyCurrencies] = useState<string[]>([]);
+
+  const loadCurrencyBalances = async () => {
+    if (!partyId) return;
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const [{ data: balData }, { data: pcData }] = await Promise.all([
+        supabase.rpc('get_party_balance_by_currency', { p_party_id: partyId } as any),
+        supabase.from('party_currencies').select('currency_code').eq('party_id', partyId),
+      ]);
+      setCurrencyBalances((Array.isArray(balData) ? balData : []) as any);
+      setPartyCurrencies((Array.isArray(pcData) ? pcData : []).map((r: any) => String(r.currency_code || '')).filter(Boolean));
+    } catch { /* silent */ }
+  };
 
   const load = async () => {
     if (!partyId) return;
@@ -74,13 +92,16 @@ const PartyLedgerStatementScreen: React.FC = () => {
       setPartyName(String((partyRow as any)?.name || '—'));
       setPartyType(String((partyRow as any)?.party_type || 'party'));
 
-      const { data, error } = await supabase.rpc('party_ledger_statement_v2', {
-        p_party_id: partyId,
-        p_account_code: accountCode.trim() || null,
-        p_currency: currency.trim().toUpperCase() || null,
-        p_start: start.trim() || null,
-        p_end: end.trim() || null,
-      } as any);
+      const [{ data, error }] = await Promise.all([
+        supabase.rpc('party_ledger_statement_v2', {
+          p_party_id: partyId,
+          p_account_code: accountCode.trim() || null,
+          p_currency: currency.trim().toUpperCase() || null,
+          p_start: start.trim() || null,
+          p_end: end.trim() || null,
+        } as any),
+        loadCurrencyBalances(),
+      ]);
       if (error) throw error;
       setRows((Array.isArray(data) ? data : []) as any);
 
@@ -195,40 +216,28 @@ const PartyLedgerStatementScreen: React.FC = () => {
     void run();
     return () => { cancelled = true; };
   }, [partyId, partyType, rows.length]);
-  useEffect(() => {
-    const code = String(printCurrency || '').trim().toUpperCase();
-    if (!code || !baseCurrency) {
-      setPrintFxRate(1);
-      return;
-    }
-    if (code === baseCurrency) {
-      setPrintFxRate(1);
-      return;
-    }
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const { data, error } = await supabase.rpc('get_fx_rate_rpc', {
-          p_currency_code: code,
-        } as any);
-        if (error) throw error;
-        const n = Number(data);
-        const rate = Number.isFinite(n) && n > 0 ? n : 0;
-        if (!cancelled) setPrintFxRate(rate || 0);
-      } catch {
-        if (!cancelled) setPrintFxRate(0);
+  const amountInRowCurrency = (r: StatementRow) => {
+    const fa = r.foreign_amount;
+    if (fa == null) return Number(r.base_amount || 0) || 0;
+    return Number(fa || 0) || 0;
+  };
+
+  const summaries = useMemo(() => {
+    const map = new Map<string, { key: string; accountCode: string; currencyCode: string; debit: number; credit: number; last: number }>();
+    for (const r of rows) {
+      const account = String(r.account_code || '').trim();
+      const curr = String(r.currency_code || '').trim().toUpperCase() || '—';
+      const key = `${account}|${curr}`;
+      if (!map.has(key)) {
+        map.set(key, { key, accountCode: account, currencyCode: curr, debit: 0, credit: 0, last: 0 });
       }
-    };
-    void run();
-    return () => { cancelled = true; };
-  }, [printCurrency, baseCurrency]);
-  const totals = useMemo(() => {
-    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? Number(r.base_amount || 0) : 0), 0);
-    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? Number(r.base_amount || 0) : 0), 0);
-    const last = rows.length ? rows[rows.length - 1].running_balance : 0;
-    return { debit, credit, last };
+      const s = map.get(key)!;
+      const amt = amountInRowCurrency(r);
+      if (r.direction === 'debit') s.debit += amt;
+      if (r.direction === 'credit') s.credit += amt;
+      s.last = Number((r.running_foreign_balance ?? r.running_balance) ?? 0) || 0;
+    }
+    return Array.from(map.values());
   }, [rows]);
 
   const handlePrint = async () => {
@@ -242,10 +251,6 @@ const PartyLedgerStatementScreen: React.FC = () => {
       showNotification('العملة المختارة غير معرفة ضمن النظام.', 'error');
       return;
     }
-    if (desired && desired !== baseCurrency && !(printFxRate > 0)) {
-      showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة اليوم. أضف السعر من شاشة أسعار الصرف.', 'error');
-      return;
-    }
     setPrinting(true);
     try {
       const brand = {
@@ -254,6 +259,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
         contactNumber: String(settings?.contactNumber || ''),
         logoUrl: String(settings?.logoUrl || ''),
       };
+      const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
       const content = renderToString(
         <PrintablePartyLedgerStatement
           brand={brand}
@@ -264,12 +270,13 @@ const PartyLedgerStatementScreen: React.FC = () => {
           start={start.trim() || null}
           end={end.trim() || null}
           rows={rows}
-          printCurrencyCode={desired || baseCurrency || null}
-          printFxRate={desired ? (desired === baseCurrency ? 1 : (printFxRate || 0)) : 1}
+          printCurrencyCode={desired || null}
+          printFxRate={null}
           baseCurrencyCode={baseCurrency || null}
+          audit={{ printedBy }}
         />
       );
-      printContent(content, `كشف حساب طرف • ${partyName || partyId.slice(-8).toUpperCase()}`, { page: 'A4' });
+      printContent(content, `كشف حساب طرف • ${partyName || partyId.slice(-8).toUpperCase()}`, { page: 'A5' });
       const supabase = getSupabaseClient();
       if (supabase) {
         try {
@@ -314,13 +321,13 @@ const PartyLedgerStatementScreen: React.FC = () => {
       if (!supabase) throw new Error('supabase not available');
       const { data, error } = canManageAccounting
         ? await supabase.rpc('backfill_party_ledger_for_existing_entries', {
-            p_batch: 5000,
-            p_only_party_id: partyId,
-          } as any)
+          p_batch: 5000,
+          p_only_party_id: partyId,
+        } as any)
         : await supabase.rpc('backfill_party_ledger_entries_for_party', {
-            p_party_id: partyId,
-            p_batch: 5000,
-          } as any);
+          p_party_id: partyId,
+          p_batch: 5000,
+        } as any);
       if (error) throw error;
       const count = Number(data) || 0;
       setLastBackfillCount(count);
@@ -330,6 +337,27 @@ const PartyLedgerStatementScreen: React.FC = () => {
       showNotification(String(e?.message || 'تعذر تحديث دفتر الطرف'), 'error');
     } finally {
       setBackfilling(false);
+    }
+  };
+
+  const canVoid = Boolean(hasPermission?.('accounting.void'));
+  const [voiding, setVoiding] = useState<string | null>(null);
+  const voidEntry = async (entryId: string) => {
+    if (!canVoid) { showNotification('ليس لديك صلاحية إبطال القيود.', 'error'); return; }
+    const reason = window.prompt('سبب الإبطال/العكس؟');
+    if (!reason?.trim()) return;
+    setVoiding(entryId);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { error } = await supabase.rpc('void_journal_entry', { p_entry_id: entryId, p_reason: reason.trim() } as any);
+      if (error) throw error;
+      showNotification('تم إبطال/عكس القيد بنجاح.', 'success');
+      await load();
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر إبطال القيد.'), 'error');
+    } finally {
+      setVoiding(null);
     }
   };
 
@@ -459,12 +487,8 @@ const PartyLedgerStatementScreen: React.FC = () => {
           />
           <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
             {printCurrency
-              ? (printCurrency === baseCurrency
-                  ? `ستتم الطباعة بالعملة الأساسية (${baseCurrency}).`
-                  : (printFxRate > 0
-                      ? `سعر الصرف: ${baseCurrency} لكل 1 ${printCurrency} = ${printFxRate}`
-                      : 'لا يوجد سعر صرف لهذه العملة اليوم.'))
-              : 'اتركها فارغة للطباعة بالعملة الأساسية.'}
+              ? 'سيتم طباعة كشف الحساب بهذه العملة (بدون تحويل).'
+              : 'اتركها فارغة لطباعة الكشف كما هو (قد يحتوي أكثر من عملة).'}
           </div>
         </div>
         <div className="flex items-end gap-2">
@@ -496,10 +520,82 @@ const PartyLedgerStatementScreen: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-        <div className="text-gray-700 dark:text-gray-200">إجمالي مدين: <span className="font-mono">{totals.debit.toFixed(2)}</span></div>
-        <div className="text-gray-700 dark:text-gray-200">إجمالي دائن: <span className="font-mono">{totals.credit.toFixed(2)}</span></div>
-        <div className="text-gray-700 dark:text-gray-200">الرصيد الحالي: <span className="font-mono">{totals.last.toFixed(2)}</span></div>
+      {/* Per-currency balance cards */}
+      {currencyBalances.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          {currencyBalances.map((cb, i) => (
+            <div
+              key={`${cb.currency_code}-${cb.account_code}-${i}`}
+              className="relative overflow-hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 cursor-pointer hover:shadow-xl transition-shadow"
+              onClick={() => { setCurrency(cb.currency_code); void load(); }}
+            >
+              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary-500 to-gold-500 rounded-l-xl" />
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-lg font-bold text-primary-700 dark:text-primary-300 font-mono">{cb.currency_code}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{cb.account_code}</span>
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{cb.account_name}</div>
+              <div className="text-xl font-bold text-gray-900 dark:text-white font-mono" dir="ltr">
+                {Number(cb.foreign_balance || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              {baseCurrency && cb.currency_code.toUpperCase() !== baseCurrency.toUpperCase() && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1" dir="ltr">
+                  ≈ {Number(cb.base_balance || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCurrency}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Party registered currencies */}
+      {partyCurrencies.length > 1 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-3 mb-4 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500 dark:text-gray-400">عملات الطرف:</span>
+          {partyCurrencies.map((c) => (
+            <button
+              key={c}
+              onClick={() => { setCurrency(c); }}
+              className={`px-3 py-1 rounded-full text-xs font-mono transition-colors ${currency.toUpperCase() === c.toUpperCase()
+                ? 'bg-primary-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-primary-100 dark:hover:bg-primary-900/30'
+                }`}
+            >
+              {c}
+            </button>
+          ))}
+          {currency && (
+            <button
+              onClick={() => setCurrency('')}
+              className="px-3 py-1 rounded-full text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-red-100 dark:hover:bg-red-900/30"
+            >
+              الكل ×
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 text-sm">
+        {summaries.length === 0 ? (
+          <div className="text-gray-500 dark:text-gray-400">لا توجد بيانات ملخصة.</div>
+        ) : summaries.length === 1 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="text-gray-700 dark:text-gray-200">إجمالي مدين: <span className="font-mono">{summaries[0].debit.toFixed(2)}</span> <span className="text-xs text-gray-500">{summaries[0].currencyCode}</span></div>
+            <div className="text-gray-700 dark:text-gray-200">إجمالي دائن: <span className="font-mono">{summaries[0].credit.toFixed(2)}</span> <span className="text-xs text-gray-500">{summaries[0].currencyCode}</span></div>
+            <div className="text-gray-700 dark:text-gray-200">الرصيد الحالي: <span className="font-mono">{summaries[0].last.toFixed(2)}</span> <span className="text-xs text-gray-500">{summaries[0].currencyCode}</span></div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {summaries.map((s) => (
+              <div key={s.key} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20">
+                <div className="text-xs text-gray-500 dark:text-gray-400">الحساب {s.accountCode} • {s.currencyCode}</div>
+                <div className="mt-1 text-gray-700 dark:text-gray-200">مدين: <span className="font-mono">{s.debit.toFixed(2)}</span></div>
+                <div className="text-gray-700 dark:text-gray-200">دائن: <span className="font-mono">{s.credit.toFixed(2)}</span></div>
+                <div className="text-gray-700 dark:text-gray-200">الرصيد: <span className="font-mono">{s.last.toFixed(2)}</span></div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {rows.length === 0 && aging && aging.total_outstanding > 0 && (
@@ -526,13 +622,14 @@ const PartyLedgerStatementScreen: React.FC = () => {
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العملة</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الرصيد</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">متبقي</th>
-                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المصدر</th>
+                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المصدر</th>
+                {canVoid && <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عمليات</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={canVoid ? 9 : 8} className="p-8 text-center text-gray-500 dark:text-gray-400">
                     لا توجد حركات. جرّب تعديل المرشحات (الفترة/العملة/الحساب) ثم اضغط "عرض".
                   </td>
                 </tr>
@@ -544,25 +641,55 @@ const PartyLedgerStatementScreen: React.FC = () => {
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
                       <div className="font-mono">{r.account_code}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{r.account_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {translateAccountName(r.account_name) !== r.account_name
+                          ? `${translateAccountName(r.account_name)} (${r.account_name})`
+                          : translateAccountName(r.account_name)}
+                      </div>
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {r.direction === 'debit' ? Number(r.base_amount || 0).toFixed(2) : '—'}
+                      {r.direction === 'debit' ? (
+                        <>
+                          {amountInRowCurrency(r).toFixed(2)}
+                          {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() && (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
+                          )}
+                        </>
+                      ) : '—'}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {r.direction === 'credit' ? Number(r.base_amount || 0).toFixed(2) : '—'}
+                      {r.direction === 'credit' ? (
+                        <>
+                          {amountInRowCurrency(r).toFixed(2)}
+                          {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() && (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.base_amount || 0).toFixed(2)} {baseCurrency})</div>
+                          )}
+                        </>
+                      ) : '—'}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono">
-                      {r.currency_code}
-                      {r.foreign_amount != null ? <span className="text-xs text-gray-500 dark:text-gray-400"> ({Number(r.foreign_amount).toFixed(2)})</span> : null}
+                      {String(r.currency_code || '').toUpperCase()}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
-                      {Number(r.running_balance || 0).toFixed(2)}
+                      {Number((r.running_foreign_balance ?? r.running_balance) ?? 0).toFixed(2)}
+                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">({Number(r.running_balance || 0).toFixed(2)} {baseCurrency})</div>
+                      ) : null}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
                       <div className="font-mono" dir="ltr">
-                        {r.open_base_amount == null ? '—' : Number(r.open_base_amount || 0).toFixed(2)}
+                        {(() => {
+                          const curr = String(r.currency_code || '').toUpperCase();
+                          const isBase = baseCurrency && curr === String(baseCurrency || '').toUpperCase();
+                          const primary = isBase ? r.open_base_amount : r.open_foreign_amount;
+                          return primary == null ? '—' : Number(primary || 0).toFixed(2);
+                        })()}
                       </div>
+                      {baseCurrency && String(r.currency_code || '').toUpperCase() !== String(baseCurrency || '').toUpperCase() ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono" dir="ltr">
+                          {r.open_base_amount == null ? '' : `(${Number(r.open_base_amount || 0).toFixed(2)} ${baseCurrency})`}
+                        </div>
+                      ) : null}
                       {r.open_status ? (
                         <div className="text-xs text-gray-500 dark:text-gray-400">
                           {localizeOpenStatusAr(r.open_status)}
@@ -577,6 +704,22 @@ const PartyLedgerStatementScreen: React.FC = () => {
                     <td className="p-4 text-gray-700 dark:text-gray-200">
                       <div className="text-xs">{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
                     </td>
+                    {canVoid && (
+                      <td className="p-4">
+                        {r.source_event !== 'void' && r.source_event !== 'reversal' ? (
+                          <button
+                            type="button"
+                            onClick={() => void voidEntry(r.journal_entry_id)}
+                            disabled={voiding === r.journal_entry_id}
+                            className="px-2 py-1 rounded text-xs bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 whitespace-nowrap"
+                          >
+                            {voiding === r.journal_entry_id ? 'جارٍ...' : 'إبطال'}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

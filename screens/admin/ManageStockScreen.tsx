@@ -10,8 +10,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 import RecordWastageModal from '../../components/admin/RecordWastageModal';
+import BatchLabel from '../../components/admin/documents/BatchLabel';
+import { renderToString } from 'react-dom/server';
+import { printContent } from '../../utils/printUtils';
 
 type StockRowProps = {
     item: MenuItem;
@@ -20,7 +24,7 @@ type StockRowProps = {
     baseCode: string;
     getCategoryLabel: (categoryKey: string, language: 'ar' | 'en') => string;
     getUnitLabel: (unitKey: UnitType | undefined, language: 'ar' | 'en') => string;
-    handleUpdateStock: (itemId: string, newQuantity: number, unit: string, batchId?: string) => Promise<void>;
+    handleUpdateStock: (itemId: string, newQuantity: number, unit: string, batchId?: string, minStock?: number) => Promise<void>;
     toggleHistory: (itemId: string) => Promise<void>;
     expandedHistoryItemId: string | null;
     historyLoadingItemId: string | null;
@@ -37,20 +41,37 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const reserved = Number(stock?.reservedQuantity ?? 0);
     const available = currentStock - reserved;
     const unit = String(stock?.unit ?? item.unitType ?? 'piece');
-    const threshold = Number(stock?.lowStockThreshold ?? 5);
+    const threshold = Number(stock?.minimumStockLevel ?? stock?.lowStockThreshold ?? 5);
     const isLowStock = available <= threshold;
     const itemName = item.name?.['ar'] || item.name?.en || '';
-    
+
     const [localStock, setLocalStock] = useState<string>(String(currentStock));
+    const [localMinStock, setLocalMinStock] = useState<string>(String(stock?.minimumStockLevel ?? ''));
     const [batches, setBatches] = useState<ItemBatch[]>([]);
     const [selectedBatchId, setSelectedBatchId] = useState<string>('');
     const canQc = hasPermission('qc.inspect') || hasPermission('qc.release');
     const [showBatches, setShowBatches] = useState<boolean>(canQc);
     const [qcBusyBatchId, setQcBusyBatchId] = useState<string | null>(null);
+    const canRepairCost = hasPermission('accounting.manage');
+    const [repairCostBusy, setRepairCostBusy] = useState(false);
+    const [revalueBatchBusy, setRevalueBatchBusy] = useState(false);
+    const [editingDatesBatchId, setEditingDatesBatchId] = useState<string | null>(null);
+    const [editProdDate, setEditProdDate] = useState('');
+    const [editExpDate, setEditExpDate] = useState('');
+    const [dateSaveBusy, setDateSaveBusy] = useState(false);
+    const getErrorMessage = (error: unknown, fallback: string) => {
+        if (error instanceof Error && error.message) return error.message;
+        const msg = String((error as any)?.message || '');
+        return msg || fallback;
+    };
 
     useEffect(() => {
         setLocalStock(String(currentStock));
     }, [currentStock]);
+
+    useEffect(() => {
+        setLocalMinStock(String(stock?.minimumStockLevel ?? ''));
+    }, [stock?.minimumStockLevel]);
 
     useEffect(() => {
         if (canQc || qcHold > 0) {
@@ -58,43 +79,73 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
         }
     }, [canQc, qcHold]);
 
-    useEffect(() => {
-        const loadBatches = async () => {
-            try {
-                const supabase = getSupabaseClient();
-                if (!supabase) return;
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-                if (error) return;
-                const rows = (data || []) as any[];
-                const mapped = rows.map(r => ({
+    const loadBatchesDetailed = async () => {
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
+            if (error) return;
+            const rows = (data || []) as any[];
+            const batchIds = rows.map((r: any) => String(r.batch_id || '')).filter(Boolean);
+            const movementMap: Record<string, { sale: number; ret: number; wastage: number; adjust: number }> = {};
+            if (batchIds.length > 0) {
+                const { data: mvRows } = await supabase
+                    .from('inventory_movements')
+                    .select('batch_id,movement_type,quantity')
+                    .in('batch_id', batchIds as any)
+                    .in('movement_type', ['sale_out', 'return_out', 'wastage_out', 'adjust_out']);
+                for (const m of (mvRows || []) as any[]) {
+                    const bid = String((m as any)?.batch_id || '');
+                    if (!bid) continue;
+                    if (!movementMap[bid]) movementMap[bid] = { sale: 0, ret: 0, wastage: 0, adjust: 0 };
+                    const qty = Number((m as any)?.quantity || 0) || 0;
+                    const t = String((m as any)?.movement_type || '');
+                    if (t === 'sale_out') movementMap[bid].sale += qty;
+                    if (t === 'return_out') movementMap[bid].ret += qty;
+                    if (t === 'wastage_out') movementMap[bid].wastage += qty;
+                    if (t === 'adjust_out') movementMap[bid].adjust += qty;
+                }
+            }
+            const mapped = rows.map(r => {
+                const bid = String(r.batch_id || '');
+                const mv = movementMap[bid] || { sale: 0, ret: 0, wastage: 0, adjust: 0 };
+                return {
                     batchId: r.batch_id,
                     occurredAt: r.occurred_at,
                     unitCost: Number(r.unit_cost) || 0,
                     unitCostOriginal: ((): number | undefined => {
-                        const c = Number((r as any)?.unit_cost_original ?? (r as any)?.unit_cost_currency ?? (r as any)?.supplier_unit_cost);
+                        const c = Number((r as any)?.unit_cost_original);
                         return Number.isFinite(c) && c > 0 ? c : undefined;
                     })(),
                     unitCostCurrency: ((): string | undefined => {
-                        const curVal = (r as any)?.currency ?? (r as any)?.cost_currency ?? (r as any)?.unit_cost_currency_code;
-                        const cur = String(curVal || '').trim().toUpperCase();
+                        const cur = String(((r as any)?.currency) || '').trim().toUpperCase();
                         return cur || undefined;
                     })(),
                     fxAtReceipt: ((): number | undefined => {
-                        const fx = Number((r as any)?.fx_rate_at_receipt ?? (r as any)?.fx_rate);
+                        const fx = Number((r as any)?.fx_rate_at_receipt);
                         return Number.isFinite(fx) && fx > 0 ? fx : undefined;
                     })(),
                     receivedQuantity: Number(r.received_quantity) || 0,
                     consumedQuantity: Number(r.consumed_quantity) || 0,
                     remainingQuantity: Number(r.remaining_quantity) || 0,
+                    returnedQuantity: Number(mv.ret || 0),
+                    soldQuantity: Number(mv.sale || 0),
+                    wastageQuantity: Number(mv.wastage || 0),
+                    adjustOutQuantity: Number(mv.adjust || 0),
                     qcStatus: String(r.qc_status || ''),
                     lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
                     lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
-                })) as ItemBatch[];
-                setBatches(mapped);
-            } catch (_) {
-            }
-        };
-        loadBatches();
+                    productionDate: r.production_date ? String(r.production_date) : undefined,
+                    expiryDate: r.expiry_date ? String(r.expiry_date) : undefined,
+                };
+            }) as ItemBatch[];
+            setBatches(mapped);
+        } catch (_) {
+        }
+    };
+
+    useEffect(() => {
+        loadBatchesDetailed();
     }, [item.id, warehouseId]);
 
     const qcStatusLabel = (s: string) => {
@@ -103,6 +154,10 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
         if (v === 'inspected') return 'مفحوص';
         if (v === 'pending' || v === 'quarantined') return 'معلّق';
         return v || 'غير محدد';
+    };
+
+    const refreshBatches = async () => {
+        await loadBatchesDetailed();
     };
 
     const runQcInspect = async (batchId: string, result: 'pass' | 'fail') => {
@@ -118,25 +173,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
             showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل تنفيذ فحص QC.', 'error');
         } finally {
             setQcBusyBatchId(null);
-            try {
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-                if (!error) {
-                    const rows = (data || []) as any[];
-                    const mapped = rows.map(r => ({
-                        batchId: r.batch_id,
-                        occurredAt: r.occurred_at,
-                        unitCost: Number(r.unit_cost) || 0,
-                        receivedQuantity: Number(r.received_quantity) || 0,
-                        consumedQuantity: Number(r.consumed_quantity) || 0,
-                        remainingQuantity: Number(r.remaining_quantity) || 0,
-                        qcStatus: String(r.qc_status || ''),
-                        lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
-                        lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
-                    })) as ItemBatch[];
-                    setBatches(mapped);
-                }
-            } catch {
-            }
+            await refreshBatches();
         }
     };
 
@@ -153,25 +190,84 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
             showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل إفراج الدُفعة.', 'error');
         } finally {
             setQcBusyBatchId(null);
-            try {
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
-                if (!error) {
-                    const rows = (data || []) as any[];
-                    const mapped = rows.map(r => ({
-                        batchId: r.batch_id,
-                        occurredAt: r.occurred_at,
-                        unitCost: Number(r.unit_cost) || 0,
-                        receivedQuantity: Number(r.received_quantity) || 0,
-                        consumedQuantity: Number(r.consumed_quantity) || 0,
-                        remainingQuantity: Number(r.remaining_quantity) || 0,
-                        qcStatus: String(r.qc_status || ''),
-                        lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
-                        lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
-                    })) as ItemBatch[];
-                    setBatches(mapped);
-                }
-            } catch {
-            }
+            await refreshBatches();
+        }
+    };
+
+    const repairItemCost = async () => {
+        if (!canRepairCost) return;
+        if (repairCostBusy) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة.', 'error');
+            return;
+        }
+        const ok = window.confirm(`سيتم محاولة إصلاح تكلفة هذا الصنف بناءً على أوامر الشراء وسندات الاستلام والدفعات.\nالصنف: ${itemName || item.id}\nهل تريد المتابعة؟`);
+        if (!ok) return;
+        setRepairCostBusy(true);
+        try {
+            const dry = await supabase.rpc('repair_item_purchase_costs', { p_item_id: item.id, p_warehouse_id: warehouseId || null, p_dry_run: true } as any);
+            if ((dry as any)?.error) throw (dry as any).error;
+            const d: any = (dry as any)?.data || {};
+            const ok2 = window.confirm(`نتيجة الفحص:\nسندات تحتاج تعديل=${Number(d?.receiptItemsNeedingFix || 0)}\nدفعات تحتاج تعديل=${Number(d?.batchesNeedingFix || 0)}\n\nهل تريد تنفيذ الإصلاح الآن؟`);
+            if (!ok2) return;
+            const run = await supabase.rpc('repair_item_purchase_costs', { p_item_id: item.id, p_warehouse_id: warehouseId || null, p_dry_run: false } as any);
+            if ((run as any)?.error) throw (run as any).error;
+            const r: any = (run as any)?.data || {};
+            showNotification(
+                `تم الإصلاح: سندات=${Number(r?.receiptItemsUpdated || 0)}، دفعات=${Number(r?.batchesUpdated || 0)}، حركات شراء=${Number(r?.purchaseInMovementsUpdated || 0)}.`,
+                'success'
+            );
+            await refreshBatches();
+        } catch (e) {
+            const msg = localizeSupabaseError(e) || getErrorMessage(e, 'فشل إصلاح تكلفة الصنف.');
+            showNotification(msg, 'error');
+        } finally {
+            setRepairCostBusy(false);
+        }
+    };
+
+    const revalueSelectedBatchCost = async () => {
+        if (!canRepairCost) return;
+        if (revalueBatchBusy) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة.', 'error');
+            return;
+        }
+        const targetBatchId = String(selectedBatchId || (batches[0]?.batchId || '')).trim();
+        if (!targetBatchId) {
+            showNotification('لا توجد دفعة صالحة لتعديل تكلفتها.', 'error');
+            return;
+        }
+        const costStr = window.prompt(`أدخل التكلفة الصحيحة لكل وحدة أساسية (${baseCode || 'BASE'}).\nسيتم تطبيقها على الدفعة: ${targetBatchId.slice(0, 8)}\nمثال: 0.52`, '');
+        if (!costStr) return;
+        const newCost = Number(String(costStr).replace(',', '.'));
+        if (!Number.isFinite(newCost) || newCost <= 0) {
+            showNotification('قيمة التكلفة غير صحيحة.', 'error');
+            return;
+        }
+        const reason = (window.prompt('أدخل سبب تعديل التكلفة (إلزامي):', '') || '').trim();
+        if (!reason) return;
+        const ok = window.confirm(`سيتم تعديل تكلفة الدفعة (${targetBatchId.slice(0, 8)}) إلى ${newCost} ${baseCode || ''}.\nوسيتم إنشاء قيد تسوية (Revaluation) تلقائيًا إن أمكن.\nهل تريد المتابعة؟`);
+        if (!ok) return;
+        setRevalueBatchBusy(true);
+        try {
+            const res = await supabase.rpc('revalue_batch_unit_cost', {
+                p_batch_id: targetBatchId,
+                p_new_unit_cost: newCost,
+                p_reason: reason,
+                p_post_journal: true,
+            } as any);
+            if ((res as any)?.error) throw (res as any).error;
+            const d: any = (res as any)?.data || {};
+            showNotification(`تم تعديل تكلفة الدفعة: ${Number(d?.oldUnitCost || 0)} → ${Number(d?.newUnitCost || 0)} ${baseCode || ''}`, 'success');
+            await refreshBatches();
+        } catch (e) {
+            const msg = localizeSupabaseError(e) || getErrorMessage(e, 'فشل تعديل تكلفة الدفعة.');
+            showNotification(msg, 'error');
+        } finally {
+            setRevalueBatchBusy(false);
         }
     };
 
@@ -179,12 +275,30 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
         setLocalStock(e.target.value);
     };
 
+    const onMinStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setLocalMinStock(e.target.value);
+    };
+
     const onStockBlur = () => {
         const val = parseFloat(localStock);
+        const minVal = localMinStock ? parseFloat(localMinStock) : undefined;
         if (!Number.isNaN(val) && val !== currentStock) {
-            handleUpdateStock(item.id, val, unit, selectedBatchId || undefined);
+            handleUpdateStock(item.id, val, unit, selectedBatchId || undefined, Number.isNaN(minVal!) ? undefined : minVal);
         } else {
             setLocalStock(String(currentStock));
+        }
+    };
+
+    const onMinStockBlur = () => {
+        const minVal = localMinStock ? parseFloat(localMinStock) : undefined;
+        const currentMin = stock?.minimumStockLevel;
+        if (!Number.isNaN(minVal!) && minVal !== currentMin) {
+            handleUpdateStock(item.id, currentStock, unit, selectedBatchId || undefined, minVal);
+        } else if (localMinStock === '' && currentMin !== undefined) {
+            // they cleared it, we could pass null but we'll map undefined
+            handleUpdateStock(item.id, currentStock, unit, selectedBatchId || undefined, 0);
+        } else {
+            setLocalMinStock(String(currentMin ?? ''));
         }
     };
 
@@ -231,7 +345,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
             <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={() => handleUpdateStock(item.id, currentStock - 1, unit, selectedBatchId || undefined)}
+                        onClick={() => handleUpdateStock(item.id, currentStock - 1, unit, selectedBatchId || undefined, localMinStock ? parseFloat(localMinStock) : undefined)}
                         className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                     >
                         <MinusIcon />
@@ -247,11 +361,27 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         step={unit === 'kg' || unit === 'gram' ? '0.5' : '1'}
                     />
                     <button
-                        onClick={() => handleUpdateStock(item.id, currentStock + 1, unit, selectedBatchId || undefined)}
+                        onClick={() => handleUpdateStock(item.id, currentStock + 1, unit, selectedBatchId || undefined, localMinStock ? parseFloat(localMinStock) : undefined)}
                         className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                     >
                         <PlusIcon />
                     </button>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        الحد الأدنى للتنبيه:
+                    </label>
+                    <input
+                        type="number"
+                        value={localMinStock}
+                        onChange={onMinStockChange}
+                        onBlur={onMinStockBlur}
+                        onKeyDown={onStockKeyDown}
+                        placeholder={String(stock?.lowStockThreshold ?? 5)}
+                        className="w-20 px-2 py-1 text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        min="0"
+                        step={unit === 'kg' || unit === 'gram' ? '0.5' : '1'}
+                    />
                 </div>
                 <div className="mt-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -297,10 +427,68 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                 <div className="text-gray-500 dark:text-gray-400">
                                                     وارد {Number(b.receivedQuantity || 0).toLocaleString('en-US')} • مستهلك {Number(b.consumedQuantity || 0).toLocaleString('en-US')} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
                                                 </div>
+                                                <div className="text-gray-500 dark:text-gray-400">
+                                                    مرتجع مشتريات {Number((b as any).returnedQuantity || 0).toLocaleString('en-US')} • مباع {Number((b as any).soldQuantity || 0).toLocaleString('en-US')} • هالك/تعديل {Number(((b as any).wastageQuantity || 0) + ((b as any).adjustOutQuantity || 0)).toLocaleString('en-US')}
+                                                </div>
                                                 <div className="text-gray-500 dark:text-gray-400 mt-1">
                                                     QC: {qcStatusLabel(String((b as any).qcStatus || ''))}
                                                     {(b as any).lastQcResult ? ` • آخر نتيجة: ${(b as any).lastQcResult === 'pass' ? 'نجح' : 'فشل'}` : ''}
                                                 </div>
+                                                {/* Date display */}
+                                                <div className="text-gray-500 dark:text-gray-400 mt-1">
+                                                    إنتاج: {(b as any).productionDate ? new Date((b as any).productionDate).toLocaleDateString('ar-SA-u-nu-latn') : '—'}
+                                                    {' • '}
+                                                    <span className={(b as any).expiryDate && new Date((b as any).expiryDate) < new Date() ? 'text-red-600 font-bold' : ''}>
+                                                        انتهاء: {(b as any).expiryDate ? new Date((b as any).expiryDate).toLocaleDateString('ar-SA-u-nu-latn') : '—'}
+                                                    </span>
+                                                </div>
+                                                {/* Inline date editing */}
+                                                {editingDatesBatchId === String(b.batchId) ? (
+                                                    <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-700 space-y-2">
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">تاريخ الإنتاج</label>
+                                                                <input type="date" value={editProdDate} onChange={(e) => setEditProdDate(e.target.value)} className="w-full px-2 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">تاريخ الانتهاء</label>
+                                                                <input type="date" value={editExpDate} onChange={(e) => setEditExpDate(e.target.value)} className="w-full px-2 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                type="button"
+                                                                disabled={dateSaveBusy}
+                                                                onClick={async () => {
+                                                                    setDateSaveBusy(true);
+                                                                    try {
+                                                                        const supabase = getSupabaseClient();
+                                                                        if (!supabase) throw new Error('Supabase not available');
+                                                                        const { error } = await supabase.rpc('update_batch_dates', {
+                                                                            p_batch_id: b.batchId,
+                                                                            p_production_date: editProdDate || null,
+                                                                            p_expiry_date: editExpDate || null,
+                                                                        } as any);
+                                                                        if (error) throw error;
+                                                                        showNotification('تم تحديث تواريخ الدفعة بنجاح', 'success');
+                                                                        setEditingDatesBatchId(null);
+                                                                        await refreshBatches();
+                                                                    } catch (err: any) {
+                                                                        showNotification(getErrorMessage(err, 'فشل تحديث التواريخ'), 'error');
+                                                                    } finally {
+                                                                        setDateSaveBusy(false);
+                                                                    }
+                                                                }}
+                                                                className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                                            >
+                                                                {dateSaveBusy ? 'جاري...' : 'حفظ'}
+                                                            </button>
+                                                            <button type="button" onClick={() => setEditingDatesBatchId(null)} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
+                                                                إلغاء
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
                                                 <div className="flex items-center gap-2 mt-2">
                                                     {(String((b as any).qcStatus || '') === 'pending' || String((b as any).qcStatus || '') === 'quarantined') && hasPermission('qc.inspect') && (
                                                         <>
@@ -332,6 +520,40 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                                                             إفراج
                                                         </button>
                                                     )}
+                                                    <button
+                                                        type="button"
+                                                        title="تعديل تواريخ الدفعة"
+                                                        onClick={() => {
+                                                            setEditingDatesBatchId(String(b.batchId));
+                                                            setEditProdDate((b as any).productionDate || '');
+                                                            setEditExpDate((b as any).expiryDate || '');
+                                                        }}
+                                                        className="px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                                                    >
+                                                        📅 تعديل التواريخ
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        title="طباعة ملصق الدفعة"
+                                                        onClick={() => {
+                                                            const itemName = (item as any)?.name?.ar || (item as any)?.name?.en || item?.name || '';
+                                                            const html = renderToString(
+                                                                <BatchLabel
+                                                                    itemName={typeof itemName === 'object' ? (itemName as any).ar || (itemName as any).en || '' : String(itemName)}
+                                                                    batchCode={String(b.batchId || '').slice(0, 8)}
+                                                                    productionDate={(b as any).productionDate || ''}
+                                                                    expiryDate={(b as any).expiryDate || ''}
+                                                                    quantity={Number(b.remainingQuantity || 0)}
+                                                                    unitLabel={String(item?.unitType || '')}
+                                                                    barcode={(item as any)?.barcode || ''}
+                                                                />
+                                                            );
+                                                            printContent(html, 'ملصق الدفعة');
+                                                        }}
+                                                        className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500"
+                                                    >
+                                                        🏷️ طباعة ملصق
+                                                    </button>
                                                 </div>
                                             </div>
                                             <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
@@ -346,6 +568,26 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         )}
                     </div>
                 )}
+                {canRepairCost ? (
+                    <button
+                        type="button"
+                        onClick={() => { void repairItemCost(); }}
+                        disabled={repairCostBusy}
+                        className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {repairCostBusy ? 'جاري إصلاح التكلفة...' : 'إصلاح تكلفة الصنف'}
+                    </button>
+                ) : null}
+                {canRepairCost ? (
+                    <button
+                        type="button"
+                        onClick={() => { void revalueSelectedBatchCost(); }}
+                        disabled={revalueBatchBusy}
+                        className="mt-2 w-full px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {revalueBatchBusy ? 'جاري تعديل تكلفة الدفعة...' : 'تعديل تكلفة الدفعة'}
+                    </button>
+                ) : null}
                 <button
                     type="button"
                     onClick={() => {
@@ -488,14 +730,14 @@ const ManageStockScreen: React.FC = () => {
         });
     }, [menuItems, searchTerm, selectedCategory, selectedGroup]);
 
-    const handleUpdateStock = async (itemId: string, newQuantity: number, unit: string, batchId?: string) => {
+    const handleUpdateStock = async (itemId: string, newQuantity: number, unit: string, batchId?: string, minStock?: number) => {
         if (newQuantity < 0) return;
         if (!reason.trim()) {
             showNotification('سبب تعديل المخزون مطلوب.', 'error');
             return;
         }
         try {
-            await updateStock(itemId, newQuantity, unit, reason, batchId);
+            await updateStock(itemId, newQuantity, unit, reason, batchId, minStock);
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
             const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تحديث المخزون';

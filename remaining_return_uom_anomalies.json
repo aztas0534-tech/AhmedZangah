@@ -1,0 +1,123 @@
+[
+  {
+    "return_id": "414ef233-8fce-4b7b-a771-e93940b34938",
+    "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+    "po_number": "PO-MAIN-2026-000003",
+    "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+    "item_name": "مكرونة هوم سباجيتي طويل 20كيس*400جم",
+    "qty_uom": "2997",
+    "expected_base": "59940.0000000000000000",
+    "actual_base": "2997",
+    "delta": "56943.0000000000000000"
+  },
+  {
+    "return_id": "22c1f460-79a9-45d7-9be0-182a239cef8a",
+    "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+    "po_number": "PO-MAIN-2026-000002",
+    "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+    "item_name": "كيك باندا 12باكت *12حبه*30جم",
+    "qty_uom": "360",
+    "expected_base": "4320.0000000000000000",
+    "actual_base": "360",
+    "delta": "3960.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "c383531c-733e-41e2-9601-fb48047451be",
+    "item_name": "حليب صفاء اكياس صغير 24*400جم",
+    "qty_uom": "120",
+    "expected_base": "2880.0000000000000000",
+    "actual_base": "120",
+    "delta": "2760.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "85c83f4b-68b4-4fd4-8ea2-edf7f033fe81",
+    "item_name": "حليب صفاء علب صغير 24*400جم",
+    "qty_uom": "72",
+    "expected_base": "1728.0000000000000000",
+    "actual_base": "72",
+    "delta": "1656.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "0ae5015a-5faf-4a73-9a05-9e834d879e73",
+    "item_name": "صلصة صفاء علب 12*800جم",
+    "qty_uom": "120",
+    "expected_base": "1440.0000000000000000",
+    "actual_base": "120",
+    "delta": "1320.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "1471efad-5bb9-497f-ba55-59c4368fd5b5",
+    "item_name": "حليب صفاء علب وسط*12*900جم",
+    "qty_uom": "36",
+    "expected_base": "432.0000000000000000",
+    "actual_base": "36",
+    "delta": "396.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "6e6a6b0f-ff46-44ba-aa96-d6cce4f468e4",
+    "item_name": "صلصة صفاء 4*25ح*70جم",
+    "qty_uom": "40",
+    "expected_base": "160.0000000000000000",
+    "actual_base": "40",
+    "delta": "120.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "71c47b1c-05e9-4462-a8ea-3f4f4afd291b",
+    "item_name": "حليب صفاء اكياس كبير 6*2.250كيلو",
+    "qty_uom": "18",
+    "expected_base": "108.0000000000000000",
+    "actual_base": "18",
+    "delta": "90.0000000000000000"
+  },
+  {
+    "return_id": "cee05545-3c12-4a59-a0a5-ff5ff53b7197",
+    "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+    "po_number": "PO-MAIN-2026-000003",
+    "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+    "item_name": "مكرونة هوم سباجيتي طويل 20كيس*400جم",
+    "qty_uom": "3",
+    "expected_base": "60.0000000000000000",
+    "actual_base": "3",
+    "delta": "57.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "c170af40-ed18-40f8-92e6-260dd64b91b1",
+    "item_name": "مكرونة طويل ملك الباشا 2.5*300",
+    "qty_uom": "20",
+    "expected_base": "40.0000000000000000",
+    "actual_base": "20",
+    "delta": "20.0000000000000000"
+  },
+  {
+    "return_id": "07abb438-755d-4d8a-a3c1-0fed5f8ccafa",
+    "po_id": "3f416a5d-ca1e-4a4c-8821-0411498c7424",
+    "po_number": "PO-MAIN-2026-000012",
+    "item_id": "877860ff-bde9-4270-ae14-60f3ef3e3509",
+    "item_name": "حليب شاهي منابع الخير كبير 24*410",
+    "qty_uom": "10",
+    "expected_base": "20.0000000000000000",
+    "actual_base": "10",
+    "delta": "10.0000000000000000"
+  }
+]

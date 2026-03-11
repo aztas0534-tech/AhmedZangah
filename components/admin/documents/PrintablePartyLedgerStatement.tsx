@@ -1,5 +1,9 @@
 import { formatDateOnly } from '../../../utils/printUtils';
 import { formatSourceRefAr, localizeOpenStatusAr, shortId } from '../../../utils/displayLabels';
+import { AZTA_IDENTITY } from '../../../config/identity';
+import DocumentAuditFooter from './DocumentAuditFooter';
+import { DocumentAuditInfo } from '../../../utils/documentStandards';
+
 type Brand = {
   name?: string;
   address?: string;
@@ -28,6 +32,7 @@ type StatementRow = {
   open_base_amount: number | null;
   open_foreign_amount: number | null;
   open_status: string | null;
+  running_foreign_balance?: number | null;
   allocations?: any;
 };
 
@@ -52,39 +57,40 @@ export default function PrintablePartyLedgerStatement(props: {
   printCurrencyCode?: string | null;
   printFxRate?: number | null;
   baseCurrencyCode?: string | null;
+  audit?: DocumentAuditInfo | null;
 }) {
-  const { brand, partyId, partyName, accountCode, currency, start, end, rows, printCurrencyCode, printFxRate, baseCurrencyCode } = props;
+  const { brand, partyId, partyName, accountCode, currency, start, end, rows, printCurrencyCode, baseCurrencyCode, audit } = props;
   const selectedCode = String(printCurrencyCode || '').trim().toUpperCase();
   const baseCode = String(baseCurrencyCode || '').trim().toUpperCase();
-  const rate = Number(printFxRate || 1) || 1;
-  const convertValue = (v: number): number => {
-    if (selectedCode && baseCode && selectedCode !== baseCode) return (Number(v || 0) / rate);
-    return Number(v || 0);
+  const filteredRows = selectedCode
+    ? rows.filter((r) => String(r.currency_code || '').trim().toUpperCase() === selectedCode)
+    : rows;
+
+  const systemName = brand?.name || AZTA_IDENTITY.tradeNameAr;
+  const systemKey = AZTA_IDENTITY.merchantKey;
+  const branchName = (brand?.branchName || '').trim();
+  const showBranch = Boolean(branchName) && branchName !== systemName;
+
+  const amountInRowCurrency = (r: StatementRow) => {
+    const fa = r.foreign_amount;
+    if (fa == null) return Number(r.base_amount || 0) || 0;
+    return Number(fa || 0) || 0;
   };
 
-  const getRowAmount = (row: StatementRow): number => {
-    // If printing in the SAME currency as the transaction, use the original foreign amount!
-    if (selectedCode && row.currency_code && selectedCode === row.currency_code.toUpperCase()) {
-      return Number(row.foreign_amount || 0);
+  const summaries = (() => {
+    const map = new Map<string, { key: string; accountCode: string; currencyCode: string; debit: number; credit: number; last: number }>();
+    for (const r of filteredRows) {
+      const account = String(r.account_code || '').trim();
+      const curr = String(r.currency_code || '').trim().toUpperCase() || '—';
+      const key = `${account}|${curr}`;
+      if (!map.has(key)) map.set(key, { key, accountCode: account, currencyCode: curr, debit: 0, credit: 0, last: 0 });
+      const s = map.get(key)!;
+      const amt = amountInRowCurrency(r);
+      if (r.direction === 'debit') s.debit += amt;
+      if (r.direction === 'credit') s.credit += amt;
+      s.last = Number((r.running_foreign_balance ?? r.running_balance) ?? 0) || 0;
     }
-    // Otherwise, convert Base Amount
-    return convertValue(Number(row.base_amount || 0));
-  };
-
-  const getOpenAmount = (row: StatementRow): number => {
-    // If printing in the SAME currency as the transaction, use the original foreign open amount!
-    if (selectedCode && row.currency_code && selectedCode === row.currency_code.toUpperCase()) {
-      return Number(row.open_foreign_amount || 0);
-    }
-    // Otherwise, convert Base Open Amount
-    return convertValue(Number(row.open_base_amount || 0));
-  };
-
-  const totals = (() => {
-    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? getRowAmount(r) : 0), 0);
-    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? getRowAmount(r) : 0), 0);
-    const last = rows.length ? convertValue(rows[rows.length - 1].running_balance) : 0;
-    return { debit, credit, last };
+    return Array.from(map.values());
   })();
   const periodText = [start ? formatDateOnly(start) : null, end ? formatDateOnly(end) : null]
     .filter(Boolean)
@@ -93,214 +99,311 @@ export default function PrintablePartyLedgerStatement(props: {
     accountCode ? `الحساب: ${accountCode}` : '',
     currency ? `العملة: ${String(currency).toUpperCase()}` : '',
     periodText ? `الفترة: ${periodText}` : '',
-    selectedCode ? `طباعة بعملة: ${selectedCode}${(baseCode && selectedCode !== baseCode && rate > 0) ? ` • سعر: ${rate}` : ''}` : '',
+    selectedCode ? `العملة: ${selectedCode}` : '',
   ]
     .filter(Boolean)
     .join(' • ');
 
   return (
-    <div className="statement-container" dir="rtl">
+    <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
       <style>{`
         @media print {
-          @page { size: A4; margin: 0; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: A5 portrait; margin: 0; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+            * { box-sizing: border-box; }
+
+            .stmt-container { 
+                width: 148mm !important; max-width: 148mm !important;
+                min-height: 210mm !important;
+                padding: 4mm 4mm 3mm 4mm !important;
+                display: flex !important; flex-direction: column !important;
+                font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
+                color: #0F172A !important; line-height: 1.2 !important;
+                position: relative !important; background-color: #FAFAFA !important;
+                overflow: hidden !important; box-sizing: border-box !important;
+            }
+
+            .luxury-watermark {
+                position: absolute !important; top: 50% !important; left: 50% !important;
+                transform: translate(-50%, -50%) rotate(-30deg) !important;
+                font-size: 12rem !important; font-weight: 900 !important;
+                color: #D4AF37 !important; opacity: 0.03 !important;
+                white-space: nowrap !important; pointer-events: none !important; z-index: 1 !important;
+            }
+
+            .stmt-container::before {
+                content: ''; position: absolute !important;
+                top: 1mm; bottom: 1mm; left: 1mm; right: 1mm;
+                border: 1.5pt solid #1E3A8A !important;
+                pointer-events: none !important; z-index: 50 !important;
+            }
+            .stmt-container::after {
+                content: ''; position: absolute !important;
+                top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
+                border: 0.5pt solid #D4AF37 !important;
+                pointer-events: none !important; z-index: 50 !important;
+            }
+
+            .font-thin-label { font-weight: 800 !important; font-size: 7px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.2px !important; }
+            .font-bold-value { font-weight: 900 !important; font-size: 9px !important; color: #000000 !important; }
+
+            .luxury-header {
+                display: flex !important; justify-content: space-between !important;
+                align-items: center !important; border-bottom: 1.5pt solid #1E3A8A !important;
+                padding-bottom: 2px !important; margin-bottom: 3px !important;
+            }
+            .brand-name { font-size: 13px !important; font-weight: 900 !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+            .stmt-title { font-size: 18px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+            .title-sub { font-size: 8px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
+
+            .info-grid {
+                display: flex !important; justify-content: space-between !important;
+                margin-bottom: 3px !important; background: #F3F4F6 !important;
+                border: 0.5pt solid #E5E7EB !important; padding: 2px 5px !important;
+            }
+            .info-group { display: flex !important; flex-direction: column !important; gap: 1px !important; }
+            .info-item { display: flex !important; flex-direction: column !important; }
+
+            .summary-cards {
+                display: flex !important; gap: 4px !important; margin-bottom: 3px !important;
+            }
+            .summary-card {
+                flex: 1 !important; border: 0.5pt solid #E5E7EB !important;
+                border-top: 1.5pt solid #1E3A8A !important;
+                padding: 3px !important; text-align: center !important; background: white !important;
+            }
+
+            .luxury-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 3px !important; table-layout: fixed !important; }
+            .luxury-table thead { display: table-header-group !important; }
+            .luxury-table th {
+                background-color: #0F172A !important; color: #FFFFFF !important;
+                padding: 1px 1px !important; font-weight: 700 !important;
+                font-size: 6px !important; text-transform: uppercase !important; border: none !important;
+                overflow: hidden !important;
+            }
+            .luxury-table td {
+                padding: 1px 1px !important; font-size: 7px !important; font-weight: 700 !important;
+                line-height: 1.1 !important; border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
+                overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
+            }
+            .luxury-table tr { page-break-inside: avoid !important; }
+            .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
+            .luxury-table tr:last-child td { border-bottom: 1.5pt solid #1E3A8A !important; }
+
+            .luxury-footer {
+                margin-top: auto !important; text-align: center !important;
+                font-size: 7px !important; color: #4B5563 !important; padding-top: 2px !important;
+                page-break-inside: avoid !important;
+            }
+            .footer-line { width: 40px !important; height: 0.5pt !important; background-color: #D4AF37 !important; margin: 1px auto !important; }
         }
-        .statement-container {
-          font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          max-width: 210mm;
-          margin: 0 auto;
-          background: white;
-          color: #1e293b;
-          line-height: 1.5;
-          padding: 40px;
-          border-top: 5px solid #1e293b;
-        }
-        .header-section {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 24px;
-          border-bottom: 2px solid #e2e8f0;
-          padding-bottom: 16px;
-        }
-        .company-info { text-align: right; }
-        .company-info h1 { font-size: 22px; font-weight: 800; margin: 0 0 5px 0; color: #0f172a; }
-        .company-info p { margin: 2px 0; font-size: 13px; color: #475569; }
-        .doc-title {
-          text-align: left;
-          background: #f8fafc;
-          padding: 12px 20px;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
-        }
-        .doc-title h2 {
-          font-size: 22px;
-          font-weight: 900;
-          color: #0f172a;
-          margin: 0;
-        }
-        .doc-title .ref {
-          font-size: 13px;
-          color: #64748b;
-          margin-top: 6px;
-          font-family: 'Courier New', monospace;
-        }
-        .party-info {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 16px;
-          margin: 18px 0;
-          background: #f8fafc;
-          padding: 16px;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
-        }
-        .info-item { display: flex; flex-direction: column; }
-        .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
-        .info-value { font-size: 14px; font-weight: 600; color: #0f172a; }
-        .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; word-break: break-word; overflow-wrap: anywhere; }
-        .summary {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-        .summary-card {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 12px;
-        }
-        .summary-card .label { font-size: 12px; color: #64748b; }
-        .summary-card .value { font-size: 18px; font-weight: 800; color: #0f172a; }
-        .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 18px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; table-layout: fixed; }
-        .lines-table th {
-          background: #1e293b;
-          color: white;
-          font-weight: 700;
-          text-align: center;
-          padding: 10px;
-          border-bottom: 2px solid #0f172a;
-        }
-        .lines-table th:first-child { text-align: right; }
-        .lines-table td {
-          padding: 10px;
-          border-bottom: 1px solid #e2e8f0;
-          vertical-align: top;
-          color: #334155;
-          word-break: break-word;
-          overflow-wrap: anywhere;
-        }
-        .lines-table tr:last-child td { border-bottom: none; }
-        .lines-table tr:nth-child(even) { background-color: #f8fafc; }
-        .footer-meta {
-          margin-top: 24px;
-          border-top: 1px dashed #cbd5e1;
-          padding-top: 10px;
-          display: flex;
-          justify-content: space-between;
-          font-size: 10px;
-          color: #94a3b8;
+
+        @media screen {
+            .stmt-container { max-width: 700px; margin: 0 auto; padding: 24px; background: #FAFAFA; font-family: 'Tajawal', 'Cairo', sans-serif; }
+            .luxury-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1E3A8A; padding-bottom: 12px; margin-bottom: 16px; }
+            .brand-name { font-size: 18px; font-weight: 900; color: #0F172A; }
+            .stmt-title { font-size: 28px; font-weight: 800; color: #D4AF37; }
+            .title-sub { font-size: 10px; font-weight: 800; color: #0F172A; text-transform: uppercase; border-top: 1px solid #D4AF37; padding-top: 2px; margin-top: 2px; text-align: center; }
+            .info-grid { display: flex; justify-content: space-between; margin-bottom: 16px; background: #F3F4F6; border: 1px solid #E5E7EB; padding: 8px 12px; border-radius: 4px; }
+            .info-group { display: flex; flex-direction: column; gap: 4px; }
+            .info-item { display: flex; flex-direction: column; }
+            .font-thin-label { font-weight: 700; font-size: 11px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
+            .font-bold-value { font-weight: 800; font-size: 13px; color: #0F172A; }
+            .summary-cards { display: flex; gap: 8px; margin-bottom: 16px; }
+            .summary-card { flex: 1; border: 1px solid #E5E7EB; border-top: 3px solid #1E3A8A; padding: 8px; text-align: center; background: white; border-radius: 4px; }
+            .luxury-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+            .luxury-table th { background-color: #0F172A; color: #FFFFFF; padding: 6px 8px; font-weight: 700; font-size: 11px; text-transform: uppercase; }
+            .luxury-table td { padding: 4px 6px; font-size: 11px; font-weight: 700; border-bottom: 1px solid #E5E7EB; color: #0F172A; }
+            .luxury-table tr:nth-child(even) td { background-color: #F9FAFB; }
+            .luxury-table tr:last-child td { border-bottom: 2px solid #1E3A8A; }
+            .luxury-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 8rem; font-weight: 900; color: #D4AF37; opacity: 0.04; pointer-events: none; z-index: 1; }
+            .luxury-footer { margin-top: 16px; text-align: center; font-size: 10px; color: #6B7280; }
+            .footer-line { width: 40px; height: 1px; background-color: #D4AF37; margin: 4px auto; }
         }
       `}</style>
 
-      <div className="header-section">
-        <div className="company-info">
-          {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 56, marginBottom: 8 }} />}
-          <h1>{(brand?.name || '').trim()}</h1>
-          {brand?.branchName && <p>{brand.branchName}</p>}
-          {brand?.address && <p>{brand.address}</p>}
-          {brand?.contactNumber && <p dir="ltr" className="tabular">{brand.contactNumber}</p>}
-        </div>
-        <div className="doc-title">
-          <h2>كشف حساب طرف</h2>
-          <div className="ref tabular" dir="ltr">طرف: {partyName} • {shortId(partyId)}</div>
-          {headerFilters && <div className="ref">{headerFilters}</div>}
-        </div>
-      </div>
+      <div className="stmt-container" style={{ fontFamily: 'Tajawal, Cairo, sans-serif', position: 'relative' }}>
 
-      <div className="party-info">
-        <div className="info-item">
-          <span className="info-label">اسم الطرف</span>
-          <span className="info-value">{partyName || '—'}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">المعرف</span>
-          <span className="info-value tabular" dir="ltr">{shortId(partyId)}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">تاريخ الطباعة</span>
-          <span className="info-value tabular" dir="ltr">{new Date().toLocaleString('en-GB')}</span>
-        </div>
-      </div>
+        <div className="luxury-watermark">{systemName}</div>
 
-      <div className="summary">
-        <div className="summary-card">
-          <div className="label">إجمالي مدين</div>
-          <div className="value tabular" dir="ltr">{fmt(totals.debit)}</div>
-        </div>
-        <div className="summary-card">
-          <div className="label">إجمالي دائن</div>
-          <div className="value tabular" dir="ltr">{fmt(totals.credit)}</div>
-        </div>
-        <div className="summary-card">
-          <div className="label">الرصيد الحالي</div>
-          <div className="value tabular" dir="ltr">{fmt(totals.last)}</div>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-            {totals.last < 0 ? 'دائن' : totals.last > 0 ? 'مدين' : 'متزن'}
+        {/* ▬▬▬ HEADER ▬▬▬ */}
+        <div className="luxury-header" style={{ position: 'relative', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {brand?.logoUrl && (
+              <div style={{ background: 'white', padding: '4px', marginTop: '4px', zIndex: 10 }}>
+                <img src={brand.logoUrl} alt="Logo" style={{ height: '70px', width: 'auto', objectFit: 'contain' }} />
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <h1 className="brand-name">
+                {systemName}
+                {showBranch && <span style={{ fontSize: '10px', fontWeight: 'normal', color: '#64748B', marginRight: '8px' }}>({branchName})</span>}
+              </h1>
+              {systemKey && <div style={{ fontSize: '8px', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.3em', fontFamily: 'monospace' }} dir="ltr">{systemKey}</div>}
+              <div style={{ marginTop: '2px', display: 'flex', gap: '12px', fontSize: '8px', fontWeight: 'bold', color: '#334155' }}>
+                {brand?.address && <span dir="ltr">Add: <span style={{ fontFamily: 'monospace', color: '#0F172A' }}>{brand.address}</span></span>}
+                {brand?.contactNumber && <span dir="ltr">TEL: <span style={{ fontFamily: 'monospace', color: '#0F172A' }}>{brand.contactNumber}</span></span>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, zIndex: 10 }}>
+            <h2 className="stmt-title">كشف حساب</h2>
+            <div className="title-sub">PARTY LEDGER STATEMENT</div>
           </div>
         </div>
-      </div>
 
-      <table className="lines-table">
-        <thead>
-          <tr>
-            <th style={{ width: '12%' }}>التاريخ</th>
-            <th style={{ width: '10%' }}>رمز الحساب</th>
-            <th style={{ width: '18%' }}>اسم الحساب</th>
-            <th style={{ width: '12%' }}>مدين</th>
-            <th style={{ width: '12%' }}>دائن</th>
-            <th style={{ width: '12%' }}>الرصيد</th>
-            <th style={{ width: '12%' }}>المصدر</th>
-            <th style={{ width: '12%' }}>المتبقي/الحالة</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr><td colSpan={8} className="text-center" style={{ padding: 28, color: '#94a3b8' }}>لا توجد حركات</td></tr>
-          ) : rows.map((r) => (
-            <tr key={r.journal_line_id}>
-              <td className="tabular" dir="ltr">{new Date(r.occurred_at).toLocaleString('en-GB')}</td>
-              <td className="tabular" dir="ltr" style={{ fontWeight: 700, color: '#475569' }}>{r.account_code}</td>
-              <td style={{ fontWeight: 600 }}>{r.account_name}</td>
-              <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'debit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'debit' ? fmt(getRowAmount(r)) : '—'}
-                <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
-              </td>
-              <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'credit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'credit' ? fmt(getRowAmount(r)) : '—'}
-                <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
-              </td>
-              <td className="tabular text-center" dir="ltr">{fmt(convertValue(Number(r.running_balance || 0)))}</td>
-              <td>
-                <div className="tabular" style={{ fontSize: 11 }}>{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
-              </td>
-              <td>
-                <div className="tabular" dir="ltr" style={{ fontSize: 12 }}>
-                  {r.open_base_amount == null ? '—' : fmt(getOpenAmount(r))}
-                </div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>
-                  {localizeOpenStatusAr(r.open_status)}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        {/* ▬▬▬ INFO SECTION ▬▬▬ */}
+        <div className="info-grid" style={{ position: 'relative', zIndex: 10 }}>
+          <div className="info-group">
+            <div className="info-item" style={{ marginBottom: '2px' }}>
+              <span className="font-thin-label">اسم الطرف | Party Name</span>
+              <span className="font-bold-value">{partyName || '—'}</span>
+            </div>
+            {headerFilters && (
+              <div className="info-item">
+                <span className="font-thin-label">النطاق | Scope &amp; Filters</span>
+                <span className="font-bold-value" style={{ fontSize: '10px' }}>{headerFilters}</span>
+              </div>
+            )}
+          </div>
 
-      <div className="footer-meta">
-        <div>تمت الطباعة بواسطة النظام في <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span></div>
-        <div>{brand?.name || 'AZTA ERP'}</div>
+          <div className="info-group" style={{ borderRight: '1px solid #E5E7EB', paddingRight: '12px' }}>
+            <div className="info-item" style={{ marginBottom: '2px' }}>
+              <span className="font-thin-label">المعرف | ID</span>
+              <span className="font-bold-value" style={{ fontFamily: 'monospace' }} dir="ltr">{shortId(partyId)}</span>
+            </div>
+            <div className="info-item" style={{ marginBottom: '2px' }}>
+              <span className="font-thin-label">عدد الحركات | Entries</span>
+              <span className="font-bold-value" style={{ fontFamily: 'monospace' }} dir="ltr">{filteredRows.length}</span>
+            </div>
+            <div className="info-item">
+              <span className="font-thin-label">تاريخ الطباعة | Print Date</span>
+              <span className="font-bold-value" style={{ fontFamily: 'monospace' }} dir="ltr">{new Date().toLocaleString('en-GB')}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ▬▬▬ SUMMARY CARDS ▬▬▬ */}
+        <div className="summary-cards" style={{ position: 'relative', zIndex: 10 }}>
+          {summaries.length === 0 ? (
+            <div className="summary-card">
+              <div className="font-thin-label" style={{ marginBottom: '2px' }}>ملخص | Summary</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, fontFamily: 'monospace', color: '#0F172A' }} dir="ltr">{fmt(0)}</div>
+            </div>
+          ) : summaries.length === 1 ? (
+            <>
+              <div className="summary-card">
+                <div className="font-thin-label" style={{ marginBottom: '2px' }}>إجمالي مدين | Total Debit</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, fontFamily: 'monospace', color: '#0F172A' }} dir="ltr">{fmt(summaries[0].debit)}</div>
+                <div style={{ fontSize: '8px', color: '#6B7280', marginTop: '2px' }}>{summaries[0].currencyCode}</div>
+              </div>
+              <div className="summary-card">
+                <div className="font-thin-label" style={{ marginBottom: '2px' }}>إجمالي دائن | Total Credit</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, fontFamily: 'monospace', color: '#0F172A' }} dir="ltr">{fmt(summaries[0].credit)}</div>
+                <div style={{ fontSize: '8px', color: '#6B7280', marginTop: '2px' }}>{summaries[0].currencyCode}</div>
+              </div>
+              <div className="summary-card" style={{ background: '#EFF6FF', borderTopColor: '#D4AF37' }}>
+                <div className="font-thin-label" style={{ marginBottom: '2px', color: '#1E3A8A' }}>الرصيد الحالي | Closing</div>
+                <div style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#0F172A' }} dir="ltr">{fmt(summaries[0].last)}</div>
+                <div style={{ fontSize: '8px', fontWeight: 800, color: '#1E40AF', marginTop: '2px' }}>
+                  {summaries[0].currencyCode} • {summaries[0].last < 0 ? 'دائن' : summaries[0].last > 0 ? 'مدين' : 'متزن'}
+                </div>
+              </div>
+            </>
+          ) : (
+            summaries.slice(0, 3).map((s) => (
+              <div key={s.key} className="summary-card">
+                <div className="font-thin-label" style={{ marginBottom: '2px' }}>{s.accountCode} • {s.currencyCode}</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, fontFamily: 'monospace', color: '#0F172A' }} dir="ltr">{fmt(s.last)}</div>
+                <div style={{ fontSize: '8px', color: '#6B7280', marginTop: '2px' }}>مدين {fmt(s.debit)} • دائن {fmt(s.credit)}</div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ▬▬▬ TABLE ▬▬▬ */}
+        <div style={{ position: 'relative', zIndex: 10, width: '100%' }}>
+          <table className="luxury-table" style={{ textAlign: 'right' }}>
+            <thead>
+              <tr>
+                <th style={{ width: '11%', textAlign: 'right' }}>التاريخ</th>
+                <th style={{ width: '7%', textAlign: 'center' }}>رمز</th>
+                <th style={{ width: '16%', textAlign: 'right' }}>اسم الحساب</th>
+                <th style={{ width: '14%', textAlign: 'center' }}>مدين DEBIT</th>
+                <th style={{ width: '14%', textAlign: 'center' }}>دائن CREDIT</th>
+                <th style={{ width: '14%', textAlign: 'center' }}>الرصيد BAL</th>
+                <th style={{ width: '13%', textAlign: 'center' }}>المصدر</th>
+                <th style={{ width: '11%', textAlign: 'center' }}>المتبقي</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '12px', color: '#9CA3AF' }}>لا توجد حركات</td>
+                </tr>
+              ) : (
+                filteredRows.map((r) => (
+                  <tr key={r.journal_line_id} style={{ pageBreakInside: 'avoid' }}>
+                    <td style={{ fontFamily: 'monospace', color: '#6B7280', lineHeight: 1 }} dir="ltr">
+                      <div>{new Date(r.occurred_at).toLocaleDateString('en-GB')}</div>
+                      <div style={{ fontSize: '6px', marginTop: '1px' }}>{new Date(r.occurred_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+                    </td>
+                    <td style={{ textAlign: 'center', fontFamily: 'monospace', color: '#1E40AF', fontWeight: 800 }} dir="ltr">{r.account_code}</td>
+                    <td>
+                      <div style={{ fontWeight: 800, color: '#0F172A' }}>{r.account_name}</div>
+                    </td>
+                    <td style={{ textAlign: 'center', fontFamily: 'monospace' }} dir="ltr">
+                      <div style={{ fontWeight: r.direction === 'debit' ? 800 : 400, color: r.direction === 'debit' ? '#0F172A' : '#D1D5DB' }}>
+                        {r.direction === 'debit' ? fmt(amountInRowCurrency(r)) : '—'}
+                      </div>
+                      <div style={{ fontSize: '6px', color: '#9CA3AF' }}>{String(r.currency_code || '').toUpperCase()}</div>
+                    </td>
+                    <td style={{ textAlign: 'center', fontFamily: 'monospace' }} dir="ltr">
+                      <div style={{ fontWeight: r.direction === 'credit' ? 800 : 400, color: r.direction === 'credit' ? '#0F172A' : '#D1D5DB' }}>
+                        {r.direction === 'credit' ? fmt(amountInRowCurrency(r)) : '—'}
+                      </div>
+                      <div style={{ fontSize: '6px', color: '#9CA3AF' }}>{String(r.currency_code || '').toUpperCase()}</div>
+                    </td>
+                    <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 900, color: '#0F172A' }} dir="ltr">
+                      {fmt(Number((r.running_foreign_balance ?? r.running_balance) ?? 0))}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ fontFamily: 'monospace', fontSize: '8px', color: '#6B7280' }}>{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#0F172A', fontSize: '9px' }} dir="ltr">
+                        {(() => {
+                          const curr = String(r.currency_code || '').toUpperCase();
+                          const isBase = baseCode && curr === baseCode;
+                          const primary = isBase ? r.open_base_amount : r.open_foreign_amount;
+                          return primary == null ? '—' : fmt(Number(primary || 0));
+                        })()}
+                      </div>
+                      <div style={{ fontSize: '7px', color: '#9CA3AF', marginTop: '1px' }}>
+                        {localizeOpenStatusAr(r.open_status)}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ▬▬▬ FOOTER ▬▬▬ */}
+        <div className="luxury-footer" style={{ position: 'relative', zIndex: 10 }}>
+          <div className="footer-line" />
+          <div style={{ fontSize: '7px', color: '#6B7280' }}>
+            هذا المستند صادر إلكترونياً ولا يحتاج إلى ختم — This document is electronically generated
+          </div>
+          <div className="footer-line" />
+          <DocumentAuditFooter
+            audit={{ printedAt: new Date().toISOString(), generatedBy: systemName, ...(audit || {}) }}
+            extraRight={<span style={{ color: '#9CA3AF', fontSize: '7px' }}>{systemName}</span>}
+          />
+        </div>
+
       </div>
     </div>
   );

@@ -51,14 +51,19 @@ function Invoke-Psql {
 
 function Ensure-MigrationsTable {
   Write-Host "Initialize migrations tracking table..."
-  $sql = @"
+  $sql = @'
 create schema if not exists supabase_migrations;
 create table if not exists supabase_migrations.schema_migrations (
   version text primary key,
   name text,
   applied_at timestamptz not null default now()
 );
-"@
+'@
+  Invoke-Psql -Sql $sql
+  $sql = @'
+alter table supabase_migrations.schema_migrations
+  add column if not exists statements text;
+'@
   Invoke-Psql -Sql $sql
 }
 
@@ -76,23 +81,44 @@ function Get-AppliedVersions {
 
 function Add-AppliedVersion {
   param([string]$Version, [string]$Name)
-  $sql = "insert into supabase_migrations.schema_migrations(version,name) values ('$Version', '$Name') on conflict (version) do nothing;"
+  $sql = "insert into supabase_migrations.schema_migrations(version,name,statements) values ('$Version', '$Name', '') on conflict (version) do nothing;"
   Invoke-Psql -Sql $sql
 }
 
 Write-Host "Preparing local database connection (no data deletion)..."
-Ensure-Psql
-$Global:PGPASS = Get-DbPassword -Provided $DbPassword
-if (-not $Global:PGPASS -or -not $Global:PGPASS.Trim()) {
-  Write-Error "Database password not found. Use -DbPassword or set SUPABASE_DB_PASSWORD."
-  exit 1
+$psqlAvailable = $true
+if ($DryRun) {
+  try { & psql --version *> $null; $psqlAvailable = ($LASTEXITCODE -eq 0) } catch { $psqlAvailable = $false }
+  if (-not $psqlAvailable) { Write-Warning "psql not found; running offline DryRun without database inspection." }
+} else {
+  Ensure-Psql
+  $Global:PGPASS = Get-DbPassword -Provided $DbPassword
+  if (-not $Global:PGPASS -or -not $Global:PGPASS.Trim()) {
+    Write-Error "Database password not found. Use -DbPassword or set SUPABASE_DB_PASSWORD."
+    exit 1
+  }
+  Invoke-Psql -Sql "\conninfo" | Out-Null
+  Ensure-MigrationsTable
 }
 
-Invoke-Psql -Sql "\conninfo" | Out-Null
-
-Ensure-MigrationsTable
 $applied = New-Object System.Collections.Generic.HashSet[string]
-foreach ($v in Get-AppliedVersions) { $applied.Add($v) | Out-Null }
+if ($DryRun) {
+  if ($psqlAvailable) {
+    try {
+      $Global:PGPASS = Get-DbPassword -Provided $DbPassword
+      foreach ($v in Get-AppliedVersions) { if ($v) { $applied.Add($v) | Out-Null } }
+      if ($applied.Count -gt 0) {
+        Write-Host "DryRun: fetched $($applied.Count) applied versions from database."
+      } else {
+        Write-Host "DryRun: no applied versions found or unable to read."
+      }
+    } catch {
+      Write-Host "DryRun: unable to read applied versions; listing all as pending."
+    }
+  }
+} else {
+  foreach ($v in Get-AppliedVersions) { if ($v) { $applied.Add($v) | Out-Null } }
+}
 
 $migrationsDir = Join-Path (Get-Location) "supabase\migrations"
 if (-not (Test-Path $migrationsDir)) {
@@ -116,7 +142,7 @@ foreach ($f in $files) {
   }
   Write-Host "Applying migration: $name"
   if ($DryRun) {
-    Write-Host "DryRun: file will not be executed."
+    Write-Host "DryRun: would apply $name"
     continue
   }
   Invoke-Psql -FilePath $f.FullName
@@ -124,4 +150,4 @@ foreach ($f in $files) {
   Write-Host "Applied: $name"
 }
 
-Write-Host "Completed pushing updates to local database without deleting data."
+Write-Host "Completed pushing updates to local DB (no data deletion)."

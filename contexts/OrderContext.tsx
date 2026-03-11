@@ -8,9 +8,10 @@ import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
 import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled, isRpcStrictMode, isRpcWrappersAvailable, markRpcStrictModeEnabled, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
 import { createLogger } from '../utils/logger';
-import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
+import { localizeSupabaseError, isAbortLikeError, resolveErrorMessage } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
 import { decryptField, isEncrypted } from '../utils/encryption';
+import { getCurrencyDecimalsByCode } from '../utils/currencyDecimals';
 
 const logger = createLogger('OrderContext');
 
@@ -26,9 +27,11 @@ interface OrderContextType {
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     paymentMethod: string;
@@ -37,9 +40,12 @@ interface OrderContextType {
     paymentSenderPhone?: string;
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
+    paymentDestinationAccountId?: string;
     isCredit?: boolean;
     creditDays?: number;
     dueDate?: string;
+    creditOverrideReason?: string;
+    existingOrderId?: string;
     paymentBreakdown?: Array<{
       method: string;
       amount: number;
@@ -48,6 +54,7 @@ interface OrderContextType {
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
       cashReceived?: number;
     }>;
   }) => Promise<Order>;
@@ -58,6 +65,7 @@ interface OrderContextType {
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     customerName?: string;
@@ -69,9 +77,11 @@ interface OrderContextType {
       | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
     >;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
   }) => Promise<Order>;
@@ -85,9 +95,11 @@ interface OrderContextType {
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
       cashReceived?: number;
     }>;
     occurredAt?: string;
+    belowCostOverrideReason?: string;
   }) => Promise<Order>;
   cancelInStorePendingOrder: (orderId: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: OrderStatus, meta?: { deliveredLocation?: { lat: number; lng: number; accuracy?: number }; deliveryPin?: string }) => Promise<void>;
@@ -99,7 +111,21 @@ interface OrderContextType {
   awardPointsForReviewedOrder: (orderId: string) => Promise<boolean>;
   incrementInvoicePrintCount: (orderId: string) => Promise<void>;
   markOrderPaid: (orderId: string) => Promise<void>;
-  recordOrderPaymentPartial: (orderId: string, amount: number, method?: string, occurredAt?: string, overrideAccountId?: string) => Promise<void>;
+  recordOrderPaymentPartial: (
+    orderId: string,
+    amount: number,
+    method?: string,
+    occurredAt?: string,
+    overrideAccountId?: string,
+    meta?: {
+      referenceNumber?: string;
+      senderName?: string;
+      senderPhone?: string;
+      declaredAmount?: number;
+      amountConfirmed?: boolean;
+      destinationAccountId?: string;
+    }
+  ) => Promise<void>;
   issueInvoiceNow: (orderId: string) => Promise<void>;
 }
 
@@ -140,6 +166,23 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const isUuid = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  const resolveOrderDestinationAccountId = (orderLike: any, methodLike?: string): string | undefined => {
+    const method = String(methodLike || orderLike?.paymentMethod || '').trim();
+    if (!method) return undefined;
+    const fromBreakdown = (Array.isArray(orderLike?.paymentBreakdown) ? orderLike.paymentBreakdown : [])
+      .find((p: any) => String(p?.method || '').trim() === method);
+    const fromBreakdownDest = String((fromBreakdown as any)?.destinationAccountId || '').trim();
+    if (isUuid(fromBreakdownDest)) return fromBreakdownDest;
+    if (method === 'kuraimi') {
+      const dest = String(orderLike?.paymentBank?.destinationAccountId || '').trim();
+      if (isUuid(dest)) return dest;
+    }
+    if (method === 'network') {
+      const dest = String(orderLike?.paymentNetworkRecipient?.destinationAccountId || '').trim();
+      if (isUuid(dest)) return dest;
+    }
+    return undefined;
+  };
 
   const isRpcNotFoundError = (err: any) => {
     const code = String(err?.code || '');
@@ -186,7 +229,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const rpcRecordOrderPayment = async (
     supabase: any,
-    input: { orderId: string; amount: number; method: string; occurredAt: string; currency?: string; idempotencyKey?: string; overrideAccountId?: string }
+    input: {
+      orderId: string;
+      amount: number;
+      method: string;
+      occurredAt: string;
+      currency?: string;
+      idempotencyKey?: string;
+      overrideAccountId?: string;
+      referenceNumber?: string;
+      senderName?: string;
+      senderPhone?: string;
+      declaredAmount?: number;
+      amountConfirmed?: boolean;
+      destinationAccountId?: string;
+    }
   ): Promise<any> => {
     const callV2 = async () => {
       const base: any = {
@@ -207,6 +264,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (override) {
         base.p_data.overrideAccountId = override;
       }
+      const referenceNumber = String(input.referenceNumber || '').trim();
+      if (referenceNumber) base.p_data.referenceNumber = referenceNumber;
+      const senderName = String(input.senderName || '').trim();
+      if (senderName) base.p_data.senderName = senderName;
+      const senderPhone = String(input.senderPhone || '').trim();
+      if (senderPhone) base.p_data.senderPhone = senderPhone;
+      const declaredAmount = Number(input.declaredAmount);
+      if (Number.isFinite(declaredAmount) && declaredAmount > 0) base.p_data.declaredAmount = declaredAmount;
+      if (typeof input.amountConfirmed === 'boolean') base.p_data.amountConfirmed = input.amountConfirmed;
+      const destinationAccountId = String(input.destinationAccountId || '').trim();
+      if (destinationAccountId) base.p_data.destinationAccountId = destinationAccountId;
       const { error } = await supabase.rpc('record_order_payment_v2', base);
       return error;
     };
@@ -234,8 +302,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     const hasOverride = String(input.overrideAccountId || '').trim().length > 0;
+    const hasMeta =
+      String(input.referenceNumber || '').trim().length > 0 ||
+      String(input.senderName || '').trim().length > 0 ||
+      String(input.senderPhone || '').trim().length > 0 ||
+      (Number.isFinite(Number(input.declaredAmount)) && Number(input.declaredAmount) > 0) ||
+      typeof input.amountConfirmed === 'boolean' ||
+      String(input.destinationAccountId || '').trim().length > 0;
     let error: any = null;
-    if (hasOverride) {
+    if (hasOverride || hasMeta) {
       error = await callV2();
       if (!error) return null;
       if (isRecordOrderPaymentNotFoundError(error)) {
@@ -371,9 +446,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_warehouse_id: input.warehouseId,
       };
 
-      const preferred = await supabase.rpc('confirm_order_delivery_with_credit_rpc', args);
-      if (!preferred?.error || !isRpcNotFoundError(preferred.error)) return preferred;
-
+      // Skip _rpc wrapper — call confirm_order_delivery_with_credit directly
+      // (the _rpc alias has a stale body on some environments causing 42703 errors).
       const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', args);
       return { data, error };
     };
@@ -400,20 +474,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const strict = isRpcStrictMode();
     if (strict) {
       let res = await tryDirect4();
-      if (res.error && isRpcNotFoundError(res.error)) {
+      if (res.error) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryDirect4();
       }
-      if (!res.error || !isRpcNotFoundError(res.error)) {
+      if (!res.error) {
         confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
         return res;
       }
       res = await tryWrapper();
-      if (res.error && isRpcNotFoundError(res.error)) {
+      if (res.error) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryWrapper();
       }
-      if (!res.error || !isRpcNotFoundError(res.error)) {
+      if (!res.error) {
         confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
         return res;
@@ -423,13 +497,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     // Prefer direct4 mode — wrapper triggers PostgREST disambiguation issues
     let res = await tryDirect4();
-    if (!res.error || !isRpcNotFoundError(res.error)) {
+    if (!res.error) {
       confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
       return res;
     }
 
     res = await tryWrapper();
-    if (!res.error || !isRpcNotFoundError(res.error)) {
+    if (!res.error) {
       confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return res;
@@ -439,10 +513,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const reloaded = await reloadPostgrestSchema();
       if (reloaded) {
         res = await tryDirect4();
-        if (!res.error || !isRpcNotFoundError(res.error)) {
+        if (!res.error) {
           confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
           return res;
         }
+      }
+    }
+
+    // Final compatibility fallback: use non-credit delivery RPCs on legacy schemas
+    if (res?.error) {
+      try {
+        const fallback = await rpcConfirmOrderDelivery(supabase, input);
+        if (!fallback.error) {
+          confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
+          return fallback;
+        }
+      } catch {
       }
     }
 
@@ -458,9 +544,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_warehouse_id: input.warehouseId,
       };
 
-      const preferred = await supabase.rpc('confirm_order_delivery_rpc', args);
-      if (!preferred?.error || !isRpcNotFoundError(preferred.error)) return preferred;
-
+      // Skip _rpc wrapper — call confirm_order_delivery directly (the _rpc alias
+      // has a stale body on some environments causing 42703 errors).
       const { data, error } = await supabase.rpc('confirm_order_delivery', args);
       return { data, error };
     };
@@ -583,7 +668,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const trySelectWithDeliveryZoneId = async () => {
         return await supabase
           .from('orders')
-          .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data')
+          .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
           .eq('id', orderId)
           .maybeSingle();
       };
@@ -594,7 +679,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (error && isSchemaCacheMissingColumnError(error, 'delivery_zone_id')) {
         ({ data: row, error } = await supabase
           .from('orders')
-          .select('id,status,created_at,currency,fx_rate,base_total,data')
+          .select('id,status,created_at,currency,fx_rate,base_total,data,order_events(action,actor_id)')
           .eq('id', orderId)
           .maybeSingle());
       }
@@ -609,6 +694,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const currency = colCurrency || dataCurrency;
       const fxRate = typeof (row as any)?.fx_rate === 'number' ? (row as any).fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
       const baseTotal = typeof (row as any)?.base_total === 'number' ? (row as any).base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
+      const events = typeof row?.order_events === 'object' && row.order_events !== null ? (Array.isArray(row.order_events) ? row.order_events : [row.order_events]) : [];
+      const createdEvent = events.find((e: any) => String(e?.action || '') === 'order.created');
+      const _createdBy = createdEvent?.actor_id ? String(createdEvent.actor_id) : undefined;
       const enriched: Order = {
         ...base,
         id: String(row.id),
@@ -616,6 +704,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         createdAt: (row.created_at as string) || base.createdAt || new Date().toISOString(),
         deliveryZoneId: (row.delivery_zone_id as string) || base.deliveryZoneId,
         ...(currency ? { currency } : {}),
+        ...(_createdBy ? { _createdBy } : {}),
       };
       if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
       if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);
@@ -727,6 +816,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         warehouse_id: warehouseId,
         data: order,
       };
+      const partyId = (order as any)?.partyId;
+      payload.party_id = isUuid(partyId) ? partyId : null;
       if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
         payload.currency = String((order as any).currency).trim().toUpperCase();
       }
@@ -737,7 +828,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .from('orders')
         .insert(payload));
 
-      if (error && (isSchemaCacheMissingColumnError(error, 'delivery_zone_id') || isSchemaCacheMissingColumnError(error, 'warehouse_id'))) {
+      if (error && (
+        isSchemaCacheMissingColumnError(error, 'delivery_zone_id')
+        || isSchemaCacheMissingColumnError(error, 'warehouse_id')
+        || isSchemaCacheMissingColumnError(error, 'party_id')
+      )) {
         const fallback: Record<string, any> = {
           id: order.id,
           status: order.status,
@@ -964,12 +1059,28 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     for (const item of items) {
       const requested = getRequestedBaseQuantity(item);
       if (!(requested > 0)) continue;
+      const lineWarehouseId = String((item as any)?.warehouseId || warehouseId || '').trim();
+      if (!lineWarehouseId) {
+        throw new Error('لا يمكن التحقق من المخزون بدون تحديد مستودع للصنف.');
+      }
       const unit = (item.unitType || item.unit || 'piece') as StockManagement['unit'];
-      const current = await loadStockRecord(item.id, item.availableStock || 0, unit, warehouseId);
+      const current = await loadStockRecord(item.id, item.availableStock || 0, unit, lineWarehouseId);
       const availableToSell = current.availableQuantity - current.reservedQuantity;
       if (availableToSell + 1e-9 < requested) {
+        try {
+          const rpcClient = getSupabaseClient();
+          if (rpcClient) {
+            await rpcClient.rpc('recompute_stock_for_item', {
+              p_item_id: item.id,
+              p_warehouse_id: lineWarehouseId,
+            });
+          }
+        } catch { }
+        const refreshed = await loadStockRecord(item.id, item.availableStock || 0, unit, lineWarehouseId);
+        const refreshedAvailableToSell = refreshed.availableQuantity - refreshed.reservedQuantity;
+        if (refreshedAvailableToSell + 1e-9 >= requested) continue;
         const name = item.name?.ar || item.id;
-        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة. المتاح: ${availableToSell}`);
+        throw new Error(`الكمية المطلوبة من "${name}" غير متوفرة في هذا المستودع. المتاح: ${refreshedAvailableToSell}`);
       }
     }
   };
@@ -1038,6 +1149,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         paymentMethod: order.paymentMethod,
         customerName: order.customerName,
         phoneNumber: order.phoneNumber,
+        invoiceStatement: (order as any).invoiceStatement,
         address: order.address,
         deliveryZoneId: order.deliveryZoneId,
         invoiceTerms: (order as any).invoiceTerms,
@@ -1074,7 +1186,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           await updateRemoteOrder(nextOrder, { includeStatus: false });
         } catch (err: any) {
           // If the order is already posted, we can't update it. Ignore this error to stop the retry loop.
-          if (String(err?.message || '').includes('posted_order_immutable') || err?.code === 'P0001') {
+          if (String(err?.message || '').includes('posted_order_immutable') || /مُرحّل.*مقفّل/i.test(String(err?.message || '')) || err?.code === 'P0001') {
             console.warn('Skipping update for posted order in ensureInvoiceIssued:', nextOrder.id);
           } else if ((nextOrder.status as any) === 'delivered' || (nextOrder.status as any) === 'posted') {
             console.warn('Swallowing update error for delivered/posted order:', nextOrder.id, err);
@@ -1117,7 +1229,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
+                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1126,7 +1238,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithoutZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data')
+                .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1166,6 +1278,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               const currency = colCurrency || dataCurrency;
               const fxRate = typeof r?.fx_rate === 'number' ? r.fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
               const baseTotal = typeof r?.base_total === 'number' ? r.base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
+              const events = typeof r?.order_events === 'object' && r.order_events !== null ? (Array.isArray(r.order_events) ? r.order_events : [r.order_events]) : [];
+              const createdEvent = events.find((e: any) => String(e?.action || '') === 'order.created');
+              const _createdBy = createdEvent?.actor_id ? String(createdEvent.actor_id) : undefined;
               const enriched: Order = {
                 ...base,
                 id: String(r.id),
@@ -1174,6 +1289,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 deliveryZoneId: typeof r.delivery_zone_id === 'string' ? r.delivery_zone_id : base.deliveryZoneId,
                 ...(r.warehouse_id ? { warehouseId: r.warehouse_id } : {}),
                 ...(currency ? { currency } : {}),
+                ...(_createdBy ? { _createdBy } : {}),
               };
               if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
               if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);
@@ -1565,14 +1681,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const createInStoreSale = async (input: {
     lines: Array<
-      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
-      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; batchId?: string; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any; warehouseId?: string }
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
+    belowCostOverrideReason?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     paymentMethod: string;
@@ -1581,6 +1700,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     paymentSenderPhone?: string;
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
+    paymentDestinationAccountId?: string;
     isCredit?: boolean;
     creditDays?: number;
     dueDate?: string;
@@ -1592,6 +1712,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       senderPhone?: string;
       declaredAmount?: number;
       amountConfirmed?: boolean;
+      destinationAccountId?: string;
       cashReceived?: number;
     }>;
   }) => {
@@ -1631,6 +1752,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         selectedAddons: l.selectedAddons || {},
         uomCode: typeof l.uomCode === 'string' && l.uomCode.trim() ? l.uomCode.trim() : undefined,
         uomQtyInBase: typeof l.uomQtyInBase === 'number' && l.uomQtyInBase > 0 ? l.uomQtyInBase : 1,
+        warehouseId: typeof l.warehouseId === 'string' && l.warehouseId.trim() ? String(l.warehouseId).trim() : undefined,
       }));
     const normalizedPromoLines = rawLines
       .filter((l: any) => typeof l?.promotionId === 'string' && Boolean(l.promotionId))
@@ -1639,6 +1761,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         bundleQty: typeof l.bundleQty === 'number' ? l.bundleQty : undefined,
         promotionLineId: typeof l.promotionLineId === 'string' ? l.promotionLineId : undefined,
         promotionSnapshot: l.promotionSnapshot,
+        warehouseId: typeof l.warehouseId === 'string' && l.warehouseId.trim() ? String(l.warehouseId).trim() : undefined,
       }));
 
     if (!normalizedMenuLines.length && !normalizedPromoLines.length) {
@@ -1656,16 +1779,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
       const rawId = String(input.customerId || '').trim();
-      if (!isUuid(rawId)) {
-        throw new Error('لا يمكن البيع الآجل بدون عميل تجاري صالح.');
+      const rawPartyId = String((input as any).partyId || '').trim();
+      if (!isUuid(rawId) && !isUuid(rawPartyId)) {
+        throw new Error('لا يمكن البيع الآجل بدون عميل أو طرف مالي صالح.');
       }
-      const { data: cRow } = await supabase
-        .from('customers')
-        .select('auth_user_id, customer_type, payment_terms, credit_limit')
-        .eq('auth_user_id', rawId)
-        .maybeSingle();
-      if (!cRow?.auth_user_id) {
-        throw new Error('البيع الآجل متاح فقط لعميل مسجل في قسم إدارة العملاء بنوع wholesale.');
+      if (isUuid(rawId)) {
+        const { data: cRow } = await supabase
+          .from('customers')
+          .select('auth_user_id, customer_type, payment_terms, credit_limit')
+          .eq('auth_user_id', rawId)
+          .maybeSingle();
+        if (!cRow?.auth_user_id) {
+          throw new Error('البيع الآجل متاح فقط لعميل مسجل في قسم إدارة العملاء بنوع wholesale.');
+        }
       }
     }
     let items: CartItem[] = normalizedMenuLines.map((line, idx) => {
@@ -1674,6 +1800,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const isWeightBased = unitType === 'kg' || unitType === 'gram';
       const quantity = !isWeightBased ? (line.quantity || 0) : 1;
       const weight = isWeightBased ? (line.weight || 0) : undefined;
+      const uomQtyInBase = !isWeightBased ? (Number(line.uomQtyInBase) || 1) : 1;
+      const uomCode = !isWeightBased ? (typeof line.uomCode === 'string' ? line.uomCode : undefined) : undefined;
 
       // Resolve addons
       const resolvedAddons: CartItem['selectedAddons'] = {};
@@ -1693,9 +1821,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         weight,
         selectedAddons: resolvedAddons,
         forcedBatchId: line.batchId,
+        uomQtyInBase,
+        uomCode,
+        warehouseId: line.warehouseId,
         cartItemId: crypto.randomUUID(),
-        uomCode: line.uomCode,
-        uomQtyInBase: line.uomQtyInBase || 1,
       };
     });
 
@@ -1725,6 +1854,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           unitType: 'bundle',
           quantity: bundleQty,
           selectedAddons: {},
+          warehouseId: line.warehouseId,
           cartItemId: crypto.randomUUID(),
         } as any;
 
@@ -1788,7 +1918,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const call = async (customerId: string | null) => {
             return await supabaseForPricing!.rpc('get_fefo_pricing', {
               p_item_id: item.id,
-              p_warehouse_id: warehouseId,
+              p_warehouse_id: (item as any).warehouseId || warehouseId,
               p_quantity: pricingQty,
               p_customer_id: customerId,
               p_currency_code: desiredCurrency,
@@ -1889,6 +2019,47 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       fxRate = fx;
     }
 
+    if (desiredCurrency !== baseCurrency && fxRate > 0) {
+      items = items.map((item: any) => {
+        const wasServerPriced = Boolean((item as any)?._pricedByRpc);
+        const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : item.price) || 0;
+        const nextSelected: any = {};
+        for (const [id, entry] of Object.entries(item.selectedAddons || {})) {
+          const e: any = entry as any;
+          const addon = e?.addon;
+          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
+          const addonPriceTxn = addonBase / fxRate;
+          nextSelected[id] = {
+            ...e,
+            addon: addon
+              ? {
+                ...addon,
+                _basePrice: addonBase,
+                price: addonPriceTxn,
+              }
+              : addon,
+          };
+        }
+        if (item.unitType === 'gram') {
+          const basePerUnit = Number((item as any)?._basePricePerUnit != null ? (item as any)._basePricePerUnit : ((Number(item.pricePerUnit) || baseUnitPrice * 1000))) || 0;
+          const nextPerUnit = wasServerPriced ? (Number(item.pricePerUnit) || (basePerUnit / fxRate)) : (basePerUnit / fxRate);
+          const nextUnitPrice = nextPerUnit / 1000;
+          return {
+            ...item,
+            price: nextUnitPrice,
+            pricePerUnit: nextPerUnit,
+            selectedAddons: nextSelected,
+          };
+        }
+        const nextUnitPrice = wasServerPriced ? (Number(item.price) || (baseUnitPrice / fxRate)) : (baseUnitPrice / fxRate);
+        return {
+          ...item,
+          price: nextUnitPrice,
+          selectedAddons: nextSelected,
+        };
+      });
+    }
+
     const computedSubtotal = items.reduce((total, item) => {
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce(
         (sum, { addon, quantity }) => sum + addon.price * quantity,
@@ -1896,16 +2067,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       );
 
       let itemPrice = item.price;
-      const uomFactor = Number((item as any).uomQtyInBase) || 1;
-      let itemQuantity = (item.unitType === 'kg' || item.unitType === 'gram')
-        ? item.quantity
-        : item.quantity * uomFactor;
+      let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
 
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
 
       return total + (itemPrice + addonsPrice) * itemQuantity;
@@ -1920,6 +2091,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const taxableBase = Math.max(0, computedSubtotal - discountAmount);
     const computedTotal = taxableBase;
+    const currencyDecimals = getCurrencyDecimalsByCode(desiredCurrency);
+    const computedTotalRounded = Number(computedTotal.toFixed(currencyDecimals));
 
     const normalizedBreakdown = (input.paymentBreakdown || [])
       .map((p) => ({
@@ -1930,6 +2103,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         senderPhone: (p.senderPhone || '').trim() || undefined,
         declaredAmount: Number(p.declaredAmount) || 0,
         amountConfirmed: Boolean(p.amountConfirmed),
+        destinationAccountId: String((p as any).destinationAccountId || '').trim() || undefined,
         cashReceived: Number(p.cashReceived) || 0,
       }))
       .filter((p) => Boolean(p.method) && (Number(p.amount) || 0) > 0);
@@ -1938,12 +2112,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const fallbackBreakdown = [
       {
         method,
-        amount: computedTotal,
+        amount: computedTotalRounded,
         referenceNumber: fallbackNeedsReference ? (input.paymentReferenceNumber || '').trim() || undefined : undefined,
         senderName: fallbackNeedsReference ? (input.paymentSenderName || '').trim() || undefined : undefined,
         senderPhone: fallbackNeedsReference ? (input.paymentSenderPhone || '').trim() || undefined : undefined,
         declaredAmount: fallbackNeedsReference ? (Number(input.paymentDeclaredAmount) || 0) : 0,
         amountConfirmed: fallbackNeedsReference ? Boolean(input.paymentAmountConfirmed) : true,
+        destinationAccountId: fallbackNeedsReference ? String((input as any).paymentDestinationAccountId || '').trim() || undefined : undefined,
         cashReceived: 0,
       },
     ];
@@ -1997,25 +2172,40 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // The frontend computes the total from local menu-item prices, but
     // createInStoreSale re-prices using get_fefo_pricing (batch-based).
     // Small drifts are expected; auto-correct instead of throwing.
-    const priceDrift = Math.abs(paymentTotal - computedTotal);
-    if (!input.isCredit && priceDrift > 0.001 && priceDrift < 50 && paymentBreakdown.length > 0) {
-      // Adjust the largest payment line to absorb the difference
-      const mainIdx = paymentBreakdown.reduce((best, p, i, arr) =>
-        (Number(p.amount) || 0) > (Number(arr[best].amount) || 0) ? i : best, 0);
-      const diff = computedTotal - paymentTotal;
-      paymentBreakdown[mainIdx].amount = Math.max(0, (Number(paymentBreakdown[mainIdx].amount) || 0) + diff);
+    const payTol = Math.pow(10, -currencyDecimals);
+    const priceDrift = Math.abs(paymentTotal - computedTotalRounded);
+    if (!input.isCredit && priceDrift > payTol && paymentBreakdown.length > 0) {
+      // Prefer adjusting the cash line if present, otherwise adjust the largest line
+      const cashIdx = paymentBreakdown.findIndex(p => p.method === 'cash');
+      const mainIdx = cashIdx >= 0
+        ? cashIdx
+        : paymentBreakdown.reduce((best, p, i, arr) =>
+          (Number(p.amount) || 0) > (Number(arr[best].amount) || 0) ? i : best, 0);
+      const diff = computedTotalRounded - paymentTotal;
+      const nextAmount = Math.max(0, (Number(paymentBreakdown[mainIdx].amount) || 0) + diff);
+      paymentBreakdown[mainIdx].amount = nextAmount;
+      // Keep amounts aligned for method-specific fields
+      if (paymentBreakdown[mainIdx].method === 'kuraimi' || paymentBreakdown[mainIdx].method === 'network') {
+        (paymentBreakdown[mainIdx] as any).declaredAmount = nextAmount;
+        (paymentBreakdown[mainIdx] as any).amountConfirmed = true;
+      } else if (paymentBreakdown[mainIdx].method === 'cash') {
+        const cr = Number((paymentBreakdown[mainIdx] as any).cashReceived) || 0;
+        if (cr > 0) {
+          (paymentBreakdown[mainIdx] as any).cashReceived = nextAmount;
+        }
+      }
       paymentTotal = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       if (import.meta.env.DEV) {
         console.log('[createInStoreSale] Auto-reconciled payment drift:', priceDrift.toFixed(4), 'adjusted by', diff.toFixed(4));
       }
     }
 
-    if (input.isCredit && paymentTotal - computedTotal > 0.01) {
+    if (input.isCredit && paymentTotal - computedTotalRounded > payTol) {
       throw new Error('مجموع الدفعات أكبر من إجمالي البيع.');
     }
     const isFullyPaid = input.isCredit
-      ? (paymentTotal + 0.01 >= computedTotal)
-      : (Math.abs(paymentTotal - computedTotal) <= 1.0);
+      ? (paymentTotal + payTol >= computedTotalRounded)
+      : (Math.abs(paymentTotal - computedTotalRounded) <= payTol);
 
     if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');
@@ -2072,8 +2262,39 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       } catch { }
     }
+    const rawPartyId = String((input as any).partyId || '').trim();
+    const existingOrderId = String((input as any).existingOrderId || '').trim();
+    const isResumingExistingOrder = isUuid(existingOrderId);
+    if (!offlineHint && isUuid(rawPartyId)) {
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          const { data: pRow, error: pErr } = await supabase
+            .from('financial_parties')
+            .select('id, party_type, is_active')
+            .eq('id', rawPartyId)
+            .maybeSingle();
+          if (pErr) throw pErr;
+          if (!pRow?.id) {
+            throw new Error('الطرف المالي غير موجود.');
+          }
+          if (pRow.is_active === false) {
+            throw new Error('الطرف المالي غير نشط.');
+          }
+          if (input.isCredit) {
+            const pType = String((pRow as any).party_type || '').trim().toLowerCase();
+            const allowed = pType === 'customer' || pType === 'partner' || pType === 'generic' || pType === 'employee' || pType === 'supplier';
+            if (!allowed) {
+              throw new Error('لا يمكن إنشاء بيع آجل لهذا النوع من الأطراف المالية.');
+            }
+          }
+        }
+      } catch (err: any) {
+        throw new Error(typeof err?.message === 'string' && err.message ? err.message : 'تعذر التحقق من الطرف المالي.');
+      }
+    }
     const newOrder: Order = {
-      id: crypto.randomUUID(),
+      id: isResumingExistingOrder ? existingOrderId : crypto.randomUUID(),
       userId: effectiveCustomerAuthId,
       orderSource: 'in_store',
       warehouseId,
@@ -2097,6 +2318,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         referenceNumber: p.referenceNumber,
         senderName: p.senderName,
         senderPhone: p.senderPhone,
+        destinationAccountId: (p as any).destinationAccountId,
         cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
         cashChange: p.method === 'cash' && p.cashReceived > 0 ? Math.max(0, p.cashReceived - p.amount) : undefined,
       })) : undefined,
@@ -2123,8 +2345,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       netDays: input.isCredit ? creditDays : 0,
       dueDate: dueYmd,
     };
+    const creditOverrideReason = String((input as any).creditOverrideReason || '').trim();
+    if (creditOverrideReason) (newOrder as any).creditOverrideReason = creditOverrideReason;
+    const belowCostOverrideReason = String((input as any).belowCostOverrideReason || '').trim();
+    if (belowCostOverrideReason) (newOrder as any).belowCostOverrideReason = belowCostOverrideReason;
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
+    if (isUuid(rawPartyId)) (newOrder as any).partyId = rawPartyId;
 
     const payloadItems = newOrder.items
       .filter((item: any) => !(item?.lineType === 'promotion' || item?.promotionId))
@@ -2134,6 +2361,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         uomCode: String((item as any)?.uomCode || '').trim() || undefined,
         uomQtyInBase: Number((item as any)?.uomQtyInBase) || 1,
         batchId: (item as any)?._fefoBatchId || (item as any)?.forcedBatchId || undefined,
+        warehouseId: (item as any)?.warehouseId || undefined,
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     if (shouldAttemptImmediatePayment && payloadItems.length === 0 && !hasPromoLines) {
@@ -2166,13 +2394,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           referenceNumber: p.referenceNumber,
           senderName: p.senderName,
           senderPhone: p.senderPhone,
+          destinationAccountId: (p as any).destinationAccountId,
           declaredAmount: Number((p as any).declaredAmount) || 0,
           amountConfirmed: Boolean((p as any).amountConfirmed),
           cashReceived: (p as any).cashReceived,
           occurredAt: nowIso,
         })),
       });
-      setOrders(prev => [offlineOrder, ...prev]);
+      setOrders(prev => [offlineOrder, ...prev.filter(o => o.id !== offlineOrder.id)]);
       return offlineOrder;
     };
 
@@ -2183,7 +2412,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     let finalized: Order = newOrder;
 
     try {
-      await createRemoteOrder({ ...newOrder, status: 'pending' });
+      if (isResumingExistingOrder) {
+        await updateRemoteOrder({ ...newOrder, status: 'pending' });
+      } else {
+        await createRemoteOrder({ ...newOrder, status: 'pending' });
+      }
 
       try {
         const supabase = getSupabaseClient();
@@ -2197,45 +2430,52 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       } catch { }
 
-      if (canMarkPaidUi) {
-        const sbPay = getSupabaseClient();
-        if (!sbPay) throw new Error('Supabase غير مهيأ.');
-        const paymentCurrency = String((newOrder as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
-        for (let i = 0; i < paymentBreakdown.length; i++) {
-          const p = paymentBreakdown[i];
-          const rpcErr = await rpcRecordOrderPayment(sbPay, {
-            orderId: newOrder.id,
-            amount: Number(p.amount) || 0,
-            method: p.method,
-            occurredAt: nowIso,
-            currency: paymentCurrency,
-            idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
-          });
-          if (rpcErr) {
-            paymentRecordOk = false;
-            if (import.meta.env.DEV) {
-              logger.warn('Failed to record payment for in-store sale:', rpcErr);
-            }
-            break;
-          }
-        }
-      }
-
-      paidAtIso = (canMarkPaidUi && paymentRecordOk && isFullyPaid) ? nowIso : undefined;
-      shouldIssueInvoice = (canMarkPaidUi && paymentRecordOk && isFullyPaid);
-
-      // Note: We do NOT generate invoiceNumber or invoiceSnapshot here in the frontend.
-      // We rely on the backend trigger `trg_issue_invoice_on_delivery` to generate them when status changes to 'delivered'.
-      // This avoids the 22P02 (Invalid JSON) error caused by sending the complex snapshot structure from frontend.
-      finalized = {
-        ...newOrder,
-        paidAt: paidAtIso,
-        // We explicitly clear invoiceNumber/invoiceIssuedAt/invoiceSnapshot so the backend sees them as missing
-        // and generates them.
-        invoiceNumber: undefined,
-        invoiceIssuedAt: undefined,
-        invoiceSnapshot: undefined,
+      const buildValidationInvoiceSnapshot = (): NonNullable<Order['invoiceSnapshot']> => {
+        const issuedAt = nowIso;
+        const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAt);
+        const snapshotItems = typeof structuredClone === 'function'
+          ? structuredClone(newOrder.items || [])
+          : JSON.parse(JSON.stringify(newOrder.items || []));
+        return {
+          issuedAt,
+          invoiceNumber: invNum,
+          createdAt: newOrder.createdAt || issuedAt,
+          orderSource: 'in_store',
+          currency: desiredCurrency || baseCurrency,
+          fxRate: fxRate,
+          baseCurrency: baseCurrency,
+          totals: {
+            subtotal: newOrder.subtotal,
+            discountAmount: newOrder.discountAmount,
+            deliveryFee: newOrder.deliveryFee,
+            taxAmount: (newOrder as any).taxAmount,
+            total: newOrder.total,
+          },
+          subtotal: newOrder.subtotal,
+          deliveryFee: newOrder.deliveryFee,
+          discountAmount: newOrder.discountAmount,
+          total: newOrder.total,
+          paymentMethod: newOrder.paymentMethod,
+          paymentBreakdown: Array.isArray(newOrder.paymentBreakdown) ? newOrder.paymentBreakdown : undefined,
+          isCreditSale: Boolean(newOrder.isCreditSale),
+          invoiceTerms: newOrder.invoiceTerms || (newOrder.isCreditSale ? 'credit' : 'cash'),
+          customerName: newOrder.customerName,
+          phoneNumber: newOrder.phoneNumber,
+          invoiceStatement: (newOrder as any).invoiceStatement,
+          address: newOrder.address,
+          deliveryZoneId: newOrder.deliveryZoneId,
+          items: snapshotItems,
+        };
       };
+
+      const deliveryPayload: Order = {
+        ...newOrder,
+        paidAt: undefined,
+        invoiceNumber: invoiceNumber || newOrder.invoiceNumber,
+        invoiceIssuedAt: nowIso,
+        invoiceSnapshot: buildValidationInvoiceSnapshot(),
+      };
+      finalized = deliveryPayload;
 
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -2243,15 +2483,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (canMarkPaidUi) {
         const rollbackCreatedOrder = async (reason: string) => {
           try {
-            const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
-            if (!deleteErr) return;
-            const cancelled = {
+            const pending = {
               ...finalized,
-              status: 'cancelled',
-              cancelledAt: nowIso,
-              cancelReason: reason,
+              status: 'pending',
+              inStoreFailureAt: nowIso,
+              inStoreFailureReason: reason,
             };
-            await sb2.from('orders').update({ status: 'cancelled', data: cancelled }).eq('id', newOrder.id);
+            const sanitizedPending = sanitizeForJsonb(JSON.parse(JSON.stringify(pending)));
+            const { error: updErr } = await sb2.from('orders').update({ status: 'pending', data: sanitizedPending }).eq('id', newOrder.id);
+            if (updErr) await sb2.from('orders').update({ status: 'pending' }).eq('id', newOrder.id);
           } catch {
           }
         };
@@ -2294,19 +2534,169 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           warehouseId,
         });
 
-        if (rpcError) {
-          const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
-          if (offlineNow || isAbortLikeError(rpcError)) {
-            await rollbackCreatedOrder('offline_or_aborted');
-            return await queueOfflineSale();
+        let confirmError: any = rpcError;
+        if (confirmError) {
+          const msgLower = String((confirmError as any)?.message || '').trim().toLowerCase();
+          if (msgLower === 'posted_order_immutable' || msgLower.includes('posted_order_immutable')) {
+            const fresh = await fetchRemoteOrderById(newOrder.id);
+            if (fresh) {
+              finalized = fresh;
+            }
+            confirmError = null;
           }
-          await rollbackCreatedOrder(localizeSupabaseError(rpcError) || 'rpc_error');
-          console.error('In-store sale confirmation failed:', rpcError);
-          const msg = localizeSupabaseError(rpcError);
+        }
+        if (confirmError) {
+          const isInvoiceSnapshotError = (() => {
+            const rawCombined = [
+              String((confirmError as any)?.message || '').trim(),
+              String((confirmError as any)?.details || '').trim(),
+              String((confirmError as any)?.hint || '').trim(),
+            ].filter(Boolean).join('\n').toLowerCase();
+            const localized = localizeSupabaseError(confirmError).toLowerCase();
+            const combined = `${rawCombined}\n${localized}`;
+            return combined.includes('invoice_snapshot_fields_missing')
+              || combined.includes('invoice_snapshot_required')
+              || combined.includes('invoice_snapshot_items_missing');
+          })();
+
+          if (isInvoiceSnapshotError) {
+            try {
+              const issuedAtIso = nowIso;
+              const baseCurrencyCode = String((await getBaseCurrencyCode()) || baseCurrency || 'YER').toUpperCase();
+              const fxRateSnapshot = Number.isFinite(Number(fxRate)) ? Number(fxRate) : 1;
+              const currencySnapshot = desiredCurrency || baseCurrencyCode;
+              const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAtIso);
+              const snapshot: any = {
+                issuedAt: issuedAtIso,
+                invoiceNumber: invNum,
+                createdAt: newOrder.createdAt || issuedAtIso,
+                orderSource: 'in_store',
+                items: typeof structuredClone === 'function'
+                  ? structuredClone(newOrder.items || [])
+                  : JSON.parse(JSON.stringify(newOrder.items || [])),
+                currency: currencySnapshot,
+                fxRate: fxRateSnapshot,
+                baseCurrency: baseCurrencyCode,
+                totals: {
+                  subtotal: newOrder.subtotal,
+                  discountAmount: newOrder.discountAmount,
+                  deliveryFee: newOrder.deliveryFee,
+                  taxAmount: (newOrder as any).taxAmount,
+                  total: newOrder.total,
+                },
+                subtotal: newOrder.subtotal,
+                deliveryFee: newOrder.deliveryFee,
+                discountAmount: newOrder.discountAmount,
+                total: newOrder.total,
+                paymentMethod: newOrder.paymentMethod,
+                paymentBreakdown: Array.isArray(newOrder.paymentBreakdown) ? newOrder.paymentBreakdown : undefined,
+                isCreditSale: Boolean(newOrder.isCreditSale),
+                invoiceTerms: newOrder.invoiceTerms || (newOrder.isCreditSale ? 'credit' : 'cash'),
+                customerName: newOrder.customerName,
+                phoneNumber: newOrder.phoneNumber,
+                invoiceStatement: (newOrder as any).invoiceStatement,
+                address: newOrder.address,
+                deliveryZoneId: newOrder.deliveryZoneId,
+              };
+
+              const retryFinalized = sanitizeForJsonb(JSON.parse(JSON.stringify({
+                ...finalized,
+                invoiceSnapshot: snapshot,
+                invoiceIssuedAt: issuedAtIso,
+                invoiceNumber: invNum,
+              })));
+
+              const { error: retryError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
+                orderId: newOrder.id,
+                items: sanitizedItems,
+                updatedData: retryFinalized,
+                warehouseId,
+              });
+              confirmError = retryError;
+              if (!confirmError) {
+                const freshOrder = await fetchRemoteOrderById(newOrder.id);
+                if (freshOrder) {
+                  finalized = freshOrder;
+                }
+              }
+            } catch {
+            }
+          }
+
+          const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+          if (offlineNow || isAbortLikeError(confirmError)) {
+            await rollbackCreatedOrder('offline_or_aborted');
+            const fresh = await fetchRemoteOrderById(newOrder.id);
+            return fresh || ({ ...newOrder, status: 'pending' } as Order);
+          }
+          {
+            const msg = String((confirmError as any)?.message || '').trim().toLowerCase();
+            if (msg === 'posted_order_immutable' || msg.includes('posted_order_immutable')) {
+              const fresh = await fetchRemoteOrderById(newOrder.id);
+              if (fresh) return fresh;
+              return ({ ...newOrder, status: 'delivered' } as Order);
+            }
+          }
+          {
+            const rawCombined = [
+              String((confirmError as any)?.message || '').trim(),
+              String((confirmError as any)?.details || '').trim(),
+              String((confirmError as any)?.hint || '').trim(),
+            ].filter(Boolean).join(' | ');
+            const upper = rawCombined.toUpperCase();
+            const token =
+              upper.includes('BELOW_COST_REASON_REQUIRED')
+                ? 'BELOW_COST_REASON_REQUIRED'
+                : upper.includes('SELLING_BELOW_COST_NOT_ALLOWED')
+                  ? 'SELLING_BELOW_COST_NOT_ALLOWED'
+                  : null;
+            if (token) {
+              await rollbackCreatedOrder(`below_cost | ${token}`);
+              const e: any = new Error(token);
+              e.pendingOrderId = newOrder.id;
+              e.original = confirmError;
+              throw e;
+            }
+          }
+          const code = String((confirmError as any)?.code || '').trim();
+          const rawMsg = [
+            String((confirmError as any)?.message || '').trim(),
+            String((confirmError as any)?.details || '').trim(),
+            String((confirmError as any)?.hint || '').trim(),
+          ].filter(Boolean).join(' | ');
+          const localizedMsg = localizeSupabaseError(confirmError);
+          const combinedMsg = (localizedMsg || rawMsg || '').trim();
+          const combinedForDisplay = (() => {
+            const generic = combinedMsg === 'فشل العملية.' || combinedMsg === 'حدث خطأ غير متوقع.' || combinedMsg === 'UNKNOWN' || combinedMsg === 'Unknown';
+            const dbg = rawMsg;
+            if (generic && dbg) return `${combinedMsg} (${dbg})`;
+            return combinedMsg;
+          })();
+          const schemaHint = (() => {
+            const m = `${rawMsg}\n${localizedMsg}`.toLowerCase();
+            if (code === '42883' && m.includes('_money_round') && m.includes('numeric') && m.includes('text')) {
+              return 'قاعدة البيانات غير محدثة: دالة تقريب العملة مفقودة. طبّق ترحيلات Supabase الخاصة بالتقريب/العملات ثم أعد المحاولة.';
+            }
+            if (code === '42703' && (m.includes('currency_code') || m.includes('fx_rate') || m.includes('foreign_amount'))) {
+              return 'قاعدة البيانات غير محدثة: أعمدة FX غير موجودة على القيود. طبّق ترحيلات FX ثم أعد المحاولة.';
+            }
+            if (code === '42883' && (m.includes('confirm_order_delivery_with_credit') || m.includes('confirm_order_delivery'))) {
+              return 'قاعدة البيانات غير محدثة: وظائف تأكيد تسليم الطلب غير موجودة. طبّق ترحيلات Supabase الخاصة بواجهات التسليم ثم أعد المحاولة.';
+            }
+            return '';
+          })();
+          if (schemaHint) {
+            await rollbackCreatedOrder(`schema_mismatch | ${schemaHint}${code ? ` | code:${code}` : ''}`);
+            throw new Error(`${schemaHint}${code ? ` (code:${code})` : ''} تم إنشاء الطلب كـ "معلق" ويمكن إتمامه بعد تطبيق الترحيلات.`);
+          }
+          const rollbackReason = [combinedForDisplay || combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
+          await rollbackCreatedOrder(rollbackReason);
+          console.error('In-store sale confirmation failed:', confirmError);
+          const msg = schemaHint || combinedForDisplay || combinedMsg;
           throw new Error(
             msg && msg.trim()
-              ? `لم يتم تنفيذ البيع. تم التراجع عن الطلب. السبب: ${msg}`
-              : 'لم يتم تنفيذ البيع (فشل خصم المخزون أو التأكيد). تم التراجع عن الطلب. تحقق من توفر الأصناف والمستودع ثم أعد المحاولة.'
+              ? `لم يتم تنفيذ البيع. تم حفظ الطلب كمعلّق. السبب: ${msg}${code ? ` (code:${code})` : ''}`
+              : 'لم يتم تنفيذ البيع (فشل خصم المخزون أو التأكيد). تم حفظ الطلب كمعلّق. تحقق من توفر الأصناف والمستودع ثم أعد المحاولة.'
           );
         }
 
@@ -2317,6 +2707,113 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         } else {
           // Fallback if fetch fails (unlikely)
           console.warn('[createInStoreSale] Could not fetch fresh order after delivery.');
+        }
+
+        if (paymentBreakdown.length > 0) {
+          const paymentCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+          const sbPay = getSupabaseClient();
+          if (!sbPay) throw new Error('Supabase غير مهيأ.');
+          const queuePaymentRepair = (payment: { amount: number; method: string; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; destinationAccountId?: string }, idx: number) => {
+            const amount = Number(payment.amount) || 0;
+            if (!(amount > 0)) return;
+            const idempotencyKey = `instore:${newOrder.id}:${nowIso}:${idx}:${payment.method}:${amount}`;
+            enqueueRpc('record_order_payment_v2', {
+              p_order_id: newOrder.id,
+              p_amount: amount,
+              p_method: payment.method,
+              p_occurred_at: nowIso,
+              p_idempotency_key: idempotencyKey,
+              p_currency: paymentCurrency,
+              p_data: {
+                referenceNumber: payment.referenceNumber,
+                senderName: payment.senderName,
+                senderPhone: payment.senderPhone,
+                declaredAmount: Number(payment.declaredAmount) || undefined,
+                amountConfirmed: typeof payment.amountConfirmed === 'boolean' ? payment.amountConfirmed : undefined,
+                destinationAccountId: String(payment.destinationAccountId || '').trim() || undefined,
+              },
+            });
+          };
+          for (let i = 0; i < paymentBreakdown.length; i++) {
+            const p = paymentBreakdown[i];
+            const rpcErr = await rpcRecordOrderPayment(sbPay, {
+              orderId: newOrder.id,
+              amount: Number(p.amount) || 0,
+              method: p.method,
+              occurredAt: nowIso,
+              currency: paymentCurrency,
+              idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+              destinationAccountId: String((p as any).destinationAccountId || '').trim() || undefined,
+              referenceNumber: p.referenceNumber || undefined,
+              senderName: p.senderName || undefined,
+              senderPhone: p.senderPhone || undefined,
+              declaredAmount: Number((p as any).declaredAmount) || undefined,
+              amountConfirmed: typeof (p as any).amountConfirmed === 'boolean' ? Boolean((p as any).amountConfirmed) : undefined,
+            });
+            if (rpcErr) {
+              paymentRecordOk = false;
+              const transientError = (typeof navigator !== 'undefined' && navigator.onLine === false) || isAbortLikeError(rpcErr);
+              if (transientError) {
+                queuePaymentRepair(p, i);
+                continue;
+              }
+              if (import.meta.env.DEV) {
+                logger.warn('Failed to record payment for in-store sale:', rpcErr);
+              }
+              break;
+            }
+          }
+        }
+
+        // ── Ensure credit (AR) sales always have an AR payment record ──
+        // If isCredit and no AR payment was recorded via the breakdown loop,
+        // create an AR payment for the full order amount so the sale appears
+        // in shift reports and AR aging correctly.
+        if (input.isCredit && paymentRecordOk) {
+          const hasArPayment = paymentBreakdown.some(p => p.method === 'ar');
+          if (!hasArPayment) {
+            const arCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+            const sbAr = getSupabaseClient();
+            if (sbAr) {
+              const arAmount = computedTotalRounded - paymentBreakdown.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+              if (arAmount > 0) {
+                const arErr = await rpcRecordOrderPayment(sbAr, {
+                  orderId: newOrder.id,
+                  amount: arAmount,
+                  method: 'ar',
+                  occurredAt: nowIso,
+                  currency: arCurrency,
+                  idempotencyKey: `instore:${newOrder.id}:${nowIso}:ar:${arAmount}`,
+                });
+                if (arErr) {
+                  paymentRecordOk = false;
+                  const transientError = (typeof navigator !== 'undefined' && navigator.onLine === false) || isAbortLikeError(arErr);
+                  if (transientError) {
+                    enqueueRpc('record_order_payment_v2', {
+                      p_order_id: newOrder.id,
+                      p_amount: arAmount,
+                      p_method: 'ar',
+                      p_occurred_at: nowIso,
+                      p_idempotency_key: `instore:${newOrder.id}:${nowIso}:ar:${arAmount}`,
+                      p_currency: arCurrency,
+                      p_data: {},
+                    });
+                  }
+                  if (import.meta.env.DEV) {
+                    logger.warn('Failed to record AR payment for credit sale:', arErr);
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        paidAtIso = (paymentRecordOk && isFullyPaid) ? nowIso : undefined;
+        shouldIssueInvoice = (paymentRecordOk && isFullyPaid);
+        if (paidAtIso) {
+          // تجنب تعديل سجل الطلب بعد نشره (posted_order_immutable)
+          // نحدّث الحالة محليًا فقط. الخادم سيعكس ذلك عبر المدفوعات/التقارير.
+          finalized = { ...finalized, paidAt: paidAtIso } as Order;
         }
 
       } else {
@@ -2422,17 +2919,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
 
     if (canMarkPaidUi && !paymentRecordOk) {
-      setOrders(prev => [finalized, ...prev]);
+      setOrders(prev => [finalized, ...prev.filter(o => o.id !== finalized.id)]);
       return finalized;
     }
 
     if (shouldIssueInvoice) {
-      setOrders(prev => [finalized, ...prev]);
+      setOrders(prev => [finalized, ...prev.filter(o => o.id !== finalized.id)]);
       return finalized;
     }
 
     if (!canMarkPaidUi) {
-      setOrders(prev => [newOrder, ...prev]);
+      setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
       return newOrder;
     }
 
@@ -2442,18 +2939,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       itemsCount: items.length
     });
 
-    setOrders(prev => [finalized, ...prev]);
+    setOrders(prev => [finalized, ...prev.filter(o => o.id !== finalized.id)]);
 
     return finalized;
   };
 
   const createInStorePendingOrder = async (input: {
     lines: Array<
-      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
-      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; warehouseId?: string }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any; warehouseId?: string }
     >;
     currency?: string;
     customerId?: string;
+    partyId?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     customerName?: string;
@@ -2469,13 +2967,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
     const baseCurrency = String((await getBaseCurrencyCode()) || '').toUpperCase().trim() || 'YER';
     const desiredCurrency = String((input as any).currency || baseCurrency || '').toUpperCase().trim() || baseCurrency;
-    const normalizedLines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons: Record<string, number> }> = (input.lines || [])
+    const normalizedLines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons: Record<string, number>; warehouseId?: string }> = (input.lines || [])
       .filter((l: any) => typeof l?.menuItemId === 'string' && Boolean(l.menuItemId))
       .map((l: any) => ({
         menuItemId: String(l.menuItemId),
         quantity: typeof l.quantity === 'number' ? l.quantity : undefined,
         weight: typeof l.weight === 'number' ? l.weight : undefined,
         selectedAddons: (l.selectedAddons && typeof l.selectedAddons === 'object') ? (l.selectedAddons as Record<string, number>) : {},
+        warehouseId: typeof l.warehouseId === 'string' && l.warehouseId.trim() ? String(l.warehouseId).trim() : undefined,
       }));
     if (!normalizedLines.length) {
       throw new Error('يجب إضافة صنف واحد على الأقل.');
@@ -2506,6 +3005,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         quantity,
         weight,
         selectedAddons: resolvedAddons,
+        warehouseId: line.warehouseId,
         cartItemId: crypto.randomUUID(),
       };
     });
@@ -2516,12 +3016,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
         ? (item.weight || item.quantity)
-        : item.quantity;
+        : item.quantity * uomFactor;
       const { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
-        p_warehouse_id: warehouseId,
+        p_warehouse_id: (item as any).warehouseId || warehouseId,
         p_currency_code: desiredCurrency,
         p_customer_id: input.customerId ? String(input.customerId) : null,
         p_quantity: pricingQty,
@@ -2581,6 +3082,47 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       fxRate = fx;
     }
 
+    if (desiredCurrency !== baseCurrency && fxRate > 0) {
+      items = items.map((item: any) => {
+        const wasServerPriced = Boolean((item as any)?._pricedByRpc);
+        const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : item.price) || 0;
+        const nextSelected: any = {};
+        for (const [id, entry] of Object.entries(item.selectedAddons || {})) {
+          const e: any = entry as any;
+          const addon = e?.addon;
+          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
+          const addonPriceTxn = addonBase / fxRate;
+          nextSelected[id] = {
+            ...e,
+            addon: addon
+              ? {
+                ...addon,
+                _basePrice: addonBase,
+                price: addonPriceTxn,
+              }
+              : addon,
+          };
+        }
+        if (item.unitType === 'gram') {
+          const basePerUnit = Number((item as any)?._basePricePerUnit != null ? (item as any)._basePricePerUnit : ((Number(item.pricePerUnit) || baseUnitPrice * 1000))) || 0;
+          const nextPerUnit = wasServerPriced ? (Number(item.pricePerUnit) || (basePerUnit / fxRate)) : (basePerUnit / fxRate);
+          const nextUnitPrice = nextPerUnit / 1000;
+          return {
+            ...item,
+            price: nextUnitPrice,
+            pricePerUnit: nextPerUnit,
+            selectedAddons: nextSelected,
+          };
+        }
+        const nextUnitPrice = wasServerPriced ? (Number(item.price) || (baseUnitPrice / fxRate)) : (baseUnitPrice / fxRate);
+        return {
+          ...item,
+          price: nextUnitPrice,
+          selectedAddons: nextSelected,
+        };
+      });
+    }
+
     const computedSubtotal = items.reduce((total, item) => {
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce(
         (sum, { addon, quantity }) => sum + addon.price * quantity,
@@ -2588,11 +3130,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       );
       let itemPrice = item.price;
       let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
       return total + (itemPrice + addonsPrice) * itemQuantity;
     }, 0);
@@ -2620,6 +3165,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       customerName: input.customerName?.trim() || 'زبون حضوري',
       phoneNumber: input.phoneNumber?.trim() || '',
       notes: input.notes?.trim() || undefined,
+      invoiceStatement: String((input as any).invoiceStatement || '').trim() || undefined,
       address: 'داخل المحل',
       paymentMethod: 'mixed',
       status: 'pending',
@@ -2629,6 +3175,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     (newOrder as any).baseCurrency = baseCurrency;
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
+    const partyId = String((input as any).partyId || '').trim();
+    if (isUuid(partyId)) (newOrder as any).partyId = partyId;
     await createRemoteOrder(newOrder);
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -2644,6 +3192,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       .map((item) => ({
         itemId: item.id,
         quantity: getRequestedItemQuantity(item),
+        uomCode: String((item as any)?.uomCode || '').trim() || undefined,
+        uomQtyInBase: Number((item as any)?.uomQtyInBase) || 1,
+        batchId: (item as any)?._fefoBatchId || (item as any)?.forcedBatchId || undefined,
+        warehouseId: (item as any)?.warehouseId || undefined,
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     const sb3 = supabase!;
@@ -2664,16 +3216,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: nowIso,
       payload: { orderSource: 'in_store', total: newOrder.total, itemsCount: items.length },
     });
-    setOrders(prev => [newOrder, ...prev]);
+    setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
     return newOrder;
   };
 
   const createInStoreDraftQuotation = async (input: {
     lines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>;
     customerId?: string;
+    partyId?: string;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
+    invoiceStatement?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
   }) => {
@@ -2722,7 +3276,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
-      const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram') ? (item.weight || item.quantity) : item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
+      const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
+        ? (item.weight || item.quantity)
+        : item.quantity * uomFactor;
       let { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
         p_warehouse_id: warehouseId,
@@ -2742,11 +3299,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce((sum, { addon, quantity }) => sum + addon.price * quantity, 0);
       let itemPrice = item.price;
       let itemQuantity = item.quantity;
+      const uomFactor = Number((item as any)?.uomQtyInBase || 1) || 1;
       if (item.unitType === 'kg' || item.unitType === 'gram') {
         itemQuantity = item.weight || item.quantity;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        itemQuantity = (Number(itemQuantity) || 0) * uomFactor;
       }
       return total + (itemPrice + addonsPrice) * itemQuantity;
     }, 0);
@@ -2774,12 +3334,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       customerName: input.customerName?.trim() || 'زبون حضوري',
       phoneNumber: input.phoneNumber?.trim() || '',
       notes: input.notes?.trim() || undefined,
+      invoiceStatement: String((input as any).invoiceStatement || '').trim() || undefined,
       address: 'داخل المحل',
       paymentMethod: 'unknown',
       status: 'pending',
       createdAt: nowIso,
       isDraft: true,
     };
+    const partyId = String((input as any).partyId || '').trim();
+    if (isUuid(partyId)) (newOrder as any).partyId = partyId;
     await createRemoteOrder(newOrder);
     await addOrderEvent({
       orderId: newOrder.id,
@@ -2790,7 +3353,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: nowIso,
       payload: { orderSource: 'in_store', total: newOrder.total, itemsCount: items.length, isDraft: true },
     });
-    setOrders(prev => [newOrder, ...prev]);
+    setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
     return newOrder;
   };
   const resumeInStorePendingOrder = async (orderId: string, payment: {
@@ -2806,6 +3369,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       cashReceived?: number;
     }>;
     occurredAt?: string;
+    belowCostOverrideReason?: string;
+    customerId?: string;
+    partyId?: string;
+    isCreditSale?: boolean;
+    invoiceTerms?: string;
   }) => {
     const existing = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
     if (!existing || existing.status !== 'pending') {
@@ -2872,7 +3440,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (payloadItems.length === 0 && promoLines.length === 0) {
       throw new Error('لا يمكن إتمام الطلب: تأكد من الكمية/الوزن للأصناف.');
     }
-    const updatedDelivered: Order = { ...existing, status: 'delivered', deliveredAt: nowIso, paidAt: nowIso, paymentMethod: payment.paymentMethod };
+    const belowCostOverrideReason = String((payment as any).belowCostOverrideReason || '').trim();
+    const updatedDelivered: Order = {
+      ...existing,
+      status: 'delivered',
+      deliveredAt: nowIso,
+      paidAt: nowIso,
+      paymentMethod: payment.paymentMethod,
+      ...(belowCostOverrideReason ? ({ belowCostOverrideReason } as any) : {}),
+      ...(payment.customerId ? { customerId: payment.customerId } : {}),
+      ...((payment.partyId ? { partyId: payment.partyId } : {}) as any),
+      ...(typeof payment.isCreditSale === 'boolean' ? { isCreditSale: payment.isCreditSale } : {}),
+      ...(payment.invoiceTerms ? { invoiceTerms: payment.invoiceTerms } : {}),
+    };
     const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(supabase, {
       orderId: existing.id,
       items: payloadItems,
@@ -2895,6 +3475,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         occurredAt: payment.occurredAt || nowIso,
         currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
         idempotencyKey: `resume:${existing.id}:${payment.occurredAt || nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+        destinationAccountId: String((p as any).destinationAccountId || '').trim() || resolveOrderDestinationAccountId(existing, p.method),
+        referenceNumber: String((p as any).referenceNumber || '').trim() || undefined,
+        senderName: String((p as any).senderName || '').trim() || undefined,
+        senderPhone: String((p as any).senderPhone || '').trim() || undefined,
+        declaredAmount: Number((p as any).declaredAmount) || undefined,
+        amountConfirmed: typeof (p as any).amountConfirmed === 'boolean' ? Boolean((p as any).amountConfirmed) : undefined,
       });
       if (error) throw new Error(localizeRecordOrderPaymentError(error));
     }
@@ -2910,38 +3496,68 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
-    const payloadItems = existing.items
-      .map((item) => ({
-        itemId: String((item as any)?.itemId || (item as any)?.id || ''),
-        quantity: getRequestedItemQuantity(item),
-      }))
-      .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
-    const resolveWarehouseId = async (): Promise<string> => {
-      const byCol = typeof (existing as any).warehouseId === 'string' ? (existing as any).warehouseId : undefined;
-      if (byCol) return byCol;
-      const scoped = sessionScope.scope?.warehouseId;
-      if (scoped) return scoped;
-      throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
+
+    // We no longer attempt to delete orders or manually manage stock here.
+    // The cancel_order RPC handles stock release, payment reversal, and status update reliably on the server.
+    const clearPendingSettlementMarkers = async (targetOrderId: string) => {
+      const { data: row, error: rowErr } = await supabase
+        .from('orders')
+        .select('status,data')
+        .eq('id', targetOrderId)
+        .maybeSingle();
+      if (rowErr || !row) return false;
+      const status = String((row as any)?.status || '').trim().toLowerCase();
+      const data = ((row as any)?.data && typeof (row as any).data === 'object' ? (row as any).data : {}) as Record<string, any>;
+      const snapshotIssuedAt = String(data?.invoiceSnapshot?.issuedAt || '').trim();
+      const topIssuedAt = String(data?.invoiceIssuedAt || '').trim();
+      const deliveredAt = String(data?.deliveredAt || '').trim();
+      const src = String(data?.orderSource || '').trim();
+      const inStoreFailed = Boolean(String(data?.inStoreFailureAt || '').trim() || String(data?.inStoreFailureReason || '').trim());
+      if (status !== 'pending') return false;
+      if (deliveredAt) return false;
+      if (src !== 'in_store') return false;
+      if (!inStoreFailed) return false;
+      if (!snapshotIssuedAt && !topIssuedAt && !String(data?.paidAt || '').trim()) return false;
+      const nextData = { ...data };
+      delete (nextData as any).invoiceSnapshot;
+      delete (nextData as any).invoiceIssuedAt;
+      delete (nextData as any).paidAt;
+      const { error: clearErr } = await supabase
+        .from('orders')
+        .update({ data: nextData, updated_at: new Date().toISOString() } as any)
+        .eq('id', targetOrderId)
+        .eq('status', 'pending');
+      return !clearErr;
     };
-    const warehouseId = await resolveWarehouseId();
-    if (payloadItems.length > 0) {
-      const { error: releaseErr } = await supabase.rpc('release_reserved_stock_for_order', {
-        p_items: payloadItems,
+
+    let cancelErr: any = null;
+    {
+      const { error } = await supabase.rpc('cancel_order', {
         p_order_id: existing.id,
-        p_warehouse_id: warehouseId,
+        p_reason: 'تم الإلغاء من قبل البائع'
       });
-      if (releaseErr) {
-        throw new Error(localizeSupabaseError(releaseErr));
+      cancelErr = error;
+    }
+    if (cancelErr) {
+      const raw = String(resolveErrorMessage(cancelErr) || '').toLowerCase();
+      if (raw.includes('cannot_cancel_settled')) {
+        const cleared = await clearPendingSettlementMarkers(existing.id);
+        if (cleared) {
+          const { error } = await supabase.rpc('cancel_order', {
+            p_order_id: existing.id,
+            p_reason: 'تم الإلغاء من قبل البائع'
+          });
+          cancelErr = error;
+        }
       }
     }
-    const { error: deleteErr } = await supabase.from('orders').delete().eq('id', existing.id);
-    if (deleteErr) {
-      const cancelled = { ...existing, status: 'cancelled' } as Order;
-      await updateRemoteOrder(cancelled);
-      setOrders(prev => prev.map(o => (o.id === existing.id ? cancelled : o)));
-      return;
+
+    if (cancelErr) {
+      throw new Error(localizeSupabaseError(cancelErr));
     }
-    setOrders(prev => prev.filter(o => o.id !== existing.id));
+
+    const cancelled = { ...existing, status: 'cancelled' } as Order;
+    setOrders(prev => prev.map(o => (o.id === existing.id ? cancelled : o)));
   };
 
   const assignOrderToDelivery = async (orderId: string, deliveryUserId: string | null) => {
@@ -3443,10 +4059,57 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const updated = { ...existing, ...updates } as Order;
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
-      const { error: rpcError } = await supabase.rpc('cancel_order', {
-        p_order_id: updated.id,
-        p_reason: '',
-      });
+      const clearPendingSettlementMarkers = async (targetOrderId: string) => {
+        const { data: row, error: rowErr } = await supabase
+          .from('orders')
+          .select('status,data')
+          .eq('id', targetOrderId)
+          .maybeSingle();
+        if (rowErr || !row) return false;
+        const status = String((row as any)?.status || '').trim().toLowerCase();
+        const data = ((row as any)?.data && typeof (row as any).data === 'object' ? (row as any).data : {}) as Record<string, any>;
+        const snapshotIssuedAt = String(data?.invoiceSnapshot?.issuedAt || '').trim();
+        const topIssuedAt = String(data?.invoiceIssuedAt || '').trim();
+        const deliveredAt = String(data?.deliveredAt || '').trim();
+        const src = String(data?.orderSource || '').trim();
+        const inStoreFailed = Boolean(String(data?.inStoreFailureAt || '').trim() || String(data?.inStoreFailureReason || '').trim());
+        if (status !== 'pending') return false;
+        if (deliveredAt) return false;
+        if (src !== 'in_store') return false;
+        if (!inStoreFailed) return false;
+        if (!snapshotIssuedAt && !topIssuedAt && !String(data?.paidAt || '').trim()) return false;
+        const nextData = { ...data };
+        delete (nextData as any).invoiceSnapshot;
+        delete (nextData as any).invoiceIssuedAt;
+        delete (nextData as any).paidAt;
+        const { error: clearErr } = await supabase
+          .from('orders')
+          .update({ data: nextData, updated_at: new Date().toISOString() } as any)
+          .eq('id', targetOrderId)
+          .eq('status', 'pending');
+        return !clearErr;
+      };
+      let rpcError: any = null;
+      {
+        const { error } = await supabase.rpc('cancel_order', {
+          p_order_id: updated.id,
+          p_reason: '',
+        });
+        rpcError = error;
+      }
+      if (rpcError) {
+        const raw = String(resolveErrorMessage(rpcError) || '').toLowerCase();
+        if (raw.includes('cannot_cancel_settled')) {
+          const cleared = await clearPendingSettlementMarkers(updated.id);
+          if (cleared) {
+            const { error } = await supabase.rpc('cancel_order', {
+              p_order_id: updated.id,
+              p_reason: '',
+            });
+            rpcError = error;
+          }
+        }
+      }
       if (rpcError) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
         if (isOffline || isAbortLikeError(rpcError)) {
@@ -3490,6 +4153,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               occurredAt: nowIso,
               currency: String((updated as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
               idempotencyKey: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
+            destinationAccountId: resolveOrderDestinationAccountId(updated, updated.paymentMethod),
             });
             if (error) {
               const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -3512,14 +4176,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               await updateRemoteOrder(updated, { includeStatus: false });
             } catch (patchErr: any) {
               const errMsg = String(patchErr?.message || patchErr || '');
-              if (!/posted_order_immutable/i.test(errMsg)) throw patchErr;
+              if (!/posted_order_immutable/i.test(errMsg) && !/مُرحّل.*مقفّل/i.test(errMsg)) throw patchErr;
               // Order already posted by delivery triggers — safe to ignore
             }
             try {
               updated = await ensureInvoiceIssued(updated, paidAtIso);
             } catch (invErr: any) {
               const errMsg = String(invErr?.message || invErr || '');
-              if (!/posted_order_immutable/i.test(errMsg)) throw invErr;
+              if (!/posted_order_immutable/i.test(errMsg) && !/مُرحّل.*مقفّل/i.test(errMsg)) throw invErr;
             }
           }
         } catch (err) {
@@ -3557,7 +4221,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const persistBase = deliveredSnapshot || remoteSnapshot || existing;
     const persisted = { ...persistBase, ...updates } as Order;
-    if (!willCancel && !willDeliver) {
+    if (!willDeliver) {
       await updateRemoteOrder(persisted);
     }
     const display = await resolveOrderAddress(persisted);
@@ -3608,15 +4272,30 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         const paidAlready = await fetchOrderPaidAmount(existing.id);
-        const remaining = Math.max(0, (Number(existing.total) || 0) - paidAlready);
+        const currencyCodeRaw = String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+        const currencyCode = currencyCodeRaw || 'YER';
+        const dp = currencyCode === 'YER' ? 0 : 2;
+        const roundMoney = (v: number) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return 0;
+          const pow = Math.pow(10, dp);
+          return Math.round(n * pow) / pow;
+        };
+        const total = roundMoney(Number(existing.total) || 0);
+        const paidRounded = roundMoney(paidAlready);
+        const tol = Math.pow(10, -dp);
+        let remaining = roundMoney(Math.max(0, total - paidRounded));
+        if (!(remaining > tol)) remaining = 0;
+
         if (remaining > 0) {
           const error = await rpcRecordOrderPayment(supabase, {
             orderId: existing.id,
             amount: remaining,
             method: existing.paymentMethod,
             occurredAt: nowIso,
-            currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
+            currency: currencyCode,
             idempotencyKey: `markPaid:${existing.id}:${nowIso}:${Number(remaining) || 0}`,
+            destinationAccountId: resolveOrderDestinationAccountId(existing, existing.paymentMethod),
           });
           if (error) {
             const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -3640,7 +4319,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           payload: { paymentMethod: existing.paymentMethod },
         });
 
-        await updateRemoteOrder(updated, { includeStatus: false });
+        try {
+          await updateRemoteOrder(updated, { includeStatus: false });
+        } catch (patchErr: any) {
+          const errMsg = String(patchErr?.message || patchErr || '');
+          if (!/posted_order_immutable/i.test(errMsg) && !/مُرحّل.*مقفّل/i.test(errMsg)) throw patchErr;
+        }
         finalOrder = await ensureInvoiceIssued(updated, paidAtIso);
       }
     } catch (err) {
@@ -3654,7 +4338,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const recordOrderPaymentPartial = useCallback(
-    async (orderId: string, amount: number, method?: string, occurredAt?: string, overrideAccountId?: string) => {
+    async (
+      orderId: string,
+      amount: number,
+      method?: string,
+      occurredAt?: string,
+      overrideAccountId?: string,
+      meta?: { referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; destinationAccountId?: string }
+    ) => {
       const existing = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
       if (!existing) return;
       if (!canMarkPaidOrder()) {
@@ -3666,6 +4357,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       const occurredAtIso = occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString();
       const methodValue = (method || existing.paymentMethod || 'cash').trim() || 'cash';
+      const ref = String(meta?.referenceNumber || '').trim();
+      const senderName = String(meta?.senderName || '').trim();
+      const senderPhone = String(meta?.senderPhone || '').trim();
+      const declaredAmount = Number(meta?.declaredAmount);
+      const amountConfirmed = Boolean(meta?.amountConfirmed);
+      const destinationAccountId = String(meta?.destinationAccountId || '').trim() || resolveOrderDestinationAccountId(existing, methodValue);
 
       await addOrderEvent({
         orderId,
@@ -3673,7 +4370,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         actorType: 'admin',
         actorId: adminUser?.id,
         createdAt: occurredAtIso,
-        payload: { amount: numericAmount, method: methodValue },
+        payload: {
+          amount: numericAmount,
+          method: methodValue,
+          ...(ref ? { referenceNumber: ref } : {}),
+          ...(senderName ? { senderName } : {}),
+          ...(senderPhone ? { senderPhone } : {}),
+          ...(Number.isFinite(declaredAmount) && declaredAmount > 0 ? { declaredAmount } : {}),
+          ...(meta && typeof meta.amountConfirmed === 'boolean' ? { amountConfirmed } : {}),
+          ...(destinationAccountId ? { destinationAccountId } : {}),
+        },
       });
 
       const supabase = getSupabaseClient();
@@ -3686,8 +4392,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         method: methodValue,
         occurredAt: occurredAtIso,
         currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
-        idempotencyKey: `partial:${existing.id}:${occurredAtIso}:${Number(numericAmount) || 0}`,
+        idempotencyKey: `partial:${existing.id}:${occurredAtIso}:${methodValue}:${Number(numericAmount) || 0}`,
         overrideAccountId,
+        referenceNumber: ref || undefined,
+        senderName: senderName || undefined,
+        senderPhone: senderPhone || undefined,
+        declaredAmount: Number.isFinite(declaredAmount) ? declaredAmount : undefined,
+        amountConfirmed: meta && typeof meta.amountConfirmed === 'boolean' ? amountConfirmed : undefined,
+        destinationAccountId: destinationAccountId || undefined,
       });
       if (error) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;

@@ -1,0 +1,196 @@
+{
+  "po": [
+    {
+      "id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "po_number": "PO-MAIN-2026-000002"
+    },
+    {
+      "id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "po_number": "PO-MAIN-2026-000003"
+    }
+  ],
+  "out": [
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "remaining_to_return": 825,
+      "batch_remaining": 840,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "remaining_to_return": 440,
+      "batch_remaining": 480,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "remaining_to_return": 1100,
+      "batch_remaining": 1200,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "remaining_to_return": 330,
+      "batch_remaining": 360,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "remaining_to_return": 500,
+      "batch_remaining": 588,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+      "remaining_to_return": 2850,
+      "batch_remaining": 3000,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "remaining_to_return": 460,
+      "batch_remaining": 480,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "7002ebd7-805c-4ae5-bb7a-74f78600037f",
+      "remaining_to_return": 500,
+      "batch_remaining": 600,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "remaining_to_return": 550,
+      "batch_remaining": 562,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "remaining_to_return": 500,
+      "batch_remaining": 600,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "33b3c8a8-d5ec-48cb-bf5d-a58ae003c98e",
+      "remaining_to_return": 330,
+      "batch_remaining": 360,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "remaining_to_return": 150,
+      "batch_remaining": 192,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "remaining_to_return": 330,
+      "batch_remaining": 360,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "4236d11b-022a-4b6d-a9d6-db26ee5fef50",
+      "remaining_to_return": 825,
+      "batch_remaining": 900,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "9ac8f6fa-5c34-4c2f-9130-12885292db20",
+      "remaining_to_return": 460,
+      "batch_remaining": 480,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "64563e62-5078-4e41-bc32-4be20c8adf01",
+      "remaining_to_return": 150,
+      "batch_remaining": 200,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "ccfa7649-688a-4612-979d-b9339ae8cb89",
+      "remaining_to_return": 500,
+      "batch_remaining": 587,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "remaining_to_return": 125,
+      "batch_remaining": 150,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "483e5961-7840-44b0-a5d5-35bf4d3fc26f",
+      "remaining_to_return": 1100,
+      "batch_remaining": 1184,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "024883b3-31fe-452a-b2bb-57e3742bdd3e",
+      "remaining_to_return": 125,
+      "batch_remaining": 131,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "a22ff5c6-d22e-4a06-a35f-1d4bed363a3e",
+      "remaining_to_return": 440,
+      "batch_remaining": 480,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "remaining_to_return": 300,
+      "batch_remaining": 360,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "2f5b4134-0994-4534-90f1-9faa381fd0f1",
+      "remaining_to_return": 300,
+      "batch_remaining": 336,
+      "ok": true
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "735b0585-fbf6-4676-9ad2-e9d637adf3f3",
+      "remaining_to_return": 330,
+      "batch_remaining": 312,
+      "ok": false
+    },
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "item_id": "47958139-0dfc-43ff-b2d0-e927a91f8125",
+      "remaining_to_return": 330,
+      "batch_remaining": 346,
+      "ok": true
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "remaining_to_return": 550,
+      "batch_remaining": 600,
+      "ok": true
+    }
+  ]
+}

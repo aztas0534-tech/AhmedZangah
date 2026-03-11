@@ -9,27 +9,28 @@ interface WarehouseContextType {
   transfers: WarehouseTransfer[];
   loading: boolean;
   error: string | null;
-  
+
   // Warehouse CRUD
   addWarehouse: (warehouse: Omit<Warehouse, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateWarehouse: (id: string, updates: Partial<Warehouse>) => Promise<void>;
   deleteWarehouse: (id: string) => Promise<void>;
-  
+
   // Transfer operations
   createTransfer: (
     fromWarehouseId: string,
     toWarehouseId: string,
     transferDate: string,
     items: Array<{ itemId: string; quantity: number; notes?: string }>,
-    notes?: string
+    notes?: string,
+    shippingCost?: number
   ) => Promise<void>;
   completeTransfer: (transferId: string) => Promise<void>;
   cancelTransfer: (transferId: string, reason?: string) => Promise<void>;
-  
+
   // Fetch functions
   fetchWarehouses: () => Promise<void>;
   fetchTransfers: () => Promise<void>;
-  
+
   // Utility
   getWarehouseById: (id: string) => Warehouse | undefined;
   getWarehouseStock: (warehouseId: string) => Promise<any[]>;
@@ -79,6 +80,7 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     transferDate: row.transfer_date,
     status: row.status,
     notes: row.notes ?? undefined,
+    shippingCost: Number(row.shipping_cost ?? 0),
     createdBy: row.created_by ?? undefined,
     approvedBy: row.approved_by ?? undefined,
     completedAt: row.completed_at ?? undefined,
@@ -236,13 +238,13 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await fetchWarehouses();
   }, [hasPermission, fetchWarehouses]);
 
-  // Create transfer
   const createTransfer = useCallback(async (
     fromWarehouseId: string,
     toWarehouseId: string,
     transferDate: string,
     items: Array<{ itemId: string; quantity: number; notes?: string }>,
-    notes?: string
+    notes?: string,
+    shippingCost?: number
   ) => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('قاعدة البيانات غير متاحة');
@@ -259,6 +261,7 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         transfer_date: transferDate,
         status: 'pending',
         notes,
+        shipping_cost: shippingCost ?? 0,
       })
       .select()
       .single();

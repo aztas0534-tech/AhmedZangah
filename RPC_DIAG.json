@@ -1,0 +1,17 @@
+{
+  "session": false,
+  "createdUser": false,
+  "checks": {
+    "public.confirm_order_delivery_with_credit_rpc(uuid,jsonb,jsonb,uuid)": true,
+    "public.confirm_order_delivery_with_credit(jsonb)": true,
+    "public.confirm_order_delivery_with_credit(uuid,jsonb,jsonb,uuid)": true,
+    "public.confirm_order_delivery_rpc(uuid,jsonb,jsonb,uuid)": true,
+    "public.confirm_order_delivery(jsonb)": true,
+    "public.confirm_order_delivery(uuid,jsonb,jsonb,uuid)": true,
+    "public.record_order_payment_v2(uuid,numeric,text,timestamptz,text,text)": false,
+    "public.record_order_payment(uuid,numeric,text,timestamptz,text,text)": true,
+    "public.record_order_payment(uuid,numeric,text,timestamptz,text)": true,
+    "public.record_order_payment(uuid,numeric,text,timestamptz)": false
+  },
+  "errors": {}
+}

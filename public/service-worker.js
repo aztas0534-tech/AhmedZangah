@@ -1,4 +1,4 @@
-const CACHE_NAME = 'azta-cache-v1';
+const CACHE_NAME = 'azta-cache-v2';
 
 // Cache the main app shell files. Other assets will be cached on-the-fly.
 const urlsToCache = [

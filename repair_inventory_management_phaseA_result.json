@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-03-10T22:52:31.778Z",
+  "pre": {
+    "bad_batch_consumed_count": "38",
+    "fx_anomaly_count": "0"
+  },
+  "steps": {
+    "recompute_batches_quantity_consumed_rows": 38,
+    "recompute_batch_balances_rows": 0,
+    "recompute_stock_for_item_rows": 87
+  },
+  "post": {
+    "bad_batch_consumed_count": "0",
+    "fx_anomaly_count": "0"
+  },
+  "revalue_batches": []
+}

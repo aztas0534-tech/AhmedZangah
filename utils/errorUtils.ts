@@ -3,6 +3,12 @@ export const resolveErrorMessage = (error: unknown): string => {
   const anyErr = error as any;
   const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
   if (msg) return msg;
+  const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+  if (details) return details;
+  const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+  if (hint) return hint;
+  const errorDescription = typeof anyErr?.error_description === 'string' ? anyErr.error_description : '';
+  if (errorDescription) return errorDescription;
   const str = typeof error === 'string' ? error : '';
   return str;
 };
@@ -47,6 +53,12 @@ export const localizeError = (message: string): string => {
   if (raw.includes('purchase_in requires batch_id') || raw.includes('purchase_in_requires_batch')) {
     return 'لا يمكن استلام المخزون بدون إنشاء دفعة (Batch). حدّث قاعدة البيانات (مايجريشن الاستلام) ثم أعد المحاولة.';
   }
+  if (raw.includes('accounting_documents_document_type_check') || (raw.includes('violates check constraint') && raw.includes('accounting_documents') && raw.includes('document_type'))) {
+    return 'تعذر تنفيذ العملية المالية بسبب عدم تطابق نسخة قاعدة البيانات (نوع مستند محاسبي غير مدعوم). طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
+  }
+  if (raw.includes('relation \"public.sales_return_items\" does not exist') || raw.includes("relation 'public.sales_return_items' does not exist") || (raw.includes('sales_return_items') && raw.includes('does not exist'))) {
+    return 'قاعدة البيانات غير محدثة لوحدة المرتجعات. طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
+  }
   if (raw.includes('purchase_items_received_quantity_check') || (raw.includes('violates check constraint') && raw.includes('received_quantity_check'))) {
     return 'كمية الاستلام تجاوزت الكمية المطلوبة لهذا الصنف (تحقق من وحدة القياس/الكرتون). حدّث الصفحة ثم أعد المحاولة.';
   }
@@ -63,6 +75,9 @@ export const localizeError = (message: string): string => {
   if (raw === 'batch_not_released') return 'BATCH_NOT_RELEASED';
   if (raw === 'below_cost_not_allowed' || raw === 'selling_below_cost_not_allowed') {
     return 'تم رفض البيع لأن سعر البيع أقل من الحد الأدنى المسموح به بناءً على تكلفة الدفعة وهامش الربح. عدّل سعر البيع أو حدّث تكلفة الدفعة/هامش الربح ثم أعد المحاولة.';
+  }
+  if (raw === 'below_cost_reason_required') {
+    return 'يلزم إدخال سبب قبل السماح بالبيع تحت التكلفة/الحد الأدنى.';
   }
   if (raw === 'no_valid_batch_available') return 'لا توجد دفعة صالحة (غير منتهية) لهذا الصنف.';
   if (raw.includes('insufficient_fefo_batch_stock_for_item_')) return 'لا توجد كمية كافية في الدفعات الصالحة (FEFO) لهذا الصنف.';
@@ -82,6 +97,20 @@ export const localizeError = (message: string): string => {
   if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('request timed out')) return 'انتهت مهلة الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.';
   if (raw.includes('invalid input syntax for type uuid')) {
     return 'تعذر تنفيذ العملية بسبب معرف غير صالح (UUID). غالباً يوجد عدم تطابق في نسخة قاعدة البيانات (الهجرات) في الإنتاج. حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
+  if (
+    raw.includes('column o.zone_id does not exist') ||
+    raw.includes('column \"o\".\"zone_id\" does not exist') ||
+    (raw.includes('column') && raw.includes('zone_id') && raw.includes('does not exist'))
+  ) {
+    return 'تعذر عرض التقرير بسبب عدم تطابق نسخة قاعدة البيانات (حقل المنطقة للطلبات غير موجود). طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
+  }
+  if (
+    raw.includes('relation public.wastage_records does not exist') ||
+    raw.includes('relation \"public.wastage_records\" does not exist') ||
+    (raw.includes('relation') && raw.includes('wastage_records') && raw.includes('does not exist'))
+  ) {
+    return 'تعذر عرض التقرير بسبب عدم تطابق نسخة قاعدة البيانات (جدول الهدر غير موجود). طبّق آخر تحديثات قاعدة البيانات (migrations) ثم أعد المحاولة.';
   }
   if (raw.includes('there is no unique or exclusion constraint matching the on conflict specification')) {
     return 'حدث خطأ داخلي أثناء تسجيل العملية المالية. يرجى تحديث إعدادات قاعدة البيانات (المايجريشن) ثم إعادة المحاولة.';
@@ -156,8 +185,41 @@ export const localizeError = (message: string): string => {
   if (raw.includes('delivery_driver_required')) {
     return 'لا يمكن تأكيد التسليم بدون تحديد المندوب لهذا الطلب.';
   }
+  if (raw.includes('invoice_snapshot_fields_missing')) {
+    return 'بيانات الفاتورة غير مكتملة (العملة/سعر الصرف/العملة الأساسية). حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
+  if (raw.includes('invoice_snapshot_required')) {
+    return 'لا يمكن تثبيت الطلب بدون بيانات فاتورة (Invoice Snapshot). حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
+  if (raw.includes('invoice_snapshot_items_missing')) {
+    return 'لا يمكن تثبيت الطلب بدون أصناف داخل بيانات الفاتورة. حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
+  if (raw.includes('posted_order_immutable')) {
+    return 'لا يمكن تنفيذ هذه العملية لأن الطلب مُرحّل/مُثبت ومقفّل للتعديل.';
+  }
+  if (raw.includes('fx_locked')) {
+    return 'لا يمكن تغيير العملة/سعر الصرف لهذا الطلب بعد تثبيته. أنشئ طلبًا جديدًا إذا لزم.';
+  }
+  if (raw.includes('credit_limit_exceeded_requires_reason')) {
+    return 'تجاوز سقف الائتمان يتطلب إدخال سبب.';
+  }
+  if (raw.includes('credit_limit_exceeded_requires_approval')) {
+    return 'تجاوز سقف الائتمان يتطلب موافقة من الإدارة.';
+  }
   if (raw.includes('credit_limit_exceeded')) {
-    return 'لا يمكن إتمام العملية لأن حد الائتمان للعميل تجاوز المسموح.';
+    return 'لا يمكن إتمام العملية لأن حد الائتمان تجاوز المسموح.';
+  }
+  if (raw.includes('cannot_cancel_settled')) {
+    return 'لا يمكن إلغاء الطلب لأنه يعتبر مسددًا أو عليه بيانات فاتورة. أزل بيانات التسوية أولاً ثم أعد المحاولة.';
+  }
+  if (raw.includes('purchase_return_base_qty_mismatch')) {
+    return 'لا يمكن حفظ مرتجع الشراء بسبب عدم تطابق كمية المرتجع مع حركة المخزون (UOM/Base). راجع وحدة الصنف والكمية ثم أعد المحاولة.';
+  }
+  if (raw.includes('cash_refund_requires_open_shift')) {
+    return 'لا يمكن إلغاء الطلب النقدي بدون وردية نقدية مفتوحة لاسترجاع الحركة.';
+  }
+  if (raw.includes('credit_hold')) {
+    return 'لا يمكن إتمام العملية لأن الطرف عليه إيقاف ائتماني (Credit Hold).';
   }
   if (raw.includes('invalid amount')) {
     return 'قيمة الدفعة غير صحيحة. تحقق من المبلغ وأعد المحاولة.';
@@ -201,6 +263,11 @@ export const localizeError = (message: string): string => {
       return 'يوجد طلب موافقة معلّق لهذه العملية بالفعل. افتح قسم الموافقات واعتمد الطلب أو ألغِه.';
     }
     return 'البيانات المدخلة موجودة مسبقًا.';
+  }
+  if (raw.includes('expirydate is required')) {
+    const m = raw.match(/expirydate is required[^%]*?(?:item|for)\s+([a-z0-9-]{6,})/i);
+    const id = m?.[1] ? String(m[1]).trim() : '';
+    return id ? `تاريخ الانتهاء مطلوب للصنف (${id}) عند الاستلام.` : 'تاريخ الانتهاء مطلوب للصنف عند الاستلام.';
   }
   if (raw.includes('missing required')) return 'الحقول المطلوبة ناقصة.';
   if (raw.includes(' is required') || raw.includes(' required')) return 'الحقول المطلوبة ناقصة.';
@@ -252,6 +319,10 @@ export const localizeSupabaseError = (error: unknown): string => {
     }
     return 'البيانات المدخلة موجودة مسبقًا.';
   }
-  const message = resolveErrorMessage(error);
+  const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
+  const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+  const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+  const combined = [msg, details, hint].map(s => (s || '').trim()).filter(Boolean).join(' | ');
+  const message = combined || resolveErrorMessage(error);
   return localizeError(message || '');
 };

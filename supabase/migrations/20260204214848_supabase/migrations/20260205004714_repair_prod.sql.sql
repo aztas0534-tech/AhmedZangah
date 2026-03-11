@@ -14432,6 +14432,44 @@ end;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.allow_below_cost_sales()
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_settings jsonb;
+  v_flag boolean;
+begin
+  if auth.role() = 'service_role' then
+    return true;
+  end if;
+
+  v_flag := false;
+  if to_regclass('public.app_settings') is not null then
+    select s.data into v_settings
+    from public.app_settings s
+    where s.id in ('singleton','app')
+    order by (s.id = 'singleton') desc
+    limit 1;
+    begin
+      v_flag := coalesce((v_settings->'settings'->>'ALLOW_BELOW_COST_SALES')::boolean, false);
+    exception when others then
+      v_flag := false;
+    end;
+  end if;
+
+  if not coalesce(v_flag, false) then
+    return false;
+  end if;
+
+  return public.has_admin_permission('sales.allowBelowCost');
+end;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.trg_block_sale_below_cost()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -14489,6 +14527,9 @@ begin
   end if;
 
   if v_unit_price + 1e-9 < coalesce(v_batch.min_selling_price, 0) then
+    if public.allow_below_cost_sales() then
+      return new;
+    end if;
     raise exception 'SELLING_BELOW_COST_NOT_ALLOWED';
   end if;
 

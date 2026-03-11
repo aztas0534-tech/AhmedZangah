@@ -16,7 +16,7 @@ import { toYmdLocal } from '../../utils/dateUtils';
 const WarehouseTransfersScreen: React.FC = () => {
     const { warehouses, transfers, createTransfer, completeTransfer, cancelTransfer } = useWarehouses();
     const { menuItems } = useMenu();
-    const { hasPermission } = useAuth();
+    const { hasPermission, user } = useAuth();
     const { showNotification } = useToast();
     const { settings } = useSettings();
     const { scope } = useSessionScope();
@@ -30,6 +30,7 @@ const WarehouseTransfersScreen: React.FC = () => {
         from_warehouse_id: '',
         to_warehouse_id: '',
         transfer_date: toYmdLocal(new Date()),
+        shipping_cost: 0,
         notes: '',
         items: [] as Array<{ itemId: string; quantity: number; notes: string }>,
     });
@@ -37,8 +38,9 @@ const WarehouseTransfersScreen: React.FC = () => {
     const canManage = hasPermission('stock.manage');
 
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
+        const companyName = (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '';
         const fallback = {
-            name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
+            name: companyName,
             address: settings?.address || '',
             contactNumber: settings?.contactNumber || '',
             logoUrl: settings?.logoUrl || '',
@@ -47,10 +49,11 @@ const WarehouseTransfersScreen: React.FC = () => {
         const wh = wid ? warehouses.find(w => String(w.id) === wid) : undefined;
         const override = wid ? settings?.branchBranding?.[wid] : undefined;
         return {
-            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            name: (override?.name || fallback.name || '').trim(),
             address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
             contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+            branchName: (wh?.name || '').trim(),
         };
     };
 
@@ -104,6 +107,12 @@ const WarehouseTransfersScreen: React.FC = () => {
 
             const brand = resolveBrandingForWarehouseId(String(transfer.fromWarehouseId || ''));
             const branchHdr = await fetchBranchHeader(scope?.branchId);
+            const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+            let printNumber = 1;
+            try {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'warehouse_transfers', p_source_id: transfer.id, p_template: 'PrintableWarehouseTransfer' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
             const content = renderToString(
                 <PrintableWarehouseTransfer
                     data={data}
@@ -113,6 +122,8 @@ const WarehouseTransfersScreen: React.FC = () => {
                         branchName: branchHdr.branchName,
                         branchCode: branchHdr.branchCode,
                     }}
+                    audit={{ printedBy }}
+                    printNumber={printNumber}
                 />
             );
             printContent(content, `تحويل مخزني #${data.transferNumber}`);
@@ -155,6 +166,7 @@ const WarehouseTransfersScreen: React.FC = () => {
             from_warehouse_id: '',
             to_warehouse_id: '',
             transfer_date: toYmdLocal(new Date()),
+            shipping_cost: 0,
             notes: '',
             items: [],
         });
@@ -211,7 +223,8 @@ const WarehouseTransfersScreen: React.FC = () => {
                 formData.to_warehouse_id,
                 formData.transfer_date,
                 formData.items,
-                formData.notes
+                formData.notes,
+                formData.shipping_cost > 0 ? formData.shipping_cost : undefined
             );
             showNotification('تم إنشاء عملية النقل بنجاح', 'success');
             setShowModal(false);
@@ -397,6 +410,15 @@ const WarehouseTransfersScreen: React.FC = () => {
                                 </div>
                             </div>
 
+                            {Number(transfer.shippingCost || 0) > 0 && (
+                                <div className="mb-4">
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded text-sm font-medium">
+                                        <Icons.DollarSign className="w-4 h-4" />
+                                        تكلفة الشحن/النقل: {Number(transfer.shippingCost).toLocaleString('en-US')}
+                                    </span>
+                                </div>
+                            )}
+
                             {/* Notes */}
                             {transfer.notes && (
                                 <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
@@ -489,15 +511,29 @@ const WarehouseTransfersScreen: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Notes */}
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">ملاحظات</label>
-                                    <textarea
-                                        value={formData.notes}
-                                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                        rows={2}
-                                    />
+                                {/* Shipping Cost & Notes */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">تكلفة الشحن/النقل (اختياري)</label>
+                                        <input
+                                            type="number"
+                                            value={formData.shipping_cost || ''}
+                                            onChange={(e) => setFormData({ ...formData, shipping_cost: parseFloat(e.target.value) || 0 })}
+                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">ملاحظات</label>
+                                        <textarea
+                                            value={formData.notes}
+                                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                            rows={2}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Items */}

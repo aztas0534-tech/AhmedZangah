@@ -1,0 +1,26 @@
+{
+  "batches": [
+    {
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "receipt_id": "218f4547-e896-4f2f-97f1-839eb58cb179",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "purchase_order_id": "8d2f585c-752a-4102-9efd-2417ec994a2e"
+    }
+  ],
+  "orders": [
+    {
+      "purchase_order_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "po_number": "PO-MAIN-2026-000002",
+      "status": "completed",
+      "purchase_date": "2026-01-27T21:00:00.000Z",
+      "supplier_id": "c5466182-4673-4e0d-8642-612455b93d88"
+    }
+  ],
+  "suppliers": [
+    {
+      "supplier_id": "c5466182-4673-4e0d-8642-612455b93d88",
+      "name": "شركة المجهلي للتجارة والتوكيلات المحدوده"
+    }
+  ]
+}

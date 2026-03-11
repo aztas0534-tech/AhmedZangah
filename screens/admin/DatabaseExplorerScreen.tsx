@@ -65,6 +65,14 @@ const DatabaseExplorerScreen: React.FC = () => {
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [query, setQuery] = useState<string>('');
+  const [schemaHealth, setSchemaHealth] = useState<{ ok: boolean; appliedVersion: string; missing: string[] } | null>(null);
+  const [repairPreview, setRepairPreview] = useState<any | null>(null);
+  const [repairBusy, setRepairBusy] = useState<boolean>(false);
+  const [cogsAudit, setCogsAudit] = useState<any | null>(null);
+  const [cogsRepair, setCogsRepair] = useState<any | null>(null);
+  const [cogsBusy, setCogsBusy] = useState<boolean>(false);
+  const [cogsStart, setCogsStart] = useState<string>('');
+  const [cogsEnd, setCogsEnd] = useState<string>('');
   const { showNotification } = useToast();
   const { hasPermission } = useAuth();
 
@@ -75,6 +83,95 @@ const DatabaseExplorerScreen: React.FC = () => {
   }, [hasPermission, showNotification]);
 
   const supabase = getSupabaseClient();
+
+  const getLast30DaysRange = () => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return { start: start.toISOString(), end: end.toISOString() };
+  };
+
+  const resolveCogsRange = () => {
+    const startRaw = cogsStart.trim();
+    const endRaw = cogsEnd.trim();
+    if (!startRaw && !endRaw) {
+      const r = getLast30DaysRange();
+      return { start: r.start, end: r.end };
+    }
+    return { start: startRaw || null, end: endRaw || null };
+  };
+
+  const runSchemaHealthcheck = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.rpc('app_schema_healthcheck');
+      if (error) throw error;
+      const d: any = data || {};
+      const ok = Boolean(d?.ok);
+      const appliedVersion = String(d?.appliedVersion || '');
+      const missing = Array.isArray(d?.missing) ? d.missing.map((x: any) => String(x)) : [];
+      setSchemaHealth({ ok, appliedVersion, missing });
+      showNotification(ok ? 'قاعدة البيانات متوافقة.' : 'قاعدة البيانات تحتاج هجرات/دوال مفقودة.', ok ? 'success' : 'error');
+    } catch (err: any) {
+      setSchemaHealth(null);
+      showNotification(localizeSupabaseError(err) || 'فشل فحص توافق قاعدة البيانات', 'error');
+    }
+  };
+
+  const runRepairMetaDefs = async (apply: boolean) => {
+    if (!supabase) return;
+    setRepairBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('repair_missing_item_meta_defs', { p_dry_run: !apply } as any);
+      if (error) throw error;
+      setRepairPreview(data || null);
+      showNotification(apply ? 'تم إنشاء تعريفات ناقصة. راجع الأسماء وعدّلها.' : 'تم إنشاء تقرير بالناقص (Dry Run).', 'success');
+    } catch (err: any) {
+      showNotification(localizeSupabaseError(err) || 'فشل إصلاح تعريفات الأصناف', 'error');
+    } finally {
+      setRepairBusy(false);
+    }
+  };
+
+  const runCogsAudit = async () => {
+    if (!supabase) return;
+    setCogsBusy(true);
+    try {
+      const r = resolveCogsRange();
+      const { data, error } = await supabase.rpc('audit_sales_cogs', {
+        p_start_date: r.start,
+        p_end_date: r.end,
+      } as any);
+      if (error) throw error;
+      setCogsAudit(data || null);
+      showNotification('تم فحص تكلفة البضاعة المباعة.', 'success');
+    } catch (err: any) {
+      setCogsAudit(null);
+      showNotification(localizeSupabaseError(err) || 'فشل فحص تكلفة البضاعة المباعة', 'error');
+    } finally {
+      setCogsBusy(false);
+    }
+  };
+
+  const runCogsRepair = async (apply: boolean) => {
+    if (!supabase) return;
+    setCogsBusy(true);
+    try {
+      const r = resolveCogsRange();
+      const { data, error } = await supabase.rpc('repair_sales_cogs', {
+        p_start_date: r.start,
+        p_end_date: r.end,
+        p_dry_run: !apply,
+      } as any);
+      if (error) throw error;
+      setCogsRepair(data || null);
+      showNotification(apply ? 'تم إعادة بناء COGS للأوامر المحددة.' : 'تم إنشاء تقرير إصلاح COGS (Dry Run).', 'success');
+    } catch (err: any) {
+      setCogsRepair(null);
+      showNotification(localizeSupabaseError(err) || 'فشل إصلاح تكلفة البضاعة المباعة', 'error');
+    } finally {
+      setCogsBusy(false);
+    }
+  };
 
   const fetchData = async (table: string, currentPage: number) => {
     if (!supabase) return;
@@ -129,6 +226,161 @@ const DatabaseExplorerScreen: React.FC = () => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void runSchemaHealthcheck()}
+            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage')}
+          >
+            فحص توافق قاعدة البيانات
+          </button>
+          <button
+            type="button"
+            onClick={() => void runRepairMetaDefs(false)}
+            className="px-3 py-2 rounded-md bg-gray-700 hover:bg-gray-800 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || repairBusy}
+          >
+            فحص النواقص (فئات/وحدات/مجموعات)
+          </button>
+          <button
+            type="button"
+            onClick={() => void runRepairMetaDefs(true)}
+            className="px-3 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || repairBusy}
+          >
+            إصلاح تلقائي للنواقص
+          </button>
+          <button
+            type="button"
+            onClick={() => void runCogsAudit()}
+            className="px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || cogsBusy}
+          >
+            فحص COGS
+          </button>
+          <button
+            type="button"
+            onClick={() => void runCogsRepair(false)}
+            className="px-3 py-2 rounded-md bg-indigo-700 hover:bg-indigo-800 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || cogsBusy}
+          >
+            تقرير إصلاح COGS
+          </button>
+          <button
+            type="button"
+            onClick={() => void runCogsRepair(true)}
+            className="px-3 py-2 rounded-md bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm disabled:opacity-60"
+            disabled={!hasPermission('settings.manage') || cogsBusy}
+          >
+            إصلاح COGS
+          </button>
+        </div>
+        {(repairBusy || cogsBusy) && (
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <Spinner />
+            جاري التنفيذ...
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">بداية الفترة (اختياري)</label>
+          <input
+            type="text"
+            value={cogsStart}
+            onChange={(e) => setCogsStart(e.target.value)}
+            placeholder="2026-01-01T00:00:00Z"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نهاية الفترة (اختياري)</label>
+          <input
+            type="text"
+            value={cogsEnd}
+            onChange={(e) => setCogsEnd(e.target.value)}
+            placeholder="2026-02-01T23:59:59Z"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm"
+          />
+        </div>
+        <div className="md:self-end">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const r = getLast30DaysRange();
+                setCogsStart(r.start);
+                setCogsEnd(r.end);
+              }}
+              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm hover:bg-gray-300 dark:hover:bg-gray-600"
+            >
+              آخر 30 يوم
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCogsStart('');
+                setCogsEnd('');
+              }}
+              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm hover:bg-gray-300 dark:hover:bg-gray-600"
+            >
+              تلقائي
+            </button>
+          </div>
+          <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+            عند ترك التاريخ فارغًا: يتم تطبيق الفحص/الإصلاح على آخر 30 يوم.
+          </div>
+        </div>
+      </div>
+
+      {schemaHealth && (
+        <div className={`mb-4 p-3 rounded-md border ${schemaHealth.ok ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'}`}>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className={`text-sm font-semibold ${schemaHealth.ok ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
+              {schemaHealth.ok ? 'متوافق' : 'غير متوافق'}
+            </div>
+            <div className="text-xs font-mono text-gray-600 dark:text-gray-300" dir="ltr">
+              {schemaHealth.appliedVersion ? `db:${schemaHealth.appliedVersion}` : 'db:unknown'}
+            </div>
+          </div>
+          {!schemaHealth.ok && schemaHealth.missing.length > 0 && (
+            <div className="mt-2 text-xs font-mono text-red-800 dark:text-red-200" dir="ltr">
+              {schemaHealth.missing.slice(0, 16).join(' • ')}{schemaHealth.missing.length > 16 ? ' • ...' : ''}
+            </div>
+          )}
+        </div>
+      )}
+
+      {cogsAudit && (
+        <div className="mb-4 p-3 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20">
+          <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">نتيجة فحص COGS</div>
+          <div className="mt-2 text-xs font-mono text-indigo-900 dark:text-indigo-200 whitespace-pre-wrap" dir="ltr">
+            {JSON.stringify(cogsAudit, null, 2)}
+          </div>
+        </div>
+      )}
+
+      {cogsRepair && (
+        <div className="mb-4 p-3 rounded-md border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50 dark:bg-fuchsia-900/20">
+          <div className="text-sm font-semibold text-fuchsia-900 dark:text-fuchsia-200">نتيجة إصلاح COGS</div>
+          <div className="mt-2 text-xs font-mono text-fuchsia-900 dark:text-fuchsia-200 whitespace-pre-wrap" dir="ltr">
+            {JSON.stringify(cogsRepair, null, 2)}
+          </div>
+        </div>
+      )}
+
+      {repairPreview && (
+        <div className="mb-4 p-3 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20">
+          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">نتيجة إصلاح التعريفات</div>
+          <div className="mt-2 text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap" dir="ltr">
+            {JSON.stringify(repairPreview, null, 2)}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="md:col-span-1">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">الجدول</label>

@@ -165,13 +165,29 @@ const SalesReports: React.FC = () => {
             const supabase = getSupabaseClient();
             if (!supabase || !effectiveRange) { setDailySalesData([]); return; }
             const zoneArg = (selectedZoneId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedZoneId)) ? selectedZoneId : null;
-            const payload: any = {
+            const payloadV2: any = {
+                p_start_date: effectiveRange.start.toISOString(),
+                p_end_date: effectiveRange.end.toISOString(),
+                p_zone_id: zoneArg,
+                p_warehouse_id: sessionScope.scope?.warehouseId || null,
+                p_invoice_only: invoiceOnly,
+            };
+            const payloadV1: any = {
                 p_start_date: effectiveRange.start.toISOString(),
                 p_end_date: effectiveRange.end.toISOString(),
                 p_zone_id: zoneArg,
                 p_invoice_only: invoiceOnly,
             };
-            const { data, error } = await supabase.rpc('get_daily_sales_stats', payload);
+            let data: any[] | null = null;
+            let error: any = null;
+            const v2 = await supabase.rpc('get_daily_sales_stats_v2', payloadV2);
+            if (!v2.error && Array.isArray(v2.data)) {
+                data = v2.data as any[];
+            } else {
+                const v1 = await supabase.rpc('get_daily_sales_stats', payloadV1);
+                data = Array.isArray(v1.data) ? (v1.data as any[]) : null;
+                error = v1.error;
+            }
             if (!active) return;
             if (error || !Array.isArray(data)) { showNotification(localizeSupabaseError(error || '')); setDailySalesData([]); return; }
             const rows = ((data as any[]) || [])
@@ -267,6 +283,34 @@ const SalesReports: React.FC = () => {
             );
         };
         void loadPayment();
+        return () => { active = false; };
+    }, [effectiveRange, selectedZoneId, invoiceOnly]);
+
+    const [currencySalesData, setCurrencySalesData] = useState<Array<{ label: string; value: number }>>([]);
+    useEffect(() => {
+        let active = true;
+        const loadCurrencySales = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase || !effectiveRange) { setCurrencySalesData([]); return; }
+            const zoneArg = (selectedZoneId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedZoneId)) ? selectedZoneId : null;
+            const payload: any = {
+                p_start_date: effectiveRange.start.toISOString(),
+                p_end_date: effectiveRange.end.toISOString(),
+                p_zone_id: zoneArg,
+                p_invoice_only: invoiceOnly,
+            };
+            const { data, error } = await supabase.rpc('get_sales_by_currency', payload);
+            if (!active) return;
+            if (error || !Array.isArray(data)) { setCurrencySalesData([]); return; }
+            setCurrencySalesData(
+                (data as any[]).map((r: any) => ({
+                    label: String(r.currency_code),
+                    value: Number(r.total_base_amount) || 0, // Viewing the base equivalent of those foreign sales for Apples-to-Apples comparison
+                    actual_foreign: Number(r.total_foreign_amount) || 0
+                })).sort((a, b) => b.value - a.value)
+            );
+        };
+        void loadCurrencySales();
         return () => { active = false; };
     }, [effectiveRange, selectedZoneId, invoiceOnly]);
 
@@ -794,6 +838,18 @@ const SalesReports: React.FC = () => {
                             <BarChart data={orderSourceRevenue} title="المبيعات حسب مصدر الطلب" currency={currency} />
                         </div>
                     </div>
+
+                    {currencySalesData.length > 0 && (
+                        <div className="grid grid-cols-1 gap-4 mb-6">
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
+                                <HorizontalBarChart
+                                    data={currencySalesData}
+                                    title={`المبيعات حسب عملة البيع الأصلية (مقومة بـ ${currency})`}
+                                    unit={currency}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </>
 
                 {/* Integration Consistency Check (Debug Toggle) */}

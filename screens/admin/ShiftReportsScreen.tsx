@@ -19,8 +19,11 @@ const ShiftReportsScreen: React.FC = () => {
     const [closeUseDenoms, setCloseUseDenoms] = useState(false);
     const [closeDenoms, setCloseDenoms] = useState<Record<string, number>>({});
     const [closeExpected, setCloseExpected] = useState<number | null>(null);
+    const [closeExpectedJson, setCloseExpectedJson] = useState<Record<string, number> | null>(null);
     const [closeTotalsByMethod, setCloseTotalsByMethod] = useState<Record<string, { in: number; out: number }>>({});
     const [closeCountedByMethod, setCloseCountedByMethod] = useState<Record<string, string>>({});
+    const [closeCashTenderCounts, setCloseCashTenderCounts] = useState<Record<string, string>>({});
+    const [fxRates, setFxRates] = useState<Record<string, number>>({});
     const [closeForcedReason, setCloseForcedReason] = useState('');
     const [closeError, setCloseError] = useState('');
     const [isClosing, setIsClosing] = useState(false);
@@ -39,7 +42,6 @@ const ShiftReportsScreen: React.FC = () => {
     const [reportShift, setReportShift] = useState<any | null>(null);
     const [reportPayments, setReportPayments] = useState<any[]>([]);
     const [reportOrders, setReportOrders] = useState<Order[]>([]);
-    const [reportMissingRefunds, setReportMissingRefunds] = useState<number>(0);
     const [reportExpectedCash, setReportExpectedCash] = useState<number | null>(null);
     const navigate = useNavigate();
     const { settings } = useSettings();
@@ -51,6 +53,17 @@ const ShiftReportsScreen: React.FC = () => {
             setBaseCode(c);
         });
     }, []);
+
+    useEffect(() => {
+        const fetchFx = async () => {
+            if (!supabase) return;
+            const { data } = await supabase.from('currencies').select('code, current_exchange_rate');
+            const map: Record<string, number> = {};
+            data?.forEach(d => { map[String(d.code).toUpperCase()] = Number(d.current_exchange_rate) || 1; });
+            setFxRates(map);
+        };
+        fetchFx();
+    }, [supabase]);
 
     useEffect(() => {
         const loadShifts = async () => {
@@ -175,23 +188,35 @@ const ShiftReportsScreen: React.FC = () => {
         setCloseUseDenoms(false);
         setCloseDenoms({});
         setCloseExpected(null);
+        setCloseExpectedJson(null);
         setCloseTotalsByMethod({});
         setCloseCountedByMethod({});
+        setCloseCashTenderCounts({});
         setCloseForcedReason('');
         setCloseError('');
     };
 
     useEffect(() => {
         const loadExpected = async () => {
-            if (!supabase) return;
-            if (!closeShiftId) return;
+            if (!supabase || !closeShiftId) return;
             const { data, error } = await supabase.rpc('calculate_cash_shift_expected', { p_shift_id: closeShiftId });
-            if (error) {
+            if (!error) {
+                const numeric = Number(data);
+                setCloseExpected(Number.isFinite(numeric) ? numeric : null);
+            } else {
                 setCloseExpected(null);
-                return;
             }
-            const numeric = Number(data);
-            setCloseExpected(Number.isFinite(numeric) ? numeric : null);
+            const { data: jsonData, error: jsonError } = await supabase.rpc('calculate_cash_shift_expected_multicurrency', { p_shift_id: closeShiftId });
+            if (!jsonError && jsonData) {
+                const j = jsonData as Record<string, number>;
+                setCloseExpectedJson(j);
+                const init: Record<string, string> = {};
+                Object.keys(j).forEach(c => { init[c] = ''; });
+                setCloseCashTenderCounts(init);
+            } else {
+                setCloseExpectedJson(null);
+                setCloseCashTenderCounts({});
+            }
         };
         loadExpected();
     }, [supabase, closeShiftId]);
@@ -248,7 +273,6 @@ const ShiftReportsScreen: React.FC = () => {
                 setReportShift(null);
                 setReportPayments([]);
                 setReportOrders([]);
-                setReportMissingRefunds(0);
                 setReportError('');
                 setReportLoading(false);
                 setReportExpectedCash(null);
@@ -285,72 +309,49 @@ const ShiftReportsScreen: React.FC = () => {
                     )
                 );
                 const nextOrders: Order[] = [];
+                const baseCur = String(baseCode || '').trim().toUpperCase();
                 const chunkSize = 200;
                 for (let i = 0; i < orderIds.length; i += chunkSize) {
                     const chunk = orderIds.slice(i, i + chunkSize);
                     const { data: orderRows, error: orderError } = await supabase
                         .from('orders')
-                        .select('id,status,data,fx_rate,base_total,currency')
+                        .select('id,status,data,fx_rate,base_total,currency,total')
                         .in('id', chunk);
                     if (orderError) throw orderError;
                     for (const row of orderRows || []) {
                         const base = (row as any)?.data;
                         if (!base || typeof base !== 'object') continue;
                         const view = getInvoiceOrderView(base as Order);
-                        const fx = Number((row as any)?.fx_rate) || 1;
-                        const rowBaseTotal = (row as any)?.base_total;
-                        const totalBase = (rowBaseTotal !== null && rowBaseTotal !== undefined && Number.isFinite(Number(rowBaseTotal)))
-                            ? Number(rowBaseTotal)
-                            : (Number(view.total || 0) * fx || 0);
-                        const discountBase = Number(view.discountAmount || 0) * fx;
+                        const currency = String((row as any)?.currency || '').trim().toUpperCase();
+                        const fx = (row as any)?.fx_rate == null ? null : Number((row as any).fx_rate);
+                        const baseTotal = (row as any)?.base_total == null ? null : Number((row as any).base_total);
+                        const totalForeign = Number((row as any)?.total) || Number((view as any)?.total) || 0;
+                        const discountForeign = Number((view as any)?.discountAmount) || 0;
+                        const isBase = currency && baseCur === currency;
+                        const computedTotalBase = Number.isFinite(baseTotal as any) ? (baseTotal as number)
+                            : (isBase ? totalForeign : (Number.isFinite(fx as any) ? totalForeign * (fx as number) : null));
+                        const computedDiscountBase = isBase ? discountForeign
+                            : (Number.isFinite(fx as any) ? discountForeign * (fx as number) : null);
                         nextOrders.push({
                             ...view,
                             id: String((row as any).id || (view as any).id || ''),
                             status: String((row as any).status || view.status || '') as any,
                         } as any);
-                        (nextOrders as any)[(nextOrders as any).length - 1].totalBase = totalBase;
-                        (nextOrders as any)[(nextOrders as any).length - 1].discountBase = discountBase;
-                        (nextOrders as any)[(nextOrders as any).length - 1].currencyCode = String((row as any)?.currency || '').trim().toUpperCase();
+                        (nextOrders as any)[(nextOrders as any).length - 1].totalBase = Number.isFinite(computedTotalBase as any) ? computedTotalBase : 0;
+                        (nextOrders as any)[(nextOrders as any).length - 1].discountBase = Number.isFinite(computedDiscountBase as any) ? computedDiscountBase : 0;
+                        (nextOrders as any)[(nextOrders as any).length - 1].currencyCode = currency || baseCur || '—';
+                        (nextOrders as any)[(nextOrders as any).length - 1].total = totalForeign;
                     }
                 }
-                setReportOrders(nextOrders.filter(o => o.status === 'delivered' && Boolean(o.paidAt)));
+                setReportOrders(nextOrders.filter(o => !['cancelled', 'returned'].includes(String(o.status || '').toLowerCase())));
 
-                const refundPaymentIds = new Set(
-                    pList
-                        .filter((p: any) => String(p.reference_table || '') === 'sales_returns' && p.reference_id)
-                        .map((p: any) => String(p.reference_id))
-                        .filter(Boolean)
-                );
-                const rangeStart = shiftRow?.opened_at ? String(shiftRow.opened_at) : null;
-                const rangeEnd = shiftRow?.closed_at ? String(shiftRow.closed_at) : new Date().toISOString();
-                let missingRefunds = 0;
-                if (rangeStart) {
-                    let q = supabase
-                        .from('sales_returns')
-                        .select('id,total_refund_amount,return_date,created_by')
-                        .gte('return_date', rangeStart)
-                        .lte('return_date', rangeEnd)
-                        .limit(2000);
-                    if (shiftRow?.cashier_id) {
-                        q = q.eq('created_by', String(shiftRow.cashier_id));
-                    }
-                    const { data: retRows, error: retError } = await q;
-                    if (!retError && Array.isArray(retRows)) {
-                        for (const r of retRows) {
-                            const rid = String((r as any)?.id || '');
-                            if (!rid || refundPaymentIds.has(rid)) continue;
-                            missingRefunds += Number((r as any)?.total_refund_amount) || 0;
-                        }
-                    }
-                }
-                setReportMissingRefunds(missingRefunds);
+
             } catch (err: any) {
                 const raw = String(err?.message || '');
                 setReportError(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'تعذر تحميل تقرير الوردية.');
                 setReportShift(null);
                 setReportPayments([]);
                 setReportOrders([]);
-                setReportMissingRefunds(0);
             } finally {
                 setReportLoading(false);
             }
@@ -429,10 +430,19 @@ const ShiftReportsScreen: React.FC = () => {
         setCloseAmount(total.toFixed(2));
     }, [closeUseDenoms, closeDenoms]);
 
+    const calculatedCloseAmount = Object.keys(closeCashTenderCounts).length > 0
+        ? Object.entries(closeCashTenderCounts).reduce((sum, [cur, val]) => {
+            const n = parseFloat(val);
+            if (isNaN(n)) return sum;
+            const fx = fxRates[cur] || 1;
+            return sum + (n * fx);
+        }, 0)
+        : parseFloat(closeAmount || '0');
+
     const submitClose = async () => {
         if (!supabase || !closeShiftId) return;
         setCloseError('');
-        const num = parseFloat(closeAmount);
+        const num = calculatedCloseAmount;
         if (isNaN(num) || num < 0) {
             setCloseError('يرجى إدخال مبلغ صحيح.');
             return;
@@ -443,7 +453,11 @@ const ShiftReportsScreen: React.FC = () => {
             const n = Number(raw);
             if (Number.isFinite(n)) tenderCounts[method] = n;
         }
-        tenderCounts['cash'] = num;
+
+        const parsedCashTenders: Record<string, number> = {};
+        for (const [k, v] of Object.entries(closeCashTenderCounts)) {
+            if (v.trim() !== '') parsedCashTenders[k] = parseFloat(v) || 0;
+        }
 
         const cashMismatch = expected !== null && Math.abs(num - expected) > 0.01;
         const otherMismatch = Object.entries(closeTotalsByMethod).some(([method, totals]) => {
@@ -459,25 +473,19 @@ const ShiftReportsScreen: React.FC = () => {
         }
         setIsClosing(true);
         try {
-            const argsV2: Record<string, any> = {
+            const argsV3: Record<string, any> = {
                 p_shift_id: closeShiftId,
                 p_end_amount: num,
                 p_notes: closeNotes || null,
                 p_forced_reason: closeForcedReason.trim() || null,
                 p_denomination_counts: closeUseDenoms ? closeDenoms : null,
-                p_tender_counts: tenderCounts
+                p_tender_counts: Object.keys(parsedCashTenders).length > 0 ? { cash: parsedCashTenders, ...tenderCounts } : { cash: num, ...tenderCounts }
             };
-            let { error } = await supabase.rpc('close_cash_shift_v2', argsV2);
+            let { error } = await supabase.rpc('close_cash_shift_v3', argsV3);
             if (error) {
                 const msg = String((error as any)?.message || '');
                 if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
-                    const { error: fallbackErr } = await supabase.rpc('close_cash_shift_v2', {
-                        p_shift_id: closeShiftId,
-                        p_end_amount: num,
-                        p_notes: closeNotes || null,
-                        p_forced_reason: closeForcedReason.trim() || null,
-                        p_denomination_counts: closeUseDenoms ? closeDenoms : null
-                    } as any);
+                    const { error: fallbackErr } = await supabase.rpc('close_cash_shift_v2', argsV3);
                     error = fallbackErr as any;
                 }
             }
@@ -530,6 +538,17 @@ const ShiftReportsScreen: React.FC = () => {
             const c = String((o as any)?.currencyCode || '').trim().toUpperCase() || String(base || '—');
             salesByCurrency[c] = (salesByCurrency[c] || 0) + (Number((o as any)?.total) || 0);
         }
+        const refundsByCurrency: Record<string, number> = {};
+        for (const p of refunds as any[]) {
+            const c = String(p?.currency || '').trim().toUpperCase() || String(base || '—');
+            refundsByCurrency[c] = (refundsByCurrency[c] || 0) + (Number(p?.amount) || 0);
+        }
+        const discountsByCurrency: Record<string, number> = {};
+        for (const o of reportOrders as any[]) {
+            const c = String((o as any)?.currencyCode || '').trim().toUpperCase() || String(base || '—');
+            const dForeign = Number((o as any)?.discountAmount) || 0;
+            if (dForeign > 0) discountsByCurrency[c] = (discountsByCurrency[c] || 0) + dForeign;
+        }
         return {
             totalsByMethod,
             refundsTotal,
@@ -540,6 +559,8 @@ const ShiftReportsScreen: React.FC = () => {
             paymentsCount: reportPayments.length,
             ordersCount: reportOrders.length,
             salesByCurrency,
+            refundsByCurrency,
+            discountsByCurrency,
             missingPaymentBase,
         };
     }, [reportPayments, reportOrders, baseCode]);
@@ -650,21 +671,27 @@ const ShiftReportsScreen: React.FC = () => {
                             <div className="text-xs text-gray-500 dark:text-gray-300">المرتجعات</div>
                             <div className="mt-1 text-lg font-bold font-mono text-rose-600 dark:text-rose-400">{reportComputed.refundsTotal.toFixed(2)} {baseCode || '—'}</div>
                             <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">{reportComputed.refundsCount} عملية إرجاع</div>
+                            {Object.keys(reportComputed.refundsByCurrency || {}).length > 0 && (
+                                <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
+                                    {Object.entries(reportComputed.refundsByCurrency || {}).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ')}
+                                </div>
+                            )}
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">الخصومات</div>
                             <div className="mt-1 text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{reportComputed.discountsTotal.toFixed(2)} {baseCode || '—'}</div>
+                            {Object.keys(reportComputed.discountsByCurrency || {}).length > 0 && (
+                                <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
+                                    {Object.entries(reportComputed.discountsByCurrency || {}).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ')}
+                                </div>
+                            )}
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">الصافي</div>
                             <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportComputed.netTotal.toFixed(2)} {baseCode || '—'}</div>
                         </div>
                     </div>
-                    {reportMissingRefunds > 0.01 && (
-                        <div className="mt-3 p-3 rounded-lg bg-amber-50 text-amber-900 text-sm">
-                            مرتجعات غير مرتبطة بعمليات دفع داخل الوردية: {reportMissingRefunds.toFixed(2)} {baseCode || '—'}
-                        </div>
-                    )}
+
                     {reportComputed.missingPaymentBase > 0 && (
                         <div className="mt-3 p-3 rounded-lg bg-amber-50 text-amber-900 text-sm">
                             توجد {reportComputed.missingPaymentBase} عملية بعملة أجنبية بدون مبلغ محوّل للأساسية. أدخل أسعار الصرف ثم أعد احتساب FX.
@@ -732,101 +759,101 @@ const ShiftReportsScreen: React.FC = () => {
                 <div className="overflow-x-auto">
                     <table className="min-w-[1000px] w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">الحالة</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">الكاشير</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">فتح</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">إغلاق</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">عهدة البداية</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">النقد المتوقع</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">النقد الفعلي</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">فرق النقد</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">تفاصيل</th>
-                            <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">ملاحظات</th>
-                            {canManageShifts && <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">إجراءات</th>}
-                        </tr>
+                            <tr>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">الحالة</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">الكاشير</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">فتح</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">إغلاق</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">عهدة البداية</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">النقد المتوقع</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">النقد الفعلي</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">فرق النقد</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">تفاصيل</th>
+                                <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">ملاحظات</th>
+                                {canManageShifts && <th className="p-2 sm:p-4 text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-300">إجراءات</th>}
+                            </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {shifts.map(shift => (
-                            <tr key={shift.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                <td className="p-2 sm:p-4">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${shift.status === 'open'
-                                        ? 'bg-green-100 text-green-700'
-                                        : 'bg-gray-100 text-gray-700'
-                                        }`}>
-                                        {shift.status === 'open' ? <Icons.ClockIcon className="w-3 h-3" /> : <Icons.CheckIcon className="w-3 h-3" />}
-                                        {shift.status === 'open' ? 'مفتوحة' : 'مغلقة'}
-                                    </span>
-                                </td>
-                                <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
-                                    {cashierLabelById[shift.cashierId] || shift.cashierId?.slice(0, 8) || '-'}
-                                </td>
-                                <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
-                                    {new Date(shift.openedAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                </td>
-                                <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
-                                    {shift.closedAt ? new Date(shift.closedAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                                </td>
-                                <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
-                                    {shift.startAmount.toFixed(2)} {baseCode || '—'}
-                                </td>
-                                <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
-                                    {shift.expectedAmount !== null && shift.expectedAmount !== undefined ? `${shift.expectedAmount.toFixed(2)} ${baseCode || '—'}` : '-'}
-                                </td>
-                                <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
-                                    {shift.endAmount !== null && shift.endAmount !== undefined ? `${shift.endAmount.toFixed(2)} ${baseCode || '—'}` : '-'}
-                                </td>
-                                <td className="p-2 sm:p-4">
-                                    {shift.difference !== undefined && shift.difference !== null ? (
-                                        <span className={`font-bold font-mono ${Math.abs(shift.difference) > 0.01
-                                            ? 'text-red-500'
-                                            : 'text-green-500'
-                                            }`}>
-                                            {shift.difference > 0 ? '+' : ''}{shift.difference.toFixed(2)} {baseCode || '—'}
-                                        </span>
-                                    ) : '-'}
-                                </td>
-                                <td className="p-2 sm:p-4">
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => navigate(`/admin/shift-reports/${shift.id}`)}
-                                            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                        >
-                                            عرض
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setReportError('');
-                                                setReportShiftId(shift.id);
-                                            }}
-                                            className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
-                                        >
-                                            تقرير
-                                        </button>
-                                    </div>
-                                </td>
-                                <td className="p-2 sm:p-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
-                                    {shift.notes}
-                                </td>
-                                {canManageShifts && (
+                            {shifts.map(shift => (
+                                <tr key={shift.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                     <td className="p-2 sm:p-4">
-                                        {shift.status === 'open' ? (
+                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${shift.status === 'open'
+                                            ? 'bg-green-100 text-green-700'
+                                            : 'bg-gray-100 text-gray-700'
+                                            }`}>
+                                            {shift.status === 'open' ? <Icons.ClockIcon className="w-3 h-3" /> : <Icons.CheckIcon className="w-3 h-3" />}
+                                            {shift.status === 'open' ? 'مفتوحة' : 'مغلقة'}
+                                        </span>
+                                    </td>
+                                    <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
+                                        {cashierLabelById[shift.cashierId] || shift.cashierId?.slice(0, 8) || '-'}
+                                    </td>
+                                    <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
+                                        {new Date(shift.openedAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </td>
+                                    <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
+                                        {shift.closedAt ? new Date(shift.closedAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                    </td>
+                                    <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
+                                        {shift.startAmount.toFixed(2)} {baseCode || '—'}
+                                    </td>
+                                    <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
+                                        {shift.expectedAmount !== null && shift.expectedAmount !== undefined ? `${shift.expectedAmount.toFixed(2)} ${baseCode || '—'}` : '-'}
+                                    </td>
+                                    <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
+                                        {shift.endAmount !== null && shift.endAmount !== undefined ? `${shift.endAmount.toFixed(2)} ${baseCode || '—'}` : '-'}
+                                    </td>
+                                    <td className="p-2 sm:p-4">
+                                        {shift.difference !== undefined && shift.difference !== null ? (
+                                            <span className={`font-bold font-mono ${Math.abs(shift.difference) > 0.01
+                                                ? 'text-red-500'
+                                                : 'text-green-500'
+                                                }`}>
+                                                {shift.difference > 0 ? '+' : ''}{shift.difference.toFixed(2)} {baseCode || '—'}
+                                            </span>
+                                        ) : '-'}
+                                    </td>
+                                    <td className="p-2 sm:p-4">
+                                        <div className="flex items-center gap-2">
                                             <button
                                                 type="button"
-                                                onClick={() => openCloseModal(shift.id)}
-                                                className="px-3 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600"
+                                                onClick={() => navigate(`/admin/shift-reports/${shift.id}`)}
+                                                className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                                             >
-                                                إغلاق
+                                                عرض
                                             </button>
-                                        ) : (
-                                            <span className="text-gray-400">-</span>
-                                        )}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setReportError('');
+                                                    setReportShiftId(shift.id);
+                                                }}
+                                                className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                                            >
+                                                تقرير
+                                            </button>
+                                        </div>
                                     </td>
-                                )}
-                            </tr>
-                        ))}
+                                    <td className="p-2 sm:p-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
+                                        {shift.notes}
+                                    </td>
+                                    {canManageShifts && (
+                                        <td className="p-2 sm:p-4">
+                                            {shift.status === 'open' ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openCloseModal(shift.id)}
+                                                    className="px-3 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600"
+                                                >
+                                                    إغلاق
+                                                </button>
+                                            ) : (
+                                                <span className="text-gray-400">-</span>
+                                            )}
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
@@ -834,7 +861,7 @@ const ShiftReportsScreen: React.FC = () => {
 
             {closeShiftId && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="bg-gray-100 dark:bg-gray-700 p-4 flex justify-between items-center border-b dark:border-gray-600">
                             <h2 className="text-xl font-bold text-gray-800 dark:text-white">إغلاق وردية</h2>
                             <button
@@ -845,29 +872,67 @@ const ShiftReportsScreen: React.FC = () => {
                                 <Icons.XIcon className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1 dark:text-gray-300">النقد الفعلي بعد الجرد</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={closeAmount}
-                                    onChange={(e) => setCloseAmount(e.target.value)}
-                                    disabled={closeUseDenoms}
-                                    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                    placeholder="0.00"
-                                    required
-                                />
-                                {closeExpected !== null && (
-                                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-300">
-                                        المتوقع: <span className="font-mono">{closeExpected.toFixed(2)} {baseCode || '—'}</span>{' '}
-                                        <span className="mx-1">—</span>
-                                        الفرق: <span className={`font-mono font-bold ${Math.abs(Number(closeAmount) - closeExpected) > 0.01 ? 'text-red-500' : 'text-gray-500 dark:text-gray-300'}`}>
-                                            {(Number.isFinite(Number(closeAmount)) ? `${(Number(closeAmount) - closeExpected).toFixed(2)} ${baseCode || '—'}` : '-')}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
+                        <div className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
+                            {!closeExpectedJson || Object.keys(closeExpectedJson).length === 0 ? (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">النقد الفعلي بعد الجرد</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={closeAmount}
+                                        onChange={(e) => setCloseAmount(e.target.value)}
+                                        disabled={closeUseDenoms}
+                                        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        placeholder="0.00"
+                                        required
+                                    />
+                                    {closeExpected !== null && (
+                                        <div className="mt-2 text-xs text-gray-500 dark:text-gray-300">
+                                            المتوقع: <span className="font-mono">{closeExpected.toFixed(2)} {baseCode || '—'}</span>{' '}
+                                            <span className="mx-1">—</span>
+                                            الفرق: <span className={`font-mono font-bold ${Math.abs(Number(closeAmount) - closeExpected) > 0.01 ? 'text-red-500' : 'text-gray-500 dark:text-gray-300'}`}>
+                                                {(Number.isFinite(Number(closeAmount)) ? `${(Number(closeAmount) - closeExpected).toFixed(2)} ${baseCode || '—'}` : '-')}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">النقد الفعلي بعد الجرد (تفصيلي)</label>
+                                    {Object.entries(closeExpectedJson).map(([cur, expectedVal]) => (
+                                        <div key={cur} className="flex flex-col gap-1 p-3 border rounded-lg dark:border-gray-600 dark:bg-gray-750">
+                                            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                                <span>عملة: {cur}</span>
+                                                <span className="font-mono">المتوقع: {Number(expectedVal).toFixed(2)}</span>
+                                            </div>
+                                            <div className="relative">
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 text-center text-xs font-bold text-gray-400">{cur}</div>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={closeCashTenderCounts[cur] !== undefined ? closeCashTenderCounts[cur] : ''}
+                                                    onChange={(e) => setCloseCashTenderCounts(prev => ({ ...prev, [cur]: e.target.value }))}
+                                                    min={0}
+                                                    className="w-full pl-12 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                    placeholder="0.00"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {closeExpected !== null && (
+                                        <div className="mt-2 text-xs text-gray-500 dark:text-gray-300">
+                                            المتوقع الإجمالي: <span className="font-mono">{closeExpected.toFixed(2)} {baseCode || '—'}</span>{' '}
+                                            <span className="mx-1">—</span>
+                                            المقدر الإجمالي: <span className="font-mono">{calculatedCloseAmount.toFixed(2)} {baseCode || '—'}</span>{' '}
+                                            <span className="mx-1">—</span>
+                                            الفرق: <span className={`font-mono font-bold ${Math.abs(calculatedCloseAmount - closeExpected) > 0.01 ? 'text-red-500' : 'text-gray-500 dark:text-gray-300'}`}>
+                                                {`${(calculatedCloseAmount - closeExpected).toFixed(2)} ${baseCode || '—'}`}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                                 <div className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">تسوية حسب طريقة الدفع</div>
@@ -895,7 +960,7 @@ const ShiftReportsScreen: React.FC = () => {
                                                         <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{exp.toFixed(2)} {baseCode || '—'}</div>
                                                         <div className="col-span-3">
                                                             {isCash ? (
-                                                                <div className="text-right text-sm font-mono dark:text-gray-200">{Number.isFinite(Number(closeAmount)) ? `${Number(closeAmount).toFixed(2)} ${baseCode || '—'}` : '-'}</div>
+                                                                <div className="text-right text-sm font-mono dark:text-gray-200">{`${calculatedCloseAmount.toFixed(2)} ${baseCode || '—'}`}</div>
                                                             ) : (
                                                                 <input
                                                                     type="number"
@@ -1135,14 +1200,13 @@ const ShiftReportsScreen: React.FC = () => {
                                                         ['الصافي', reportComputed.netTotal.toFixed(2)],
                                                         ['عدد الطلبات', reportComputed.ordersCount],
                                                         ['عدد العمليات', reportComputed.paymentsCount],
-                                                        ['مرتجعات غير مرتبطة', reportMissingRefunds.toFixed(2)],
                                                     ];
                                                     await exportToXlsx(
-                                                    ['البند', 'القيمة'],
-                                                    rows,
-                                                    `shift-${reportShiftId}-summary.xlsx`,
-                                                    { sheetName: 'Shift Summary', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'الوردية', 2, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
-                                                );
+                                                        ['البند', 'القيمة'],
+                                                        rows,
+                                                        `shift-${reportShiftId}-summary.xlsx`,
+                                                        { sheetName: 'Shift Summary', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'الوردية', 2, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
+                                                    );
                                                 }}
                                                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                                             >
@@ -1176,9 +1240,9 @@ const ShiftReportsScreen: React.FC = () => {
                                                         ['طريقة الدفع', 'المتوقع', 'المعدود', 'الفرق'],
                                                         rows,
                                                         `shift-${reportShiftId}-tenders.xlsx`,
-                                                        { 
-                                                            sheetName: 'Shift Tenders', 
-                                                            currencyColumns: [1, 2, 3], 
+                                                        {
+                                                            sheetName: 'Shift Tenders',
+                                                            currencyColumns: [1, 2, 3],
                                                             currencyFormat: '#,##0.00',
                                                             preludeRows: [
                                                                 [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', ''],
@@ -1209,14 +1273,14 @@ const ShiftReportsScreen: React.FC = () => {
                                                         headers,
                                                         rows,
                                                         `shift-${reportShiftId}-payments.xlsx`,
-                                                        { 
-                                                            sheetName: 'Shift Payments', 
-                                                            currencyColumns: [3], 
+                                                        {
+                                                            sheetName: 'Shift Payments',
+                                                            currencyColumns: [3],
                                                             currencyFormat: '#,##0.00',
                                                             preludeRows: [
-                                                                [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '','','','', ''],
-                                                                ['تقرير: عمليات الوردية','','','','',''],
-                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}`,'','','','','']
+                                                                [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '', '', '', '', ''],
+                                                                ['تقرير: عمليات الوردية', '', '', '', '', ''],
+                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}`, '', '', '', '', '']
                                                             ],
                                                             accentColor: settings.brandColors?.primary || '#2F2B7C'
                                                         }

@@ -7,6 +7,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import PageLoader from '../../components/PageLoader';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 import { printJournalVoucherByEntryId, printPaymentVoucherByPaymentId } from '../../utils/vouchers';
+import PrintablePayslip, { type PayslipData } from '../../components/admin/PrintablePayslip';
+import { createRoot } from 'react-dom/client';
 
 type PayrollEmployee = {
   id: string;
@@ -16,6 +18,15 @@ type PayrollEmployee = {
   monthly_salary: number;
   currency: string;
   notes?: string | null;
+  hired_date?: string | null;
+  phone?: string | null;
+  national_id?: string | null;
+  bank_account?: string | null;
+  job_title?: string | null;
+  party_id?: string | null;
+  auto_deduct_ar?: boolean;
+  credit_limit_multiplier?: number;
+  pin?: string | null;
 };
 
 type PayrollRun = {
@@ -46,6 +57,13 @@ type PayrollLine = {
   cost_center_id?: string | null;
   employee_name?: string;
   employee_code?: string | null;
+  absence_days?: number;
+  absence_deduction?: number;
+  overtime_hours?: number;
+  overtime_addition?: number;
+  prorated_salary?: number;
+  ar_deduction?: number;
+  party_ar_balance?: number;
 };
 
 type ActiveAccount = {
@@ -60,6 +78,10 @@ type PayrollSettingsRow = {
   salary_expense_account_id: string | null;
   salary_payable_account_id: string | null;
   default_cost_center_id: string | null;
+  enable_party_settlements: boolean;
+  standard_monthly_days: number;
+  standard_daily_hours: number;
+  default_overtime_multiplier: number;
 };
 
 const toMonthValue = () => {
@@ -86,6 +108,61 @@ const formatTime = (iso: string) => {
   }
 };
 
+const printPayslip = (lines: PayrollLine[], period: string, currency: string, employees: PayrollEmployee[], companyName?: string, companyLogo?: string) => {
+  const w = window.open('', '_blank');
+  if (!w) return;
+  w.document.write('<html dir="rtl"><head><title>\u0643\u0634\u0641 \u0631\u0627\u062a\u0628</title></head><body><div id="root"></div></body></html>');
+  w.document.close();
+
+  const root = w.document.getElementById('root');
+  if (!root) return;
+
+  const reactRoot = createRoot(root);
+  const payslips = lines.map((l) => {
+    const emp = employees.find(e => e.id === l.employee_id);
+    const data: PayslipData = {
+      employeeName: l.employee_name || emp?.full_name || '',
+      employeeCode: l.employee_code || emp?.employee_code || '',
+      jobTitle: emp?.job_title || '',
+      nationalId: emp?.national_id || '',
+      bankAccount: emp?.bank_account || '',
+      hiredDate: emp?.hired_date || '',
+      period,
+      currency,
+      basicSalary: Number(l.gross || 0) + Number(l.absence_deduction || 0) - Number(l.overtime_addition || 0),
+      absenceDays: Number(l.absence_days || 0),
+      absenceDeduction: Number(l.absence_deduction || 0),
+      overtimeHours: Number(l.overtime_hours || 0),
+      overtimeAddition: Number(l.overtime_addition || 0),
+      allowances: Number(l.allowances || 0),
+      deductions: Number(l.deductions || 0) - Number(l.ar_deduction || 0), // separate general deductions from AR deduction
+      arDeduction: Number(l.ar_deduction || 0),
+      arBalance: Number(l.party_ar_balance || 0),
+      grossPay: Number(l.gross || 0),
+      netPay: Number(l.net || 0),
+      foreignAmount: Number(l.foreign_amount || 0),
+      fxRate: Number(l.fx_rate || 0),
+      foreignCurrency: l.currency_code || undefined,
+      companyName,
+      companyLogo,
+    };
+    return data;
+  });
+
+  const container = (
+    <>
+      {payslips.map((d, i) => (
+        <div key={i} style={{ pageBreakAfter: i < payslips.length - 1 ? 'always' : undefined }}>
+          <PrintablePayslip data={d} />
+        </div>
+      ))}
+    </>
+  );
+
+  reactRoot.render(container);
+  setTimeout(() => w.print(), 600);
+};
+
 export default function PayrollScreen() {
   const { showNotification } = useToast();
   const { settings } = useSettings();
@@ -96,6 +173,7 @@ export default function PayrollScreen() {
 
   const canViewAccounting = hasPermission('accounting.view');
   const canManageAccounting = hasPermission('accounting.manage');
+  const canApproveAccounting = hasPermission('accounting.approve');
 
   const [tab, setTab] = useState<'runs' | 'employees' | 'settings'>('runs');
   const [loading, setLoading] = useState(true);
@@ -115,6 +193,14 @@ export default function PayrollScreen() {
     currency: 'YER',
     is_active: true,
     notes: '',
+    hired_date: '',
+    phone: '',
+    national_id: '',
+    bank_account: '',
+    job_title: '',
+    auto_deduct_ar: true,
+    credit_limit_multiplier: 2,
+    pin: '',
   });
 
   const [runModalOpen, setRunModalOpen] = useState(false);
@@ -138,13 +224,28 @@ export default function PayrollScreen() {
     salary_expense_account_id: null,
     salary_payable_account_id: null,
     default_cost_center_id: null,
+    enable_party_settlements: false,
+    standard_monthly_days: 30,
+    standard_daily_hours: 8,
+    default_overtime_multiplier: 1.5,
   });
   const [payrollSettingsDraft, setPayrollSettingsDraft] = useState<PayrollSettingsRow>({
     salary_expense_account_id: null,
     salary_payable_account_id: null,
     default_cost_center_id: null,
+    enable_party_settlements: false,
+    standard_monthly_days: 30,
+    standard_daily_hours: 8,
+    default_overtime_multiplier: 1.5,
   });
   const [savingPayrollSettings, setSavingPayrollSettings] = useState(false);
+
+  const [partySettleModalOpen, setPartySettleModalOpen] = useState(false);
+  const [partySettleMethod, setPartySettleMethod] = useState('cash');
+  const [partySettleOccurredAt, setPartySettleOccurredAt] = useState(toDateTimeLocalInputValue());
+  const [partySettleApplyAdvances, setPartySettleApplyAdvances] = useState(true);
+  const [partySettlePayRemaining, setPartySettlePayRemaining] = useState(true);
+  const [partySettleRunning, setPartySettleRunning] = useState(false);
 
   const buildBrand = useCallback(async () => {
     const supabase = getSupabaseClient();
@@ -183,7 +284,7 @@ export default function PayrollScreen() {
     setLoading(true);
     try {
       const [{ data: emps, error: eErr }, { data: rs, error: rErr }, { data: cc, error: cErr }] = await Promise.all([
-        supabase.from('payroll_employees').select('*').order('full_name', { ascending: true }),
+        supabase.from('payroll_employees').select('id,full_name,employee_code,is_active,monthly_salary,currency,notes,hired_date,phone,national_id,bank_account,job_title,party_id,auto_deduct_ar,credit_limit_multiplier,pin').order('full_name', { ascending: true }),
         supabase.from('payroll_runs').select('*').order('period_ym', { ascending: false }).limit(120),
         supabase.from('cost_centers').select('id,name,code').order('name', { ascending: true }),
       ]);
@@ -198,6 +299,15 @@ export default function PayrollScreen() {
         monthly_salary: Number(e.monthly_salary || 0),
         currency: String(e.currency || 'YER'),
         notes: e.notes ? String(e.notes) : null,
+        hired_date: e.hired_date ? String(e.hired_date) : null,
+        phone: e.phone ? String(e.phone) : null,
+        national_id: e.national_id ? String(e.national_id) : null,
+        bank_account: e.bank_account ? String(e.bank_account) : null,
+        job_title: e.job_title ? String(e.job_title) : null,
+        party_id: e.party_id ? String(e.party_id) : null,
+        auto_deduct_ar: e.auto_deduct_ar ?? true,
+        credit_limit_multiplier: Number(e.credit_limit_multiplier ?? 2),
+        pin: e.pin ? String(e.pin) : null,
       })));
       setRuns((Array.isArray(rs) ? rs : []).map((r: any) => ({
         id: String(r.id),
@@ -228,16 +338,18 @@ export default function PayrollScreen() {
     const supabase = getSupabaseClient();
     if (!supabase) {
       setAccounts([]);
-      setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
-      setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
+      const emptySettings: PayrollSettingsRow = { salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false, standard_monthly_days: 30, standard_daily_hours: 8, default_overtime_multiplier: 1.5 };
+      setPayrollSettings(emptySettings);
+      setPayrollSettingsDraft(emptySettings);
       return;
     }
     setPayrollSettingsLoading(true);
     try {
       if (!canViewAccounting) {
         setAccounts([]);
-        setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
-        setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
+        const emptySettings2: PayrollSettingsRow = { salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false, standard_monthly_days: 30, standard_daily_hours: 8, default_overtime_multiplier: 1.5 };
+        setPayrollSettings(emptySettings2);
+        setPayrollSettingsDraft(emptySettings2);
         return;
       }
 
@@ -245,7 +357,7 @@ export default function PayrollScreen() {
         supabase.rpc('list_active_accounts'),
         supabase
           .from('payroll_settings')
-          .select('salary_expense_account_id,salary_payable_account_id,default_cost_center_id')
+          .select('salary_expense_account_id,salary_payable_account_id,default_cost_center_id,enable_party_settlements,standard_monthly_days,standard_daily_hours,default_overtime_multiplier')
           .eq('id', 'app')
           .maybeSingle(),
       ]);
@@ -259,22 +371,31 @@ export default function PayrollScreen() {
         account_type: String(r.account_type || ''),
         normal_balance: String(r.normal_balance || ''),
       })));
-      const next = {
+      const next: PayrollSettingsRow = {
         salary_expense_account_id: row?.salary_expense_account_id ? String((row as any).salary_expense_account_id) : null,
         salary_payable_account_id: row?.salary_payable_account_id ? String((row as any).salary_payable_account_id) : null,
         default_cost_center_id: row?.default_cost_center_id ? String((row as any).default_cost_center_id) : null,
+        enable_party_settlements: Boolean((row as any)?.enable_party_settlements),
+        standard_monthly_days: Number((row as any)?.standard_monthly_days || 30),
+        standard_daily_hours: Number((row as any)?.standard_daily_hours || 8),
+        default_overtime_multiplier: Number((row as any)?.default_overtime_multiplier || 1.5),
       };
       setPayrollSettings(next);
       setPayrollSettingsDraft(next);
     } catch (e: any) {
       setAccounts([]);
-      setPayrollSettings({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
-      setPayrollSettingsDraft({ salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null });
+      const catchFallback: PayrollSettingsRow = { salary_expense_account_id: null, salary_payable_account_id: null, default_cost_center_id: null, enable_party_settlements: false, standard_monthly_days: 30, standard_daily_hours: 8, default_overtime_multiplier: 1.5 };
+      setPayrollSettings(catchFallback);
+      setPayrollSettingsDraft(catchFallback);
       showNotification(String(e?.message || 'تعذر تحميل إعدادات الرواتب'), 'error');
     } finally {
       setPayrollSettingsLoading(false);
     }
   }, [canViewAccounting, showNotification]);
+
+  useEffect(() => {
+    void loadPayrollSettings();
+  }, [loadPayrollSettings]);
 
   useEffect(() => {
     if (tab === 'settings') {
@@ -296,6 +417,10 @@ export default function PayrollScreen() {
         salary_expense_account_id: payrollSettingsDraft.salary_expense_account_id,
         salary_payable_account_id: payrollSettingsDraft.salary_payable_account_id,
         default_cost_center_id: payrollSettingsDraft.default_cost_center_id,
+        enable_party_settlements: Boolean(payrollSettingsDraft.enable_party_settlements),
+        standard_monthly_days: Number(payrollSettingsDraft.standard_monthly_days || 30),
+        standard_daily_hours: Number(payrollSettingsDraft.standard_daily_hours || 8),
+        default_overtime_multiplier: Number(payrollSettingsDraft.default_overtime_multiplier || 1.5),
         updated_at: new Date().toISOString(),
       } as any;
       const { error } = await supabase.from('payroll_settings').upsert(payload, { onConflict: 'id' });
@@ -319,10 +444,18 @@ export default function PayrollScreen() {
         currency: String(emp.currency || 'YER'),
         is_active: Boolean(emp.is_active),
         notes: String(emp.notes || ''),
+        hired_date: String(emp.hired_date || ''),
+        phone: String(emp.phone || ''),
+        national_id: String(emp.national_id || ''),
+        bank_account: String(emp.bank_account || ''),
+        job_title: String(emp.job_title || ''),
+        auto_deduct_ar: emp.auto_deduct_ar ?? true,
+        credit_limit_multiplier: Number(emp.credit_limit_multiplier ?? 2),
+        pin: String(emp.pin || ''),
       });
     } else {
       setEmployeeEditing(null);
-      setEmployeeForm({ full_name: '', employee_code: '', monthly_salary: 0, currency: 'YER', is_active: true, notes: '' });
+      setEmployeeForm({ full_name: '', employee_code: '', monthly_salary: 0, currency: 'YER', is_active: true, notes: '', hired_date: '', phone: '', national_id: '', bank_account: '', job_title: '', auto_deduct_ar: true, credit_limit_multiplier: 2, pin: '' });
     }
     setEmployeeModalOpen(true);
   };
@@ -337,6 +470,14 @@ export default function PayrollScreen() {
       currency: String(employeeForm.currency || 'YER').toUpperCase() || 'YER',
       is_active: Boolean(employeeForm.is_active),
       notes: String(employeeForm.notes || '').trim() || null,
+      hired_date: String(employeeForm.hired_date || '').trim() || null,
+      phone: String(employeeForm.phone || '').trim() || null,
+      national_id: String(employeeForm.national_id || '').trim() || null,
+      bank_account: String(employeeForm.bank_account || '').trim() || null,
+      job_title: String(employeeForm.job_title || '').trim() || null,
+      auto_deduct_ar: Boolean(employeeForm.auto_deduct_ar),
+      credit_limit_multiplier: Number(employeeForm.credit_limit_multiplier || 2),
+      pin: String(employeeForm.pin || '').trim() || null,
     };
     if (!payload.full_name) {
       showNotification('يرجى إدخال اسم الموظف.', 'error');
@@ -414,7 +555,7 @@ export default function PayrollScreen() {
       setRunCostCenterId(String((run as any).cost_center_id || ''));
       const { data: lines, error: lErr } = await supabase
         .from('payroll_run_lines')
-        .select('id,employee_id,gross,allowances,deductions,net,foreign_amount,fx_rate,currency_code,line_memo,cost_center_id,payroll_employees(full_name,employee_code)')
+        .select('id,employee_id,gross,allowances,deductions,net,foreign_amount,fx_rate,currency_code,line_memo,cost_center_id,absence_days,absence_deduction,overtime_hours,overtime_addition,prorated_salary,payroll_employees(full_name,employee_code)')
         .eq('run_id', run.id)
         .order('created_at', { ascending: true });
       if (lErr) throw lErr;
@@ -432,6 +573,11 @@ export default function PayrollScreen() {
         cost_center_id: l.cost_center_id ? String(l.cost_center_id) : null,
         employee_name: String(l?.payroll_employees?.full_name || ''),
         employee_code: l?.payroll_employees?.employee_code ? String(l.payroll_employees.employee_code) : null,
+        absence_days: Number(l.absence_days || 0),
+        absence_deduction: Number(l.absence_deduction || 0),
+        overtime_hours: Number(l.overtime_hours || 0),
+        overtime_addition: Number(l.overtime_addition || 0),
+        prorated_salary: Number(l.prorated_salary || 0),
       }));
       setRunLines(mapped);
 
@@ -481,7 +627,7 @@ export default function PayrollScreen() {
     const supabase = getSupabaseClient();
     if (!supabase || !selectedRun) return;
     try {
-      const { error } = await supabase.rpc('compute_payroll_run_v3', { p_run_id: selectedRun.id } as any);
+      const { error } = await supabase.rpc('compute_payroll_run_v4', { p_run_id: selectedRun.id } as any);
       if (error) throw error;
       await openRun(selectedRun);
       await loadAll();
@@ -584,6 +730,43 @@ export default function PayrollScreen() {
       showNotification('تم دفع الرواتب.', 'success');
     } catch (e: any) {
       showNotification(String(e?.message || 'تعذر دفع الرواتب'), 'error');
+    }
+  };
+
+  const confirmPartySettle = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !selectedRun) return;
+    if (!canManageAccounting) {
+      showNotification('لا تملك صلاحية تنفيذ تسويات الأطراف.', 'error');
+      return;
+    }
+    setPartySettleRunning(true);
+    try {
+      const occurredAtIso = partySettleOccurredAt ? new Date(partySettleOccurredAt).toISOString() : new Date().toISOString();
+      const { data, error } = await supabase.rpc('payroll_settle_run_employees_v1', {
+        p_run_id: selectedRun.id,
+        p_occurred_at: occurredAtIso,
+        p_method: partySettleMethod,
+        p_apply_advances: Boolean(partySettleApplyAdvances),
+        p_pay_remaining: Boolean(partySettlePayRemaining),
+      } as any);
+      if (error) throw error;
+      const summary = data && typeof data === 'object' ? data : null;
+      const needsApproval = Boolean((summary as any)?.needsApproval);
+      const msg = summary
+        ? `تمت العملية: مستحقات ${Number((summary as any).payablesCreated || 0)} · سلف ${Number((summary as any).advanceSettlementsCreated || 0)} · صرف ${Number((summary as any).payoutDocsCreated || 0)}`
+        : 'تمت العملية.';
+      setPartySettleModalOpen(false);
+      await loadAll();
+      await openRun(selectedRun);
+      showNotification(msg, 'success');
+      if (needsApproval) {
+        showNotification('تم إنشاء مستحقات كمسودات وتحتاج اعتماداً (accounting.approve) لاستكمال تطبيق السلف/الصرف.', 'info');
+      }
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر تنفيذ تسويات الأطراف'), 'error');
+    } finally {
+      setPartySettleRunning(false);
     }
   };
 
@@ -709,19 +892,23 @@ export default function PayrollScreen() {
                 <tr>
                   <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الاسم</th>
                   <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الكود</th>
+                  <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المسمى</th>
                   <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الراتب</th>
+                  <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">تاريخ التعيين</th>
                   <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الحالة</th>
                   <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {employees.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-gray-500">لا توجد بيانات.</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-gray-500">لا توجد بيانات.</td></tr>
                 ) : employees.map((e) => (
                   <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                     <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{e.full_name}</td>
                     <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{e.employee_code || '—'}</td>
+                    <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{e.job_title || '—'}</td>
                     <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{formatMoney(e.monthly_salary)} {String(e.currency || '').toUpperCase()}</td>
+                    <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{e.hired_date || '—'}</td>
                     <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{e.is_active ? 'نشط' : 'موقوف'}</td>
                     <td className="p-3 text-sm">
                       <button
@@ -826,6 +1013,65 @@ export default function PayrollScreen() {
                     </select>
                   </div>
 
+                  <div className="md:col-span-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(payrollSettingsDraft.enable_party_settlements)}
+                        onChange={(e) => setPayrollSettingsDraft(prev => ({ ...prev, enable_party_settlements: e.target.checked }))}
+                        disabled={!canManageAccounting}
+                      />
+                      تفعيل تسويات الرواتب على دفاتر الأطراف (موظفين/سلف/صرف المتبقي)
+                    </label>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      عند التفعيل تظهر أزرار توليد مستحقات الموظفين وتطبيق السلف وصرف المتبقي داخل شاشة المسير.
+                    </div>
+                  </div>
+
+                  {/* Payroll Calculation Settings */}
+                  <div className="md:col-span-2 pt-3">
+                    <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 border-t border-gray-100 dark:border-gray-700 pt-3">إعدادات احتساب الراتب اليومي والإضافي</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">أيام العمل الشهرية</div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={payrollSettingsDraft.standard_monthly_days}
+                      onChange={(e) => setPayrollSettingsDraft(prev => ({ ...prev, standard_monthly_days: Number(e.target.value) }))}
+                      disabled={!canManageAccounting}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                    />
+                    <div className="text-xs text-gray-400 mt-1">يُستخدم لحساب الراتب اليومي = الراتب ÷ هذا الرقم</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">ساعات العمل اليومية</div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="24"
+                      value={payrollSettingsDraft.standard_daily_hours}
+                      onChange={(e) => setPayrollSettingsDraft(prev => ({ ...prev, standard_daily_hours: Number(e.target.value) }))}
+                      disabled={!canManageAccounting}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                    />
+                    <div className="text-xs text-gray-400 mt-1">يُستخدم لحساب الراتب بالساعة = اليومي ÷ هذا الرقم</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">معامل الإضافي الافتراضي</div>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.25"
+                      value={payrollSettingsDraft.default_overtime_multiplier}
+                      onChange={(e) => setPayrollSettingsDraft(prev => ({ ...prev, default_overtime_multiplier: Number(e.target.value) }))}
+                      disabled={!canManageAccounting}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                    />
+                    <div className="text-xs text-gray-400 mt-1">مثلاً 1.5 = ساعة ونصف عن كل ساعة إضافية</div>
+                  </div>
+
                   {!canManageAccounting ? (
                     <div className="md:col-span-2 text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2 rounded-lg">
                       وضع القراءة فقط: تحتاج صلاحية accounting.manage لتعديل الإعدادات.
@@ -868,6 +1114,38 @@ export default function PayrollScreen() {
                   <input id="empActive" type="checkbox" checked={employeeForm.is_active} onChange={(e) => setEmployeeForm(prev => ({ ...prev, is_active: e.target.checked }))} />
                   <label htmlFor="empActive" className="text-sm dark:text-gray-200">نشط</label>
                 </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">تاريخ التعيين</div>
+                  <input type="date" value={employeeForm.hired_date} onChange={(e) => setEmployeeForm(prev => ({ ...prev, hired_date: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">المسمى الوظيفي</div>
+                  <input value={employeeForm.job_title} onChange={(e) => setEmployeeForm(prev => ({ ...prev, job_title: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" placeholder="مثال: مندوب مبيعات" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">رقم الجوال</div>
+                  <input value={employeeForm.phone} onChange={(e) => setEmployeeForm(prev => ({ ...prev, phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" dir="ltr" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">رقم الهوية</div>
+                  <input value={employeeForm.national_id} onChange={(e) => setEmployeeForm(prev => ({ ...prev, national_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" dir="ltr" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب البنكي</div>
+                  <input value={employeeForm.bank_account} onChange={(e) => setEmployeeForm(prev => ({ ...prev, bank_account: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono" dir="ltr" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">رمز PIN للبصمة</div>
+                  <input type="text" inputMode="numeric" maxLength={6} value={employeeForm.pin} onChange={(e) => setEmployeeForm(prev => ({ ...prev, pin: e.target.value.replace(/\D/g, '') }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono tracking-widest" dir="ltr" placeholder="مثال: 1234" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مضاعف حد الائتمان للراتب</div>
+                  <input type="number" step="0.1" value={employeeForm.credit_limit_multiplier} onChange={(e) => setEmployeeForm(prev => ({ ...prev, credit_limit_multiplier: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                </div>
+                <div className="flex items-center gap-2 mt-6">
+                  <input id="empAutoDeduct" type="checkbox" checked={employeeForm.auto_deduct_ar} onChange={(e) => setEmployeeForm(prev => ({ ...prev, auto_deduct_ar: e.target.checked }))} />
+                  <label htmlFor="empAutoDeduct" className="text-sm dark:text-gray-200">خصم المبيعات الآجلة تلقائياً</label>
+                </div>
                 <div className="md:col-span-2">
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">ملاحظات</div>
                   <input value={employeeForm.notes} onChange={(e) => setEmployeeForm(prev => ({ ...prev, notes: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
@@ -895,6 +1173,16 @@ export default function PayrollScreen() {
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => void computeSelectedRun()} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-semibold">احتساب الرواتب</button>
                   <button type="button" onClick={() => void accrueSelectedRun()} className="px-3 py-2 rounded-lg bg-blue-600 text-white font-semibold">ترحيل الاستحقاق</button>
+                  <button type="button" onClick={() => printPayslip(runLines, selectedRun.period_ym, baseCurrencyCode, employees, String((settings as any)?.cafeteriaName?.ar || ''), String((settings as any)?.logoUrl || ''))} className="px-3 py-2 rounded-lg bg-amber-600 text-white font-semibold">طباعة كشوف الرواتب</button>
+                  {Boolean(payrollSettings.enable_party_settlements) && canManageAccounting && (selectedRun.status === 'accrued' || selectedRun.status === 'paid') ? (
+                    <button
+                      type="button"
+                      onClick={() => { setPartySettleOccurredAt(toDateTimeLocalInputValue()); setPartySettleMethod('cash'); setPartySettleApplyAdvances(true); setPartySettlePayRemaining(true); setPartySettleModalOpen(true); }}
+                      className="px-3 py-2 rounded-lg bg-purple-600 text-white font-semibold"
+                    >
+                      تسوية الأطراف
+                    </button>
+                  ) : null}
                   <button type="button" onClick={openPayModal} className="px-3 py-2 rounded-lg bg-emerald-600 text-white font-semibold">دفع</button>
                   <button type="button" onClick={() => setRunModalOpen(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">إغلاق</button>
                 </div>
@@ -949,14 +1237,18 @@ export default function PayrollScreen() {
                     </div>
 
                     <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 overflow-x-auto">
-                      <table className="min-w-[1180px] w-full text-right">
+                      <table className="min-w-[1500px] w-full text-right">
                         <thead>
                           <tr>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الموظف</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الكود</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">{`إجمالي (${baseCurrencyCode})`}</th>
-                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">بدلات</th>
-                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">استقطاع</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الصلاحيات/الاستقطاعات</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">غياب</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">خصم غياب</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">إضافي (ساعات)</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">علاوة إضافي</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">خصم مبيعات آجلة</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">{`صافي (${baseCurrencyCode})`}</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العملة</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الأصلي</th>
@@ -965,7 +1257,7 @@ export default function PayrollScreen() {
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                           {runLines.length === 0 ? (
-                            <tr><td colSpan={10} className="p-6 text-center text-gray-500">لا توجد سطور.</td></tr>
+                            <tr><td colSpan={14} className="p-6 text-center text-gray-500">لا توجد سطور.</td></tr>
                           ) : runLines.map((l) => (
                             <tr key={l.id}>
                               <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{l.employee_name || '—'}</td>
@@ -982,13 +1274,38 @@ export default function PayrollScreen() {
                               </td>
                               <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
                                 {isEditingLines ? (
-                                  <input
-                                    type="number"
-                                    value={Number(l.allowances || 0)}
-                                    onChange={(e) => setRunLines(prev => prev.map(x => x.id === l.id ? { ...x, allowances: Number(e.target.value) } : x))}
-                                    className="w-24 px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900"
-                                  />
-                                ) : formatMoney(Number(l.allowances || 0))}
+                                  <>
+                                    <input
+                                      type="number"
+                                      value={Number(l.allowances || 0)}
+                                      onChange={(e) => setRunLines(prev => prev.map(x => x.id === l.id ? { ...x, allowances: Number(e.target.value) } : x))}
+                                      className="w-24 px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900"
+                                    />
+                                    <input
+                                      type="number"
+                                      value={Number(l.deductions || 0)}
+                                      onChange={(e) => setRunLines(prev => prev.map(x => x.id === l.id ? { ...x, deductions: Number(e.target.value) } : x))}
+                                      className="w-24 px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 mt-1"
+                                    />
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="text-emerald-600 dark:text-emerald-400 text-xs" dir="ltr">+{formatMoney(Number(l.allowances || 0))}</div>
+                                    <div className="text-red-600 dark:text-red-400 text-xs" dir="ltr">-{formatMoney(Number(l.deductions) - Number(l.ar_deduction || 0))}</div>
+                                  </>
+                                )}
+                              </td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
+                                {Number(l.absence_days || 0) > 0 ? <span className="text-red-600 dark:text-red-400 font-semibold">{l.absence_days}</span> : '0'}
+                              </td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
+                                {Number(l.absence_deduction || 0) > 0 ? <span className="text-red-600 dark:text-red-400">-{formatMoney(Number(l.absence_deduction || 0))}</span> : '—'}
+                              </td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
+                                {Number(l.overtime_hours || 0) > 0 ? <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{l.overtime_hours}</span> : '0'}
+                              </td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
+                                {Number(l.overtime_addition || 0) > 0 ? <span className="text-emerald-600 dark:text-emerald-400">+{formatMoney(Number(l.overtime_addition || 0))}</span> : '—'}
                               </td>
                               <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
                                 {isEditingLines ? (
@@ -1011,6 +1328,56 @@ export default function PayrollScreen() {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {partySettleModalOpen && selectedRun && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !partySettleRunning && setPartySettleModalOpen(false)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                <div className="text-lg font-bold dark:text-white">تسوية الأطراف للرواتب</div>
+                <button type="button" disabled={partySettleRunning} onClick={() => setPartySettleModalOpen(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-60">إغلاق</button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  يولّد مستحقات لكل موظف على حساب ذمم الرواتب، يطبق السلف تلقائياً، ثم يصرف المتبقي حسب طريقة الدفع.
+                </div>
+                {!canApproveAccounting ? (
+                  <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2 rounded-lg">
+                    لا توجد صلاحية اعتماد (accounting.approve): سيتم إنشاء مستحقات كمسودات فقط، ويمكن تشغيل التطبيق/الصرف بعد اعتمادها.
+                  </div>
+                ) : null}
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">طريقة الدفع</div>
+                  <select value={partySettleMethod} onChange={(e) => setPartySettleMethod(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                    <option value="cash">نقدًا</option>
+                    <option value="network">حوالات</option>
+                    <option value="kuraimi">حسابات بنكية</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">وقت العملية</div>
+                  <input type="datetime-local" value={partySettleOccurredAt} onChange={(e) => setPartySettleOccurredAt(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                  <input type="checkbox" checked={partySettleApplyAdvances} onChange={(e) => setPartySettleApplyAdvances(e.target.checked)} disabled={!canApproveAccounting} />
+                  تطبيق السلف على المستحقات
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                  <input type="checkbox" checked={partySettlePayRemaining} onChange={(e) => setPartySettlePayRemaining(e.target.checked)} disabled={!canApproveAccounting} />
+                  صرف المتبقي
+                </label>
+              </div>
+              <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex items-center justify-end gap-2">
+                <button type="button" disabled={partySettleRunning} onClick={() => setPartySettleModalOpen(false)} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-60">إلغاء</button>
+                <button type="button" disabled={partySettleRunning} onClick={() => void confirmPartySettle()} className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold disabled:opacity-60">
+                  {partySettleRunning ? 'جارٍ التنفيذ...' : 'تنفيذ'}
+                </button>
               </div>
             </div>
           </div>

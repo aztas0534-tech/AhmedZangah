@@ -63,6 +63,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         amount: 0,
         currency: '',
         exchangeRate: 0,
+        paymentMethod: 'cash' as 'cash' | 'bank',
         description: '',
         invoiceNumber: '',
         paidAt: ''
@@ -208,6 +209,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             const receiptIds = (receiptIdsRows || []).map((r: any) => String(r?.id || '')).filter(Boolean);
             if (receiptIds.length === 0) {
                 setPricingRows([]);
+                showNotification('لا توجد استلامات مرتبطة بهذه الشحنة في المستودع المحدد.', 'info');
                 return;
             }
 
@@ -553,6 +555,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             amount: newExpense.amount,
             currency,
             exchangeRate: isBase ? 1 : rate,
+            paymentMethod: newExpense.paymentMethod || 'cash',
             description: newExpense.description || undefined,
             invoiceNumber: newExpense.invoiceNumber || undefined,
             paidAt: newExpense.paidAt || undefined
@@ -565,6 +568,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             amount: 0,
             currency: baseCode || '',
             exchangeRate: baseCode ? 1 : 0,
+            paymentMethod: 'cash',
             description: '',
             invoiceNumber: '',
             paidAt: ''
@@ -1062,6 +1066,42 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                         {expenseFxSource === 'base' ? 'عملة أساسية' : expenseFxSource === 'system' ? 'من النظام' : 'غير متوفر'}
                                     </div>
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">طريقة الدفع</label>
+                                    <select
+                                        value={newExpense.paymentMethod}
+                                        onChange={(e) => setNewExpense({ ...newExpense, paymentMethod: e.target.value as 'cash' | 'bank' })}
+                                        className="w-full px-3 py-2 border rounded-lg"
+                                    >
+                                        <option value="cash">نقداً</option>
+                                        <option value="bank">تحويل بنكي</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">تاريخ الدفع</label>
+                                    <input
+                                        type="date"
+                                        value={newExpense.paidAt}
+                                        onChange={(e) => {
+                                            setNewExpense((prev) => ({ ...prev, paidAt: e.target.value }));
+                                            const code = String(newExpense.currency || '').toUpperCase();
+                                            if (code && baseCode && code !== baseCode) {
+                                                void applySystemExpenseFxRate(code, e.target.value || undefined);
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2 border rounded-lg"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">رقم الفاتورة</label>
+                                    <input
+                                        type="text"
+                                        value={newExpense.invoiceNumber}
+                                        onChange={(e) => setNewExpense({ ...newExpense, invoiceNumber: e.target.value })}
+                                        className="w-full px-3 py-2 border rounded-lg"
+                                        placeholder="اختياري"
+                                    />
+                                </div>
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium mb-1">الوصف</label>
                                     <input
@@ -1069,6 +1109,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                         value={newExpense.description}
                                         onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
                                         className="w-full px-3 py-2 border rounded-lg"
+                                        placeholder="اختياري"
                                     />
                                 </div>
                             </div>
@@ -1107,6 +1148,13 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                         <span dir="ltr">
                                             • ≈ {Number.isFinite(Number((expense as any).baseAmount)) ? Number((expense as any).baseAmount).toFixed(2) : '—'} {baseCode || '—'}
                                         </span>
+                                        {' • '}
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${expense.paymentMethod === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                                            }`}>
+                                            {expense.paymentMethod === 'bank' ? 'بنك' : 'نقد'}
+                                        </span>
+                                        {expense.invoiceNumber && <span className="text-gray-400"> • فاتورة: {expense.invoiceNumber}</span>}
+                                        {expense.paidAt && <span className="text-gray-400"> • {expense.paidAt}</span>}
                                         {expense.description && ` | ${expense.description}`}
                                     </div>
                                 </div>
@@ -1462,7 +1510,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
                         {pricingRows.length === 0 && (
                             <div className="text-center py-10 text-gray-500">
-                                اربط الاستلامات بالشحنة أولاً ثم افتح تبويب التسعير.
+                                {pricingLoading ? 'جاري تحميل بيانات التسعير...' : 'لا توجد بيانات تسعير. تأكد أن الاستلامات مرتبطة بالشحنة وتم توليد الأصناف.'}
                             </div>
                         )}
                     </div>

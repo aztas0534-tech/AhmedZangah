@@ -1,0 +1,56 @@
+[
+  {
+    "item_id": "88341c63-94c9-4a4c-87cc-e875fd573d03",
+    "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+    "avail": "5664",
+    "batch_rem": "5760",
+    "delta": "-96",
+    "unbatched_return_qty": "0",
+    "item_name": "تونة حلوة كبير *48حبة*160جم"
+  },
+  {
+    "item_id": "2efb484a-39cb-43b2-a7a8-f9c2a9b6de3f",
+    "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+    "avail": "22396",
+    "batch_rem": "22472",
+    "delta": "-76",
+    "unbatched_return_qty": "0",
+    "item_name": "بيض كبير رقم واحد12*30حبة"
+  },
+  {
+    "item_id": "66530237-b448-4bd2-a53e-110b599b799b",
+    "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+    "avail": "4098",
+    "batch_rem": "4146",
+    "delta": "-48",
+    "unbatched_return_qty": "0",
+    "item_name": "زيت امل ابو 1.5لتر"
+  },
+  {
+    "item_id": "5b8f3ed5-7125-40bf-8277-03751a960b63",
+    "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+    "avail": "569",
+    "batch_rem": "589",
+    "delta": "-20",
+    "unbatched_return_qty": "0",
+    "item_name": "سكر الامارة ناعم ابو 5كيلو"
+  },
+  {
+    "item_id": "1a25ba20-48d1-40f3-888d-cea96712b0cd",
+    "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+    "avail": "678",
+    "batch_rem": "689",
+    "delta": "-11",
+    "unbatched_return_qty": "0",
+    "item_name": "سكر الامارة ناعم  ابو 10كيلو"
+  },
+  {
+    "item_id": "4d97f605-0c0a-479a-8e99-4ad3ffd669de",
+    "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+    "avail": "91",
+    "batch_rem": "93",
+    "delta": "-2",
+    "unbatched_return_qty": "0",
+    "item_name": "رز الامارة مزه ابو 10كيلو"
+  }
+]

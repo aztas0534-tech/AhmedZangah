@@ -70,6 +70,7 @@ const InventoryStockReportScreen = lazy(() => import('./screens/admin/reports/In
 const SupplierStockReportScreen = lazy(() => import('./screens/admin/reports/SupplierStockReportScreen'));
 const AdminProfileScreen = lazy(() => import('./screens/admin/AdminProfileScreen'));
 const SettingsScreen = lazy(() => import('./screens/admin/SettingsScreen'));
+const BackupSettingsScreen = lazy(() => import('./screens/admin/settings/BackupSettingsScreen'));
 const SuppliersScreen = lazy(() => import('./screens/admin/SuppliersScreen'));
 const ApprovalsScreen = lazy(() => import('./screens/admin/ApprovalsScreen'));
 const PrintedDocumentsScreen = lazy(() => import('./screens/admin/PrintedDocumentsScreen'));
@@ -77,12 +78,14 @@ const PayrollScreen = lazy(() => import('./screens/admin/PayrollScreen'));
 const PurchaseOrderScreen = lazy(() => import('./screens/admin/PurchaseOrderScreen'));
 const ShiftReportsScreen = lazy(() => import('./screens/admin/ShiftReportsScreen'));
 const ShiftDetailsScreen = lazy(() => import('./screens/admin/ShiftDetailsScreen'));
+const ShiftReconciliationScreen = lazy(() => import('./screens/admin/ShiftReconciliationScreen'));
 const CODSettlementsScreen = lazy(() => import('./screens/admin/CODSettlementsScreen'));
 const SystemAuditScreen = lazy(() => import('./screens/admin/SystemAuditScreen'));
 const DatabaseExplorerScreen = lazy(() => import('./screens/admin/DatabaseExplorerScreen'));
 const WarehousesScreen = lazy(() => import('./screens/admin/WarehousesScreen'));
 const WarehouseTransfersScreen = lazy(() => import('./screens/admin/WarehouseTransfersScreen'));
 const PriceTiersScreen = lazy(() => import('./screens/admin/PriceTiersScreen'));
+const StocktakingScreen = lazy(() => import('./screens/admin/StocktakingScreen'));
 const SupplierContractsScreen = lazy(() => import('./screens/admin/SupplierContractsScreen'));
 const SupplierEvaluationsScreen = lazy(() => import('./screens/admin/SupplierEvaluationsScreen'));
 const SupplierCreditNotesScreen = lazy(() => import('./screens/admin/SupplierCreditNotesScreen'));
@@ -105,8 +108,11 @@ const PartyAgingReportsScreen = lazy(() => import('./screens/admin/reports/Party
 const PartyDocumentsScreen = lazy(() => import('./screens/admin/PartyDocumentsScreen'));
 const SettlementWorkspaceScreen = lazy(() => import('./screens/admin/SettlementWorkspaceScreen'));
 const AdvanceManagementScreen = lazy(() => import('./screens/admin/AdvanceManagementScreen'));
-const EmployeeHRScreen = lazy(() => import('./screens/admin/EmployeeHRScreen'));
-const QuotationsScreen = lazy(() => import('./screens/admin/QuotationsScreen'));
+const VoucherEntryScreen = lazy(() => import('./screens/admin/VoucherEntryScreen'));
+const AttendanceScreen = lazy(() => import('./screens/admin/AttendanceScreen'));
+const AttendancePunchScreen = lazy(() => import('./screens/admin/AttendancePunchScreen'));
+const LeaveManagementScreen = lazy(() => import('./screens/admin/LeaveManagementScreen'));
+const FixedAssetsScreen = lazy(() => import('./screens/admin/FixedAssetsScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -341,6 +347,7 @@ const App: React.FC = () => {
                       }
                     />
                     <Route path="wastage" element={<AdminProtectedRoute permissions={['stock.manage']}><WastageScreen /></AdminProtectedRoute>} />
+                    <Route path="stocktaking" element={<AdminProtectedRoute permissions={['stock.manage']}><StocktakingScreen /></AdminProtectedRoute>} />
                     <Route path="expiry-batches" element={<AdminProtectedRoute permissions={['stock.manage']}><ExpiryBatchesScreen /></AdminProtectedRoute>} />
                     <Route
                       path="wastage-expiry-reports"
@@ -391,8 +398,9 @@ const App: React.FC = () => {
                     <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
                     <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
                     <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
-                    <Route path="employee-hr" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><EmployeeHRScreen /></AdminProtectedRoute>} />
-                    <Route path="quotations" element={<AdminProtectedRoute permissions={['orders.view']}><QuotationsScreen /></AdminProtectedRoute>} />
+                    <Route path="attendance" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendanceScreen /></AdminProtectedRoute>} />
+                    <Route path="attendance-punch" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendancePunchScreen /></AdminProtectedRoute>} />
+                    <Route path="leave-management" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><LeaveManagementScreen /></AdminProtectedRoute>} />
                     <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                     <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
                     <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
@@ -402,8 +410,10 @@ const App: React.FC = () => {
                     <Route path="financial-parties" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialPartiesScreen /></AdminProtectedRoute>} />
                     <Route path="financial-parties/:partyId" element={<AdminProtectedRoute permissions={['accounting.view']}><PartyLedgerStatementScreen /></AdminProtectedRoute>} />
                     <Route path="party-documents" element={<AdminProtectedRoute permissions={['accounting.manage']}><PartyDocumentsScreen /></AdminProtectedRoute>} />
+                    <Route path="vouchers" element={<AdminProtectedRoute permissions={['accounting.manage']}><VoucherEntryScreen /></AdminProtectedRoute>} />
                     <Route path="settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><SettlementWorkspaceScreen /></AdminProtectedRoute>} />
                     <Route path="advances" element={<AdminProtectedRoute permissions={['accounting.manage']}><AdvanceManagementScreen /></AdminProtectedRoute>} />
+                    <Route path="fixed-assets" element={<AdminProtectedRoute permissions={['accounting.manage']}><FixedAssetsScreen /></AdminProtectedRoute>} />
                     <Route
                       path="reports/party-aging"
                       element={
@@ -414,11 +424,13 @@ const App: React.FC = () => {
                     />
                     <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
                     <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
+                    <Route path="settings/backup" element={<AdminProtectedRoute permissions={['settings.manage']}><BackupSettingsScreen /></AdminProtectedRoute>} />
                     <Route path="approvals" element={<AdminProtectedRoute permissions={['approvals.manage']}><ApprovalsScreen /></AdminProtectedRoute>} />
                     <Route path="audit" element={<AdminProtectedRoute permissions={['settings.manage']}><SystemAuditScreen /></AdminProtectedRoute>} />
                     <Route path="database" element={<AdminProtectedRoute permissions={['settings.manage']}><DatabaseExplorerScreen /></AdminProtectedRoute>} />
                     <Route path="shift-reports" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftReportsScreen /></AdminProtectedRoute>} />
                     <Route path="shift-reports/:shiftId" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftDetailsScreen /></AdminProtectedRoute>} />
+                    <Route path="shift-reconciliation" element={<AdminProtectedRoute permissions={['accounting.view', 'cashShifts.manage']} requireAllPermissions={false}><ShiftReconciliationScreen /></AdminProtectedRoute>} />
                     <Route path="cod-settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><CODSettlementsScreen /></AdminProtectedRoute>} />
                     <Route
                       path="my-shift"
@@ -442,6 +454,14 @@ const App: React.FC = () => {
                     element={
                       <AdminProtectedRoute permissions={['orders.updateStatus.all', 'orders.createInStore']} requireAllPermissions={false}>
                         <POSTestConsole />
+                      </AdminProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/attendance-punch"
+                    element={
+                      <AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}>
+                        <AttendancePunchScreen />
                       </AdminProtectedRoute>
                     }
                   />

@@ -19,6 +19,8 @@ import * as Icons from '../../components/icons';
 import { Link } from 'react-router-dom';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
+import { translateAccountName } from '../../utils/accountUtils';
+import { inferDestinationParentCode } from '../../utils/accountDestinationUtils';
 
 const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -39,6 +41,7 @@ const SettingsScreen: React.FC = () => {
     name: '',
     accountName: '',
     accountNumber: '',
+    destinationAccountId: '',
     isActive: true,
   });
   const [transferRecipients, setTransferRecipients] = useState<TransferRecipient[]>([]);
@@ -48,10 +51,12 @@ const SettingsScreen: React.FC = () => {
   const [transferRecipientForm, setTransferRecipientForm] = useState({
     name: '',
     phoneNumber: '',
+    destinationAccountId: '',
     isActive: true,
   });
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string; nameAr: string; parent_id?: string; parentCode?: string; account_type?: string }>>([]);
   const [accountsError, setAccountsError] = useState<string>('');
+  const isUuidText = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || '').trim());
   const accountingLabels: Record<string, string> = {
     sales: 'مبيعات',
     sales_returns: 'مرتجعات المبيعات',
@@ -74,31 +79,59 @@ const SettingsScreen: React.FC = () => {
 
   useEffect(() => {
     const fetchAccounts = async () => {
-        const supabase = getSupabaseClient();
-        if(!supabase) return;
-        setAccountsError('');
-        try {
-          const { data, error } = await supabase
-            .from('chart_of_accounts')
-            .select('id,code,name,account_type,normal_balance,is_active')
-            .eq('is_active', true)
-            .order('code', { ascending: true });
-          if (error) {
-            setAccountsError(localizeSupabaseError(error));
-            const { data: rpcData, error: rpcError } = await supabase.rpc('list_active_accounts');
-            if (!rpcError && Array.isArray(rpcData)) {
-              setAccounts(rpcData as any[]);
-              setAccountsError('');
-            }
-            return;
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      setAccountsError('');
+      try {
+        const { data, error } = await supabase
+          .from('chart_of_accounts')
+          .select('id,code,name,parent_id,account_type,normal_balance,is_active')
+          .eq('is_active', true)
+          .order('code', { ascending: true });
+        if (error) {
+          setAccountsError(localizeSupabaseError(error));
+          const { data: rpcData, error: rpcError } = await supabase.rpc('list_active_accounts');
+          if (!rpcError && Array.isArray(rpcData)) {
+            const mapped = rpcData.map((a: any) => ({
+              ...a,
+              parent_id: a?.parent_id ? String(a.parent_id) : undefined,
+              nameAr: translateAccountName(a.name),
+            }));
+            const codeById = new Map(mapped.map((a: any) => [String(a.id), String(a.code || '')]));
+            setAccounts(mapped.map((a: any) => ({ ...a, parentCode: a.parent_id ? codeById.get(String(a.parent_id)) : undefined })));
+            setAccountsError('');
           }
-          if (Array.isArray(data)) setAccounts(data as any[]);
-        } catch (e) {
-          setAccountsError(localizeSupabaseError(e));
+          return;
         }
+        if (Array.isArray(data)) {
+          const mapped = data.map((a: any) => ({
+            ...a,
+            parent_id: a?.parent_id ? String(a.parent_id) : undefined,
+            nameAr: translateAccountName(a.name),
+          }));
+          const codeById = new Map(mapped.map((a: any) => [String(a.id), String(a.code || '')]));
+          setAccounts(mapped.map((a: any) => ({ ...a, parentCode: a.parent_id ? codeById.get(String(a.parent_id)) : undefined })));
+        }
+      } catch (e) {
+        setAccountsError(localizeSupabaseError(e));
+      }
     };
     fetchAccounts();
   }, []);
+
+  const bankDestinationOptions = useMemo(() => {
+    return accounts.filter((a: any) => inferDestinationParentCode(String(a?.code || ''), String((a as any)?.parentCode || '')) === '1020');
+  }, [accounts]);
+
+  const networkDestinationOptions = useMemo(() => {
+    return accounts.filter((a: any) => inferDestinationParentCode(String(a?.code || ''), String((a as any)?.parentCode || '')) === '1030');
+  }, [accounts]);
+
+  const accountCodeById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of accounts) map.set(String(a.id), String(a.code || ''));
+    return map;
+  }, [accounts]);
 
 
   useEffect(() => {
@@ -200,7 +233,7 @@ const SettingsScreen: React.FC = () => {
           .maybeSingle();
         const wid = typeof data?.warehouse_id === 'string' ? data?.warehouse_id : '';
         if (mounted) setActiveWarehouseId(wid || '');
-      } catch {}
+      } catch { }
     };
     void loadActiveWarehouse();
     return () => {
@@ -215,18 +248,20 @@ const SettingsScreen: React.FC = () => {
     const storeBasicsOk = nameOk && contactOk && addressOk;
 
     const anyPaymentEnabled = Boolean(settings.paymentMethods.cash || settings.paymentMethods.kuraimi || settings.paymentMethods.network);
-    const kuraimiOk = !settings.paymentMethods.kuraimi || (banks.length > 0);
-    const networkOk = !settings.paymentMethods.network || (transferRecipients.length > 0);
+    const activeBanksMapped = banks.filter((b) => Boolean(b.isActive) && isUuidText(String((b as any)?.destinationAccountId || '').trim()));
+    const activeRecipientsMapped = transferRecipients.filter((r) => Boolean(r.isActive) && isUuidText(String((r as any)?.destinationAccountId || '').trim()));
+    const kuraimiOk = !settings.paymentMethods.kuraimi || (activeBanksMapped.length > 0);
+    const networkOk = !settings.paymentMethods.network || (activeRecipientsMapped.length > 0);
     const paymentsOk = anyPaymentEnabled && kuraimiOk && networkOk;
     const paymentsDetail = paymentsOk
       ? 'مكتمل'
       : (!anyPaymentEnabled
-          ? 'فعّل طريقة دفع'
-          : (!kuraimiOk
-              ? 'أضف بنك'
-              : !networkOk
-                ? 'أضف مستلماً للحوالات'
-                : ''));
+        ? 'فعّل طريقة دفع'
+        : (!kuraimiOk
+          ? 'أضف بنكًا نشطًا مربوطًا بحساب مالي'
+          : !networkOk
+            ? 'أضف مستلم حوالات نشطًا مربوطًا بحساب مالي'
+            : ''));
 
     const zonesActiveCount = deliveryZones.filter(z => z.isActive).length;
     const zonesOk = zonesActiveCount > 0;
@@ -497,7 +532,7 @@ const SettingsScreen: React.FC = () => {
 
   const openCreateBank = () => {
     setEditingBankId(null);
-    setBankForm({ name: '', accountName: '', accountNumber: '', isActive: true });
+    setBankForm({ name: '', accountName: '', accountNumber: '', destinationAccountId: '', isActive: true });
     setIsBankFormOpen(true);
   };
 
@@ -507,6 +542,7 @@ const SettingsScreen: React.FC = () => {
       name: bank.name || '',
       accountName: bank.accountName || '',
       accountNumber: bank.accountNumber || '',
+      destinationAccountId: String((bank as any)?.destinationAccountId || ''),
       isActive: Boolean(bank.isActive),
     });
     setIsBankFormOpen(true);
@@ -514,7 +550,7 @@ const SettingsScreen: React.FC = () => {
 
   const openCreateTransferRecipient = () => {
     setEditingTransferRecipientId(null);
-    setTransferRecipientForm({ name: '', phoneNumber: '', isActive: true });
+    setTransferRecipientForm({ name: '', phoneNumber: '', destinationAccountId: '', isActive: true });
     setIsTransferRecipientFormOpen(true);
   };
 
@@ -523,6 +559,7 @@ const SettingsScreen: React.FC = () => {
     setTransferRecipientForm({
       name: recipient.name || '',
       phoneNumber: recipient.phoneNumber || '',
+      destinationAccountId: String((recipient as any)?.destinationAccountId || ''),
       isActive: Boolean(recipient.isActive),
     });
     setIsTransferRecipientFormOpen(true);
@@ -534,6 +571,11 @@ const SettingsScreen: React.FC = () => {
         'الرجاء إدخال جميع البيانات المطلوبة',
         'error'
       );
+      return;
+    }
+    const destinationAccountId = String((bankForm as any).destinationAccountId || '').trim();
+    if (!isUuidText(destinationAccountId)) {
+      showNotification('الرجاء اختيار حساب مالي وجهة للبنك.', 'error');
       return;
     }
 
@@ -555,6 +597,7 @@ const SettingsScreen: React.FC = () => {
           name: bankForm.name.trim(),
           accountName: bankForm.accountName.trim(),
           accountNumber: bankForm.accountNumber.trim(),
+          destinationAccountId,
           isActive: Boolean(bankForm.isActive),
           updatedAt: nowIso,
         };
@@ -566,6 +609,7 @@ const SettingsScreen: React.FC = () => {
           name: bankForm.name.trim(),
           accountName: bankForm.accountName.trim(),
           accountNumber: bankForm.accountNumber.trim(),
+          destinationAccountId,
           isActive: Boolean(bankForm.isActive),
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -597,6 +641,11 @@ const SettingsScreen: React.FC = () => {
       showNotification('رقم الهاتف غير صحيح.', 'error');
       return;
     }
+    const destinationAccountId = String((transferRecipientForm as any).destinationAccountId || '').trim();
+    if (!isUuidText(destinationAccountId)) {
+      showNotification('الرجاء اختيار حساب مالي وجهة للمستلم.', 'error');
+      return;
+    }
 
     setIsTransferRecipientSaving(true);
     try {
@@ -615,6 +664,7 @@ const SettingsScreen: React.FC = () => {
           ...existing,
           name,
           phoneNumber: phone,
+          destinationAccountId,
           isActive: Boolean(transferRecipientForm.isActive),
           updatedAt: nowIso,
         };
@@ -625,6 +675,7 @@ const SettingsScreen: React.FC = () => {
           id: crypto.randomUUID(),
           name,
           phoneNumber: phone,
+          destinationAccountId,
           isActive: Boolean(transferRecipientForm.isActive),
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -865,13 +916,13 @@ const SettingsScreen: React.FC = () => {
     }
     else if (name.startsWith('defaultInvoiceTemplateByRole.')) {
       const field = name.split('.')[1] as 'pos' | 'admin' | 'merchant';
-      const nextValue = value === 'thermal' ? 'thermal' : 'a4';
+      const nextValue = value === 'thermal' ? 'thermal' : 'a5';
       setFormState(prev => ({
         ...prev,
         defaultInvoiceTemplateByRole: {
-          pos: prev.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal',
-          admin: prev.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a4',
-          merchant: prev.defaultInvoiceTemplateByRole?.merchant === 'thermal' ? 'thermal' : 'a4',
+          pos: prev.defaultInvoiceTemplateByRole?.pos === 'a5' ? 'a5' : 'thermal',
+          admin: prev.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a5',
+          merchant: prev.defaultInvoiceTemplateByRole?.merchant === 'thermal' ? 'thermal' : 'a5',
           [field]: nextValue,
         },
       }));
@@ -909,6 +960,10 @@ const SettingsScreen: React.FC = () => {
     else if (name === 'ENABLE_MULTI_CURRENCY_PRICING') {
       const isChecked = (e.target as HTMLInputElement).checked;
       setFormState(prev => ({ ...prev, ENABLE_MULTI_CURRENCY_PRICING: isChecked }));
+    }
+    else if (name === 'ALLOW_BELOW_COST_SALES') {
+      const isChecked = (e.target as HTMLInputElement).checked;
+      setFormState(prev => ({ ...prev, ALLOW_BELOW_COST_SALES: isChecked }));
     }
     else if (name === 'maintenanceMessage') {
       setFormState(prev => ({ ...prev, maintenanceMessage: value }));
@@ -996,7 +1051,7 @@ const SettingsScreen: React.FC = () => {
           }
         }
       }
-    } catch {}
+    } catch { }
     showNotification(enabled ? 'تم تفعيل وضع الصيانة فورًا' : 'تم إيقاف وضع الصيانة فورًا', 'success');
     setIsMaintenanceSaving(false);
   };
@@ -1114,6 +1169,30 @@ const SettingsScreen: React.FC = () => {
                 {formState.maintenanceEnabled ? 'إيقاف الصيانة الآن' : 'تفعيل الصيانة الآن'}
               </button>
             </div>
+          </div>
+        </section>
+
+        <section className="bg-gradient-to-tr from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 p-6 rounded-xl border border-blue-200 dark:border-blue-700/50 relative overflow-hidden">
+          <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2 mb-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+                النسخ الاحتياطي وأمان البيانات
+              </h2>
+              <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed md:max-w-2xl">
+                ميزة مخصصة لحفظ نسخة كاملة من النظام (فواتير، حسابات، أصناف، إلخ) على جهازك الشخصي لضمان ملكيتك التامة لبياناتك وللرجوع إليها متى شئت.
+              </p>
+            </div>
+            <Link
+              to="/admin/settings/backup"
+              className="whitespace-nowrap px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              إدارة النسخ الاحتياطي
+            </Link>
+          </div>
+          <div className="absolute -left-10 -bottom-10 opacity-10">
+            <svg className="w-40 h-40 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v8h4v4h12v-4h4v-8c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 12v2H8v-4h8v2zm2-2v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z" /></svg>
           </div>
         </section>
 
@@ -1448,12 +1527,12 @@ const SettingsScreen: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القالب الافتراضي (POS)</label>
                 <select
                   name="defaultInvoiceTemplateByRole.pos"
-                  value={formState.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal'}
+                  value={formState.defaultInvoiceTemplateByRole?.pos === 'a5' ? 'a5' : 'thermal'}
                   onChange={handleChange}
                   className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
                 >
                   <option value="thermal">حراري</option>
-                  <option value="a4">A4</option>
+                  <option value="a5">A5</option>
                 </select>
               </div>
               <div>
@@ -1532,7 +1611,7 @@ const SettingsScreen: React.FC = () => {
                           if (supabase) {
                             await supabase.from('currencies').upsert({ code, name: code, is_base: false }, { onConflict: 'code' });
                           }
-                        } catch {}
+                        } catch { }
                         try {
                           await updateSettings(nextState);
                           showNotification('تم حفظ العملات التشغيلية.', 'success');
@@ -1554,11 +1633,11 @@ const SettingsScreen: React.FC = () => {
                           return;
                         }
                         const supabase = getSupabaseClient();
-                          const baseCode = String(formState.baseCurrency || '').toUpperCase();
-                          if (!baseCode) {
-                            showNotification('اختر العملة الأساسية أولاً.', 'error');
-                            return;
-                          }
+                        const baseCode = String(formState.baseCurrency || '').toUpperCase();
+                        if (!baseCode) {
+                          showNotification('اختر العملة الأساسية أولاً.', 'error');
+                          return;
+                        }
                         if (supabase) {
                           const { error } = await supabase.rpc('set_base_currency', { p_code: baseCode });
                           if (error) throw error;
@@ -1604,6 +1683,21 @@ const SettingsScreen: React.FC = () => {
               </label>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 يسمح باختيار عملة الفاتورة في شاشة نقاط البيع عند توفر أسعار الصرف والعملات التشغيلية.
+              </p>
+            </div>
+            <div className="mt-4">
+              <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  name="ALLOW_BELOW_COST_SALES"
+                  checked={Boolean((formState as any)?.ALLOW_BELOW_COST_SALES)}
+                  onChange={handleChange}
+                  className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                السماح بالبيع تحت الحد الأدنى/التكلفة (يتطلب صلاحية)
+              </label>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                يسمح بتجاوز منع البيع تحت الحد الأدنى للصنف في قاعدة البيانات، فقط لمن يملك صلاحية sales.allowBelowCost.
               </p>
             </div>
             <div className="border-t pt-4">
@@ -1800,7 +1894,7 @@ const SettingsScreen: React.FC = () => {
 
           {isBankFormOpen && (
             <div className="p-4 mb-4 border rounded-lg dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">اسم البنك</label>
                   <input
@@ -1827,6 +1921,20 @@ const SettingsScreen: React.FC = () => {
                     onChange={(e) => setBankForm(prev => ({ ...prev, accountNumber: e.target.value }))}
                     className="mt-1 w-full p-2 border rounded-md dark:bg-gray-800 dark:border-gray-600"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الحساب المالي الوجهة (1020)</label>
+                  <select
+                    value={(bankForm as any).destinationAccountId || ''}
+                    onChange={(e) => setBankForm(prev => ({ ...prev, destinationAccountId: e.target.value }))}
+                    className="mt-1 w-full p-2 border rounded-md dark:bg-gray-800 dark:border-gray-600"
+                  >
+                    <option value="">— اختر حسابًا —</option>
+                    {bankDestinationOptions.map(acc => {
+                      const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                      return <option key={acc.id} value={acc.id}>{acc.code} - {dispName}</option>;
+                    })}
+                  </select>
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-between gap-3">
@@ -1880,6 +1988,9 @@ const SettingsScreen: React.FC = () => {
                       <div className="text-xs text-gray-600 dark:text-gray-300">
                         رقم الحساب: <span className="font-mono">{bank.accountNumber}</span>
                       </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-300">
+                        حساب الوجهة: <span className="font-mono">{accountCodeById.get(String((bank as any)?.destinationAccountId || '')) || '—'}</span>
+                      </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
@@ -1931,7 +2042,7 @@ const SettingsScreen: React.FC = () => {
 
           {isTransferRecipientFormOpen && (
             <div className="p-4 mb-4 border rounded-lg dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">اسم المستلم</label>
                   <input
@@ -1949,6 +2060,20 @@ const SettingsScreen: React.FC = () => {
                     onChange={(e) => setTransferRecipientForm(prev => ({ ...prev, phoneNumber: e.target.value }))}
                     className="mt-1 w-full p-2 border rounded-md dark:bg-gray-800 dark:border-gray-600"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الحساب المالي الوجهة (1030)</label>
+                  <select
+                    value={(transferRecipientForm as any).destinationAccountId || ''}
+                    onChange={(e) => setTransferRecipientForm(prev => ({ ...prev, destinationAccountId: e.target.value }))}
+                    className="mt-1 w-full p-2 border rounded-md dark:bg-gray-800 dark:border-gray-600"
+                  >
+                    <option value="">— اختر حسابًا —</option>
+                    {networkDestinationOptions.map(acc => {
+                      const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                      return <option key={acc.id} value={acc.id}>{acc.code} - {dispName}</option>;
+                    })}
+                  </select>
                 </div>
                 <div className="flex items-end">
                   <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -1998,6 +2123,9 @@ const SettingsScreen: React.FC = () => {
                       <div className="font-bold text-gray-900 dark:text-white truncate">{recipient.name}</div>
                       <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
                         رقم هاتف المستلم: <span className="font-mono">{recipient.phoneNumber}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-300">
+                        حساب الوجهة: <span className="font-mono">{accountCodeById.get(String((recipient as any)?.destinationAccountId || '')) || '—'}</span>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
@@ -2099,26 +2227,29 @@ const SettingsScreen: React.FC = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-             {['sales', 'sales_returns', 'inventory', 'cogs', 'ar', 'ap', 'vat_payable', 'vat_recoverable', 'cash', 'bank', 'deposits', 'expenses', 'shrinkage', 'gain', 'delivery_income', 'sales_discounts', 'over_short'].map(key => (
-                 <div key={key}>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 capitalize">
-                        {accountingLabels[key] ?? key.replace(/_/g, ' ')}
-                     </label>
-                     <select
-                        name={`accounting_accounts.${key}`}
-                        value={formState.accounting_accounts?.[key as keyof typeof formState.accounting_accounts] || ''}
-                        onChange={handleChange}
-                        className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                     >
-                        <option value="">افتراضي</option>
-                        {accounts.map(acc => (
-                            <option key={acc.id} value={acc.id}>
-                                {acc.code} - {acc.name}
-                            </option>
-                        ))}
-                     </select>
-                 </div>
-             ))}
+            {['sales', 'sales_returns', 'inventory', 'cogs', 'ar', 'ap', 'vat_payable', 'vat_recoverable', 'cash', 'bank', 'deposits', 'expenses', 'shrinkage', 'gain', 'delivery_income', 'sales_discounts', 'over_short'].map(key => (
+              <div key={key}>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 capitalize">
+                  {accountingLabels[key] ?? key.replace(/_/g, ' ')}
+                </label>
+                <select
+                  name={`accounting_accounts.${key}`}
+                  value={formState.accounting_accounts?.[key as keyof typeof formState.accounting_accounts] || ''}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                >
+                  <option value="">افتراضي</option>
+                  {accounts.map(acc => {
+                    const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                    return (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.code} - {dispName}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            ))}
           </div>
         </section>
 

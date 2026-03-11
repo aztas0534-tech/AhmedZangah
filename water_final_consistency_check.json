@@ -1,0 +1,30 @@
+{
+  "net": [
+    {
+      "item_id": "2f3a651d-3368-4db3-941f-94f219cc554d",
+      "sale_cancelled": "35",
+      "return_cancelled": "35",
+      "net": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "sale_cancelled": "87",
+      "return_cancelled": "87",
+      "net": "0"
+    }
+  ],
+  "stock": [
+    {
+      "name": "ماء طيبة صغير صغير12*750ملي",
+      "available_quantity": "119",
+      "qc_hold_quantity": "0",
+      "avg_cost": "6.775701"
+    },
+    {
+      "name": "ماء طيبة كبير",
+      "available_quantity": "48",
+      "qc_hold_quantity": "0",
+      "avg_cost": "6.775701"
+    }
+  ]
+}

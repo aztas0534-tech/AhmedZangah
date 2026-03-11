@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Order } from '../../types';
-import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
-import CurrencyDualAmount from '../common/CurrencyDualAmount';
+import { useWarehouses } from '../../contexts/WarehouseContext';
+import { DocumentAuditInfo } from '../../utils/documentStandards';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -64,6 +65,8 @@ interface PrintableInvoiceProps {
     copyNumber?: number;
     audit?: any;
     qrCodeDataUrl?: string;
+    costCenterLabel?: string;
+    creditSummary?: { previousBalance: number; invoiceAmount: number; newBalance: number; currencyCode: string } | null;
 }
 
 const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
@@ -77,8 +80,15 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     deliveryZoneName,
     thermalPaperWidth = '58mm',
     isCopy = false,
+    copyNumber,
     qrCodeDataUrl,
+    audit,
+    costCenterLabel,
+    creditSummary,
 }) => {
+    const effectiveLanguage: 'ar' = language === 'ar' ? 'ar' : 'ar';
+    const { getWarehouseById } = useWarehouses();
+    const { getUnitLabel } = useItemMeta();
     const invoiceSnapshot = order.invoiceSnapshot;
     const invoiceOrder = invoiceSnapshot
         ? {
@@ -93,6 +103,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             paymentMethod: invoiceSnapshot.paymentMethod,
             customerName: invoiceSnapshot.customerName,
             phoneNumber: invoiceSnapshot.phoneNumber,
+            invoiceStatement: (invoiceSnapshot as any).invoiceStatement ?? (order as any).invoiceStatement,
             address: invoiceSnapshot.address,
             invoiceIssuedAt: invoiceSnapshot.issuedAt,
             invoiceNumber: invoiceSnapshot.invoiceNumber,
@@ -113,12 +124,34 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const resolvedLogoUrl = logoUrl || '';
     const resolvedVatNumber = vatNumber || '';
     const resolvedThermalPaperWidth: '58mm' | '80mm' = thermalPaperWidth === '80mm' ? '80mm' : '58mm';
-    const systemName = language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn;
+    const systemName = AZTA_IDENTITY.tradeNameAr;
     const branchName = resolvedCompanyName.trim();
     const showBranchName = Boolean(branchName) && branchName !== systemName.trim();
+    const invoiceWarehouseId = String((invoiceOrder as any)?.warehouseId || '').trim();
+    const invoiceWarehouseName = (() => {
+        if (!invoiceWarehouseId) return '';
+        const w = getWarehouseById(invoiceWarehouseId);
+        if (w?.name) return String(w.name);
+        return invoiceWarehouseId.slice(-6);
+    })();
 
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase();
     const currencyLabel = currencyCode || '—';
+    const currencyLabelAr = (codeRaw: string) => {
+        const c = String(codeRaw || '').trim().toUpperCase();
+        if (!c || c === '—') return 'عملة';
+        if (c === 'SAR') return 'ريال سعودي';
+        if (c === 'YER') return 'ريال يمني';
+        if (c === 'USD') return 'دولار أمريكي';
+        if (c === 'EUR') return 'يورو';
+        if (c === 'GBP') return 'جنيه إسترليني';
+        if (c === 'AED') return 'درهم إماراتي';
+        if (c === 'KWD') return 'دينار كويتي';
+        if (c === 'BHD') return 'دينار بحريني';
+        if (c === 'OMR') return 'ريال عُماني';
+        if (c === 'QAR') return 'ريال قطري';
+        return 'عملة';
+    };
     const formatAmount = (value: number) => {
         const n = Number(value) || 0;
         try {
@@ -127,6 +160,42 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             return n.toFixed(2);
         }
     };
+
+    const computeInvoiceLine = (item: any, mode: 'base_unit' | 'sold_uom') => {
+        const addonsArray = Object.values(item?.selectedAddons || {});
+        const addonsPrice = addonsArray.reduce((sum: number, { addon, quantity }: any) => sum + (Number(addon?.price) || 0) * (Number(quantity) || 0), 0);
+        const unitType = String(item?.unitType || item?.unit || 'piece');
+        const isWeightBased = unitType === 'kg' || unitType === 'gram';
+
+        let itemPrice = Number(item?.price) || 0;
+        let soldQty = Number(item?.quantity) || 0;
+        if (isWeightBased) {
+            soldQty = typeof item?.weight === 'number' ? Number(item?.weight) || 0 : soldQty;
+            if (unitType === 'gram' && item?.pricePerUnit) {
+                itemPrice = (Number(item?.pricePerUnit) || 0) / 1000;
+            }
+        }
+
+        const factor = isWeightBased ? 1 : (Number(item?.uomQtyInBase || 1) || 1);
+        const baseUnitPrice = itemPrice + addonsPrice;
+        const qtyForLine = isWeightBased ? soldQty : (mode === 'base_unit' ? (soldQty * factor) : soldQty);
+        const lineTotal = baseUnitPrice * qtyForLine;
+        const displayUnitPrice = isWeightBased ? baseUnitPrice : (mode === 'base_unit' ? (baseUnitPrice * factor) : baseUnitPrice);
+
+        return { addonsArray, isWeightBased, factor, soldQty, displayUnitPrice, lineTotal, unitType };
+    };
+
+    const invoicePricingMode: 'base_unit' | 'sold_uom' = (() => {
+        const targetSubtotal = Number((invoiceOrder as any)?.subtotal) || 0;
+        if (!(targetSubtotal > 0) || !Array.isArray((invoiceOrder as any)?.items) || (invoiceOrder as any).items.length === 0) {
+            return 'base_unit';
+        }
+        const sumBase = (invoiceOrder as any).items.reduce((sum: number, item: any) => sum + (computeInvoiceLine(item, 'base_unit').lineTotal || 0), 0);
+        const sumUom = (invoiceOrder as any).items.reduce((sum: number, item: any) => sum + (computeInvoiceLine(item, 'sold_uom').lineTotal || 0), 0);
+        const diffBase = Math.abs(sumBase - targetSubtotal);
+        const diffUom = Math.abs(sumUom - targetSubtotal);
+        return diffUom + 0.01 < diffBase ? 'sold_uom' : 'base_unit';
+    })();
 
     // Generate ZATCA QR Code Data
     const qrData = generateZatcaTLV(
@@ -146,22 +215,60 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             bank: 'حسابات بنكية',
             bank_transfer: 'حسابات بنكية',
             ar: 'آجل',
-            mixed: language === 'ar' ? 'متعدد' : 'Mixed',
+            mixed: 'متعدد',
         };
-        return methodMap[method] || (language === 'ar' ? 'غير معروف' : method);
+        return methodMap[method] || 'غير معروف';
     };
 
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
+    const printedBy = (() => {
+        const a = audit as DocumentAuditInfo | null | undefined;
+        const v = String(a?.printedBy || '').trim();
+        return v || '';
+    })();
+    const typeLabel = invoiceTerms === 'credit' ? 'إلى حساب' : 'نقد';
+    const safeUomLabelAr = (codeOrName: string) => {
+        const raw = String(codeOrName || '').trim();
+        if (!raw) return 'وحدة';
+        if (/[\u0600-\u06FF]/.test(raw)) return raw;
+        const label = getUnitLabel(raw as any, 'ar');
+        if (label && /[\u0600-\u06FF]/.test(String(label))) return String(label);
+        const mapped = localizeUomCodeAr(raw);
+        if (!mapped || mapped === '—') return 'وحدة';
+        if (String(mapped).trim() === raw) {
+            const lower = raw.toLowerCase();
+            if (
+                lower === 'piece' || lower === 'pcs' || lower === 'pc' ||
+                lower === 'pack' || lower === 'pkt' ||
+                lower === 'carton' || lower === 'ctn' ||
+                lower === 'box' ||
+                lower === 'bottle' ||
+                lower === 'kg' ||
+                lower === 'gram' || lower === 'g'
+            ) {
+                return mapped;
+            }
+            return 'وحدة';
+        }
+        return mapped;
+    };
+    const fmtByCode = (value: number, code: string) => {
+        const c = String(code || '').trim().toUpperCase();
+        const dp = c === 'YER' ? 0 : 2;
+        const n = Number(value) || 0;
+        try {
+            return n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+        } catch {
+            return n.toFixed(dp);
+        }
+    };
 
-    const fxMeta = useMemo(() => {
-        const snap: any = (order as any)?.invoiceSnapshot || {};
-        const baseC = String(snap.baseCurrency || '').toUpperCase();
-        const fx = Number(snap.fxRate ?? (order as any)?.fxRate ?? 1) || 1;
-        const txC = String((invoiceOrder as any)?.currency || '').toUpperCase();
-        const show = Boolean(baseC && txC && baseC !== txC && fx > 0);
-        return { baseCurrency: baseC, fxRate: fx, show };
-    }, [order, invoiceOrder]);
+    const copyTitle = !isCopy || copyNumber === 1
+        ? 'فاتورة العميل'
+        : copyNumber === 2
+            ? 'فاتورة الصندوق'
+            : 'فاتورة المخازن';
 
     return (
         <div className="thermal-invoice" dir="rtl">
@@ -175,15 +282,31 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     max-width: ${resolvedThermalPaperWidth};
                     margin: 0 auto;
                     padding: 0 2px;
+                    background: white;
+                }
+                @media print {
+                    @page {
+                        margin: 0;
+                        size: auto;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                    }
+                    .thermal-invoice {
+                        width: 100%;
+                        max-width: none;
+                        padding: 5px;
+                    }
                 }
                 .text-center { text-align: center; }
                 .text-right { text-align: right; }
                 .text-left { text-align: left; }
                 .font-bold { font-weight: bold; }
-                .text-xs { font-size: 10px; }
-                .text-sm { font-size: 11px; }
-                .text-lg { font-size: 14px; }
-                .text-xl { font-size: 16px; }
+                .text-xs { font-size: 11px; }
+                .text-sm { font-size: 12px; }
+                .text-lg { font-size: 15px; }
+                .text-xl { font-size: 18px; }
                 .mb-1 { margin-bottom: 4px; }
                 .mb-2 { margin-bottom: 8px; }
                 .mt-1 { margin-top: 4px; }
@@ -194,10 +317,10 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 .border-y { border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
                 .flex { display: flex; justify-content: space-between; align-items: baseline; }
                 .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; letter-spacing: -0.5px; }
-                .logo-img { height: 40px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
+                .logo-img { height: 100px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
                 table { width: 100%; border-collapse: collapse; }
-                th { text-align: right; font-size: 10px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
-                td { padding: 4px 0; vertical-align: top; }
+                th { text-align: right; font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
+                td { padding: 3px 0; vertical-align: top; }
                 .item-name { font-weight: bold; margin-bottom: 2px; }
                 .item-meta { font-size: 10px; color: #444; }
                 .total-box { border: 2px solid #000; padding: 8px; margin-top: 10px; border-radius: 4px; }
@@ -208,7 +331,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             `}</style>
 
             {isCopy && (
-                <div className="watermark">نسخة</div>
+                <div className="watermark">{copyTitle}</div>
             )}
 
             <div className="text-center mb-2">
@@ -222,7 +345,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
             <div className="text-center border-y py-1 mb-2">
                 <div className="font-bold text-lg">فاتورة ضريبية</div>
-                {language === 'ar' ? null : <div className="text-xs uppercase tracking-wider">Tax Invoice</div>}
+                <div className="inline-block border border-black rounded px-2 py-0.5 mt-1 text-sm font-bold bg-gray-100">{copyTitle}</div>
+                <div className="text-xs mt-1">نوع الفاتورة: {typeLabel}</div>
             </div>
 
             <div className="mb-2 text-sm">
@@ -234,10 +358,22 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     <span>التاريخ:</span>
                     <span className="tabular" dir="ltr">{new Date(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt).toLocaleDateString('en-GB')} {new Date(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                 </div>
+                {costCenterLabel ? (
+                    <div className="flex">
+                        <span>مركز التكلفة:</span>
+                        <span>{costCenterLabel}</span>
+                    </div>
+                ) : null}
                 <div className="flex">
                     <span>العميل:</span>
                     <span className="font-bold">{invoiceOrder.customerName}</span>
                 </div>
+                {String((invoiceOrder as any).invoiceStatement || '').trim() && (
+                    <div className="flex">
+                        <span>البيان:</span>
+                        <span>{String((invoiceOrder as any).invoiceStatement || '').trim()}</span>
+                    </div>
+                )}
                 {invoiceOrder.deliveryZoneId && (
                     <div className="flex">
                         <span>المنطقة:</span>
@@ -249,36 +385,99 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <table className="mb-2">
                 <thead>
                     <tr>
-                        <th style={{ width: '45%' }}>الصنف</th>
-                        <th style={{ width: '15%', textAlign: 'center' }}>الكمية</th>
-                        <th style={{ width: '20%', textAlign: 'center' }}>السعر</th>
-                        <th style={{ width: '20%', textAlign: 'left' }}>المجموع</th>
+                        {resolvedThermalPaperWidth === '58mm' ? (
+                            <th style={{ width: '100%' }}>تفاصيل الأصناف</th>
+                        ) : (
+                            <>
+                                <th style={{ width: '14%' }}>رقم الصنف</th>
+                                <th style={{ width: '14%', textAlign: 'center' }}>المخزن</th>
+                                <th style={{ width: '26%' }}>الصنف</th>
+                                <th style={{ width: '10%', textAlign: 'center' }}>الوحدة</th>
+                                <th style={{ width: '10%', textAlign: 'center' }}>الكمية</th>
+                                <th style={{ width: '13%', textAlign: 'center' }}>سعر الوحدة</th>
+                                <th style={{ width: '13%', textAlign: 'left' }}>الإجمالي</th>
+                            </>
+                        )}
                     </tr>
                 </thead>
                 <tbody>
                     {invoiceOrder.items.map((item, index) => {
-                        const pricing = computeCartItemPricing(item);
-                        const displayQty = (() => {
-                            if (pricing.isWeightBased) return `${pricing.quantity} ${pricing.unitType === 'gram' ? 'غ' : 'كغ'}`;
-                            const uom = localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
-                            return `${String(item.quantity)} ${uom}`;
+                        const pricing = computeInvoiceLine(item, invoicePricingMode);
+                        const itemNo = (() => {
+                            const rawBarcode = String((item as any)?.barcode || '').trim();
+                            if (rawBarcode) return rawBarcode;
+                            const rawId = String(item?.id || '').trim();
+                            if (!rawId) return '—';
+                            return rawId.replace(/-/g, '').slice(-6).toUpperCase();
                         })();
+                        const uomCode = String((item as any)?.uomCode || '').trim();
+                        const baseUnit = String((item as any)?.baseUnit || (item as any)?.base_unit || '').trim();
+                        const unitKey = pricing.isWeightBased
+                            ? String(pricing.unitType || 'kg')
+                            : (uomCode || baseUnit || String(item.unitType || 'piece'));
+                        const soldUnit = safeUomLabelAr(unitKey);
+                        const soldQty = pricing.isWeightBased ? String(pricing.soldQty) : String(item.quantity);
+                        const invoiceCurrencyLabel = currencyLabelAr(currencyLabel);
+                        const soldUnitPrice = pricing.displayUnitPrice;
+                        const lineTotal = pricing.lineTotal;
 
                         return (
                             <tr key={item.cartItemId || index}>
-                                <td>
-                                    <div className="item-name">{item.name?.[language] || item.name?.ar || item.name?.en}</div>
-                                    {Object.values(item.selectedAddons).length > 0 && (
-                                        <div className="item-meta">
-                                            {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
-                                                <span key={i}>+ {addon.name[language]} {quantity > 1 ? `(${quantity})` : ''} </span>
-                                            ))}
+                                {resolvedThermalPaperWidth === '58mm' ? (
+                                    <td>
+                                        <div className="item-name">
+                                            <span className="tabular" dir="ltr">{itemNo}</span>
+                                            <span> - </span>
+                                            <span>{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</span>
                                         </div>
-                                    )}
-                                </td>
-                                <td className="text-center tabular">{displayQty}</td>
-                                <td className="text-center tabular">{formatAmount(pricing.unitPrice)}</td>
-                                <td className="text-left font-bold tabular">{formatAmount(pricing.lineTotal)}</td>
+                                        {Object.values(item.selectedAddons).length > 0 && (
+                                            <div className="item-meta">
+                                                {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
+                                                    <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {item.notes && item.notes.trim().length > 0 && (
+                                            <div className="item-meta" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                                {item.notes.trim()}
+                                            </div>
+                                        )}
+                                        <div className="item-meta">
+                                            <span>الوحدة: {soldUnit}</span>
+                                            <span> | </span>
+                                            <span className="tabular" dir="ltr">الكمية: {soldQty}</span>
+                                            <span> | </span>
+                                            <span className="tabular" dir="ltr">المخزن: {invoiceWarehouseName || '—'}</span>
+                                            <span> | </span>
+                                            <span className="tabular" dir="ltr">سعر الوحدة: {formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</span>
+                                        </div>
+                                        <div className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</div>
+                                    </td>
+                                ) : (
+                                    <>
+                                        <td className="tabular" dir="ltr">{itemNo}</td>
+                                        <td className="text-center">{invoiceWarehouseName || '—'}</td>
+                                        <td>
+                                            <div className="item-name">{item.name?.[effectiveLanguage] || item.name?.ar || item.name?.en}</div>
+                                            {Object.values(item.selectedAddons).length > 0 && (
+                                                <div className="item-meta">
+                                                    {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
+                                                        <span key={i}>+ {addon.name?.[effectiveLanguage] || addon.name?.ar || addon.name?.en} {quantity > 1 ? `(${quantity})` : ''} </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {item.notes && item.notes.trim().length > 0 && (
+                                                <div className="item-meta" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                                    {item.notes.trim()}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="text-center">{soldUnit}</td>
+                                        <td className="text-center tabular" dir="ltr">{soldQty}</td>
+                                        <td className="text-center tabular" dir="ltr">{formatAmount(soldUnitPrice)} {invoiceCurrencyLabel}</td>
+                                        <td className="text-left font-bold tabular" dir="ltr">{formatAmount(lineTotal)} {invoiceCurrencyLabel}</td>
+                                    </>
+                                )}
                             </tr>
                         );
                     })}
@@ -288,41 +487,39 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div className="border-t pt-2 mb-2">
                 <div className="flex mb-1">
                     <span>المجموع الفرعي:</span>
-                    <span className="tabular">{formatAmount(invoiceOrder.subtotal)}</span>
+                    <span className="tabular" dir="ltr">
+                        {formatAmount(Number(invoiceOrder.subtotal) || 0)} {currencyLabelAr(currencyLabel)}
+                    </span>
                 </div>
                 {(invoiceOrder.discountAmount || 0) > 0 && (
                     <div className="flex mb-1">
                         <span>الخصم:</span>
-                        <span className="tabular">- {formatAmount(invoiceOrder.discountAmount || 0)}</span>
+                        <span className="tabular" dir="ltr">
+                            - {formatAmount(Number(invoiceOrder.discountAmount) || 0)} {currencyLabelAr(currencyLabel)}
+                        </span>
                     </div>
                 )}
                 <div className="flex mb-1">
                     <span>الضريبة (15%):</span>
-                    <span className="tabular">{formatAmount(invoiceOrder.taxAmount || 0)}</span>
+                    <span className="tabular" dir="ltr">
+                        {formatAmount(Number(invoiceOrder.taxAmount) || 0)} {currencyLabelAr(currencyLabel)}
+                    </span>
                 </div>
                 {Number(invoiceOrder.deliveryFee) > 0 && (
                     <div className="flex mb-1">
                         <span>التوصيل:</span>
-                        <span className="tabular">{formatAmount(Number(invoiceOrder.deliveryFee))}</span>
+                        <span className="tabular" dir="ltr">
+                            {formatAmount(Number(invoiceOrder.deliveryFee) || 0)} {currencyLabelAr(currencyLabel)}
+                        </span>
                     </div>
                 )}
             </div>
 
             <div className="total-box text-center mb-4">
                 <div className="text-sm font-bold mb-1">الإجمالي النهائي</div>
-                <div className="text-xl font-bold tabular" dir="ltr">{formatAmount(invoiceOrder.total)} {currencyLabel}</div>
-                {fxMeta.show ? (
-                    <div className="mt-1 text-xs">
-                        <CurrencyDualAmount
-                          amount={Number(invoiceOrder.total) || 0}
-                          currencyCode={String((invoiceOrder as any)?.currency || '').toUpperCase()}
-                          baseAmount={Number(invoiceOrder.total) * Number(fxMeta.fxRate)}
-                          fxRate={fxMeta.fxRate}
-                          baseCurrencyCode={fxMeta.baseCurrency}
-                          compact
-                        />
-                    </div>
-                ) : null}
+                <div className="text-xl font-bold tabular" dir="ltr">
+                    {formatAmount(Number(invoiceOrder.total) || 0)} {currencyLabelAr(currencyLabel)}
+                </div>
             </div>
 
             <div className="mb-4 text-sm border-b pb-2">
@@ -336,7 +533,36 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                         <span className="tabular" dir="ltr">{invoiceDueDate ? new Date(invoiceDueDate).toLocaleDateString('en-GB') : '-'}</span>
                     </div>
                 )}
+                {String((invoiceOrder as any)?.currency || '').trim() ? (
+                    <div className="flex mt-1">
+                        <span>العملة:</span>
+                        <span className="tabular" dir="ltr">{String((invoiceOrder as any).currency || '').toUpperCase()}</span>
+                    </div>
+                ) : null}
+                {Number((invoiceOrder as any)?.fxRate || 0) > 0 ? (
+                    <div className="flex mt-1">
+                        <span>سعر الصرف:</span>
+                        <span className="tabular" dir="ltr">{formatAmount(Number((invoiceOrder as any).fxRate || 0))}</span>
+                    </div>
+                ) : null}
             </div>
+
+            {invoiceTerms === 'credit' && creditSummary ? (
+                <div className="mb-3 text-sm border border-black rounded-md p-2">
+                    <div className="flex">
+                        <span>الرصيد السابق:</span>
+                        <span className="tabular" dir="ltr">{fmtByCode(creditSummary.previousBalance, creditSummary.currencyCode)} {creditSummary.currencyCode}</span>
+                    </div>
+                    <div className="flex">
+                        <span>قيمة الفاتورة:</span>
+                        <span className="tabular" dir="ltr">{fmtByCode(creditSummary.invoiceAmount, creditSummary.currencyCode)} {creditSummary.currencyCode}</span>
+                    </div>
+                    <div className="flex font-bold">
+                        <span>إجمالي الرصيد:</span>
+                        <span className="tabular" dir="ltr">{fmtByCode(creditSummary.newBalance, creditSummary.currencyCode)} {creditSummary.currencyCode}</span>
+                    </div>
+                </div>
+            ) : null}
 
             <div className="text-center mb-4">
                 <div style={{ display: 'inline-block', padding: '5px', background: 'white' }}>
@@ -349,9 +575,36 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 <div className="text-xs mt-1">امسح للتحقق (ZATCA)</div>
             </div>
 
+            {invoiceTerms === 'credit' ? (
+                <div className="mb-3 text-xs">
+                    <div className="border border-black rounded-md p-2">
+                        <div>أنا الموقع أدناه أقر باستلام البضاعة كاملة وسليمة، وأتعهد بسداد قيمة الفاتورة وفقًا لشروطها.</div>
+                        <div className="mt-2 flex justify-between">
+                            <div>التوقيع:</div>
+                            <div style={{ width: 120, borderBottom: '1px solid #000' }} />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <div className="text-center text-xs mt-2">
                 <div className="font-bold">شكراً لزيارتكم!</div>
                 <div className="mt-1 tabular" dir="ltr">{new Date().toLocaleString('en-GB')}</div>
+                <div className="mt-1">
+                    <span className="tabular" dir="ltr">Order: {order.id.slice(-8).toUpperCase()}</span>
+                    {printedBy ? (
+                        <>
+                            <span> • </span>
+                            <span>طبع بواسطة: {printedBy}</span>
+                        </>
+                    ) : null}
+                    {isCopy && typeof copyNumber === 'number' && copyNumber > 0 ? (
+                        <>
+                            <span> • </span>
+                            <span className="tabular" dir="ltr">{`نسخة رقم ${copyNumber}`}</span>
+                        </>
+                    ) : null}
+                </div>
             </div>
         </div>
     );

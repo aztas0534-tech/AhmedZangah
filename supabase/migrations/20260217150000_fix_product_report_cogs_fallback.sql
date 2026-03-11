@@ -112,7 +112,6 @@ begin
             end
         end
       ) as item
-    from sales_orders so
   ),
   item_resolved as (
     select
@@ -167,12 +166,15 @@ begin
         when ir.item->'selectedAddons' is not null
              and jsonb_typeof(ir.item->'selectedAddons') = 'array'
              and jsonb_array_length(ir.item->'selectedAddons') > 0
-        then (select coalesce(sum(
-            coalesce((addon_value->>'price')::numeric, 0) *
-            coalesce((addon_value->>'quantity')::numeric, 0)
-          )
+        then (
+          select coalesce(
+            sum(
+              coalesce((addon_value->>'price')::numeric, 0)
+              * coalesce((addon_value->>'quantity')::numeric, 0)
+            ),
+          0)
           from jsonb_array_elements(ir.item->'selectedAddons') as addon_value
-        ), 0)
+        )
         else 0
       end as addons_total,
       ir.fx_rate,
@@ -353,12 +355,15 @@ begin
         when nri.value->'selectedAddons' is not null
              and jsonb_typeof(nri.value->'selectedAddons') = 'array'
              and jsonb_array_length(nri.value->'selectedAddons') > 0
-        then (select coalesce(sum(
-            coalesce((av->>'price')::numeric, 0) *
-            coalesce((av->>'quantity')::numeric, 0)
-          )
+        then (
+          select coalesce(
+            sum(
+              coalesce((av->>'price')::numeric, 0)
+              * coalesce((av->>'quantity')::numeric, 0)
+            ),
+          0)
           from jsonb_array_elements(nri.value->'selectedAddons') as av
-        ), 0)
+        )
         else 0
       end as addons_total,
       rb.discount_amount,

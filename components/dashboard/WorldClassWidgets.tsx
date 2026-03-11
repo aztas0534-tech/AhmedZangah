@@ -1,8 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
-import { getSupabaseClient, getBaseCurrencyCode } from '../../supabase';
+import { disableRealtime, getSupabaseClient, getBaseCurrencyCode, isRealtimeEnabled, rpcHasFunction } from '../../supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 import * as Icons from '../icons';
+import { getCurrencyDecimalsByCode } from '../../utils/currencyDecimals';
 import { exportToXlsx } from '../../utils/export';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 // ─── CONTEXT ───────────────────────────────────────────────────────────────
 
@@ -12,6 +15,9 @@ type DashboardContextType = {
     dateRange: DateRange;
     setDateRange: (range: DateRange) => void;
     currency: string;
+    warehouseId: string | null;
+    branchId: string | null;
+    companyId: string | null;
     refreshKey: number;
     triggerRefresh: () => void;
     kpiData: any;
@@ -27,6 +33,8 @@ export const useDashboard = () => {
 };
 
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { user } = useAuth();
+    const { scope } = useSessionScope();
     const defaultEnd = new Date();
     defaultEnd.setHours(23, 59, 59, 999);
     const defaultStart = new Date();
@@ -41,8 +49,69 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     useEffect(() => { getBaseCurrencyCode().then(c => { if (c) setCurrency(c); }); }, []);
     const triggerRefresh = () => setRefreshKey(p => p + 1);
 
+    const refreshTimerRef = useRef<number | null>(null);
+    const scheduleRefresh = () => {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        if (refreshTimerRef.current != null) {
+            window.clearTimeout(refreshTimerRef.current);
+        }
+        refreshTimerRef.current = window.setTimeout(() => {
+            refreshTimerRef.current = null;
+            triggerRefresh();
+        }, 650);
+    };
+
+    useEffect(() => {
+        scheduleRefresh();
+    }, [scope?.warehouseId, scope?.branchId, scope?.companyId]);
+
+    useEffect(() => {
+        const supabase = getSupabaseClient();
+        if (!supabase || !user?.id) return;
+        if (!isRealtimeEnabled()) return;
+
+        const channel = supabase
+            .channel('public:dashboard')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_returns' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_items' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_receipts' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_returns' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_return_items' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_movements' }, scheduleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries' }, scheduleRefresh)
+            .subscribe((status: any) => {
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    disableRealtime();
+                    supabase.removeChannel(channel);
+                }
+            });
+
+        return () => {
+            if (refreshTimerRef.current != null) {
+                window.clearTimeout(refreshTimerRef.current);
+                refreshTimerRef.current = null;
+            }
+            supabase.removeChannel(channel);
+        };
+    }, [user?.id, scope?.warehouseId]);
+
     return (
-        <DashboardContext.Provider value={{ dateRange, setDateRange, currency, refreshKey, triggerRefresh, kpiData, setKpiData }}>
+        <DashboardContext.Provider value={{
+            dateRange,
+            setDateRange,
+            currency,
+            warehouseId: scope?.warehouseId || null,
+            branchId: scope?.branchId || null,
+            companyId: scope?.companyId || null,
+            refreshKey,
+            triggerRefresh,
+            kpiData,
+            setKpiData
+        }}>
             {children}
         </DashboardContext.Provider>
     );
@@ -50,7 +119,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 // ─── UTILS ─────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// getCurrencyDecimalsByCode imported from utils/currencyDecimals
+const fmt = (n: number, dp = 2) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 const fmtInt = (n: number) => n.toLocaleString('en-US');
 const fmtCompact = (n: number) => {
     if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -69,8 +139,32 @@ const ErrorBanner: React.FC<{ message?: string }> = ({ message }) => (
     </div>
 );
 
+const normalizeErrText = (err: unknown) => {
+    const anyErr = err as any;
+    const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
+    const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+    const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+    const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+    return `${msg}\n${details}\n${hint}\n${code}`.trim();
+};
+
+const formatDashboardLoadError = (err: unknown) => {
+    const t = normalizeErrText(err).toLowerCase();
+    if (!t) return '';
+    if (t.includes('column') && t.includes('does not exist')) {
+        return 'قاعدة البيانات غير محدثة (عمود/بنية ناقصة). طبّق تحديثات قاعدة البيانات (migrations) ثم حدّث الصفحة.';
+    }
+    if (t.includes('schema cache') || t.includes('could not find the function') || t.includes('pgrst202')) {
+        return 'قاعدة البيانات تحتاج إعادة تحميل مخطط PostgREST بعد تطبيق migrations. طبّق migrations ثم أعد المحاولة.';
+    }
+    if (t.includes('not allowed') || t.includes('permission') || t.includes('forbidden') || t.includes('rls')) {
+        return 'ليس لديك صلاحية عرض لوحة التحكم بهذه البيانات.';
+    }
+    return '';
+};
+
 /** Animated number counter */
-const AnimatedCounter: React.FC<{ value: number; format?: 'currency' | 'int' | 'percent'; duration?: number }> = ({ value, format = 'currency', duration = 800 }) => {
+const AnimatedCounter: React.FC<{ value: number; format?: 'currency' | 'int' | 'percent'; duration?: number; currencyCode?: string }> = ({ value, format = 'currency', duration = 800, currencyCode }) => {
     const [display, setDisplay] = useState(0);
     const ref = useRef<number>(0);
     const rafRef = useRef<number | undefined>(undefined);
@@ -97,7 +191,7 @@ const AnimatedCounter: React.FC<{ value: number; format?: 'currency' | 'int' | '
     let text: string;
     if (format === 'percent') text = display.toFixed(1) + '%';
     else if (format === 'int') text = fmtInt(Math.round(display));
-    else text = fmt(display);
+    else text = fmt(display, getCurrencyDecimalsByCode(currencyCode || ''));
 
     return <span className="animate-count-up">{text}</span>;
 };
@@ -257,91 +351,119 @@ export const DashboardHeader: React.FC<{ title: string }> = ({ title }) => {
 
 // 2. KPI BAR — Period-over-Period with Animated Counters
 export const KPIBar: React.FC = () => {
-    const { dateRange, currency, refreshKey, setKpiData } = useDashboard();
+    const { dateRange, currency, refreshKey, setKpiData, warehouseId } = useDashboard();
     const [stats, setStats] = useState<any>(null);
     const [prevStats, setPrevStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
         let active = true;
         const load = async () => {
             setLoading(true);
             setError(false);
+            setErrorMessage('');
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
 
-                // Current period
-                const { data: salesData }: any = await supabase.rpc('get_sales_report_summary', {
+                const prev = getPreviousPeriod(dateRange);
+                const kpiRpc = (await rpcHasFunction('public.get_dashboard_kpi_v4'))
+                    ? 'get_dashboard_kpi_v4'
+                    : ((await rpcHasFunction('public.get_dashboard_kpi_v3')) ? 'get_dashboard_kpi_v3' : 'get_dashboard_kpi_v2');
+                const payload = {
                     p_start_date: dateRange.start.toISOString(),
                     p_end_date: dateRange.end.toISOString(),
                     p_zone_id: null,
-                    p_invoice_only: false
-                });
+                    p_invoice_only: false,
+                    p_warehouse_id: warehouseId,
+                };
+                const { data: kpi, error: kpiErr }: any = await supabase.rpc(kpiRpc, payload as any);
+                if (kpiErr) throw kpiErr;
 
-                // Previous period (for comparison)
-                const prev = getPreviousPeriod(dateRange);
-                const { data: prevSalesData }: any = await supabase.rpc('get_sales_report_summary', {
+                const { data: prevKpi, error: prevErr }: any = await supabase.rpc(kpiRpc, {
+                    ...payload,
                     p_start_date: prev.start.toISOString(),
                     p_end_date: prev.end.toISOString(),
-                    p_zone_id: null,
-                    p_invoice_only: false
-                });
+                } as any);
+                if (prevErr) throw prevErr;
 
-                // Inventory Value
-                let totalInventoryValue = 0;
-                try {
-                    const { data: val, error: ivErr } = await supabase.rpc('get_inventory_valuation');
-                    if (!ivErr && typeof val === 'number') totalInventoryValue = val;
-                } catch (_) { /* ignore */ }
+                let unifiedSales = 0;
+                let unifiedOrders = 0;
+                let prevUnifiedSales = 0;
+                let prevUnifiedOrders = 0;
+                const hasSalesSummary = await rpcHasFunction('public.get_sales_report_summary');
+                if (hasSalesSummary) {
+                    const summaryPayload = {
+                        p_start_date: dateRange.start.toISOString(),
+                        p_end_date: dateRange.end.toISOString(),
+                        p_zone_id: null,
+                        p_invoice_only: false,
+                    };
+                    const { data: summaryData, error: summaryErr }: any = await supabase.rpc('get_sales_report_summary', summaryPayload as any);
+                    if (summaryErr) throw summaryErr;
+                    const summary = summaryData && typeof summaryData === 'object' ? summaryData : {};
+                    const summaryGross = Number(summary?.total_sales_accrual) || 0;
+                    const summaryReturns = Number(summary?.returns_total) || 0;
+                    unifiedSales = summaryGross - summaryReturns;
+                    unifiedOrders = Number(summary?.total_orders) || 0;
 
-                // POs In Transit
-                const { count: transitCount } = await supabase
-                    .from('purchase_orders')
-                    .select('*', { count: 'exact', head: true })
-                    .in('status', ['shipped', 'processing', 'ordered']);
+                    const { data: prevSummaryData, error: prevSummaryErr }: any = await supabase.rpc('get_sales_report_summary', {
+                        ...summaryPayload,
+                        p_start_date: prev.start.toISOString(),
+                        p_end_date: prev.end.toISOString(),
+                    } as any);
+                    if (prevSummaryErr) throw prevSummaryErr;
+                    const prevSummary = prevSummaryData && typeof prevSummaryData === 'object' ? prevSummaryData : {};
+                    const prevSummaryGross = Number(prevSummary?.total_sales_accrual) || 0;
+                    const prevSummaryReturns = Number(prevSummary?.returns_total) || 0;
+                    prevUnifiedSales = prevSummaryGross - prevSummaryReturns;
+                    prevUnifiedOrders = Number(prevSummary?.total_orders) || 0;
+                }
 
-                // Order Status Counts (Today/Active)
-                const { data: statusCounts } = await supabase
-                    .from('orders')
-                    .select('status')
-                    .in('status', ['pending', 'preparing', 'out_for_delivery', 'delivered']);
-
-                // Financial Position (AR/AP)
-                const { data: arData } = await supabase.from('party_ar_aging_summary').select('total_outstanding');
-                const { data: apData } = await supabase.from('party_ap_aging_summary').select('total_outstanding');
-
-                const totalAR = arData?.reduce((sum, row) => sum + (Number(row.total_outstanding) || 0), 0) || 0;
-                const totalAP = apData?.reduce((sum, row) => sum + (Number(row.total_outstanding) || 0), 0) || 0;
+                const salesData = (kpi && typeof kpi === 'object') ? (kpi.sales || {}) : {};
+                const prevSalesData = (prevKpi && typeof prevKpi === 'object') ? (prevKpi.sales || {}) : {};
 
                 if (active) {
-                    const netSales = Number(salesData?.total_sales_accrual) || 0;
+                    const grossSales = Number(salesData?.total_sales_accrual) || 0;
+                    const returnsAmount = Number((salesData as any)?.returns_total ?? salesData?.returns) || 0;
+                    const netSales = grossSales - returnsAmount;
                     const cogs = Number(salesData?.cogs) || 0;
-                    const returnsCogs = Number(salesData?.returns_cogs) || 0;
-                    const adjustedCogs = Math.max(0, cogs - returnsCogs);
+                    const adjustedCogs = Math.max(0, cogs);
                     const expenses = Number(salesData?.expenses) || 0;
                     const wastage = Number(salesData?.wastage) || 0;
                     const deliveryCost = Number(salesData?.delivery_cost) || 0;
-                    const netProfit = netSales - adjustedCogs - expenses - wastage - deliveryCost;
+                    const grossProfit = netSales - adjustedCogs;
+                    const netProfit = grossProfit - expenses - wastage - deliveryCost;
 
-                    const prevNetSales = Number(prevSalesData?.total_sales_accrual) || 0;
-                    const prevCogs = Math.max(0, (Number(prevSalesData?.cogs) || 0) - (Number(prevSalesData?.returns_cogs) || 0));
-                    const prevNetProfit = prevNetSales - prevCogs - (Number(prevSalesData?.expenses) || 0) - (Number(prevSalesData?.wastage) || 0) - (Number(prevSalesData?.delivery_cost) || 0);
+                    const prevGrossSales = Number(prevSalesData?.total_sales_accrual) || 0;
+                    const prevReturnsAmount = Number((prevSalesData as any)?.returns_total ?? prevSalesData?.returns) || 0;
+                    const prevNetSales = prevGrossSales - prevReturnsAmount;
+                    const prevCogs = Math.max(0, Number(prevSalesData?.cogs) || 0);
+                    const prevGrossProfit = prevNetSales - prevCogs;
+                    const prevNetProfit = prevGrossProfit - (Number(prevSalesData?.expenses) || 0) - (Number(prevSalesData?.wastage) || 0) - (Number(prevSalesData?.delivery_cost) || 0);
 
                     const newStats = {
-                        sales: netSales,
-                        orders: Number(salesData?.total_orders_accrual) || 0,
-                        margin: netSales > 0 ? ((netSales - adjustedCogs) / netSales * 100) : 0,
-                        grossProfit: netSales - adjustedCogs, // Added Gross Profit
+                        sales: hasSalesSummary ? unifiedSales : netSales,
+                        grossSales,
+                        returns: returnsAmount,
+                        taxRefunds: Number((salesData as any)?.tax_refunds) || 0,
+                        orders: hasSalesSummary ? unifiedOrders : (Number(salesData?.total_orders_accrual) || 0),
+                        margin: netSales > 0 ? (grossProfit / netSales * 100) : 0,
+                        grossProfit,
                         netProfit,
+                        cogs: adjustedCogs,
                         collected: Number(salesData?.total_collected) || 0, // Added Collected
-                        ar: totalAR,
-                        ap: totalAP,
-                        statusCounts: statusCounts || [],
-                        avgOrderValue: (Number(salesData?.total_orders_accrual) || 0) > 0 ? netSales / (Number(salesData?.total_orders_accrual) || 1) : 0,
-                        transit: transitCount || 0,
-                        inventoryValue: totalInventoryValue,
+                        ar: Number((kpi as any)?.arTotal) || 0,
+                        ap: Number((kpi as any)?.apTotal) || 0,
+                        statusCounts: Object.entries(((kpi as any)?.orderStatusCounts || {}) as Record<string, number>).map(([status, cnt]) => ({ status, cnt })),
+                        avgOrderValue: (hasSalesSummary ? unifiedOrders : (Number(salesData?.total_orders_accrual) || 0)) > 0
+                            ? (hasSalesSummary ? unifiedSales : netSales) / ((hasSalesSummary ? unifiedOrders : (Number(salesData?.total_orders_accrual) || 1)) || 1)
+                            : 0,
+                        transit: Number((kpi as any)?.poInTransit) || 0,
+                        poStatusCounts: (kpi as any)?.poStatusCounts || {},
+                        inventoryValue: Number((kpi as any)?.inventoryValue) || 0,
                         // Channel breakdown
                         inStoreCount: Number(salesData?.in_store_count) || 0,
                         onlineCount: Number(salesData?.online_count) || 0,
@@ -351,31 +473,41 @@ export const KPIBar: React.FC = () => {
                     setKpiData(newStats);
 
                     setPrevStats({
-                        sales: prevNetSales,
-                        orders: Number(prevSalesData?.total_orders_accrual) || 0,
-                        margin: prevNetSales > 0 ? ((prevNetSales - prevCogs) / prevNetSales * 100) : 0,
-                        grossProfit: prevNetSales - prevCogs,
+                        sales: hasSalesSummary ? prevUnifiedSales : prevNetSales,
+                        grossSales: prevGrossSales,
+                        returns: prevReturnsAmount,
+                        taxRefunds: Number((prevSalesData as any)?.tax_refunds) || 0,
+                        orders: hasSalesSummary ? prevUnifiedOrders : (Number(prevSalesData?.total_orders_accrual) || 0),
+                        margin: prevNetSales > 0 ? (prevGrossProfit / prevNetSales * 100) : 0,
+                        grossProfit: prevGrossProfit,
                         netProfit: prevNetProfit,
+                        cogs: prevCogs,
                         collected: Number(prevSalesData?.total_collected) || 0,
-                        avgOrderValue: (Number(prevSalesData?.total_orders_accrual) || 0) > 0 ? prevNetSales / (Number(prevSalesData?.total_orders_accrual) || 1) : 0,
+                        avgOrderValue: (hasSalesSummary ? prevUnifiedOrders : (Number(prevSalesData?.total_orders_accrual) || 0)) > 0
+                            ? (hasSalesSummary ? prevUnifiedSales : prevNetSales) / ((hasSalesSummary ? prevUnifiedOrders : (Number(prevSalesData?.total_orders_accrual) || 1)) || 1)
+                            : 0,
                     });
                 }
             } catch (err) {
                 console.error(err);
-                if (active) setError(true);
+                if (active) {
+                    setError(true);
+                    const msg = formatDashboardLoadError(err) || localizeSupabaseError(err) || 'تعذر تحميل مؤشرات الأداء.';
+                    setErrorMessage(msg);
+                }
             } finally {
                 if (active) setLoading(false);
             }
         };
         load();
         return () => { active = false; };
-    }, [dateRange, refreshKey]);
+    }, [dateRange, refreshKey, warehouseId]);
 
-    if (error) return <ErrorBanner message="تعذر تحميل مؤشرات الأداء." />;
+    if (error) return <ErrorBanner message={errorMessage || 'تعذر تحميل مؤشرات الأداء.'} />;
 
     const cards = [
         {
-            title: 'إجمالي المبيعات',
+            title: 'صافي المبيعات',
             value: stats?.sales ?? 0,
             prevValue: prevStats?.sales ?? 0,
             format: 'currency' as const,
@@ -403,6 +535,16 @@ export const KPIBar: React.FC = () => {
             icon: Icons.TrendingUpIcon,
             gradient: 'from-violet-500 to-purple-600',
             light: 'bg-violet-50 dark:bg-violet-900/20',
+        },
+        {
+            title: 'تكلفة المبيعات',
+            value: stats?.cogs ?? 0,
+            prevValue: prevStats?.cogs ?? 0,
+            format: 'currency' as const,
+            sub: currency,
+            icon: Icons.ReceiptIcon,
+            gradient: 'from-stone-500 to-neutral-600',
+            light: 'bg-stone-50 dark:bg-stone-900/20',
         },
         {
             title: 'صافي الربح',
@@ -442,7 +584,7 @@ export const KPIBar: React.FC = () => {
                         <>
                             <div className="flex items-baseline gap-1.5 mb-1">
                                 <h3 className="text-xl font-bold font-mono tracking-tight text-gray-900 dark:text-white">
-                                    <AnimatedCounter value={c.value} format={c.format} />
+                                    <AnimatedCounter value={c.value} format={c.format} currencyCode={c.format === 'currency' ? currency : undefined} />
                                 </h3>
                                 <span className="text-[10px] text-gray-400 font-medium">{c.sub}</span>
                             </div>
@@ -479,7 +621,7 @@ export const RevenueByChannelChart: React.FC = () => {
         <div className="glass-card rounded-2xl p-5 animate-slide-in-up">
             <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm mb-4 flex items-center gap-2">
                 <Icons.ReportIcon className="w-4 h-4 text-indigo-500" />
-                توزيع القنوات
+                توزيع الطلبات حسب القناة
             </h3>
             <div className="flex items-center gap-6">
                 {/* Donut */}
@@ -509,7 +651,7 @@ export const RevenueByChannelChart: React.FC = () => {
                         <div className="text-center">
                             <span className="text-lg font-bold text-gray-800 dark:text-white">{fmtInt(total)}</span>
                             <br />
-                            <span className="text-[9px] text-gray-400">طلب</span>
+                            <span className="text-[9px] text-gray-400">طلب مسلّم</span>
                         </div>
                     </div>
                 </div>
@@ -536,7 +678,7 @@ export const RevenueByChannelChart: React.FC = () => {
 
 // 4. INVENTORY SECTION (Top Products + Low Stock Alerts)
 export const InventorySection: React.FC = () => {
-    const { dateRange, refreshKey } = useDashboard();
+    const { dateRange, refreshKey, warehouseId } = useDashboard();
     const [topProducts, setTopProducts] = useState<any[]>([]);
     const [alerts, setAlerts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -558,12 +700,16 @@ export const InventorySection: React.FC = () => {
                 });
 
                 const { data: stock }: any = await supabase.rpc('get_inventory_stock_report', {
-                    p_warehouse_id: null, p_search: null, p_limit: 1000
+                    p_warehouse_id: warehouseId, p_search: null, p_limit: 1000
                 });
 
                 if (active) {
                     setTopProducts((products || []).sort((a: any, b: any) => (Number(b.total_sales) || 0) - (Number(a.total_sales) || 0)).slice(0, 5));
-                    setAlerts((stock || []).filter((item: any) => item.current_stock <= (item.min_stock || 5) && item.current_stock > 0).slice(0, 5));
+                    setAlerts((stock || []).filter((item: any) => {
+                        const cur = Number(item.current_stock) || 0;
+                        const threshold = Number(item.low_stock_threshold ?? item.min_stock ?? 5) || 5;
+                        return cur > 0 && cur <= threshold;
+                    }).slice(0, 5));
                 }
             } catch (err) {
                 console.error(err);
@@ -574,7 +720,7 @@ export const InventorySection: React.FC = () => {
         };
         load();
         return () => { active = false; };
-    }, [dateRange, refreshKey]);
+    }, [dateRange, refreshKey, warehouseId]);
 
     if (error) return <ErrorBanner message="تعذر تحميل بيانات المخزون." />;
 
@@ -640,7 +786,7 @@ export const InventorySection: React.FC = () => {
 
 // 5. SALES CHART (Premium SVG with smooth curve)
 export const SalesSection: React.FC = () => {
-    const { dateRange, refreshKey, currency } = useDashboard();
+    const { dateRange, refreshKey, currency, warehouseId } = useDashboard();
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -654,19 +800,22 @@ export const SalesSection: React.FC = () => {
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
-                const { data: stats }: any = await supabase.rpc('get_daily_sales_stats', {
+                const rpcName = (await rpcHasFunction('public.get_daily_sales_stats_v2')) ? 'get_daily_sales_stats_v2' : 'get_daily_sales_stats';
+                const payload: any = {
                     p_start_date: dateRange.start.toISOString(),
                     p_end_date: dateRange.end.toISOString(),
                     p_zone_id: null,
                     p_invoice_only: viewMode === 'wholesale'
-                });
+                };
+                if (rpcName === 'get_daily_sales_stats_v2') payload.p_warehouse_id = warehouseId;
+                const { data: stats }: any = await supabase.rpc(rpcName, payload);
                 if (active) setData(stats || []);
             } catch (err) { console.error(err); if (active) setError(true); }
             finally { if (active) setLoading(false); }
         };
         load();
         return () => { active = false; };
-    }, [dateRange, refreshKey, viewMode]);
+    }, [dateRange, refreshKey, viewMode, warehouseId]);
 
     const maxSales = useMemo(() => Math.max(...data.map(d => Number(d.total_sales)), 100), [data]);
 
@@ -825,6 +974,12 @@ export const SalesSection: React.FC = () => {
 // 6. PURCHASING SECTION
 export const PurchasingSection: React.FC = () => {
     const { refreshKey } = useDashboard();
+    const { kpiData } = useDashboard();
+    const { currency } = useDashboard();
+    const { warehouseId } = useDashboard();
+    const purchasesTotal = Number((kpiData as any)?.purchasesTotal ?? 0) || 0;
+    const purchaseReturnsTotal = Number((kpiData as any)?.purchaseReturnsTotal ?? 0) || 0;
+    const netPurchases = Number((kpiData as any)?.netPurchases ?? 0) || 0;
     const [poStats, setPoStats] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -834,9 +989,24 @@ export const PurchasingSection: React.FC = () => {
         const load = async () => {
             setLoading(true); setError(false);
             try {
+                const fromKpi = (kpiData && typeof kpiData === 'object') ? ((kpiData as any).poStatusCounts || null) : null;
+                if (fromKpi && typeof fromKpi === 'object') {
+                    const counts: Record<string, number> = {};
+                    Object.entries(fromKpi as Record<string, any>).forEach(([k, v]) => {
+                        const n = Number(v) || 0;
+                        if (k) counts[k] = n;
+                    });
+                    if (active) {
+                        setPoStats(counts);
+                        setLoading(false);
+                    }
+                    return;
+                }
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
-                const { data }: any = await supabase.from('purchase_orders').select('status');
+                let q: any = supabase.from('purchase_orders').select('status,warehouse_id');
+                if (warehouseId) q = q.eq('warehouse_id', warehouseId);
+                const { data }: any = await q;
                 if (active && data) {
                     const counts: Record<string, number> = {};
                     data.forEach((po: any) => { counts[po.status] = (counts[po.status] || 0) + 1; });
@@ -847,14 +1017,12 @@ export const PurchasingSection: React.FC = () => {
         };
         load();
         return () => { active = false; };
-    }, [refreshKey]);
+    }, [kpiData, refreshKey]);
 
     const statuses = [
-        { key: 'pending', label: 'قيد الانتظار', color: '#eab308' },
-        { key: 'ordered', label: 'تم الطلب', color: '#3b82f6' },
-        { key: 'processing', label: 'قيد المعالجة', color: '#8b5cf6' },
-        { key: 'shipped', label: 'تم الشحن', color: '#f97316' },
-        { key: 'delivered', label: 'وصلت', color: '#22c55e' },
+        { key: 'draft', label: 'مسودة', color: '#eab308' },
+        { key: 'partial', label: 'استلام جزئي', color: '#8b5cf6' },
+        { key: 'completed', label: 'مكتمل', color: '#22c55e' },
         { key: 'cancelled', label: 'ملغي', color: '#9ca3af' },
     ];
 
@@ -896,6 +1064,22 @@ export const PurchasingSection: React.FC = () => {
                             );
                         })}
                     </div>
+                    {(purchasesTotal > 0 || purchaseReturnsTotal > 0) && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/50 space-y-1 text-[11px]">
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-500 dark:text-gray-400">مشتريات الفترة</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-gray-200">{fmtCompact(purchasesTotal)} <span className="text-[10px] font-normal text-gray-400">{currency}</span></span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-500 dark:text-gray-400">مرتجعات مشتريات</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-gray-200">{fmtCompact(purchaseReturnsTotal)} <span className="text-[10px] font-normal text-gray-400">{currency}</span></span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-500 dark:text-gray-400">صافي المشتريات</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-gray-200">{fmtCompact(netPurchases)} <span className="text-[10px] font-normal text-gray-400">{currency}</span></span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -910,9 +1094,10 @@ export const FinancialPositionCard: React.FC = () => {
 
     const { collected, ar, ap } = kpiData;
     const net = (collected || 0) + (ar || 0) - (ap || 0);
+    const dp = getCurrencyDecimalsByCode(currency);
 
     const items = [
-        { label: 'الكاش (مبيعات)', value: collected, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+        { label: 'تحصيل الفترة', value: collected, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
         { label: 'لي (مدينون)', value: ar, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
         { label: 'علي (دائنون)', value: ap, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
         { label: 'الصافي التقريبي', value: net, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-900/20', bold: true },
@@ -929,7 +1114,7 @@ export const FinancialPositionCard: React.FC = () => {
                     <div key={i} className={`p-3 rounded-xl ${item.bg}`}>
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">{item.label}</div>
                         <div className={`text-sm font-mono ${item.bold ? 'font-bold' : 'font-medium'} ${item.color}`}>
-                            {fmt(item.value)} <span className="text-[9px] text-gray-400">{currency}</span>
+                            {fmt(item.value, dp)} <span className="text-[9px] text-gray-400">{currency}</span>
                         </div>
                     </div>
                 ))}
@@ -944,7 +1129,7 @@ export const SalesStatusRow: React.FC = () => {
     if (!kpiData?.statusCounts) return null;
 
     const counts = kpiData.statusCounts.reduce((acc: any, curr: any) => {
-        acc[curr.status] = (acc[curr.status] || 0) + 1;
+        acc[curr.status] = (acc[curr.status] || 0) + (Number(curr.cnt) || 0);
         return acc;
     }, {});
 
@@ -952,7 +1137,7 @@ export const SalesStatusRow: React.FC = () => {
         { key: 'pending', label: 'انتظار', color: 'bg-yellow-100 text-yellow-700', icon: Icons.ClockIcon },
         { key: 'preparing', label: 'تحضير', color: 'bg-blue-100 text-blue-700', icon: Icons.RotateCwIcon },
         { key: 'out_for_delivery', label: 'توصيل', color: 'bg-orange-100 text-orange-700', icon: Icons.TruckIcon },
-        { key: 'delivered', label: 'تسليم', color: 'bg-green-100 text-green-700', icon: Icons.CheckCircleIcon },
+        { key: 'scheduled', label: 'مجدول', color: 'bg-purple-100 text-purple-700', icon: Icons.Calendar },
     ];
 
     return (
@@ -978,7 +1163,7 @@ export const SalesStatusRow: React.FC = () => {
 // 9. TOP DEBTORS
 export const TopDebtorsSection: React.FC = () => {
     const { hasPermission } = useAuth();
-    const { currency, refreshKey } = useDashboard();
+    const { currency, refreshKey, dateRange } = useDashboard();
     const [debtors, setDebtors] = useState<{ name: string; amount: number; overdueDays: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -1022,7 +1207,7 @@ export const TopDebtorsSection: React.FC = () => {
         };
         void load();
         return () => { active = false; };
-    }, [canView, refreshKey]);
+    }, [canView, refreshKey, dateRange]);
 
     if (!canView) return null;
     if (!loading && debtors.length === 0 && !error) return null;

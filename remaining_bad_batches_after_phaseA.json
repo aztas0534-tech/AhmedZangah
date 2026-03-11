@@ -1,0 +1,42 @@
+[
+  {
+    "batch_id": "3cb3bf70-1da9-415c-8650-226f03a050b8",
+    "item_id": "260ee5a8-5de8-469f-a0a2-b0cdb5871078",
+    "item_name": "ببسي جوي كولا *24علبة حديد*250ملي",
+    "quantity_received": "325",
+    "quantity_consumed": "325",
+    "quantity_transferred": "0",
+    "outbound_qty": "650",
+    "delta": "-325"
+  },
+  {
+    "batch_id": "3887e142-0cab-4e39-aac3-7ac66177a8f9",
+    "item_id": "0541c47c-30a2-4a8e-b2cb-ab0109169316",
+    "item_name": "مكرونة هوم سباجيتي طويل 20كيس*400جم",
+    "quantity_received": "3000",
+    "quantity_consumed": "3000",
+    "quantity_transferred": "0",
+    "outbound_qty": "3150",
+    "delta": "-150"
+  },
+  {
+    "batch_id": "6b38e6de-ee38-4240-a695-fe2d9b1d2cc4",
+    "item_id": "98f406f7-631a-480f-997b-5dc1e3fd09d9",
+    "item_name": "بسكويت ابو برنس عائلي *1*12حبة*500جم",
+    "quantity_received": "20",
+    "quantity_consumed": "20",
+    "quantity_transferred": "0",
+    "outbound_qty": "40",
+    "delta": "-20"
+  },
+  {
+    "batch_id": "c34ab819-7988-4c34-aa1d-65ca0495368e",
+    "item_id": "c383531c-733e-41e2-9601-fb48047451be",
+    "item_name": "حليب صفاء اكياس صغير 24*400جم",
+    "quantity_received": "120",
+    "quantity_consumed": "120",
+    "quantity_transferred": "0",
+    "outbound_qty": "121",
+    "delta": "-1"
+  }
+]

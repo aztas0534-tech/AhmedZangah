@@ -704,6 +704,9 @@ const ManageCustomersScreen: React.FC = () => {
                       if (normalized.includes('encryption key not configured')) {
                         return 'مفتاح تشفير بيانات العملاء غير مضبوط على الخادم.';
                       }
+                      if (normalized.includes('pgp_sym_encrypt') || normalized.includes('pgcrypto')) {
+                        return 'تشفير بيانات العملاء غير مهيأ على الخادم (pgcrypto). طبّق آخر هجرات Supabase ثم أعد المحاولة.';
+                      }
                       if (normalized.includes('forbidden') || normalized.includes('permission') || normalized.includes('not allowed')) {
                         return 'ليس لديك صلاحية إنشاء العملاء.';
                       }

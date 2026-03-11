@@ -4,6 +4,7 @@ let client: SupabaseClient | null = null;
 const RPC_STRICT_MODE_KEY = 'RPC_STRICT_MODE';
 const REALTIME_DISABLED_KEY = 'AZTA_DISABLE_REALTIME';
 export const SUPABASE_AUTH_ERROR_EVENT = 'AZTA_SUPABASE_AUTH_ERROR';
+export const SUPABASE_CONFIG_ERROR_EVENT = 'AZTA_SUPABASE_CONFIG_ERROR';
 let realtimeDisabled = false;
 let postgrestReloadAttempt: Promise<boolean> | null = null;
 const RPC_HAS_FUNCTION_TTL_MS = 10 * 60_000;
@@ -233,7 +234,6 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
     const headers = toHeaders(init?.headers);
     if (key) {
       if (!headers.has('apikey')) headers.set('apikey', key);
-      if (!headers.has('authorization')) headers.set('Authorization', `Bearer ${key}`);
     }
 
     const res = await baseFetch(input, { ...init, headers });
@@ -246,6 +246,12 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
           const cloned = res.clone();
           const txt = await cloned.text();
           const normalized = String(txt || '').toLowerCase();
+          const isMissingApiKey =
+            status === 400 &&
+            (normalized.includes('no api key found in request') ||
+              normalized.includes('no `apikey` request header') ||
+              normalized.includes('apikey request header') ||
+              normalized.includes('no apikey request header'));
           const isAuthHeaderIssue =
             normalized.includes('jwt cryptographic operation failed') ||
             normalized.includes('invalid jwt') ||
@@ -257,6 +263,9 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
               normalized.includes('refresh token not found') ||
               normalized.includes('refresh_token_not_found') ||
               normalized.includes('invalid_refresh_token'));
+          if (isMissingApiKey) {
+            window.dispatchEvent(new CustomEvent(SUPABASE_CONFIG_ERROR_EVENT, { detail: { status, url: urlStr, message: txt } }));
+          }
           if (isAuthHeaderIssue || isInvalidRefreshToken) {
             window.dispatchEvent(new CustomEvent(SUPABASE_AUTH_ERROR_EVENT, { detail: { status, url: urlStr, message: txt } }));
           }
@@ -324,7 +333,10 @@ export const getSupabaseClient = (): SupabaseClient | null => {
 
   client = createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-    global: { fetch: withSupabaseHeaders(baseFetch, anonKey) },
+    global: { 
+      fetch: withSupabaseHeaders(baseFetch, anonKey),
+      headers: { apikey: anonKey }
+    },
   });
 
   return client;

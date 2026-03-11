@@ -1,4 +1,4 @@
-select set_config('app.allow_ledger_ddl', '1', true);
+set app.allow_ledger_ddl = '1';
 
 do $$
 begin

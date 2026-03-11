@@ -1,0 +1,36 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260226050943
+Username: Nasr\nasrn
+RunAs User: Nasr\nasrn
+Configuration Name: 
+Machine: NASR (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -noexit -command try { . "c:\Users\nasrn\AppData\Local\Programs\Trae\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 27252
+PSVersion: 5.1.26100.7705
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.7705
+BuildVersion: 10.0.26100.7705
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is .\push_prod_output.txt
+PS C:\nasrflash\AhmedZ> powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\db-push-prod.ps1 -ProjectRef pmhivhtaoydfolseelyc
+Target project ref: pmhivhtaoydfolseelyc
+SUPABASE_ACCESS_TOKEN is not set. Trying Supabase CLI stored login...
+Supabase CLI login detected.
+C:\nasrflash\AhmedZ\scripts\db-push-prod.ps1 : DB password is required. Set -DbPassword or
+SUPABASE_DB_PASSWORD (or SUPABASE_PASSWORD).
+At C:\nasrflash\AhmedZ\scripts\db-push-prod.ps1:47 char:3
++   Write-Error "DB password is required. Set -DbPassword or SUPABASE_D ...
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,db-push-prod.
+   ps1
+PS C:\nasrflash\AhmedZ> Stop-Transcript
+**********************
+Windows PowerShell transcript end
+End time: 20260226050945
+**********************

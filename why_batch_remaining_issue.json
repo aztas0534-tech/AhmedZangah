@@ -1,0 +1,118 @@
+{
+  "batches": [
+    {
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "item_name": "ويفر ريتشوكو اصابع  بالشوكلاتة12باكت*24حبة",
+      "quantity_received": "600",
+      "quantity_consumed": "88",
+      "quantity_transferred": "0",
+      "remaining": "512",
+      "sale_out": "38",
+      "return_out": "50",
+      "wastage_out": "0",
+      "adjust_out": "0",
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "po_number": "PO-MAIN-2026-000002",
+      "po_status": "completed",
+      "unit_cost": "0.098131",
+      "foreign_unit_cost": "42.000000",
+      "foreign_currency": "YER",
+      "fx_rate_at_receipt": "0.002336448598130841",
+      "created_at": "2026-02-12T22:41:37.353Z"
+    },
+    {
+      "batch_id": "0e92b972-8333-41e8-9ddc-cb2e34e8e7f9",
+      "item_id": "0cfde9d0-68fe-409e-9958-f63fe350acc4",
+      "item_name": "ويفر ريتشوكو اصابع  بالشوكلاتة12باكت*24حبة",
+      "quantity_received": "600",
+      "quantity_consumed": "50",
+      "quantity_transferred": "0",
+      "remaining": "550",
+      "sale_out": "0",
+      "return_out": "50",
+      "wastage_out": "0",
+      "adjust_out": "0",
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "po_number": "PO-MAIN-2026-000003",
+      "po_status": "completed",
+      "unit_cost": "3.5000000000000000",
+      "foreign_unit_cost": null,
+      "foreign_currency": null,
+      "fx_rate_at_receipt": null,
+      "created_at": "2026-02-12T22:59:14.087Z"
+    }
+  ],
+  "movements": [
+    {
+      "movement_id": "bee27874-3f83-438a-9e14-627774b6a7ae",
+      "movement_type": "purchase_in",
+      "quantity": "600",
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "reference_table": "purchase_receipts",
+      "reference_id": "218f4547-e896-4f2f-97f1-839eb58cb179",
+      "occurred_at": "2026-02-12T22:41:38.360Z",
+      "data_po": "8d2f585c-752a-4102-9efd-2417ec994a2e"
+    },
+    {
+      "movement_id": "e179324e-514b-471f-b31c-536c3e0d7872",
+      "movement_type": "purchase_in",
+      "quantity": "600",
+      "batch_id": "0e92b972-8333-41e8-9ddc-cb2e34e8e7f9",
+      "reference_table": "purchase_receipts",
+      "reference_id": "5054954f-c06a-43e7-b677-15338b53d926",
+      "occurred_at": "2026-02-12T22:59:14.784Z",
+      "data_po": "fea79095-8def-4609-a1b3-c106c9e2ae57"
+    },
+    {
+      "movement_id": "eefe53da-4389-4e2c-82b6-3028ad379fe3",
+      "movement_type": "return_out",
+      "quantity": "50",
+      "batch_id": "0e92b972-8333-41e8-9ddc-cb2e34e8e7f9",
+      "reference_table": "purchase_returns",
+      "reference_id": "414ef233-8fce-4b7b-a771-e93940b34938",
+      "occurred_at": "2026-02-13T21:37:19.561Z",
+      "data_po": "fea79095-8def-4609-a1b3-c106c9e2ae57"
+    },
+    {
+      "movement_id": "e7e573df-76be-4aca-a85c-dad4eb59817c",
+      "movement_type": "return_out",
+      "quantity": "50",
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "reference_table": "purchase_returns",
+      "reference_id": "22c1f460-79a9-45d7-9be0-182a239cef8a",
+      "occurred_at": "2026-02-13T21:41:11.589Z",
+      "data_po": "8d2f585c-752a-4102-9efd-2417ec994a2e"
+    },
+    {
+      "movement_id": "86689611-c240-4596-9859-f5c95bca2eaf",
+      "movement_type": "sale_out",
+      "quantity": "2",
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "reference_table": "orders",
+      "reference_id": "4b7df327-601f-4ab0-a1b6-3c009f34204a",
+      "occurred_at": "2026-02-28T18:56:18.412Z",
+      "data_po": null
+    },
+    {
+      "movement_id": "917c4d22-14ae-4883-874d-6530004aaf6f",
+      "movement_type": "sale_out",
+      "quantity": "12",
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "reference_table": "orders",
+      "reference_id": "0d604fbd-6858-40aa-a6ba-1d0b308dd28e",
+      "occurred_at": "2026-02-28T21:56:31.434Z",
+      "data_po": null
+    },
+    {
+      "movement_id": "5e1d93ca-5067-4352-b099-97591570b24b",
+      "movement_type": "sale_out",
+      "quantity": "24",
+      "batch_id": "c06a1518-4b95-4695-8bdd-3f7fefbce2aa",
+      "reference_table": "orders",
+      "reference_id": "03cb261c-19ed-48bd-bbc5-8ec93a2478ed",
+      "occurred_at": "2026-03-01T04:23:34.929Z",
+      "data_po": null
+    }
+  ]
+}

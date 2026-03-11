@@ -301,9 +301,15 @@ on public.transfer_recipients
 for all
 using (public.is_admin())
 with check (public.is_admin());
-insert into storage.buckets (id, name, public)
-values ('menu-images', 'menu-images', true)
-on conflict (id) do update set name = excluded.name, public = excluded.public;
+do $$
+begin
+  if to_regclass('storage.buckets') is not null then
+    insert into storage.buckets (id, name, public)
+    values ('menu-images', 'menu-images', true)
+    on conflict (id) do update set name = excluded.name, public = excluded.public;
+  end if;
+end
+$$;
 -- The following lines are commented out or removed because they require superuser/owner permissions on storage schema
 -- alter table storage.objects enable row level security;
 -- drop policy if exists "Public Access Menu Images" on storage.objects;

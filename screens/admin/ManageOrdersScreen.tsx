@@ -11,6 +11,7 @@ import { adminStatusColors } from '../../utils/orderUtils';
 import Spinner from '../../components/Spinner';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import PrintableOrder from '../../components/admin/PrintableOrder';
+import PrintableQuotation from '../../components/admin/documents/PrintableQuotation';
 import { useDeliveryZones } from '../../contexts/DeliveryZoneContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
@@ -23,10 +24,14 @@ import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useGovernance } from '../../contexts/GovernanceContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
-import { printReceiptVoucherByPaymentId } from '../../utils/vouchers';
+import { printJournalVoucherByEntryId, printPaymentVoucherByPaymentId, printReceiptVoucherByPaymentId } from '../../utils/vouchers';
+import { printSalesReturnById } from '../../utils/returnsPrint';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
+import { getCurrencyDecimalsByCode as sharedGetCurrencyDecimals, initCurrencyDecimals } from '../../utils/currencyDecimals';
+import { inferDestinationParentCode, matchesDestinationCurrency } from '../../utils/accountDestinationUtils';
+import { Trash } from '../../components/icons';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -59,12 +64,13 @@ const unitTranslations: Record<string, string> = {
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow } = useOrders();
+    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders } = useOrders();
     const { createReturn, processReturn, getReturnsByOrder } = useSalesReturn();
     const { showNotification } = useToast();
     const language = 'ar';
     const { settings } = useSettings();
     const [baseCode, setBaseCode] = useState('—');
+    useEffect(() => { void initCurrencyDecimals(); }, []);
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
     const isInStoreOrder = (order: Order) => {
         if (!order) return false;
@@ -86,16 +92,19 @@ const ManageOrdersScreen: React.FC = () => {
     // Return Logic State
     const [returnOrderId, setReturnOrderId] = useState<string | null>(null);
     const [returnItems, setReturnItems] = useState<Record<string, number>>({});
+    const [returnUnits, setReturnUnits] = useState<Record<string, string>>({});
     const [isCreatingReturn, setIsCreatingReturn] = useState(false);
     const [returnReason, setReturnReason] = useState('');
-    const [refundMethod, setRefundMethod] = useState<'cash' | 'network' | 'kuraimi'>('cash');
+    const [refundMethod, setRefundMethod] = useState<'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit'>('cash');
     const [voidOrderId, setVoidOrderId] = useState<string | null>(null);
     const [voidReason, setVoidReason] = useState('');
     const [isVoidingOrder, setIsVoidingOrder] = useState(false);
+    const inStoreCreationLock = useRef(false);
     const [returnsOrderId, setReturnsOrderId] = useState<string | null>(null);
     const [returnsByOrderId, setReturnsByOrderId] = useState<Record<string, any[]>>({});
     const [returnsLoading, setReturnsLoading] = useState(false);
     const [returnsActionBusy, setReturnsActionBusy] = useState<{ id: string; action: 'process' | 'cancel' | '' }>({ id: '', action: '' });
+    const [returnsDocsRepairing, setReturnsDocsRepairing] = useState(false);
     const returnsOrder = useMemo(() => {
         if (!returnsOrderId) return null;
         return orders.find(o => o.id === returnsOrderId) || null;
@@ -105,15 +114,27 @@ const ManageOrdersScreen: React.FC = () => {
     const { hasPermission, listAdminUsers, user: adminUser } = useAuth();
     const { currentShift } = useCashShift();
     const sessionScope = useSessionScope();
-    const { getWarehouseById } = useWarehouses();
+    const { warehouses, getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
     const { isWeightBasedUnit } = useItemMeta();
     const { guardPosting } = useGovernance();
-    const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
+    const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all' | 'delivered_no_returns'>('all');
+    const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
+    const [filterCurrency, setFilterCurrency] = useState<string>('all');
+    const [filterDateFrom, setFilterDateFrom] = useState('');
+    const [filterDateTo, setFilterDateTo] = useState('');
+    const [returnsOnly, setReturnsOnly] = useState(false);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
+    const [customerNameFilter, setCustomerNameFilter] = useState('');
+    const [filterShiftId, setFilterShiftId] = useState<string>('all');
+    const [recentShifts, setRecentShifts] = useState<any[]>([]);
+    const [adminUserMap, setAdminUserMap] = useState<Record<string, string>>({});
     const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [purgePaymentOrderId, setPurgePaymentOrderId] = useState<string | null>(null);
+    const [isPurgingPayment, setIsPurgingPayment] = useState(false);
+    const [purgePaymentReason, setPurgePaymentReason] = useState('');
     const [expandedAuditOrderId, setExpandedAuditOrderId] = useState<string | null>(null);
     const [auditLoadingOrderId, setAuditLoadingOrderId] = useState<string | null>(null);
     const [auditByOrderId, setAuditByOrderId] = useState<Record<string, OrderAuditEvent[]>>({});
@@ -121,6 +142,32 @@ const ManageOrdersScreen: React.FC = () => {
     const [deliverPinOrderId, setDeliverPinOrderId] = useState<string | null>(null);
     const [deliveryPinInput, setDeliveryPinInput] = useState('');
     const [isDeliverConfirming, setIsDeliverConfirming] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        const fetchShifts = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            try {
+                const { data } = await supabase.from('cash_shifts').select('id, cashier_id, opened_at, closed_at').order('opened_at', { ascending: false }).limit(30);
+                if (active && Array.isArray(data)) setRecentShifts(data);
+            } catch { }
+        };
+        fetchShifts();
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        listAdminUsers().then(users => {
+            if (!active) return;
+            const m: Record<string, string> = {};
+            users.forEach(u => m[u.id] = (u as any).fullName || u.email || u.id);
+            setAdminUserMap(m);
+        }).catch(() => { });
+        return () => { active = false; };
+    }, [listAdminUsers]);
+
     const [isInStoreSaleOpen, setIsInStoreSaleOpen] = useState(false);
     const [isInStoreCreating, setIsInStoreCreating] = useState(false);
     const [inStoreIsCredit, setInStoreIsCredit] = useState(false); // NEW: Credit Sale State
@@ -128,6 +175,12 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreCreditDueDate, setInStoreCreditDueDate] = useState<string>('');
     const [inStoreCreditSummary, setInStoreCreditSummary] = useState<any | null>(null);
     const [inStoreCreditSummaryLoading, setInStoreCreditSummaryLoading] = useState(false);
+    const [inStoreCreditOverrideModalOpen, setInStoreCreditOverrideModalOpen] = useState(false);
+    const [inStoreCreditOverrideReason, setInStoreCreditOverrideReason] = useState('');
+    const [inStoreCreditOverridePending, setInStoreCreditOverridePending] = useState<any | null>(null);
+    const [inStoreBelowCostModalOpen, setInStoreBelowCostModalOpen] = useState(false);
+    const [inStoreBelowCostReason, setInStoreBelowCostReason] = useState('');
+    const [inStoreBelowCostPending, setInStoreBelowCostPending] = useState<{ payload: any; creditOverrideReason?: string; pendingOrderId?: string } | null>(null);
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
         items.sort((a, b) => {
@@ -140,6 +193,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreCustomerName, setInStoreCustomerName] = useState('');
     const [inStorePhoneNumber, setInStorePhoneNumber] = useState('');
     const [inStoreNotes, setInStoreNotes] = useState('');
+    const [inStoreInvoiceStatement, setInStoreInvoiceStatement] = useState('');
     const [inStorePaymentMethod, setInStorePaymentMethod] = useState('cash');
     const [inStorePaymentReferenceNumber, setInStorePaymentReferenceNumber] = useState('');
     const [inStorePaymentSenderName, setInStorePaymentSenderName] = useState('');
@@ -160,26 +214,99 @@ const ManageOrdersScreen: React.FC = () => {
         declaredAmount?: number;
         amountConfirmed?: boolean;
         cashReceived?: number;
+        destinationAccountId?: string;
     }>>([]);
+    const [destinationAccounts, setDestinationAccounts] = useState<{id: string, name: string, code: string, parentCode: string}[]>([]);
+    const [inStorePaymentDestinationAccountId, setInStorePaymentDestinationAccountId] = useState<string>('');
+    const [partialPaymentDestinationAccountId, setPartialPaymentDestinationAccountId] = useState<string>('');
+
+    useEffect(() => {
+        const fetchAccounts = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const { data } = await supabase
+                .from('chart_of_accounts')
+                .select(`id, code, name`)
+                .eq('is_active', true);
+            if (data) {
+                const matching = (data || [])
+                    .map((a: any) => {
+                        const parentCode = inferDestinationParentCode(String(a?.code || ''), '');
+                        return {
+                            id: String(a?.id || ''),
+                            name: String(a?.name || ''),
+                            code: String(a?.code || '').toUpperCase(),
+                            parentCode: parentCode || '',
+                        };
+                    })
+                    .filter((a: any) => Boolean(a.id) && (a.parentCode === '1020' || a.parentCode === '1030'));
+                setDestinationAccounts(matching);
+            }
+        };
+        fetchAccounts();
+    }, []);
     const [editOrderId, setEditOrderId] = useState<string | null>(null);
     const [editChangesByCartItemId, setEditChangesByCartItemId] = useState<Record<string, { quantity?: number; uomCode?: string; uomQtyInBase?: number }>>({});
     const [editReservationResult, setEditReservationResult] = useState<Array<{ itemId: string; released: number; reserved: number; name?: string }>>([]);
     const [inStoreSelectedItemId, setInStoreSelectedItemId] = useState<string>('');
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
-    const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number }>>([]);
-    const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing'>('walk_in');
+    const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }>>([]);
+    const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing' | 'party'>('walk_in');
     const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
     const [inStoreCustomerMatches, setInStoreCustomerMatches] = useState<Array<{ id: string; fullName?: string; phoneNumber?: string }>>([]);
     const [inStoreCustomerSearching, setInStoreCustomerSearching] = useState(false);
     const [inStoreCustomerDropdownOpen, setInStoreCustomerDropdownOpen] = useState(false);
     const [inStoreCustomerSearchResult, setInStoreCustomerSearchResult] = useState<{ id: string; fullName?: string; phoneNumber?: string } | null>(null);
     const [inStoreSelectedCustomerId, setInStoreSelectedCustomerId] = useState<string>('');
+    const [inStoreSelectedPartyId, setInStoreSelectedPartyId] = useState<string>('');
+    const [inStorePartyOptions, setInStorePartyOptions] = useState<Array<{ id: string; name: string; type?: string }>>([]);
+    const [inStorePartyLoading, setInStorePartyLoading] = useState(false);
     const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
-    const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number }>>({});
+    const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean }>>({});
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
+
+    // ── Warehouse FEFO alerts for In-Store Sale ──
+    type WarehouseAlert = { type: string; severity: 'error' | 'warning' | 'info' | 'success'; message: string; other_warehouse_id?: string; other_warehouse?: string;[k: string]: any };
+    const [inStoreAlertsByIndex, setInStoreAlertsByIndex] = useState<Record<number, WarehouseAlert[]>>({});
+    const [inStoreAlertsLoadingByIndex, setInStoreAlertsLoadingByIndex] = useState<Record<number, boolean>>({});
+
+
+
+    const fetchInStoreAlerts = useCallback(async (index: number, itemId: string, whId: string, qty: number) => {
+        const supabase = getSupabaseClient();
+        if (!supabase || !itemId || !whId) return;
+        setInStoreAlertsLoadingByIndex(prev => ({ ...prev, [index]: true }));
+        try {
+            const { data, error } = await supabase.rpc('get_warehouse_item_alerts', {
+                p_item_id: itemId, p_warehouse_id: whId, p_requested_qty: qty,
+            } as any);
+            if (error) throw error;
+            setInStoreAlertsByIndex(prev => ({ ...prev, [index]: Array.isArray(data) ? data : [] }));
+        } catch {
+            setInStoreAlertsByIndex(prev => ({ ...prev, [index]: [] }));
+        } finally {
+            setInStoreAlertsLoadingByIndex(prev => ({ ...prev, [index]: false }));
+        }
+    }, [getSupabaseClient]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        inStoreLines.forEach((line, index) => {
+            const iid = String(line.menuItemId || '').trim();
+            const wh = String(line.warehouseId || sessionScope.scope?.warehouseId || '').trim();
+            if (!iid || !wh) return;
+            const mi = allMenuItems.find(m => m.id === iid);
+            if (!mi) return;
+            const isWeight = mi.unitType === 'kg' || mi.unitType === 'gram';
+            const rawQty = isWeight ? Number(line.weight || 0) : Number(line.quantity || 0);
+            const factor = Number(line.uomQtyInBase || 1) || 1;
+            const qty = rawQty * factor;
+            void fetchInStoreAlerts(index, iid, wh, qty);
+        });
+    }, [inStoreLines, sessionScope.scope?.warehouseId, isInStoreSaleOpen, fetchInStoreAlerts, allMenuItems]);
 
     useEffect(() => {
         let active = true;
@@ -237,6 +364,65 @@ const ManageOrdersScreen: React.FC = () => {
             })();
         }
     }, [getSupabaseClient, inStoreLines, isInStoreSaleOpen]);
+    useEffect(() => {
+        if (!returnOrderId) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const order = orders.find(o => o.id === returnOrderId);
+        if (!order) return;
+        const ids = Array.from(new Set((order.items || []).map((r: any) => String(r.id || r.menuItemId || '').trim()).filter(Boolean)));
+        if (!ids.length) return;
+        for (const id of ids) {
+            if (itemUomRowsByItemId[id]) continue;
+            if (itemUomLoadingRef.current.has(id)) continue;
+            itemUomLoadingRef.current.add(id);
+            (async () => {
+                try {
+                    const { data, error } = await supabase.rpc('list_item_uom_units', { p_item_id: id } as any);
+                    if (error) throw error;
+                    const rows = Array.isArray(data) ? data : [];
+                    const normalized: Array<{ code: string; name?: string; qtyInBase: number }> = rows
+                        .filter((r: any) => Boolean(r?.is_active))
+                        .map((r: any) => ({
+                            code: String(r?.uom_code || '').trim(),
+                            name: String(r?.uom_name || '').trim() || undefined,
+                            qtyInBase: Number(r?.qty_in_base || 0) || 0,
+                        }))
+                        .filter((r) => r.code && r.qtyInBase > 0);
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: normalized }));
+                } catch {
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: [] }));
+                } finally {
+                    itemUomLoadingRef.current.delete(id);
+                }
+            })();
+        }
+    }, [getSupabaseClient, orders, returnOrderId, itemUomRowsByItemId]);
+
+    const getReturnUomOptions = (orderItem: any, itemId: string) => {
+        const unitType = String(orderItem?.unitType || orderItem?.unit || 'piece').trim();
+        const baseCode = unitType.toLowerCase();
+        const baseOption = { code: baseCode, name: unitType, qtyInBase: 1 };
+        const fromMap = itemUomRowsByItemId[itemId] || [];
+        const fromItem = Array.isArray(orderItem?.uomUnits)
+            ? (orderItem.uomUnits as Array<{ code?: string; name?: string; qtyInBase?: number }>)
+            : [];
+        const orderUomCode = String(orderItem?.uomCode || '').trim().toLowerCase();
+        const orderUomQty = Number(orderItem?.uomQtyInBase || 0) || 0;
+        const merged = [
+            baseOption,
+            ...fromMap.map(r => ({ code: String(r.code || '').trim().toLowerCase(), name: r.name, qtyInBase: Number(r.qtyInBase || 0) || 0 })),
+            ...fromItem.map(r => ({ code: String(r.code || '').trim().toLowerCase(), name: r.name, qtyInBase: Number(r.qtyInBase || 0) || 0 })),
+        ].filter(r => r.code && r.qtyInBase > 0);
+        if (orderUomCode && orderUomQty > 0) {
+            merged.push({ code: orderUomCode, name: orderUomCode, qtyInBase: orderUomQty });
+        }
+        const uniq = new Map<string, { code: string; name?: string; qtyInBase: number }>();
+        for (const opt of merged) {
+            if (!uniq.has(opt.code)) uniq.set(opt.code, opt);
+        }
+        return Array.from(uniq.values()).sort((a, b) => a.qtyInBase - b.qtyInBase);
+    };
     const operationalCurrencies = useMemo(() => {
         const fromSettings = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
             ? settings.operationalCurrencies
@@ -262,10 +448,39 @@ const ManageOrdersScreen: React.FC = () => {
         if (next) setInStoreTransactionCurrency(next);
     }, [inStoreTransactionCurrency, operationalCurrencies]);
 
+    const getCurrencyDecimalsByCode = (code: string) => {
+        return sharedGetCurrencyDecimals(code);
+    };
+    const formatMoneyByCode = (v: number, code: string) => {
+        const n = Number(v);
+        const dp = getCurrencyDecimalsByCode(code);
+        if (!Number.isFinite(n)) {
+            try {
+                return (0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+            } catch {
+                return (0).toFixed(dp);
+            }
+        }
+        try {
+            return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+        } catch {
+            return n.toFixed(dp);
+        }
+    };
+    const roundMoneyByCode = (v: number, code: string) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 0;
+        const dp = getCurrencyDecimalsByCode(code);
+        const pow = Math.pow(10, dp);
+        return Math.round(n * pow) / pow;
+    };
+    const getCurrencyDecimals = (code: string) => getCurrencyDecimalsByCode(code);
     const roundMoney = (v: number) => {
         const n = Number(v);
         if (!Number.isFinite(n)) return 0;
-        return Math.round(n * 100) / 100;
+        const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+        const pow = Math.pow(10, dp);
+        return Math.round(n * pow) / pow;
     };
 
     const fetchInStoreCustomerMatches = useCallback(async (query: string, opts?: { silent?: boolean }) => {
@@ -339,6 +554,40 @@ const ManageOrdersScreen: React.FC = () => {
             window.clearTimeout(t);
         };
     }, [fetchInStoreCustomerMatches, inStoreCustomerMode, inStoreCustomerPhoneSearch, isInStoreSaleOpen]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        if (inStoreCustomerMode !== 'party') return;
+        let active = true;
+        (async () => {
+            try {
+                setInStorePartyLoading(true);
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data, error } = await supabase
+                    .from('financial_parties')
+                    .select('id, name, party_type')
+                    .eq('is_active', true)
+                    .in('party_type', ['customer', 'partner', 'generic', 'supplier', 'employee'])
+                    .order('name', { ascending: true })
+                    .limit(500);
+                if (error) throw error;
+                const list = (Array.isArray(data) ? data : [])
+                    .map((r: any) => ({
+                        id: String(r?.id || ''),
+                        name: String(r?.name || '').trim(),
+                        type: String(r?.party_type || '').trim(),
+                    }))
+                    .filter((r) => r.id && r.name);
+                if (active) setInStorePartyOptions(list);
+            } catch {
+                if (active) setInStorePartyOptions([]);
+            } finally {
+                if (active) setInStorePartyLoading(false);
+            }
+        })();
+        return () => { active = false; };
+    }, [inStoreCustomerMode, isInStoreSaleOpen]);
 
     const convertBaseToInStoreTxn = (baseAmount: number, rate: number) => {
         const r = Number(rate) || 0;
@@ -465,6 +714,11 @@ const ManageOrdersScreen: React.FC = () => {
     const [partialPaymentMethod, setPartialPaymentMethod] = useState<string>('cash');
     const [partialPaymentOccurredAt, setPartialPaymentOccurredAt] = useState<string>('');
     const [isRecordingPartialPayment, setIsRecordingPartialPayment] = useState(false);
+    const [partialPaymentReferenceNumber, setPartialPaymentReferenceNumber] = useState<string>('');
+    const [partialPaymentSenderName, setPartialPaymentSenderName] = useState<string>('');
+    const [partialPaymentSenderPhone, setPartialPaymentSenderPhone] = useState<string>('');
+    const [partialPaymentDeclaredAmount, setPartialPaymentDeclaredAmount] = useState<number>(0);
+    const [partialPaymentAmountConfirmed, setPartialPaymentAmountConfirmed] = useState(false);
     const [partialPaymentAdvancedAccounting, setPartialPaymentAdvancedAccounting] = useState(false);
     const [partialPaymentOverrideAccountId, setPartialPaymentOverrideAccountId] = useState<string>('');
     const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string }>>([]);
@@ -473,15 +727,70 @@ const ManageOrdersScreen: React.FC = () => {
     const [codAuditOrderId, setCodAuditOrderId] = useState<string | null>(null);
     const [codAuditLoading, setCodAuditLoading] = useState(false);
     const [codAuditData, setCodAuditData] = useState<any>(null);
+    const [resumePendingBusyId, setResumePendingBusyId] = useState<string>('');
+    const [resumePendingBelowCostOrderId, setResumePendingBelowCostOrderId] = useState<string | null>(null);
+    const [resumePendingBelowCostReason, setResumePendingBelowCostReason] = useState('');
 
     const searchParams = new URLSearchParams(location.search);
     const highlightedOrderId = (searchParams.get('orderId') || '') || (typeof (location.state as any)?.orderId === 'string' ? (location.state as any).orderId : '');
 
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
+    const isOwner = adminUser?.role === 'owner';
+    const isManager = adminUser?.role === 'manager';
     const canVoidDelivered = hasPermission('accounting.void');
 
     const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
+    const canOverrideBelowCost = useMemo(() => {
+        if (adminUser?.role === 'owner' || adminUser?.role === 'manager') return true;
+        return Boolean((settings as any)?.ALLOW_BELOW_COST_SALES) && hasPermission('sales.allowBelowCost' as any);
+    }, [adminUser?.role, hasPermission, settings]);
+
+    const attemptResumeInStorePending = useCallback(async (order: Order, belowCostOverrideReason?: string) => {
+        if (!order || order.status !== 'pending' || !isInStoreOrder(order)) return;
+        const canMarkPaidNow = hasPermission('orders.markPaid');
+        if (!canMarkPaidNow) {
+            showNotification('لا تملك صلاحية إتمام البيع المعلّق.', 'error');
+            return;
+        }
+        if (resumePendingBusyId) return;
+
+        const pbRaw = (order as any)?.paymentBreakdown ?? (order as any)?.data?.paymentBreakdown;
+        const paymentBreakdown = Array.isArray(pbRaw) ? pbRaw : [];
+        const paymentMethod = String((order as any)?.paymentMethod ?? (order as any)?.data?.paymentMethod ?? 'cash').trim() || 'cash';
+        const occurredAt = new Date().toISOString();
+        const cashAmount = paymentBreakdown
+            .filter((p: any) => String(p?.method || '').trim() === 'cash')
+            .reduce((s: number, p: any) => s + (Number(p?.amount) || 0), 0);
+        const hasCash = cashAmount > 0.000000001 || (paymentBreakdown.length === 0 && paymentMethod === 'cash');
+        if (hasCash && !currentShift) {
+            showNotification('يجب فتح وردية نقدية قبل إتمام أي مبلغ نقدي.', 'error');
+            return;
+        }
+
+        setResumePendingBusyId(order.id);
+        try {
+            await resumeInStorePendingOrder(order.id, {
+                paymentMethod,
+                paymentBreakdown: paymentBreakdown.length ? paymentBreakdown : undefined,
+                occurredAt,
+                belowCostOverrideReason: belowCostOverrideReason ? String(belowCostOverrideReason).trim() : undefined,
+            });
+            showNotification(`تم إتمام البيع المعلّق #${order.id.slice(-6).toUpperCase()}`, 'success');
+            try { await fetchOrders(); } catch { }
+        } catch (error: any) {
+            const raw = String(error?.message || '');
+            const isBelowCostReason = /يلزم إدخال سبب/i.test(raw) || /تحت التكلفة/i.test(raw) || /below_cost/i.test(raw);
+            if (canOverrideBelowCost && isBelowCostReason) {
+                setResumePendingBelowCostOrderId(order.id);
+                setResumePendingBelowCostReason('');
+                return;
+            }
+            showNotification(raw || 'فشل إتمام البيع المعلّق.', 'error');
+        } finally {
+            setResumePendingBusyId('');
+        }
+    }, [canOverrideBelowCost, currentShift, fetchOrders, hasPermission, isInStoreOrder, resumeInStorePendingOrder, resumePendingBusyId, showNotification]);
     const inStoreAvailablePaymentMethods = useMemo(() => {
         const enabled = Object.entries(settings.paymentMethods || {})
             .filter(([, isEnabled]) => Boolean(isEnabled))
@@ -547,8 +856,8 @@ const ManageOrdersScreen: React.FC = () => {
             return `${l.menuItemId}:${unitType}:${qty}:u${uomQty}:p${priceSig}`;
         }).sort().join('|');
         const wh = sessionScope.scope?.warehouseId || '';
-        return `${base}|cust:${inStoreSelectedCustomerId || ''}|wh:${wh}`;
-    }, [inStoreLines, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId]);
+        return `${base}|cust:${inStoreSelectedCustomerId || ''}|wh:${wh}|cur:${inStoreTransactionCurrency}`;
+    }, [inStoreLines, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId, inStoreTransactionCurrency]);
 
     useEffect(() => {
         if (!isInStoreSaleOpen || !inStoreLines.length) {
@@ -589,7 +898,7 @@ const ManageOrdersScreen: React.FC = () => {
                 }
 
                 const results = await Promise.all(Array.from(uniq.values()).map(async (r) => {
-                    const fallback = async () => {
+                        const fallback = async () => {
                         const mi = menuItems.find(m => m.id === r.itemId);
                         if (!mi) return { key: r.key, unitPrice: 0, unitType: r.unitType };
                         const baseUnitPrice = mi.unitType === 'gram' && Number(mi.pricePerUnit || 0) > 0
@@ -597,24 +906,44 @@ const ManageOrdersScreen: React.FC = () => {
                             : (Number(mi.price) || 0);
                         const unitPrice = Number(baseUnitPrice) || 0;
                         const unitPricePerKg = r.unitType === 'gram' ? unitPrice * 1000 : undefined;
-                        return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
+                            return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: false };
                     };
 
-                    // Prefer local pricing for in-store sales; skip server suggested pricing
-                    if (warehouseId) {
-                        return await fallback();
+                    // Use FEFO batch pricing from server when warehouse is available
+                    if (warehouseId && supabase) {
+                        try {
+                            const customerId = inStoreSelectedCustomerId || undefined;
+                            const { data: fefo, error: fefoErr } = await supabase.rpc('get_fefo_pricing', {
+                                p_item_id: r.itemId,
+                                p_warehouse_id: warehouseId,
+                                p_quantity: r.pricingQty,
+                                p_customer_id: customerId || null,
+                                p_currency_code: inStoreTransactionCurrency || null,
+                            } as any);
+                            if (fefoErr || !fefo || (Array.isArray(fefo) && fefo.length === 0)) {
+                                return await fallback();
+                            }
+                            const row = Array.isArray(fefo) ? fefo[0] : fefo;
+                            const suggestedPrice = Number(row?.suggested_price) || 0;
+                            if (suggestedPrice <= 0) return await fallback();
+                            const unitPricePerKg = r.unitType === 'gram' ? suggestedPrice * 1000 : undefined;
+                            return { key: r.key, unitPrice: suggestedPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: true };
+                        } catch {
+                            return await fallback();
+                        }
                     }
 
                     return await fallback();
                 }));
 
                 if (cancelled) return;
-                const next: Record<string, { unitPrice: number; unitPricePerKg?: number }> = {};
+                const next: Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean }> = {};
                 for (const row of results) {
                     if (!row?.key) continue;
                     next[String(row.key)] = {
                         unitPrice: Number(row.unitPrice) || 0,
-                        unitPricePerKg: row.unitPricePerKg != null ? (Number(row.unitPricePerKg) || 0) : undefined
+                        unitPricePerKg: row.unitPricePerKg != null ? (Number(row.unitPricePerKg) || 0) : undefined,
+                        isTxnPrice: Boolean((row as any).isTxnPrice),
                     };
                 }
                 setInStorePricingMap(next);
@@ -633,6 +962,25 @@ const ManageOrdersScreen: React.FC = () => {
             cancelled = true;
         };
     }, [inStorePricingSignature]);
+
+    const inStoreMissingServerPricing = useMemo(() => {
+        if (!isInStoreSaleOpen || !inStoreLines.length) return false;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+        for (const l of inStoreLines) {
+            const mi = menuItems.find(m => m.id === l.menuItemId);
+            if (!mi) return true;
+            const unitType = mi.unitType || 'piece';
+            const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const pricingQty = (unitType === 'kg' || unitType === 'gram')
+                ? (Number(l.weight) || Number(l.quantity) || 0)
+                : ((Number(l.quantity) || 0) * uomQty);
+            if (!(pricingQty > 0)) continue;
+            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+            const priced = inStorePricingMap[key];
+            if (!priced) return true;
+        }
+        return false;
+    }, [inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems]);
 
     useEffect(() => {
         const fetchDriverBalances = async () => {
@@ -659,15 +1007,35 @@ const ManageOrdersScreen: React.FC = () => {
         const loadCreditSummary = async () => {
             if (!isInStoreSaleOpen) return;
             if (!inStoreIsCredit) return;
-            const customerId = String(inStoreSelectedCustomerId || '').trim();
-            if (!customerId) return;
             const supabase = getSupabaseClient();
             if (!supabase) return;
             setInStoreCreditSummaryLoading(true);
             try {
-                const { data, error } = await supabase.rpc('get_customer_credit_summary', { p_customer_id: customerId });
-                if (error) throw error;
-                setInStoreCreditSummary(data || null);
+                if (inStoreCustomerMode === 'existing') {
+                    const customerId = String(inStoreSelectedCustomerId || '').trim();
+                    if (!customerId) {
+                        setInStoreCreditSummary(null);
+                        return;
+                    }
+                    const { data, error } = await supabase.rpc('get_customer_credit_summary', { p_customer_id: customerId });
+                    if (error) throw error;
+                    setInStoreCreditSummary(data || null);
+                    return;
+                }
+
+                if (inStoreCustomerMode === 'party') {
+                    const partyId = String(inStoreSelectedPartyId || '').trim();
+                    if (!partyId) {
+                        setInStoreCreditSummary(null);
+                        return;
+                    }
+                    const { data, error } = await supabase.rpc('get_party_credit_summary', { p_party_id: partyId });
+                    if (error) throw error;
+                    setInStoreCreditSummary(data || null);
+                    return;
+                }
+
+                setInStoreCreditSummary(null);
             } catch {
                 setInStoreCreditSummary(null);
             } finally {
@@ -675,7 +1043,7 @@ const ManageOrdersScreen: React.FC = () => {
             }
         };
         loadCreditSummary();
-    }, [inStoreIsCredit, inStoreSelectedCustomerId, isInStoreSaleOpen]);
+    }, [inStoreIsCredit, inStoreCustomerMode, inStoreSelectedCustomerId, inStoreSelectedPartyId, isInStoreSaleOpen]);
 
     const openCodAudit = async (orderId: string) => {
         if (!canViewAccounting) return;
@@ -719,8 +1087,18 @@ const ManageOrdersScreen: React.FC = () => {
         return toYmd(dt);
     };
 
-    const parseRefundMethod = useCallback((value: string): 'cash' | 'network' | 'kuraimi' => {
-        if (value === 'cash' || value === 'network' || value === 'kuraimi') return value;
+    const parseRefundMethod = useCallback((value: string): 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit' => {
+        if (value === 'cash' || value === 'network' || value === 'kuraimi' || value === 'ar' || value === 'store_credit') return value;
+        return 'cash';
+    }, []);
+
+    const detectRefundMethod = useCallback((order: Order): 'cash' | 'network' | 'kuraimi' | 'ar' | 'store_credit' => {
+        const pm = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase().trim();
+        const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
+        if (pm === 'ar' || hasArPayment) return 'ar';
+        if (pm === 'store_credit') return 'store_credit';
+        if (pm === 'network' || pm === 'card' || pm === 'online') return 'network';
+        if (pm === 'kuraimi' || pm === 'bank' || pm === 'bank_transfer') return 'kuraimi';
         return 'cash';
     }, []);
 
@@ -891,7 +1269,7 @@ const ManageOrdersScreen: React.FC = () => {
         }
     };
 
-    const handlePrintDeliveryNote = (order: Order) => {
+    const handlePrintDeliveryNote = async (order: Order) => {
         const fallback = {
             name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
             address: (settings.address || '').trim(),
@@ -903,11 +1281,19 @@ const ManageOrdersScreen: React.FC = () => {
         const key = warehouseId ? String(warehouseId) : '';
         const override = key ? settings.branchBranding?.[key] : undefined;
         const brand = {
-            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            name: (override?.name || fallback.name || wh?.name || '').trim(),
             address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
             contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
         };
+        let printNumber = 1;
+        try {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableOrder' });
+                printNumber = Number(pn) || 1;
+            }
+        } catch { /* fallback */ }
         const content = renderToString(
             <PrintableOrder
                 order={order}
@@ -916,6 +1302,7 @@ const ManageOrdersScreen: React.FC = () => {
                 companyAddress={brand.address}
                 companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
+                printNumber={printNumber}
             />
         );
         printContent(content, `سند تسليم #${order.id.slice(-6).toUpperCase()}`);
@@ -954,11 +1341,11 @@ const ManageOrdersScreen: React.FC = () => {
             const key = warehouseId ? String(warehouseId) : '';
             const override = key ? settings.branchBranding?.[key] : undefined;
             const brand: any = {
-                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
                 address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
                 contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
                 logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
-                branchName: '',
+                branchName: (wh?.name || '').trim(),
                 branchCode: '',
             };
             try {
@@ -973,6 +1360,176 @@ const ManageOrdersScreen: React.FC = () => {
             await printReceiptVoucherByPaymentId(paymentId, brand);
         } catch (e: any) {
             showNotification(String(e?.message || 'تعذر طباعة سند القبض'), 'error');
+        }
+    };
+
+    const handlePrintSalesReturn = async (returnId: string, order: Order) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        try {
+            const fallback = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+            const key = warehouseId ? String(warehouseId) : '';
+            const override = key ? settings.branchBranding?.[key] : undefined;
+            const brand: any = {
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
+                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                branchName: (wh?.name || '').trim(),
+                branchCode: '',
+            };
+            try {
+                const bid = String(sessionScope.scope?.branchId || '').trim();
+                if (bid) {
+                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                    brand.branchName = String((b as any)?.name || '');
+                    brand.branchCode = String((b as any)?.code || '');
+                }
+            } catch {
+            }
+            await printSalesReturnById(returnId, brand);
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة المرتجع'), 'error');
+        }
+    };
+
+    const handlePrintSalesReturnPaymentVoucher = async (returnId: string, order: Order) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        try {
+            const { data: p, error } = await supabase
+                .from('payments')
+                .select('id,occurred_at')
+                .eq('reference_table', 'sales_returns')
+                .eq('reference_id', String(returnId))
+                .eq('direction', 'out')
+                .order('occurred_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            const paymentId = String((p as any)?.id || '');
+            if (!paymentId) {
+                showNotification('لا يوجد سند صرف لهذا المرتجع.', 'error');
+                return;
+            }
+            const fallback = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+            const key = warehouseId ? String(warehouseId) : '';
+            const override = key ? settings.branchBranding?.[key] : undefined;
+            const brand: any = {
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
+                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                branchName: (wh?.name || '').trim(),
+                branchCode: '',
+            };
+            try {
+                const bid = String(sessionScope.scope?.branchId || '').trim();
+                if (bid) {
+                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                    brand.branchName = String((b as any)?.name || '');
+                    brand.branchCode = String((b as any)?.code || '');
+                }
+            } catch {
+            }
+            await printPaymentVoucherByPaymentId(paymentId, brand);
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة سند الصرف'), 'error');
+        }
+    };
+
+    const handlePrintSalesReturnJournalVoucher = async (returnId: string, order: Order) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        try {
+            const { data: je, error } = await supabase
+                .from('journal_entries')
+                .select('id,entry_date')
+                .eq('source_table', 'sales_returns')
+                .eq('source_id', String(returnId))
+                .order('entry_date', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            const entryId = String((je as any)?.id || '');
+            if (!entryId) {
+                showNotification('لا يوجد قيد محاسبي مرتبط بهذا المرتجع.', 'error');
+                return;
+            }
+            const fallback = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+            const key = warehouseId ? String(warehouseId) : '';
+            const override = key ? settings.branchBranding?.[key] : undefined;
+            const brand: any = {
+                name: (override?.name || fallback.name || wh?.name || '').trim(),
+                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                branchName: (wh?.name || '').trim(),
+                branchCode: '',
+            };
+            try {
+                const bid = String(sessionScope.scope?.branchId || '').trim();
+                if (bid) {
+                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                    brand.branchName = String((b as any)?.name || '');
+                    brand.branchCode = String((b as any)?.code || '');
+                }
+            } catch {
+            }
+            await printJournalVoucherByEntryId(entryId, brand);
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة القيد'), 'error');
+        }
+    };
+
+    const handleRepairLegacySalesReturnDocuments = async () => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        if (returnsDocsRepairing) return;
+        setReturnsDocsRepairing(true);
+        try {
+            const { data, error } = await supabase.rpc('repair_sales_returns_payments_batch', { p_limit: 500, p_dry_run: false });
+            if (error) throw error;
+            const created = Number((data as any)?.created ?? 0) || 0;
+            const skipped = Number((data as any)?.skipped ?? 0) || 0;
+            showNotification(`تم إنشاء سندات صرف لمرتجعات قديمة: ${created} (تجاوز ${skipped}).`, 'success');
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر إصلاح مستندات المرتجعات'), 'error');
+        } finally {
+            setReturnsDocsRepairing(false);
         }
     };
 
@@ -1040,6 +1597,46 @@ const ManageOrdersScreen: React.FC = () => {
         }
     };
 
+    const handlePurgePayment = (orderId: string) => {
+        setPurgePaymentOrderId(orderId);
+        setPurgePaymentReason('');
+    };
+
+    const executePurgePayment = async () => {
+        if (!purgePaymentOrderId || isPurgingPayment) return;
+        setIsPurgingPayment(true);
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('Supabase غير مهيأ.');
+            const reason = purgePaymentReason.trim() || 'دفعة خاطئة — حذف يدوي';
+            const { data: result, error } = await supabase.rpc('purge_order_payment', {
+                p_order_id: purgePaymentOrderId,
+                p_reason: reason,
+            });
+            if (error) throw error;
+            const deleted = Number((result as any)?.deletedPayments ?? 0);
+            showNotification(`تم مسح ${deleted} دفعة وقيودها المحاسبية نهائياً.`, 'success');
+            setPurgePaymentOrderId(null);
+            setPurgePaymentReason('');
+            try {
+                await fetchOrders();
+            } catch { /* non-critical */ }
+            await loadPaidSums(filteredAndSortedOrders.map(o => o.id));
+        } catch (error) {
+            const anyErr = error as any;
+            const rawMsg = [
+                `code=${anyErr?.code || '?'}`,
+                `msg=${anyErr?.message || '?'}`,
+                `details=${anyErr?.details || '?'}`,
+                `hint=${anyErr?.hint || '?'}`,
+            ].join(' | ');
+            console.error('purge_order_payment error', error);
+            showNotification(`خطأ مسح الدفعة: ${rawMsg}`, 'error');
+        } finally {
+            setIsPurgingPayment(false);
+        }
+    };
+
     const addInStoreLine = () => {
         const id = inStoreSelectedItemId;
         if (!id) return;
@@ -1057,8 +1654,8 @@ const ManageOrdersScreen: React.FC = () => {
             return [
                 ...prev,
                 isWeightBased
-                    ? { menuItemId: id, weight: menuItem.minWeight || 1, selectedAddons: addonsToAdd }
-                    : { menuItemId: id, quantity: 1, selectedAddons: addonsToAdd, uomCode: String(menuItem.unitType || 'piece'), uomQtyInBase: 1 },
+                    ? { menuItemId: id, weight: menuItem.minWeight || 1, selectedAddons: addonsToAdd, warehouseId: sessionScope.scope?.warehouseId }
+                    : { menuItemId: id, quantity: 1, selectedAddons: addonsToAdd, uomCode: String(menuItem.unitType || 'piece'), uomQtyInBase: 1, warehouseId: sessionScope.scope?.warehouseId },
             ];
         });
         setInStoreSelectedItemId('');
@@ -1074,7 +1671,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
     }, [inStoreItemSearch, language, menuItems]);
 
-    const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number }) => {
+    const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }) => {
         setInStoreLines(prev => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
     };
 
@@ -1084,7 +1681,12 @@ const ManageOrdersScreen: React.FC = () => {
 
     const inStoreTotals = useMemo(() => {
         const fx = Number(inStoreTransactionFxRate) || 1;
-        const baseSubtotal = inStoreLines.reduce((sum, line) => {
+        const toTxn = (amount: number) => {
+            if (!(fx > 0)) return amount;
+            return (amount / fx);
+        };
+
+        const txnSubtotal = inStoreLines.reduce((sum, line) => {
             const menuItem = menuItems.find(m => m.id === line.menuItemId);
             if (!menuItem) return sum;
             const unitType = menuItem.unitType;
@@ -1096,10 +1698,20 @@ const ManageOrdersScreen: React.FC = () => {
                 : ((Number(quantity) || 0) * (Number(line.uomQtyInBase || 1) || 1));
             const pricingKey = `${line.menuItemId}:${unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[pricingKey];
+            
             const fallbackUnitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
-            const unitPrice = unitType === 'gram'
+            const fallbackTxnUnit = toTxn(Number(fallbackUnitPrice) || 0);
+
+            let pricedUnitPrice = unitType === 'gram'
                 ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
                 : (Number(priced?.unitPrice) || fallbackUnitPrice);
+
+            let unitPrice = pricedUnitPrice;
+            if (priced) {
+                unitPrice = priced.isTxnPrice ? pricedUnitPrice : toTxn(pricedUnitPrice);
+            } else {
+                unitPrice = fallbackTxnUnit;
+            }
 
             // Addons cost
             let addonsCost = 0;
@@ -1111,20 +1723,25 @@ const ManageOrdersScreen: React.FC = () => {
                     }
                 });
             }
+            const addonsTxnCost = toTxn(addonsCost);
 
             const lineTotal = isWeightBased
-                ? (unitPrice * weight) + (addonsCost * 1)
-                : (unitPrice + addonsCost) * quantity * (Number(line.uomQtyInBase || 1) || 1);
+                ? (unitPrice * weight) + (addonsTxnCost * 1)
+                : (unitPrice + addonsTxnCost) * quantity * (Number(line.uomQtyInBase || 1) || 1);
 
             return sum + lineTotal;
         }, 0);
+        
         const discountValue = Number(inStoreDiscountValue) || 0;
         const discountAmount = inStoreDiscountType === 'percent'
-            ? Math.max(0, Math.min(100, discountValue)) * convertBaseToInStoreTxn(baseSubtotal, fx) / 100
-            : Math.max(0, Math.min(convertBaseToInStoreTxn(baseSubtotal, fx), discountValue));
-        const subtotal = convertBaseToInStoreTxn(baseSubtotal, fx);
+            ? Math.max(0, Math.min(100, discountValue)) * txnSubtotal / 100
+            : Math.max(0, Math.min(txnSubtotal, discountValue));
+        
+        const subtotal = txnSubtotal;
         const total = Math.max(0, subtotal - discountAmount);
-        const baseDiscountValue = inStoreDiscountType === 'amount' ? roundMoney(discountValue * fx) : discountValue;
+        
+        const baseSubtotal = convertInStoreTxnToBase(txnSubtotal, fx);
+        const baseDiscountValue = inStoreDiscountType === 'amount' ? convertInStoreTxnToBase(discountValue, fx) : discountValue;
         const baseDiscountAmount = inStoreDiscountType === 'percent'
             ? Math.max(0, Math.min(100, Number(discountValue) || 0)) * baseSubtotal / 100
             : Math.max(0, Math.min(baseSubtotal, baseDiscountValue));
@@ -1141,7 +1758,8 @@ const ManageOrdersScreen: React.FC = () => {
         setInStorePaymentLines(prev => {
             if (prev.length !== 1) return prev;
             const current = prev[0];
-            const nextAmount = Number(total.toFixed(2));
+            const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+            const nextAmount = Number(total.toFixed(dp));
             if (Math.abs((Number(current.amount) || 0) - nextAmount) < 0.0001) return prev;
             return [{ ...current, amount: nextAmount }];
         });
@@ -1154,10 +1772,91 @@ const ManageOrdersScreen: React.FC = () => {
         if (inStorePaymentMethod !== 'kuraimi' && inStorePaymentMethod !== 'network') return;
         if ((Number(inStorePaymentDeclaredAmount) || 0) > 0) return;
         if (!(total > 0)) return;
-        setInStorePaymentDeclaredAmount(Number(total.toFixed(2)));
+        const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+        setInStorePaymentDeclaredAmount(Number(total.toFixed(dp)));
     }, [inStoreIsCredit, inStorePaymentDeclaredAmount, inStorePaymentMethod, inStoreTotals.total, isInStoreSaleOpen]);
 
+    const runCreateInStoreSale = async (payload: any, creditOverrideReason?: string) => {
+        if (inStoreCreationLock.current) return;
+        inStoreCreationLock.current = true;
+        setIsInStoreCreating(true);
+        try {
+            const belowCostOverrideReason = String((payload as any)?.belowCostOverrideReason || '').trim();
+            const order = await createInStoreSale({
+                ...payload,
+                creditOverrideReason: creditOverrideReason ? String(creditOverrideReason).trim() : undefined,
+                belowCostOverrideReason: belowCostOverrideReason || undefined,
+            });
+            const awaitingPayment = order.status === 'pending';
+            const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
+            if (awaitingPayment) {
+                showNotification('تم إنشاء الطلب وبانتظار التحصيل من الكاشير', 'info');
+            } else {
+                showNotification(
+                    language === 'ar'
+                        ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
+                        : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
+                    isQueued ? 'info' : 'success'
+                );
+            }
+            if (inStoreAutoOpenInvoice && !isQueued) {
+                navigate(`/admin/invoice/${order.id}`);
+            }
+            setIsInStoreSaleOpen(false);
+            setInStoreCustomerName('');
+            setInStorePhoneNumber('');
+            setInStorePaymentMethod('cash');
+            setInStoreNotes('');
+            setInStoreInvoiceStatement('');
+            setInStorePaymentReferenceNumber('');
+            setInStorePaymentSenderName('');
+            setInStorePaymentSenderPhone('');
+            setInStorePaymentDeclaredAmount(0);
+            setInStorePaymentAmountConfirmed(false);
+            setInStoreCashReceived(0);
+            setInStoreDiscountType('amount');
+            setInStoreDiscountValue(0);
+            setInStoreMultiPaymentEnabled(false);
+            setInStorePaymentLines([]);
+            setInStoreLines([]);
+            setInStoreIsCredit(false);
+            setInStoreCustomerMode('walk_in');
+            setInStoreSelectedCustomerId('');
+            setInStoreCustomerSearchResult(null);
+            setInStoreCustomerPhoneSearch('');
+            setInStoreSelectedPartyId('');
+        } catch (error) {
+            const raw = error instanceof Error ? error.message : '';
+            const upper = raw.trim().toUpperCase();
+            const isBelowCostReason = upper === 'BELOW_COST_REASON_REQUIRED' || /BELOW_COST_REASON_REQUIRED/i.test(raw);
+            const isBelowCostNotAllowed = upper === 'SELLING_BELOW_COST_NOT_ALLOWED' || /SELLING_BELOW_COST_NOT_ALLOWED/i.test(raw);
+            if (canOverrideBelowCost && (isBelowCostReason || isBelowCostNotAllowed)) {
+                const pendingOrderId = String((error as any)?.pendingOrderId || '').trim();
+                setInStoreBelowCostPending({ payload, creditOverrideReason, pendingOrderId: pendingOrderId || undefined });
+                setInStoreBelowCostReason('');
+                setInStoreBelowCostModalOpen(true);
+                return;
+            }
+            const localized = localizeSupabaseError(error);
+            const message = language === 'ar'
+                ? (localized ? `فشل تسجيل البيع الحضوري: ${localized}` : (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.'))
+                : (localized ? `Failed to create in-store sale: ${localized}` : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.'));
+            showNotification(message, 'error');
+        } finally {
+            inStoreCreationLock.current = false;
+            setIsInStoreCreating(false);
+        }
+    };
+
     const confirmInStoreSale = async () => {
+        if (inStorePricingBusy) {
+            showNotification('جاري تحديث السعر من الخادم، انتظر لحظة ثم أعد المحاولة.', 'error');
+            return;
+        }
+        if (inStoreMissingServerPricing) {
+            showNotification('تعذر اعتماد التسعير من الخادم لبعض الأصناف. أعد اختيار الصنف أو تحقق من الاتصال.', 'error');
+            return;
+        }
         const total = Number(inStoreTotals.total) || 0;
         if (!(total > 0)) {
             showNotification('الإجمالي يجب أن يكون أكبر من صفر.', 'error');
@@ -1175,6 +1874,7 @@ const ManageOrdersScreen: React.FC = () => {
                     declaredAmount: Number(p.declaredAmount) || 0,
                     amountConfirmed: Boolean(p.amountConfirmed),
                     cashReceived: Number(p.cashReceived) || 0,
+                    destinationAccountId: p.destinationAccountId?.trim() || undefined,
                 }))
                 .filter(p => Boolean(p.method) && p.amount > 0)
             : [{
@@ -1186,6 +1886,7 @@ const ManageOrdersScreen: React.FC = () => {
                 declaredAmount: Number(inStorePaymentDeclaredAmount) || 0,
                 amountConfirmed: Boolean(inStorePaymentAmountConfirmed) || inStorePaymentMethod === 'cash',
                 cashReceived: Number(inStoreCashReceived) || 0,
+                destinationAccountId: inStorePaymentDestinationAccountId.trim() || undefined,
             }];
 
         if (!normalizedPaymentLines.length && !inStoreIsCredit) {
@@ -1194,11 +1895,13 @@ const ManageOrdersScreen: React.FC = () => {
         }
 
         const sum = normalizedPaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        if (!inStoreIsCredit && Math.abs(sum - total) > 0.01) {
+        const dp = getCurrencyDecimals(inStoreTransactionCurrency);
+        const tol = Math.pow(10, -dp);
+        if (!inStoreIsCredit && Math.abs(sum - total) > tol) {
             showNotification('مجموع الدفعات لا يطابق إجمالي البيع.', 'error');
             return;
         }
-        if (inStoreIsCredit && sum - total > 0.01) {
+        if (inStoreIsCredit && sum - total > tol) {
             showNotification('مجموع الدفعات أكبر من إجمالي البيع.', 'error');
             return;
         }
@@ -1218,6 +1921,10 @@ const ManageOrdersScreen: React.FC = () => {
                 return;
             }
             if (needsReference) {
+                if (availableInStoreDestinations.length > 0 && !p.destinationAccountId) {
+                    showNotification('يرجى اختيار الحساب البنكي / شركة الصرافة.', 'error');
+                    return;
+                }
                 if (!p.referenceNumber) {
                     showNotification(p.method === 'kuraimi' ? 'يرجى إدخال رقم الإيداع.' : 'يرجى إدخال رقم الحوالة.', 'error');
                     return;
@@ -1247,6 +1954,13 @@ const ManageOrdersScreen: React.FC = () => {
             }
         }
 
+        // Prevent duplicate cash payment lines
+        const cashCount = normalizedPaymentLines.filter(p => p.method === 'cash').length;
+        if (cashCount > 1) {
+            showNotification('لا يمكن تكرار الدفع النقدي أكثر من مرة.', 'error');
+            return;
+        }
+
         const primaryPaymentMethod = inStoreIsCredit
             ? ((inStorePaymentMethod || 'cash').trim())
             : ((normalizedPaymentLines[0]?.method || '').trim());
@@ -1254,100 +1968,119 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification('يرجى اختيار طريقة الدفع.', 'error');
             return;
         }
-        setIsInStoreCreating(true);
-        try {
-            const order = await createInStoreSale({
-                lines: inStoreLines,
-                currency: inStoreTransactionCurrency,
-                paymentMethod: primaryPaymentMethod,
-                customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
-                customerName: inStoreCustomerName,
-                phoneNumber: inStorePhoneNumber,
-                notes: inStoreNotes,
-                discountType: inStoreDiscountType,
-                discountValue: Number(inStoreDiscountValue) || 0,
-                paymentReferenceNumber: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentReferenceNumber.trim() : undefined,
-                paymentSenderName: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderName.trim() : undefined,
-                paymentSenderPhone: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderPhone.trim() : undefined,
-                paymentDeclaredAmount: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? (Number(inStorePaymentDeclaredAmount) || 0) : undefined,
-                paymentAmountConfirmed: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? Boolean(inStorePaymentAmountConfirmed) : undefined,
-                isCredit: inStoreIsCredit,
-                creditDays: inStoreIsCredit ? Math.max(0, Number(inStoreCreditDays) || 0) : 0,
-                dueDate: inStoreIsCredit ? (inStoreCreditDueDate || undefined) : undefined,
-                paymentBreakdown: normalizedPaymentLines.map((p) => ({
-                    method: p.method,
-                    amount: p.amount,
-                    referenceNumber: p.referenceNumber,
-                    senderName: p.senderName,
-                    senderPhone: p.senderPhone,
-                    declaredAmount: p.declaredAmount,
-                    amountConfirmed: p.amountConfirmed,
-                    cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
-                })),
-            });
-            const awaitingPayment = order.status === 'pending';
-            const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
-            if (awaitingPayment) {
-                showNotification('تم إنشاء الطلب وبانتظار التحصيل من الكاشير', 'info');
-            } else {
-                showNotification(
-                    language === 'ar'
-                        ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
-                        : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
-                    isQueued ? 'info' : 'success'
-                );
+        const payload: any = {
+            lines: inStoreLines,
+            currency: inStoreTransactionCurrency,
+            paymentMethod: primaryPaymentMethod,
+            customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
+            partyId: inStoreCustomerMode === 'party' && inStoreSelectedPartyId ? inStoreSelectedPartyId : undefined,
+            customerName: inStoreCustomerName,
+            phoneNumber: inStorePhoneNumber,
+            notes: inStoreNotes,
+            invoiceStatement: inStoreInvoiceStatement,
+            discountType: inStoreDiscountType,
+            discountValue: Number(inStoreDiscountValue) || 0,
+            paymentReferenceNumber: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentReferenceNumber.trim() : undefined,
+            paymentSenderName: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderName.trim() : undefined,
+            paymentSenderPhone: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderPhone.trim() : undefined,
+            paymentDeclaredAmount: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? (Number(inStorePaymentDeclaredAmount) || 0) : undefined,
+            paymentAmountConfirmed: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? Boolean(inStorePaymentAmountConfirmed) : undefined,
+            isCredit: inStoreIsCredit,
+            creditDays: inStoreIsCredit ? Math.max(0, Number(inStoreCreditDays) || 0) : 0,
+            dueDate: inStoreIsCredit ? (inStoreCreditDueDate || undefined) : undefined,
+            paymentBreakdown: normalizedPaymentLines.map((p) => ({
+                method: p.method,
+                amount: p.amount,
+                referenceNumber: p.referenceNumber,
+                senderName: p.senderName,
+                senderPhone: p.senderPhone,
+                declaredAmount: p.declaredAmount,
+                amountConfirmed: p.amountConfirmed,
+                cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
+                destinationAccountId: p.destinationAccountId,
+            })),
+        };
+
+        if (inStoreIsCredit && inStoreCustomerMode === 'party' && inStoreSelectedPartyId) {
+            const fx = Number(inStoreTotals.fxRate) || 1;
+            const paidForeign = normalizedPaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+            const txnCurrency = String(inStoreTransactionCurrency || '').trim().toUpperCase();
+            const total = Number(inStoreTotals.total) || 0;
+            const netArForeign = Math.max(0, total - paidForeign);
+            // Look up per-currency credit info from the currencies array
+            const currenciesArr = Array.isArray(inStoreCreditSummary?.currencies) ? inStoreCreditSummary.currencies : [];
+            const currencyEntry = currenciesArr.find((c: any) => String(c?.currency_code || '').toUpperCase() === txnCurrency);
+            // Use per-currency values if available, otherwise fallback to base
+            const netAr = currencyEntry ? netArForeign : Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(paidForeign * fx));
+            const available = Number(currencyEntry?.available_credit ?? inStoreCreditSummary?.available_credit ?? 0);
+            const hold = Boolean(currencyEntry?.credit_hold ?? inStoreCreditSummary?.credit_hold);
+            if (netAr > 0 && (hold || (netAr - available > 0.0001))) {
+                if (!canManageAccounting) {
+                    showNotification('هذا البيع يتجاوز سقف ائتمان الطرف أو عليه إيقاف ائتمان ويتطلب موافقة.', 'error');
+                    return;
+                }
+                setInStoreCreditOverridePending(payload);
+                setInStoreCreditOverrideReason('');
+                setInStoreCreditOverrideModalOpen(true);
+                return;
             }
-            if (inStoreAutoOpenInvoice && !isQueued) {
-                navigate(`/admin/invoice/${order.id}`);
-            }
-            setIsInStoreSaleOpen(false);
-            setInStoreCustomerName('');
-            setInStorePhoneNumber('');
-            setInStorePaymentMethod('cash');
-            setInStoreNotes('');
-            setInStorePaymentReferenceNumber('');
-            setInStorePaymentSenderName('');
-            setInStorePaymentSenderPhone('');
-            setInStorePaymentDeclaredAmount(0);
-            setInStorePaymentAmountConfirmed(false);
-            setInStoreCashReceived(0);
-            setInStoreDiscountType('amount');
-            setInStoreDiscountValue(0);
-            setInStoreMultiPaymentEnabled(false);
-            setInStorePaymentLines([]);
-            setInStoreLines([]);
-            setInStoreIsCredit(false);
-        } catch (error) {
-            const raw = error instanceof Error ? error.message : '';
-            const message = language === 'ar'
-                ? (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.')
-                : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.');
-            showNotification(message, 'error');
-        } finally {
-            setIsInStoreCreating(false);
         }
+
+        await runCreateInStoreSale(payload);
     };
     const saveInStoreDraftQuotation = async () => {
         if (inStoreLines.length === 0) {
             showNotification('أضف أصنافًا أولاً.', 'error');
             return;
         }
+        if (inStoreCreationLock.current) return;
+        inStoreCreationLock.current = true;
         setIsInStoreCreating(true);
         try {
             const order = await createInStoreDraftQuotation({
                 lines: inStoreLines,
                 customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
+                partyId: inStoreCustomerMode === 'party' && inStoreSelectedPartyId ? inStoreSelectedPartyId : undefined,
                 customerName: inStoreCustomerName,
                 phoneNumber: inStorePhoneNumber,
                 notes: inStoreNotes,
+                invoiceStatement: inStoreInvoiceStatement,
                 discountType: inStoreDiscountType,
                 discountValue: Number(inStoreDiscountValue) || 0,
             });
-            showNotification(`تم حفظ المسودة #${order.id.slice(-6).toUpperCase()}`, 'success');
+
+            const fallbackBrand = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            let printNumber = 1;
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) throw new Error('Supabase غير مهيأ.');
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableQuotation' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
+            const printHtml = renderToString(
+                <PrintableQuotation
+                    order={order}
+                    brand={fallbackBrand}
+                    language={language as 'ar' | 'en'}
+                    inStoreLines={inStoreLines}
+                    externalCustomerName={inStoreCustomerName}
+                    externalCustomerPhone={inStorePhoneNumber}
+                    printNumber={printNumber}
+                />
+            );
+            printContent(printHtml, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
+
+            showNotification(`تم حفظ عرض السعر #${order.id.slice(-6).toUpperCase()}`, 'success');
             setIsInStoreSaleOpen(false);
             setInStoreCustomerName('');
             setInStorePhoneNumber('');
             setInStoreNotes('');
+            setInStoreInvoiceStatement('');
             setInStoreDiscountType('amount');
             setInStoreDiscountValue(0);
             setInStoreLines([]);
@@ -1357,10 +2090,12 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreSelectedCustomerId('');
             setInStoreCustomerSearchResult(null);
             setInStoreCustomerPhoneSearch('');
+            setInStoreSelectedPartyId('');
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
             showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل حفظ المسودة.', 'error');
         } finally {
+            inStoreCreationLock.current = false;
             setIsInStoreCreating(false);
         }
     };
@@ -1372,12 +2107,82 @@ const ManageOrdersScreen: React.FC = () => {
             processedOrders = processedOrders.filter(order => order.userId === customerUserIdFilter.trim());
         }
 
+        if (customerNameFilter.trim()) {
+            const term = customerNameFilter.trim().toLowerCase();
+            const cleanTerm = term.replace(/^#/, '');
+            processedOrders = processedOrders.filter(order => {
+                const nameMatch = (order.customerName || '').toLowerCase().includes(term);
+                const phoneMatch = (order.phoneNumber || '').toLowerCase().includes(term);
+                const idMatch = (order.id || '').toLowerCase().includes(cleanTerm);
+                return nameMatch || phoneMatch || idMatch;
+            });
+        }
+
         if (filterStatus !== 'all') {
-            processedOrders = processedOrders.filter(order => order.status === filterStatus);
+            if (filterStatus === 'delivered_no_returns') {
+                processedOrders = processedOrders.filter(order => {
+                    const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
+                    const isReturned = raw === 'full' || raw === 'partial';
+                    const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                    return order.status === 'delivered' && !isReturned && !isVoided;
+                });
+            } else {
+                processedOrders = processedOrders.filter(order => order.status === filterStatus);
+            }
+        }
+
+        if (filterPaymentMethod !== 'all') {
+            processedOrders = processedOrders.filter(order => {
+                const method = String(order.paymentMethod || '').toLowerCase();
+                if (filterPaymentMethod === 'ar') return method === 'ar';
+                if (filterPaymentMethod === 'cash') return method === 'cash';
+                if (filterPaymentMethod === 'network') return method === 'network' || method === 'bank' || method === 'kuraimi';
+                return method === filterPaymentMethod;
+            });
+        }
+
+        if (filterCurrency !== 'all') {
+            processedOrders = processedOrders.filter(order => {
+                const currency = String((order as any).currency || baseCode).toUpperCase();
+                return currency === filterCurrency.toUpperCase();
+            });
+        }
+
+        if (filterDateFrom) {
+            const start = new Date(filterDateFrom);
+            start.setHours(0, 0, 0, 0);
+            processedOrders = processedOrders.filter(order => new Date(order.createdAt) >= start);
+        }
+
+        if (filterDateTo) {
+            const end = new Date(filterDateTo);
+            end.setHours(23, 59, 59, 999);
+            processedOrders = processedOrders.filter(order => new Date(order.createdAt) <= end);
+        }
+
+        if (returnsOnly) {
+            processedOrders = processedOrders.filter((order) => {
+                const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
+                return raw === 'full' || raw === 'partial';
+            });
         }
 
         if (isDeliveryOnly && adminUser?.id) {
             processedOrders = processedOrders.filter(order => order.assignedDeliveryUserId === adminUser.id);
+        }
+
+        if (filterShiftId && filterShiftId !== 'all') {
+            const shift = recentShifts.find(s => s.id === filterShiftId);
+            if (shift) {
+                const openTime = new Date(shift.opened_at).getTime();
+                const closeTime = shift.closed_at ? new Date(shift.closed_at).getTime() : Date.now();
+                processedOrders = processedOrders.filter(order => {
+                    const orderTime = new Date(order.createdAt).getTime();
+                    const isWithinTimeRange = orderTime >= openTime && orderTime <= closeTime;
+                    const isSameCashier = order._createdBy === shift.cashier_id || order.paymentVerifiedBy === shift.cashier_id;
+                    return isWithinTimeRange && isSameCashier;
+                });
+            }
         }
 
         const getSortTime = (order: Order) => {
@@ -1402,7 +2207,27 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, filterStatus, isDeliveryOnly, orders, sortOrder]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, sortOrder, baseCode, recentShifts]);
+
+    const availableInStoreDestinations = useMemo(() => {
+        const currency = String(inStoreTransactionCurrency || '').toUpperCase();
+        return destinationAccounts.filter(a => matchesDestinationCurrency(String(a.code || ''), String((a as any).name || ''), currency));
+    }, [destinationAccounts, inStoreTransactionCurrency]);
+
+    const availablePartialDestinations = useMemo(() => {
+        const order = partialPaymentOrderId ? (filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId)) : null;
+        const currency = order ? String((order as any).currency || '').toUpperCase() || baseCode : baseCode;
+        return destinationAccounts.filter(a => matchesDestinationCurrency(String(a.code || ''), String((a as any).name || ''), currency));
+    }, [destinationAccounts, partialPaymentOrderId, filteredAndSortedOrders, orders, baseCode]);
+
+    const totalsByCurrency = useMemo(() => {
+        const sums: Record<string, number> = {};
+        for (const order of filteredAndSortedOrders) {
+            const code = String((order as any).currency || baseCode).toUpperCase() || '—';
+            sums[code] = (sums[code] || 0) + (Number(order.total) || 0);
+        }
+        return sums;
+    }, [filteredAndSortedOrders, baseCode]);
 
     const loadPaidSums = useCallback(async (orderIds: string[]) => {
         const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
@@ -1445,17 +2270,42 @@ const ManageOrdersScreen: React.FC = () => {
         void loadPaidSums(filteredAndSortedOrders.map(o => o.id));
     }, [filteredAndSortedOrders, loadPaidSums]);
 
+    const getOrderPaymentSnapshot = useCallback((order: Order) => {
+        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+        const total = roundMoneyByCode(Number(order.total) || 0, currency);
+        const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+        const rawPaid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+        const paymentMethod = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase().trim();
+        const invoiceTerms = String((order as any)?.invoiceTerms || (order as any)?.data?.invoiceTerms || '').toLowerCase().trim();
+        const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
+        const isCreditSale = paymentMethod === 'ar' || hasArPayment || invoiceTerms === 'credit';
+        const isDelivered = String(order.status || '').toLowerCase() === 'delivered';
+        const isCashLike = paymentMethod === 'cash' || invoiceTerms === 'cash';
+        const hasPaidAt = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
+        const isInStoreCashSettlement = isInStoreOrder(order) && isDelivered && isCashLike && !isCreditSale;
+        const isMarkedCashSettlement = hasPaidAt && isDelivered && isCashLike && !isCreditSale;
+        const paid = (rawPaid <= tol && (isInStoreCashSettlement || isMarkedCashSettlement)) ? total : rawPaid;
+        const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
+        return { currency, total, paid, remaining, tol, paymentMethod, isCreditSale };
+    }, [baseCode, isInStoreOrder, paidSumByOrderId]);
+
     const openPartialPaymentModal = (orderId: string) => {
         const order = filteredAndSortedOrders.find(o => o.id === orderId) || orders.find(o => o.id === orderId);
         if (!order) return;
-        const paid = Number(paidSumByOrderId[orderId]) || 0;
-        const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+        const { currency, remaining } = getOrderPaymentSnapshot(order);
         setPartialPaymentOrderId(orderId);
-        setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(2)) : 0);
+        const dp = getCurrencyDecimalsByCode(currency);
+        setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(dp)) : 0);
         setPartialPaymentMethod(isInStoreOrder(order) ? 'cash' : ((order.paymentMethod || 'cash').trim() || 'cash'));
         setPartialPaymentOccurredAt(toDateTimeLocalInputValue());
+        setPartialPaymentReferenceNumber('');
+        setPartialPaymentSenderName('');
+        setPartialPaymentSenderPhone('');
+        setPartialPaymentDeclaredAmount(remaining > 0 ? Number(remaining.toFixed(dp)) : 0);
+        setPartialPaymentAmountConfirmed(false);
         setPartialPaymentAdvancedAccounting(false);
         setPartialPaymentOverrideAccountId('');
+        setPartialPaymentDestinationAccountId('');
     };
 
     const confirmPartialPayment = async () => {
@@ -1466,14 +2316,14 @@ const ManageOrdersScreen: React.FC = () => {
         }
         const order = filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId);
         if (!order) return;
-        const paid = Number(paidSumByOrderId[partialPaymentOrderId]) || 0;
-        const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+        const { currency, remaining } = getOrderPaymentSnapshot(order);
         const amount = Number(partialPaymentAmount);
         if (!Number.isFinite(amount) || amount <= 0) {
             showNotification('أدخل مبلغًا صحيحًا.', 'error');
             return;
         }
-        if (remaining > 0 && amount > remaining + 1e-9) {
+        const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+        if (remaining > 0 && amount > remaining + tol) {
             showNotification('المبلغ أكبر من المتبقي على الطلب.', 'error');
             return;
         }
@@ -1482,16 +2332,41 @@ const ManageOrdersScreen: React.FC = () => {
             if (partialPaymentMethod === 'cash' && !currentShift) {
                 throw new Error('يجب فتح وردية نقدية قبل تسجيل دفعة نقدية.');
             }
+            const needsReference = partialPaymentMethod === 'kuraimi' || partialPaymentMethod === 'network';
+            if (needsReference) {
+                const ref = (partialPaymentReferenceNumber || '').trim();
+                const senderName = (partialPaymentSenderName || '').trim();
+                const declared = Number(partialPaymentDeclaredAmount) || 0;
+                if (!ref) throw new Error(partialPaymentMethod === 'kuraimi' ? 'يرجى إدخال رقم الإيداع.' : 'يرجى إدخال رقم الحوالة.');
+                if (!senderName) throw new Error(partialPaymentMethod === 'kuraimi' ? 'يرجى إدخال اسم المودِع.' : 'يرجى إدخال اسم المرسل.');
+                if (!(declared > 0)) throw new Error('يرجى إدخال مبلغ العملية.');
+                if (Math.abs(declared - amount) > tol) throw new Error('مبلغ العملية لا يطابق مبلغ هذه الدفعة.');
+                if (!partialPaymentAmountConfirmed) throw new Error('يرجى تأكيد مطابقة المبلغ قبل تسجيل الدفعة.');
+            }
             const occurredAtIso = partialPaymentOccurredAt ? new Date(partialPaymentOccurredAt).toISOString() : undefined;
-            const override = partialPaymentAdvancedAccounting && canManageAccounting && isUuidText(partialPaymentOverrideAccountId)
-                ? String(partialPaymentOverrideAccountId || '').trim()
-                : undefined;
-            await recordOrderPaymentPartial(partialPaymentOrderId, amount, partialPaymentMethod, occurredAtIso, override);
+            const isDestinationOverride = partialPaymentMethod === 'kuraimi' || partialPaymentMethod === 'network';
+            if (isDestinationOverride && availablePartialDestinations.length > 0 && !partialPaymentDestinationAccountId) {
+                showNotification('يرجى اختيار الحساب البنكي / شركة الصرافة.', 'error');
+                setIsRecordingPartialPayment(false);
+                return;
+            }
+            const override = isDestinationOverride && partialPaymentDestinationAccountId
+                ? partialPaymentDestinationAccountId
+                : (partialPaymentAdvancedAccounting && canManageAccounting && isUuidText(partialPaymentOverrideAccountId)
+                    ? String(partialPaymentOverrideAccountId || '').trim()
+                    : undefined);
+            await recordOrderPaymentPartial(partialPaymentOrderId, amount, partialPaymentMethod, occurredAtIso, override, {
+                referenceNumber: (partialPaymentReferenceNumber || '').trim() || undefined,
+                senderName: (partialPaymentSenderName || '').trim() || undefined,
+                senderPhone: (partialPaymentSenderPhone || '').trim() || undefined,
+                declaredAmount: Number(partialPaymentDeclaredAmount) || 0,
+                amountConfirmed: Boolean(partialPaymentAmountConfirmed),
+            });
             await loadPaidSums(filteredAndSortedOrders.map(o => o.id));
             showNotification('تم تسجيل الدفعة بنجاح.', 'success');
             const supabase = getSupabaseClient();
             const occ = occurredAtIso || new Date().toISOString();
-            const idempotencyKey = `partial:${partialPaymentOrderId}:${occ}:${Number(amount) || 0}`;
+            const idempotencyKey = `partial:${partialPaymentOrderId}:${occ}:${partialPaymentMethod}:${Number(amount) || 0}`;
             if (supabase) {
                 try {
                     const { data: p, error: pErr } = await supabase
@@ -1519,11 +2394,11 @@ const ManageOrdersScreen: React.FC = () => {
                             const key = warehouseId ? String(warehouseId) : '';
                             const override = key ? settings.branchBranding?.[key] : undefined;
                             const brand = {
-                                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                                name: (override?.name || fallback.name || wh?.name || '').trim(),
                                 address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
                                 contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
                                 logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
-                                branchName: '',
+                                branchName: (wh?.name || '').trim(),
                                 branchCode: '',
                             };
                             try {
@@ -1641,6 +2516,10 @@ const ManageOrdersScreen: React.FC = () => {
         if (!returnOrderId) return;
         const order = orders.find(o => o.id === returnOrderId);
         if (!order) return;
+        const stableOrderId = order.id;
+
+        const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+        const dp = getCurrencyDecimalsByCode(currency);
 
         const grossSubtotal = Number(order.subtotal) || 0;
         const discountAmount = Number((order as any).discountAmount) || 0;
@@ -1671,13 +2550,22 @@ const ManageOrdersScreen: React.FC = () => {
                     ? (unitPrice * totalQty) + addonsCost
                     : ((unitPrice * uomQtyInBase) + addonsCost) * totalQty;
 
-                const proportion = Math.max(0, Math.min(1, (Number(qty) || 0) / totalQty));
+                const menuItemKey = String(menuItemId || cartItemId || '').trim();
+                const options = !isWeightBased ? getReturnUomOptions(orderItem, menuItemKey) : [];
+                const defaultCode = String(returnUnits[cartItemId] || (orderItem as any).uomCode || unitType || 'piece').trim().toLowerCase();
+                const selectedOption = !isWeightBased
+                    ? (options.find(o => o.code === defaultCode) || options[0] || { code: String(unitType || 'piece').toLowerCase(), name: unitType, qtyInBase: 1 })
+                    : null;
+                const selectedQtyInBase = isWeightBased ? 1 : (Number(selectedOption?.qtyInBase || 1) || 1);
+                const totalBaseQty = isWeightBased ? totalQty : (totalQty * uomQtyInBase);
+                const qtyBase = isWeightBased
+                    ? Number(qty) || 0
+                    : (Number(qty) || 0) * selectedQtyInBase;
+                const proportion = totalBaseQty > 0 ? Math.max(0, Math.min(1, qtyBase / totalBaseQty)) : 0;
                 const returnedGross = lineGross * proportion;
                 const returnedNet = returnedGross * discountFactor;
 
-                // Convert to base units for inventory accuracy
-                // uomQtyInBase already defined above
-                const baseQty = qty;
+                const baseQty = qtyBase;
                 const baseUnitPrice = Number((returnedNet / (Number(baseQty) || 1)).toFixed(4));
 
                 return {
@@ -1685,12 +2573,12 @@ const ManageOrdersScreen: React.FC = () => {
                     itemName: orderItem.name?.ar || orderItem.name?.en || 'Unknown',
                     quantity: baseQty,
                     unitPrice: baseUnitPrice,
-                    total: Number(returnedNet.toFixed(2)),
+                    total: Number(returnedNet.toFixed(dp)),
                     reason: returnReason,
                     // Metadata for UI
-                    salesUnitQty: qty,
-                    uomCode: (orderItem as any).uomCode,
-                    uomQtyInBase: uomQtyInBase
+                    salesUnitQty: Number(qty) || 0,
+                    uomCode: selectedOption?.code || String((orderItem as any).uomCode || unitType || 'piece').trim().toLowerCase(),
+                    uomQtyInBase: selectedQtyInBase
                 };
             })
             .filter(Boolean) as any[];
@@ -1719,6 +2607,10 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification(message, 'error');
         } finally {
             setIsCreatingReturn(false);
+            if (stableOrderId) {
+                try { void fetchOrders(); } catch { }
+                try { void refreshReturnsForOrder(stableOrderId); } catch { }
+            }
         }
     };
 
@@ -1738,9 +2630,8 @@ const ManageOrdersScreen: React.FC = () => {
             setVoidOrderId(null);
             setVoidReason('');
         } catch (error) {
-            const raw = error instanceof Error ? error.message : '';
-            const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تنفيذ الإلغاء بعد التسليم.';
-            showNotification(message, 'error');
+            const raw = error instanceof Error ? error.message : (error as any)?.message || (error as any)?.details || JSON.stringify(error);
+            showNotification(raw || 'فشل تنفيذ الإلغاء بعد التسليم.', 'error');
         } finally {
             setIsVoidingOrder(false);
         }
@@ -1752,11 +2643,54 @@ const ManageOrdersScreen: React.FC = () => {
         return typeof rec.lat === 'number' && typeof rec.lng === 'number';
     };
 
+    const getReturnStatus = (order: Order): 'full' | 'partial' | '' => {
+        const raw = String((order as any).returnStatus ?? (order as any)?.data?.returnStatus ?? '').toLowerCase();
+        if (raw === 'full') return 'full';
+        if (raw === 'partial') return 'partial';
+        return '';
+    };
+
+    const renderReturnBadge = (order: Order, variant: 'banner' | 'pill' = 'banner') => {
+        const status = getReturnStatus(order);
+        if (!status) return null;
+
+        const label = status === 'full' ? 'مسترجع بالكامل' : 'مسترجع جزئيًا';
+
+        if (variant === 'pill') {
+            return (
+                <span
+                    className={
+                        status === 'full'
+                            ? 'px-2 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'
+                            : 'px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200'
+                    }
+                >
+                    {label}
+                </span>
+            );
+        }
+
+        return (
+            <div className="mb-2">
+                <span
+                    className={
+                        status === 'full'
+                            ? 'inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'
+                            : 'inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200'
+                    }
+                >
+                    {label}
+                </span>
+            </div>
+        );
+    };
+
     const renderMobileCard = (order: Order) => {
-        const paid = Number(paidSumByOrderId[order.id]) || 0;
-        const remaining = Math.max(0, (Number(order.total) || 0) - paid);
-        const canReturn = order.status === 'delivered' && paid > 0.01;
+        const { paid, remaining, tol, isCreditSale } = getOrderPaymentSnapshot(order);
+        const returnStatus = getReturnStatus(order);
+        const isFullyReturned = returnStatus === 'full';
         const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+        const canReturn = order.status === 'delivered' && (isCreditSale || paid > tol) && !isFullyReturned && !isVoided;
         const items = Array.isArray((order as any)?.items) ? (order as any).items : [];
 
         return (
@@ -1771,6 +2705,12 @@ const ManageOrdersScreen: React.FC = () => {
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${adminStatusColors[order.status] || 'bg-gray-100 text-gray-800'}`}>
                             {statusTranslations[order.status] || order.status}
                         </span>
+                        {isVoided && (
+                            <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">
+                                ⛔ ملغي بعد التسليم
+                            </span>
+                        )}
+                        {renderReturnBadge(order, 'pill')}
                         {order.isScheduled && order.scheduledAt && (
                             <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold" dir="ltr">
                                 🕒 {new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}
@@ -1894,7 +2834,9 @@ const ManageOrdersScreen: React.FC = () => {
                                 order.status === 'delivered' ||
                                 order.status === 'cancelled' ||
                                 getEditableStatusesForOrder(order).length === 0 ||
-                                (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt)
+                                (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
+                                isFullyReturned ||
+                                Boolean((order as any).isDraft)
                             }
                             className={`w-full p-2 border-none rounded-md text-sm font-semibold text-center focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                         >
@@ -1914,6 +2856,48 @@ const ManageOrdersScreen: React.FC = () => {
                             )}
                         </select>
                     </div>
+
+                    {isInStoreOrder(order) && order.status === 'pending' && canMarkPaid && (
+                        <div className="col-span-2 space-y-2">
+                            {String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim() && (
+                                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                                    سبب التعليق: {String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim()}
+                                </div>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => void attemptResumeInStorePending(order)}
+                                disabled={resumePendingBusyId === order.id}
+                                className="w-full py-2 bg-emerald-700 text-white rounded-md hover:bg-emerald-800 transition text-sm font-bold disabled:opacity-60"
+                            >
+                                {resumePendingBusyId === order.id ? 'جاري الإتمام...' : 'إعادة محاولة الإتمام'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setEditOrderId(order.id)}
+                                className="w-full py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 transition text-sm font-bold"
+                            >
+                                تعديل الأصناف
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (!canCancel) return;
+                                    try {
+                                        await cancelInStorePendingOrder(order.id);
+                                        showNotification('تم حذف الطلب المعلّق.', 'success');
+                                        try { await fetchOrders(); } catch { }
+                                    } catch (e: any) {
+                                        showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
+                                    }
+                                }}
+                                disabled={!canCancel || resumePendingBusyId === order.id}
+                                className="w-full py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition text-sm font-bold disabled:opacity-60"
+                            >
+                                حذف الطلب المعلّق
+                            </button>
+                        </div>
+                    )}
 
                     {/* Delivery Accept Button */}
                     {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
@@ -1942,7 +2926,7 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
-                    {order.status === 'delivered' && remaining > 1e-9 && (
+                    {order.status === 'delivered' && remaining > 1e-9 && !isVoided && String((order as any).returnStatus || '').toLowerCase() !== 'full' && (
                         <div className="col-span-2 flex gap-2">
                             <button
                                 onClick={() => openPartialPaymentModal(order.id)}
@@ -1961,8 +2945,41 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Purge Payment — owner only */}
+                    {order.status === 'delivered' && (paid > tol || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && (isOwner || isManager) && !isVoided && (
+                        <div className="col-span-2">
+                            <button
+                                onClick={() => handlePurgePayment(order.id)}
+                                disabled={isPurgingPayment}
+                                className="w-full py-2 bg-red-700 text-white rounded hover:bg-red-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                🗑️ مسح الدفعة نهائياً
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Quotation Actions */}
+                    {Boolean((order as any).isDraft) && (
+                        <div className="col-span-2 flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => printQuotation(order)}
+                                className="flex-1 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition text-sm font-semibold"
+                            >
+                                طباعة عرض السعر
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => loadQuotationToCart(order)}
+                                className="flex-1 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition text-sm font-semibold text-gray-900"
+                            >
+                                اعتماد الفاتورة
+                            </button>
+                        </div>
+                    )}
+
                     {/* Invoice View */}
-                    {order.invoiceIssuedAt && canViewInvoice && (
+                    {order.invoiceIssuedAt && canViewInvoice && !Boolean((order as any).isDraft) && (
                         <button
                             onClick={() => navigate(`/admin/invoice/${order.id}`)}
                             className="col-span-2 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm font-semibold"
@@ -1995,16 +3012,17 @@ const ManageOrdersScreen: React.FC = () => {
                                     setReturnOrderId(order.id);
                                     setReturnItems({});
                                     setReturnReason('');
-                                    setRefundMethod('cash');
+                                    setRefundMethod(detectRefundMethod(order));
                                 }}
-                                className="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition text-sm font-semibold"
+                                disabled={String((order as any).returnStatus || '').toLowerCase() === 'full'}
+                                className="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 ↩️ استرجاع
                             </button>
                         </div>
                     )}
 
-                    {order.status === 'delivered' && canVoidDelivered && !isVoided && (
+                    {order.status === 'delivered' && canVoidDelivered && !isVoided && String((order as any).returnStatus || '').toLowerCase() !== 'full' && (
                         <button
                             type="button"
                             onClick={() => {
@@ -2041,20 +3059,170 @@ const ManageOrdersScreen: React.FC = () => {
         );
     };
 
+    const printQuotation = async (order: Order) => {
+        const fallbackBrand = {
+            name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+            address: (settings.address || '').trim(),
+            contactNumber: (settings.contactNumber || '').trim(),
+            logoUrl: (settings.logoUrl || '').trim(),
+        };
+        let printNumber = 1;
+        try {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableQuotation' });
+                printNumber = Number(pn) || 1;
+            }
+        } catch { /* fallback */ }
+        const componentStr = renderToString(
+            <PrintableQuotation
+                order={order}
+                brand={fallbackBrand}
+                language={language as 'ar' | 'en'}
+                externalCustomerName={order.customerName}
+                externalCustomerPhone={order.phoneNumber}
+                printNumber={printNumber}
+            />
+        );
+        printContent(componentStr, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
+    };
+
+    const handlePrintOrdersList = () => {
+        const componentStr = renderToString(
+            <div dir="rtl" style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+                <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>تقرير الطلبات</h1>
+                <div style={{ marginBottom: '10px' }}>
+                    <strong>إجمالي الطلبات:</strong> {filteredAndSortedOrders.length}
+                </div>
+                {Object.keys(totalsByCurrency).length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <strong>المجاميع حسب العملة:</strong>
+                        <ul style={{ listStyleType: 'none', padding: 0 }}>
+                            {Object.entries(totalsByCurrency).map(([currency, total]) => (
+                                <li key={currency}>
+                                    {formatMoneyByCode(total, currency)} {currency}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+                    <thead>
+                        <tr style={{ backgroundColor: '#f3f4f6' }}>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>رقم الطلب</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>التاريخ</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>العميل</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>الإجمالي</th>
+                            <th style={{ border: '1px solid #d1d5db', padding: '8px', textAlign: 'right' }}>الحالة</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filteredAndSortedOrders.map(order => {
+                            const currency = String((order as any).currency || baseCode).toUpperCase();
+                            return (
+                                <tr key={order.id}>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>#{order.id.slice(-6).toUpperCase()}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>{order.customerName || order.phoneNumber}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }} dir="ltr">{formatMoneyByCode(order.total, currency)} {currency}</td>
+                                    <td style={{ border: '1px solid #d1d5db', padding: '8px' }}>{statusTranslations[order.status] || order.status}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        );
+        printContent(componentStr, 'Orders-Report');
+    };
+
+
+    const loadQuotationToCart = (order: Order) => {
+        const lines = (order.items || []).map((item: any) => ({
+            menuItemId: String(item.id || item.menuItemId || ''),
+            quantity: Number(item.quantity) || 1,
+            weight: Number(item.weight) || undefined,
+            selectedAddons: item.selectedAddons || {},
+            uomCode: item.uomCode,
+            uomQtyInBase: item.uomQtyInBase,
+            warehouseId: (order as any).warehouseId || sessionScope.scope?.warehouseId || ''
+        }));
+        setInStoreLines(lines);
+        setInStoreCustomerName(order.customerName || '');
+        setInStorePhoneNumber(order.phoneNumber || '');
+        setInStoreCustomerMode('walk_in');
+        setInStoreNotes(`محول من عرض السعر #${order.id.slice(-6).toUpperCase()}\n${order.notes || ''}`.trim());
+        setInStoreInvoiceStatement(String((order as any).invoiceStatement || '').trim());
+        const quotationCurrency = String((order as any).currency || '').trim().toUpperCase();
+        if (quotationCurrency && operationalCurrencies.includes(quotationCurrency)) {
+            setInStoreTransactionCurrency(quotationCurrency);
+        }
+        setIsInStoreSaleOpen(true);
+    };
+    const openNewInStoreSale = () => {
+        const base = String(baseCode || '').trim().toUpperCase();
+        const preferred = base && operationalCurrencies.includes(base)
+            ? base
+            : (operationalCurrencies[0] || base || '');
+        if (preferred) setInStoreTransactionCurrency(preferred);
+        setIsInStoreSaleOpen(true);
+    };
+
     return (
         <div className="animate-fade-in">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات</h1>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات ({filteredAndSortedOrders.length})</h1>
+                    {Object.keys(totalsByCurrency).length > 0 && typeof formatMoneyByCode === 'function' && (
+                        <div className="flex flex-wrap gap-2">
+                            {Object.entries(totalsByCurrency).map(([currency, total]) => (
+                                <span key={currency} className="px-3 py-1 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200 rounded-md text-sm font-bold border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1">
+                                    <span>الإجمالي:</span>
+                                    <span className="font-mono mx-1" dir="ltr">{formatMoneyByCode(total, currency)}</span>
+                                    <span>{currency}</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
                 <div className="flex items-center gap-4 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={handlePrintOrdersList}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-semibold flex items-center gap-2"
+                        title={language === 'ar' ? 'طباعة / حفظ PDF' : 'Print / Save PDF'}
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                        <span>{language === 'ar' ? 'طباعة / تصدير PDF' : 'Print / PDF'}</span>
+                    </button>
                     {canCreateInStoreSale && (
                         <button
                             type="button"
-                            onClick={() => setIsInStoreSaleOpen(true)}
+                            onClick={openNewInStoreSale}
                             className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition text-sm font-semibold"
                         >
                             {language === 'ar' ? 'إضافة بيع حضوري' : 'New in-store sale'}
                         </button>
                     )}
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="customerNameFilter" className="text-sm font-medium dark:text-gray-300 mx-2">بحث ذكي:</label>
+                        <input
+                            id="customerNameFilter"
+                            value={customerNameFilter}
+                            onChange={(e) => setCustomerNameFilter(e.target.value)}
+                            placeholder="الاسم، الهاتف، أو رقم الطلب..."
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm w-56"
+                        />
+                        {customerNameFilter.trim() && (
+                            <button
+                                type="button"
+                                onClick={() => setCustomerNameFilter('')}
+                                className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold"
+                            >
+                                مسح
+                            </button>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2">
                         <label htmlFor="customerFilter" className="text-sm font-medium dark:text-gray-300 mx-2">فلترة حسب العميل:</label>
                         <input
@@ -2079,14 +3247,109 @@ const ManageOrdersScreen: React.FC = () => {
                         <select
                             id="statusFilter"
                             value={filterStatus}
-                            onChange={(e) => setFilterStatus(e.target.value as OrderStatus | 'all')}
-                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition"
+                            onChange={(e) => setFilterStatus(e.target.value as OrderStatus | 'all' | 'delivered_no_returns')}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
                         >
                             <option value="all">الكل</option>
+                            <option value="delivered_no_returns">تم التوصيل (صافي بدون المسترجع والملغي)</option>
                             {filterStatusOptions.map(status => (
                                 <option key={status} value={status}>{statusTranslations[status] || status}</option>
                             ))}
                         </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium dark:text-gray-300">من:</label>
+                        <input
+                            type="date"
+                            value={filterDateFrom}
+                            onChange={(e) => setFilterDateFrom(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        />
+                        <label className="text-sm font-medium dark:text-gray-300">إلى:</label>
+                        <input
+                            type="date"
+                            value={filterDateTo}
+                            onChange={(e) => setFilterDateTo(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        />
+                        {(filterDateFrom || filterDateTo) && (
+                            <button
+                                type="button"
+                                onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
+                                className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold"
+                            >
+                                مسح
+                            </button>
+                        )}
+                    </div>
+                    <div>
+                        <label htmlFor="paymentFilter" className="text-sm font-medium dark:text-gray-300 mx-1">طريقة الدفع:</label>
+                        <select
+                            id="paymentFilter"
+                            value={filterPaymentMethod}
+                            onChange={(e) => setFilterPaymentMethod(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        >
+                            <option value="all">الكل</option>
+                            <option value="cash">نقداً</option>
+                            <option value="ar">آجل</option>
+                            <option value="network">حوالة/بنك</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="shiftFilter" className="text-sm font-medium dark:text-gray-300 mx-1">الوردية:</label>
+                        <select
+                            id="shiftFilter"
+                            value={filterShiftId}
+                            onChange={(e) => setFilterShiftId(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        >
+                            <option value="all">الكل</option>
+                            {recentShifts.map(shift => {
+                                const name = adminUserMap[shift.cashier_id] || shift.cashier_id.slice(0, 6);
+                                const d = new Date(shift.opened_at);
+                                const dateStr = `${d.getDate()}/${d.getMonth() + 1} ${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+                                return (
+                                    <option key={shift.id} value={shift.id}>
+                                        {name} - {dateStr}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="currencyFilter" className="text-sm font-medium dark:text-gray-300 mx-1">العملة:</label>
+                        <select
+                            id="currencyFilter"
+                            value={filterCurrency}
+                            onChange={(e) => setFilterCurrency(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        >
+                            <option value="all">الكل</option>
+                            <option value={baseCode.toUpperCase()}>{baseCode.toUpperCase()}</option>
+                            {currencyOptions.filter(c => c.toUpperCase() !== baseCode.toUpperCase()).map(c => (
+                                <option key={c} value={c.toUpperCase()}>{c.toUpperCase()}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="returnsOnly" className="text-sm font-medium dark:text-gray-300">المرتجعات فقط:</label>
+                        <input
+                            id="returnsOnly"
+                            type="checkbox"
+                            checked={returnsOnly}
+                            onChange={(e) => setReturnsOnly(e.target.checked)}
+                            className="h-4 w-4"
+                        />
+                        {returnsOnly && (
+                            <button
+                                type="button"
+                                onClick={() => setReturnsOnly(false)}
+                                className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold"
+                            >
+                                مسح
+                            </button>
+                        )}
                     </div>
                     <div>
                         <label htmlFor="sortOrder" className="text-sm font-medium dark:text-gray-300 mx-2">ترتيب حسب:</label>
@@ -2109,6 +3372,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">رقم الطلب</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">المرتجع</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">بيانات الزبون</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">الأصناف</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider border-r dark:border-gray-700">المبلغ</th>
@@ -2120,7 +3384,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                    <td colSpan={8} className="text-center py-10 text-gray-500 dark:text-gray-400">
                                         <div className="flex justify-center items-center space-x-2 rtl:space-x-reverse">
                                             <Spinner />
                                             <span>جاري تحميل الطلبات...</span>
@@ -2128,486 +3392,608 @@ const ManageOrdersScreen: React.FC = () => {
                                     </td>
                                 </tr>
                             ) : filteredAndSortedOrders.length > 0 ? (
-                                filteredAndSortedOrders.map(order => (
-                                    <tr key={order.id} data-order-id={order.id} className={order.id === highlightedOrderId ? 'bg-yellow-50 dark:bg-yellow-900/20' : undefined}>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
-                                            {order.isScheduled && order.scheduledAt && (
-                                                <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold" title={new Date(order.scheduledAt).toLocaleString('ar-EG-u-nu-latn')}>
-                                                    مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}</span>
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            <div className="text-sm font-medium text-gray-900 dark:text-white">{order.customerName}</div>
-                                            <div className="text-sm text-gray-500 dark:text-gray-400" dir="ltr">{order.phoneNumber}</div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400 max-w-xs truncate" title={order.address}>{order.address}</div>
-                                            {order.deliveryZoneId && !isInStoreOrder(order) && (
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs truncate" title={getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId}>
-                                                    منطقة التوصيل: {getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId.slice(-6).toUpperCase()}
-                                                </div>
-                                            )}
-                                            {(() => {
-                                                const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
-                                                if (!isCod) return null;
-                                                const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
-                                                const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
-                                                if (bal <= 0.01) return null;
-                                                return (
-                                                    <div className="mt-1">
-                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
-                                                            نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)} {baseCode || '—'}</span>
-                                                        </span>
+                                filteredAndSortedOrders.map(order => {
+                                    const returnStatus = getReturnStatus(order);
+                                    const isVoidedDesktop = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                                    const isDraft = Boolean((order as any).isDraft);
+                                    const rowClass =
+                                        order.id === highlightedOrderId
+                                            ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                                            : isVoidedDesktop
+                                                ? 'bg-purple-50/70 dark:bg-purple-900/10'
+                                                : isDraft
+                                                    ? 'bg-indigo-50/70 dark:bg-indigo-900/10'
+                                                    : returnStatus === 'full'
+                                                        ? 'bg-red-50/70 dark:bg-red-900/10'
+                                                        : returnStatus === 'partial'
+                                                            ? 'bg-amber-50/70 dark:bg-amber-900/10'
+                                                            : undefined;
+                                    return (
+                                        <tr key={order.id} data-order-id={order.id} className={rowClass}>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
+                                                {order.isScheduled && order.scheduledAt && (
+                                                    <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold" title={new Date(order.scheduledAt).toLocaleString('ar-EG-u-nu-latn')}>
+                                                        مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}</span>
                                                     </div>
-                                                );
-                                            })()}
-                                            {order.location && !isInStoreOrder(order) && (
-                                                <div className="mt-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setMapModal({ title: language === 'ar' ? 'موقع العميل' : 'Customer location', coords: order.location! })}
-                                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                                    >
-                                                        {language === 'ar' ? 'عرض الخريطة' : 'Show map'}
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {order.notes && (
-                                                <div className="text-xs text-blue-500 dark:text-blue-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.notes}>
-                                                    ملاحظة: {order.notes}
-                                                </div>
-                                            )}
-                                            {order.deliveryInstructions && (
-                                                <div className="text-xs text-orange-600 dark:text-orange-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.deliveryInstructions}>
-                                                    تعليمات التوصيل: {order.deliveryInstructions}
-                                                </div>
-                                            )}
-                                            {(order.paymentProof || order.appliedCouponCode || (order.pointsRedeemedValue && order.pointsRedeemedValue > 0)) && (
-                                                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
-                                                    {order.paymentProof && (
-                                                        <div>
-                                                            <span className="text-xs font-semibold dark:text-gray-300">إثبات الدفع: </span>
-                                                            {order.paymentProofType === 'image' ? (
-                                                                <a href={order.paymentProof} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">عرض الصورة</a>
-                                                            ) : (
-                                                                <span className="text-xs text-gray-700 dark:text-gray-400 font-mono">{order.paymentProof}</span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {order.appliedCouponCode && (
-                                                        <div className="text-xs"><span className="font-semibold dark:text-gray-300">الكوبون:</span> <span className="font-mono text-green-600 dark:text-green-400">{order.appliedCouponCode}</span></div>
-                                                    )}
-                                                    {order.pointsRedeemedValue && order.pointsRedeemedValue > 0 && (
-                                                        <div className="text-xs"><span className="font-semibold dark:text-gray-300">نقاط مستبدلة:</span> <span className="font-mono text-yellow-600 dark:text-yellow-400">{order.pointsRedeemedValue.toFixed(0)}</span></div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 align-top border-r dark:border-gray-700">
-                                            <ul className="space-y-1">
-                                                {(order.items || []).map((item: CartItem, idx: number) => {
-                                                    const selectedAddonsRaw = (item as any)?.selectedAddons;
-                                                    const selectedAddonsObj =
-                                                        selectedAddonsRaw && typeof selectedAddonsRaw === 'object' ? selectedAddonsRaw : {};
-                                                    const addonsArray = Object.values(selectedAddonsObj as Record<string, any>);
-                                                    const itemName = String(
-                                                        (item as any)?.name?.[language] ||
-                                                        (item as any)?.name?.ar ||
-                                                        (item as any)?.name?.en ||
-                                                        (item as any)?.name ||
-                                                        (item as any)?.itemName ||
-                                                        (item as any)?.id ||
-                                                        (item as any)?.itemId ||
-                                                        ''
-                                                    );
-                                                    const key =
-                                                        item.cartItemId ||
-                                                        (item as any).id ||
-                                                        `${(item as any).menuItemId || 'item'}-${idx}`;
-                                                    return (
-                                                        <li key={key}>
-                                                            <span className="font-semibold">{itemName || 'منتج'} x{Number((item as any)?.quantity || 0)}</span>
-                                                            {addonsArray.length > 0 && (
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400 pl-2 rtl:pr-2">
-                                                                    {addonsArray
-                                                                        .map((entry: any) => {
-                                                                            const addon = entry?.addon || entry;
-                                                                            const addonName =
-                                                                                addon?.name?.[language] ||
-                                                                                addon?.name?.ar ||
-                                                                                addon?.name?.en ||
-                                                                                addon?.name ||
-                                                                                addon?.title ||
-                                                                                '';
-                                                                            return addonName ? `+ ${String(addonName)}` : '';
-                                                                        })
-                                                                        .filter(Boolean)
-                                                                        .join(', ')}
-                                                                </div>
-                                                            )}
-                                                        </li>
-                                                    );
-                                                })}
-                                            </ul>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            <CurrencyDualAmount
-                                                amount={Number(order.total || 0)}
-                                                currencyCode={(order as any).currency}
-                                                baseAmount={(order as any).baseTotal}
-                                                fxRate={(order as any).fxRate}
-                                                baseCurrencyCode={baseCode}
-                                                compact
-                                            />
-                                            {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
-                                            {(() => {
-                                                const paid = Number(paidSumByOrderId[order.id]) || 0;
-                                                const remaining = Math.max(0, (Number(order.total) || 0) - paid);
-                                                return (
-                                                    <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
-                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{Number(paid || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span></div>
-                                                        <div>متبقي: <span className="font-mono" dir="ltr">{Number(remaining || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span></div>
-                                                        {remaining > 1e-9 && order.status !== 'delivered' && (
-                                                            <div>
-                                                                <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
-                                                                    بانتظار التحصيل
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 border-r dark:border-gray-700">{paymentTranslations[order.paymentMethod] || order.paymentMethod}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            {(() => {
-                                                const paid = Number(paidSumByOrderId[order.id]) || 0;
-                                                const remaining = Math.max(0, (Number(order.total) || 0) - paid);
-                                                const showPaymentActions = order.status === 'delivered' && remaining > 1e-9;
-
-                                                const paymentActions = showPaymentActions ? (
-                                                    <div className="flex flex-col gap-2">
-                                                        <button
-                                                            onClick={() => openPartialPaymentModal(order.id)}
-                                                            disabled={!canMarkPaid}
-                                                            className="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition text-sm disabled:opacity-60"
-                                                        >
-                                                            تحصيل جزئي
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleMarkPaid(order.id)}
-                                                            disabled={!canMarkPaid}
-                                                            className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition text-sm disabled:opacity-60"
-                                                        >
-                                                            {order.paymentMethod === 'cash' ? 'تأكيد التحصيل' : 'تأكيد الدفع'}
-                                                        </button>
-                                                    </div>
-                                                ) : null;
-
-                                                if (order.invoiceIssuedAt) {
-                                                    return (
-                                                        <div className="flex flex-col gap-2">
-                                                            {canViewInvoice ? (
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="text-xs">
-                                                                        <div className="font-mono text-gray-800 dark:text-gray-200">{order.invoiceNumber}</div>
-                                                                        <div className="text-gray-500 dark:text-gray-400">طباعة: {order.invoicePrintCount || 0}</div>
-                                                                    </div>
-                                                                    <button
-                                                                        onClick={() => navigate(`/admin/invoice/${order.id}`)}
-                                                                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs font-semibold"
-                                                                    >
-                                                                        عرض/طباعة
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-xs text-gray-400">غير متاحة</div>
-                                                            )}
-                                                            {!isInStoreOrder(order) && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handlePrintDeliveryNote(order)}
-                                                                    className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                                >
-                                                                    طباعة سند تسليم
-                                                                </button>
-                                                            )}
-                                                            {canViewAccounting && (Number(paidSumByOrderId[order.id]) || 0) > 0 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => { void handlePrintReceiptVoucher(order); }}
-                                                                    className="px-3 py-1 bg-gray-900 text-white rounded hover:bg-black transition text-xs font-semibold"
-                                                                >
-                                                                    طباعة سند قبض
-                                                                </button>
-                                                            )}
-                                                            {paymentActions}
-                                                        </div>
-                                                    );
-                                                }
-
-                                                if (order.status === 'delivered') {
-                                                    const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
-                                                    const canIssueInvoice = !isCod && (Boolean(order.paidAt) || order.paymentMethod === 'ar') && canManageAccounting;
-                                                    return (
-                                                        <div className="flex flex-col gap-2">
-                                                            {canIssueInvoice && (
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">جاري إصدار الفاتورة...</div>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            const g = guardPosting();
-                                                                            if (!g.ok) {
-                                                                                showNotification(g.reason || 'لا تملك صلاحية إصدار الفاتورة.', 'error');
-                                                                                return;
-                                                                            }
-                                                                            issueInvoiceNow(order.id);
-                                                                        }}
-                                                                        className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs"
-                                                                    >
-                                                                        إصدار الآن
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                            {!isInStoreOrder(order) && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handlePrintDeliveryNote(order)}
-                                                                    className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                                >
-                                                                    طباعة سند تسليم
-                                                                </button>
-                                                            )}
-                                                            {paymentActions}
-                                                        </div>
-                                                    );
-                                                }
-
-                                                return (
-                                                    <div className="flex flex-col gap-2">
-                                                        {!isInStoreOrder(order) && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handlePrintDeliveryNote(order)}
-                                                                className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                            >
-                                                                طباعة سند تسليم
-                                                            </button>
-                                                        )}
-                                                        <div className="text-xs text-gray-400">غير متاحة</div>
-                                                    </div>
-                                                );
-                                            })()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <select
-                                                value={order.status}
-                                                onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
-                                                disabled={
-                                                    order.status === 'delivered' ||
-                                                    order.status === 'cancelled' ||
-                                                    getEditableStatusesForOrder(order).length === 0 ||
-                                                    (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt)
-                                                }
-                                                className={`w-full p-2 border-none rounded-md text-sm focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
-                                            >
-                                                {order.status === 'cancelled' ? (
-                                                    <option value="cancelled">ملغي</option>
-                                                ) : getEditableStatusesForOrder(order).length > 0 && !getEditableStatusesForOrder(order).includes(order.status) ? (
-                                                    <>
-                                                        <option key={`current-${order.status}`} value={order.status}>{statusTranslations[order.status] || order.status}</option>
-                                                        {getEditableStatusesForOrder(order).map(status => (
-                                                            <option key={status} value={status}>{statusTranslations[status] || status}</option>
-                                                        ))}
-                                                    </>
-                                                ) : (
-                                                    (getEditableStatusesForOrder(order).length > 0 ? getEditableStatusesForOrder(order) : [order.status]).map(status => (
-                                                        <option key={status} value={status}>{statusTranslations[status] || status}</option>
-                                                    ))
                                                 )}
-                                            </select>
-                                            {canCancel && order.status !== 'delivered' && order.status !== 'cancelled' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setCancelOrderId(order.id)}
-                                                    className="mt-2 w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
-                                                >
-                                                    {language === 'ar' ? 'إلغاء الطلب' : 'Cancel order'}
-                                                </button>
-                                            )}
-                                            {(() => {
-                                                const paid = Number(paidSumByOrderId[order.id]) || 0;
-                                                const canReturn = order.status === 'delivered' && paid > 0.01;
-                                                if (!canReturn) return null;
-                                                return (
-                                                    <div className="mt-2 flex flex-col gap-2">
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700 align-top">
+                                                <div className="flex items-center justify-start min-h-[24px]">
+                                                    {renderReturnBadge(order, 'pill') || (
+                                                        <span className="text-xs text-gray-400">—</span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                <div className="text-sm font-medium text-gray-900 dark:text-white">{order.customerName}</div>
+                                                <div className="text-sm text-gray-500 dark:text-gray-400" dir="ltr">{order.phoneNumber}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 max-w-xs truncate" title={order.address}>{order.address}</div>
+                                                {order.deliveryZoneId && !isInStoreOrder(order) && (
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs truncate" title={getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId}>
+                                                        منطقة التوصيل: {getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId.slice(-6).toUpperCase()}
+                                                    </div>
+                                                )}
+                                                {(() => {
+                                                    const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
+                                                    if (!isCod) return null;
+                                                    const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
+                                                    const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
+                                                    if (bal <= 0.01) return null;
+                                                    return (
+                                                        <div className="mt-1">
+                                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                                                                نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)} {baseCode || '—'}</span>
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                {order.location && !isInStoreOrder(order) && (
+                                                    <div className="mt-1">
                                                         <button
                                                             type="button"
-                                                            onClick={() => openReturnsModal(order.id)}
-                                                            className="w-full px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 transition text-sm font-semibold"
+                                                            onClick={() => setMapModal({ title: language === 'ar' ? 'موقع العميل' : 'Customer location', coords: order.location! })}
+                                                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                                                         >
-                                                            📚 سجل المرتجعات
+                                                            {language === 'ar' ? 'عرض الخريطة' : 'Show map'}
                                                         </button>
+                                                    </div>
+                                                )}
+                                                {order.notes && (
+                                                    <div className="text-xs text-blue-500 dark:text-blue-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.notes}>
+                                                        ملاحظة: {order.notes}
+                                                    </div>
+                                                )}
+                                                {order.deliveryInstructions && (
+                                                    <div className="text-xs text-orange-600 dark:text-orange-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700 max-w-xs truncate" title={order.deliveryInstructions}>
+                                                        تعليمات التوصيل: {order.deliveryInstructions}
+                                                    </div>
+                                                )}
+                                                {(order.paymentProof || order.appliedCouponCode || (order.pointsRedeemedValue && order.pointsRedeemedValue > 0)) && (
+                                                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
+                                                        {order.paymentProof && (
+                                                            <div>
+                                                                <span className="text-xs font-semibold dark:text-gray-300">إثبات الدفع: </span>
+                                                                {order.paymentProofType === 'image' ? (
+                                                                    <a href={order.paymentProof} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">عرض الصورة</a>
+                                                                ) : (
+                                                                    <span className="text-xs text-gray-700 dark:text-gray-400 font-mono">{order.paymentProof}</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {order.appliedCouponCode && (
+                                                            <div className="text-xs"><span className="font-semibold dark:text-gray-300">الكوبون:</span> <span className="font-mono text-green-600 dark:text-green-400">{order.appliedCouponCode}</span></div>
+                                                        )}
+                                                        {order.pointsRedeemedValue && order.pointsRedeemedValue > 0 && (
+                                                            <div className="text-xs"><span className="font-semibold dark:text-gray-300">نقاط مستبدلة:</span> <span className="font-mono text-yellow-600 dark:text-yellow-400">{order.pointsRedeemedValue.toFixed(0)}</span></div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 align-top border-r dark:border-gray-700">
+                                                <ul className="space-y-1">
+                                                    {(order.items || []).map((item: CartItem, idx: number) => {
+                                                        const selectedAddonsRaw = (item as any)?.selectedAddons;
+                                                        const selectedAddonsObj =
+                                                            selectedAddonsRaw && typeof selectedAddonsRaw === 'object' ? selectedAddonsRaw : {};
+                                                        const addonsArray = Object.values(selectedAddonsObj as Record<string, any>);
+                                                        const itemName = String(
+                                                            (item as any)?.name?.[language] ||
+                                                            (item as any)?.name?.ar ||
+                                                            (item as any)?.name?.en ||
+                                                            (item as any)?.name ||
+                                                            (item as any)?.itemName ||
+                                                            (item as any)?.id ||
+                                                            (item as any)?.itemId ||
+                                                            ''
+                                                        );
+                                                        const key =
+                                                            item.cartItemId ||
+                                                            (item as any).id ||
+                                                            `${(item as any).menuItemId || 'item'}-${idx}`;
+                                                        return (
+                                                            <li key={key}>
+                                                                <span className="font-semibold">{itemName || 'منتج'} x{Number((item as any)?.quantity || 0)}</span>
+                                                                {addonsArray.length > 0 && (
+                                                                    <div className="text-xs text-gray-500 dark:text-gray-400 pl-2 rtl:pr-2">
+                                                                        {addonsArray
+                                                                            .map((entry: any) => {
+                                                                                const addon = entry?.addon || entry;
+                                                                                const addonName =
+                                                                                    addon?.name?.[language] ||
+                                                                                    addon?.name?.ar ||
+                                                                                    addon?.name?.en ||
+                                                                                    addon?.name ||
+                                                                                    addon?.title ||
+                                                                                    '';
+                                                                                return addonName ? `+ ${String(addonName)}` : '';
+                                                                            })
+                                                                            .filter(Boolean)
+                                                                            .join(', ')}
+                                                                    </div>
+                                                                )}
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                <CurrencyDualAmount
+                                                    amount={Number(order.total || 0)}
+                                                    currencyCode={(order as any).currency}
+                                                    baseAmount={(order as any).baseTotal}
+                                                    fxRate={(order as any).fxRate}
+                                                    baseCurrencyCode={baseCode}
+                                                    compact
+                                                />
+                                                {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
+                                                {(() => {
+                                                    const { currency, paid, remaining, tol } = getOrderPaymentSnapshot(order);
+                                                    return (
+                                                        <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
+                                                            <div>مدفوع: <span className="font-mono" dir="ltr">{formatMoneyByCode(paid || 0, currency)} {currency || '—'}</span></div>
+                                                            <div>متبقي: <span className="font-mono" dir="ltr">{formatMoneyByCode(remaining || 0, currency)} {currency || '—'}</span></div>
+                                                            {remaining > tol && order.status !== 'delivered' && (
+                                                                <div>
+                                                                    <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                                                                        بانتظار التحصيل
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 border-r dark:border-gray-700">{paymentTranslations[order.paymentMethod] || order.paymentMethod}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                                {(() => {
+                                                    const { remaining, tol } = getOrderPaymentSnapshot(order);
+                                                    const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+                                                    const isVoidedTbl = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                                                    const showPaymentActions = order.status === 'delivered' && remaining > tol && !isFullyReturned && !isVoidedTbl;
+
+                                                    const paymentActions = showPaymentActions ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            <button
+                                                                onClick={() => openPartialPaymentModal(order.id)}
+                                                                disabled={!canMarkPaid}
+                                                                className="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition text-sm disabled:opacity-60"
+                                                            >
+                                                                تحصيل جزئي
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleMarkPaid(order.id)}
+                                                                disabled={!canMarkPaid}
+                                                                className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition text-sm disabled:opacity-60"
+                                                            >
+                                                                {order.paymentMethod === 'cash' ? 'تأكيد التحصيل' : 'تأكيد الدفع'}
+                                                            </button>
+                                                        </div>
+                                                    ) : null;
+
+                                                    const hasPaidAtTbl = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
+                                                    const { paid: paidTbl, tol: tolTbl } = getOrderPaymentSnapshot(order);
+                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || hasPaidAtTbl) && (isOwner || isManager) && !isVoidedTbl ? (
+                                                        <button
+                                                            onClick={() => handlePurgePayment(order.id)}
+                                                            disabled={isPurgingPayment}
+                                                            className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            🗑️ مسح الدفعة
+                                                        </button>
+                                                    ) : null;
+
+                                                    if (Boolean((order as any).isDraft)) {
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => printQuotation(order)}
+                                                                    className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition text-xs font-semibold"
+                                                                >
+                                                                    طباعة عرض السعر
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => loadQuotationToCart(order)}
+                                                                    className="px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 transition text-xs font-semibold text-gray-900"
+                                                                >
+                                                                    اعتماد كفاتورة
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (order.invoiceIssuedAt) {
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                {canViewInvoice ? (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-xs">
+                                                                            <div className="font-mono text-gray-800 dark:text-gray-200">{order.invoiceNumber}</div>
+                                                                            <div className="text-gray-500 dark:text-gray-400">طباعة: {order.invoicePrintCount || 0}</div>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => navigate(`/admin/invoice/${order.id}`)}
+                                                                            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs font-semibold"
+                                                                        >
+                                                                            عرض/طباعة
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-xs text-gray-400">غير متاحة</div>
+                                                                )}
+                                                                {!isInStoreOrder(order) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handlePrintDeliveryNote(order)}
+                                                                        className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                                    >
+                                                                        طباعة سند تسليم
+                                                                    </button>
+                                                                )}
+                                                                {canViewAccounting && getOrderPaymentSnapshot(order).paid > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { void handlePrintReceiptVoucher(order); }}
+                                                                        className="px-3 py-1 bg-gray-900 text-white rounded hover:bg-black transition text-xs font-semibold"
+                                                                    >
+                                                                        طباعة سند قبض
+                                                                    </button>
+                                                                )}
+                                                                {paymentActions}
+                                                                {purgeAction}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (order.status === 'delivered') {
+                                                        const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
+                                                        const { paid, total, tol, isCreditSale } = getOrderPaymentSnapshot(order);
+                                                        const isPaid = total > 0 && (paid + tol) >= total;
+                                                        const canIssueInvoice = !isCod && (isPaid || isCreditSale) && canManageAccounting;
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                {canIssueInvoice && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-xs text-gray-500 dark:text-gray-400">جاري إصدار الفاتورة...</div>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                const g = guardPosting();
+                                                                                if (!g.ok) {
+                                                                                    showNotification(g.reason || 'لا تملك صلاحية إصدار الفاتورة.', 'error');
+                                                                                    return;
+                                                                                }
+                                                                                issueInvoiceNow(order.id);
+                                                                            }}
+                                                                            className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs"
+                                                                        >
+                                                                            إصدار الآن
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                                {!isInStoreOrder(order) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handlePrintDeliveryNote(order)}
+                                                                        className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                                    >
+                                                                        طباعة سند تسليم
+                                                                    </button>
+                                                                )}
+                                                                {paymentActions}
+                                                                {purgeAction}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (isInStoreOrder(order) && order.status === 'pending' && canMarkPaid) {
+                                                        const reason = String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim();
+                                                        return (
+                                                            <div className="flex flex-col gap-2">
+                                                                {reason && (
+                                                                    <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                                                                        سبب التعليق: {reason}
+                                                                    </div>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void attemptResumeInStorePending(order)}
+                                                                    disabled={resumePendingBusyId === order.id}
+                                                                    className="px-3 py-1 bg-emerald-700 text-white rounded hover:bg-emerald-800 transition text-xs font-semibold disabled:opacity-60"
+                                                                >
+                                                                    {resumePendingBusyId === order.id ? 'جاري الإتمام...' : 'إعادة محاولة الإتمام'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setEditOrderId(order.id)}
+                                                                    className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800 transition text-xs font-semibold"
+                                                                >
+                                                                    تعديل الأصناف
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={async () => {
+                                                                        if (!canCancel) return;
+                                                                        try {
+                                                                            await cancelInStorePendingOrder(order.id);
+                                                                            showNotification('تم حذف الطلب المعلّق.', 'success');
+                                                                            try { await fetchOrders(); } catch { }
+                                                                        } catch (e: any) {
+                                                                            showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
+                                                                        }
+                                                                    }}
+                                                                    disabled={!canCancel || resumePendingBusyId === order.id}
+                                                                    className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs font-semibold disabled:opacity-60"
+                                                                >
+                                                                    حذف الطلب المعلّق
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div className="flex flex-col gap-2">
+                                                            {!isInStoreOrder(order) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handlePrintDeliveryNote(order)}
+                                                                    className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                                >
+                                                                    طباعة سند تسليم
+                                                                </button>
+                                                            )}
+                                                            <div className="text-xs text-gray-400">غير متاحة</div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                {Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt) && (
+                                                    <div className="mb-2">
+                                                        <span className="inline-flex items-center justify-center w-full px-3 py-2 rounded-md text-sm font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">
+                                                            ⛔ ملغي بعد التسليم
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {renderReturnBadge(order, 'banner')}
+                                                <select
+                                                    value={order.status}
+                                                    onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
+                                                    disabled={
+                                                        order.status === 'delivered' ||
+                                                        order.status === 'cancelled' ||
+                                                        getEditableStatusesForOrder(order).length === 0 ||
+                                                        (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
+                                                        String((order as any).returnStatus || '').toLowerCase() === 'full' ||
+                                                        Boolean((order as any).isDraft)
+                                                    }
+                                                    className={`w-full p-2 border-none rounded-md text-sm focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
+                                                >
+                                                    {order.status === 'cancelled' ? (
+                                                        <option value="cancelled">ملغي</option>
+                                                    ) : getEditableStatusesForOrder(order).length > 0 && !getEditableStatusesForOrder(order).includes(order.status) ? (
+                                                        <>
+                                                            <option key={`current-${order.status}`} value={order.status}>{statusTranslations[order.status] || order.status}</option>
+                                                            {getEditableStatusesForOrder(order).map(status => (
+                                                                <option key={status} value={status}>{statusTranslations[status] || status}</option>
+                                                            ))}
+                                                        </>
+                                                    ) : (
+                                                        (getEditableStatusesForOrder(order).length > 0 ? getEditableStatusesForOrder(order) : [order.status]).map(status => (
+                                                            <option key={status} value={status}>{statusTranslations[status] || status}</option>
+                                                        ))
+                                                    )}
+                                                </select>
+                                                {canCancel && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCancelOrderId(order.id)}
+                                                        className="mt-2 w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
+                                                    >
+                                                        {language === 'ar' ? 'إلغاء الطلب' : 'Cancel order'}
+                                                    </button>
+                                                )}
+                                                {(() => {
+                                                    const { paid, isCreditSale, tol } = getOrderPaymentSnapshot(order);
+                                                    const isFullyReturned = String((order as any).returnStatus || '').toLowerCase() === 'full';
+                                                    const isVoidedRow = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                                                    const canReturn = order.status === 'delivered' && (isCreditSale || paid > tol) && !isFullyReturned && !isVoidedRow;
+                                                    if (!canReturn) return null;
+                                                    return (
+                                                        <div className="mt-2 flex flex-col gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openReturnsModal(order.id)}
+                                                                className="w-full px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 transition text-sm font-semibold"
+                                                            >
+                                                                📚 سجل المرتجعات
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setReturnOrderId(order.id);
+                                                                    setReturnItems({});
+                                                                    setReturnReason('');
+                                                                    setRefundMethod(detectRefundMethod(order));
+                                                                }}
+                                                                className="w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
+                                                            >
+                                                                ↩️ استرجاع (مرتجع)
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                {order.status === 'delivered'
+                                                    && canVoidDelivered
+                                                    && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt)
+                                                    && String((order as any).returnStatus || '').toLowerCase() !== 'full'
+                                                    && (
                                                         <button
                                                             type="button"
                                                             onClick={() => {
-                                                                setReturnOrderId(order.id);
-                                                                setReturnItems({});
-                                                                setReturnReason('');
-                                                                setRefundMethod('cash');
+                                                                setVoidOrderId(order.id);
+                                                                setVoidReason('');
                                                             }}
-                                                            className="w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
+                                                            className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold"
                                                         >
-                                                            ↩️ استرجاع (مرتجع)
+                                                            🧾 إلغاء بعد التسليم (عكس)
                                                         </button>
-                                                    </div>
-                                                );
-                                            })()}
-                                            {order.status === 'delivered' && canVoidDelivered && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setVoidOrderId(order.id);
-                                                        setVoidReason('');
-                                                    }}
-                                                    className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold"
-                                                >
-                                                    🧾 إلغاء بعد التسليم (عكس)
-                                                </button>
-                                            )}
-                                            {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleAcceptDelivery(order.id)}
-                                                    className="mt-2 w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm font-semibold"
-                                                >
-                                                    {language === 'ar' ? 'قبول مهمة التوصيل' : 'Accept delivery'}
-                                                </button>
-                                            )}
-                                            {canAssignDelivery && !isInStoreOrder(order) && (
-                                                <div className="mt-2">
-                                                    <select
-                                                        value={order.assignedDeliveryUserId || 'none'}
-                                                        onChange={(e) => handleAssignDelivery(order.id, e.target.value)}
-                                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs text-gray-900 dark:text-white focus:ring-orange-500 focus:border-orange-500 transition"
-                                                    >
-                                                        <option value="none">{language === 'ar' ? 'بدون مندوب' : 'Unassigned'}</option>
-                                                        {deliveryUsers.map(u => (
-                                                            <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleAudit(order.id)}
-                                                className="mt-2 w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition text-sm font-semibold dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                                            >
-                                                {expandedAuditOrderId === order.id
-                                                    ? (language === 'ar' ? 'إخفاء السجل' : 'Hide log')
-                                                    : (language === 'ar' ? 'سجل الإجراءات' : 'Audit log')}
-                                            </button>
-                                            {canViewAccounting && order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openCodAudit(order.id)}
-                                                    className="mt-2 w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-semibold"
-                                                >
-                                                    عرض سجل COD
-                                                </button>
-                                            )}
-                                            {expandedAuditOrderId === order.id && (
-                                                <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
-                                                    {auditLoadingOrderId === order.id ? (
-                                                        <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'جاري تحميل السجل...' : 'Loading log...'}</div>
-                                                    ) : (auditByOrderId[order.id]?.length || 0) > 0 ? (
-                                                        <ul className="space-y-2 text-xs">
-                                                            {auditByOrderId[order.id]!.map(ev => {
-                                                                const actor = ev.actorType === 'admin'
-                                                                    ? (language === 'ar' ? 'إداري' : 'Admin')
-                                                                    : ev.actorType === 'customer'
-                                                                        ? (language === 'ar' ? 'زبون' : 'Customer')
-                                                                        : (language === 'ar' ? 'نظام' : 'System');
-
-                                                                const statusPart = ev.fromStatus || ev.toStatus
-                                                                    ? `${ev.fromStatus ? (statusTranslations[ev.fromStatus as OrderStatus] || ev.fromStatus) : ''}${ev.fromStatus && ev.toStatus ? ' → ' : ''}${ev.toStatus ? (statusTranslations[ev.toStatus as OrderStatus] || ev.toStatus) : ''}`.trim()
-                                                                    : '';
-
-                                                                const payload = ev.payload;
-                                                                const deliveredLocationCandidate =
-                                                                    payload && typeof payload === 'object' && 'deliveredLocation' in payload
-                                                                        ? (payload as Record<string, unknown>).deliveredLocation
-                                                                        : undefined;
-                                                                const deliveredLocation = isDeliveredLocation(deliveredLocationCandidate)
-                                                                    ? deliveredLocationCandidate
-                                                                    : undefined;
-
-                                                                const deliveryPinVerified =
-                                                                    payload && typeof payload === 'object' && 'deliveryPinVerified' in payload
-                                                                        ? Boolean((payload as Record<string, unknown>).deliveryPinVerified)
-                                                                        : false;
-
-                                                                return (
-                                                                    <li key={ev.id} className="text-gray-700 dark:text-gray-200">
-                                                                        <div className="flex items-start justify-between gap-2">
-                                                                            <div className="min-w-0">
-                                                                                <div className="font-semibold">{ev.action}</div>
-                                                                                <div className="text-gray-500 dark:text-gray-400">
-                                                                                    {actor}{ev.actorId ? ` • ${ev.actorId}` : ''}{statusPart ? ` • ${statusPart}` : ''}
-                                                                                </div>
-                                                                                {(deliveryPinVerified || deliveredLocation) && (
-                                                                                    <div className="mt-1 text-gray-500 dark:text-gray-400">
-                                                                                        {deliveryPinVerified && (
-                                                                                            <span>{language === 'ar' ? 'تم التحقق من الرمز' : 'PIN verified'}</span>
-                                                                                        )}
-                                                                                        {deliveryPinVerified && deliveredLocation && <span>{' • '}</span>}
-                                                                                        {deliveredLocation && (
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => setMapModal({ title: language === 'ar' ? 'موقع التسليم' : 'Delivery location', coords: { lat: deliveredLocation.lat, lng: deliveredLocation.lng } })}
-                                                                                                className="text-blue-600 dark:text-blue-400 hover:underline"
-                                                                                            >
-                                                                                                {language === 'ar' ? 'موقع التسليم' : 'Delivery location'}
-                                                                                                {typeof deliveredLocation.accuracy === 'number'
-                                                                                                    ? ` (${deliveredLocation.accuracy.toFixed(0)}m)`
-                                                                                                    : ''}
-                                                                                            </button>
-                                                                                        )}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                            <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
-                                                                                {new Date(ev.createdAt).toLocaleString('ar-EG-u-nu-latn')}
-                                                                            </div>
-                                                                        </div>
-                                                                    </li>
-                                                                );
-                                                            })}
-                                                        </ul>
-                                                    ) : (
-                                                        <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'لا يوجد سجل لهذا الطلب.' : 'No audit events for this order.'}</div>
                                                     )}
-                                                </div>
-                                            )}
-                                            {!isInStoreOrder(order) && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAcceptDelivery(order.id)}
+                                                        className="mt-2 w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm font-semibold"
+                                                    >
+                                                        {language === 'ar' ? 'قبول مهمة التوصيل' : 'Accept delivery'}
+                                                    </button>
+                                                )}
+                                                {canAssignDelivery && !isInStoreOrder(order) && (
+                                                    <div className="mt-2">
+                                                        <select
+                                                            value={order.assignedDeliveryUserId || 'none'}
+                                                            onChange={(e) => handleAssignDelivery(order.id, e.target.value)}
+                                                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs text-gray-900 dark:text-white focus:ring-orange-500 focus:border-orange-500 transition"
+                                                        >
+                                                            <option value="none">{language === 'ar' ? 'بدون مندوب' : 'Unassigned'}</option>
+                                                            {deliveryUsers.map(u => (
+                                                                <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
                                                 <button
                                                     type="button"
-                                                    onClick={() => {
-                                                        setEditOrderId(order.id);
-                                                        setEditChangesByCartItemId({});
-                                                    }}
-                                                    className="mt-2 w-full px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition text-sm font-semibold"
+                                                    onClick={() => toggleAudit(order.id)}
+                                                    className="mt-2 w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition text-sm font-semibold dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                                                 >
-                                                    تعديل الأصناف
+                                                    {expandedAuditOrderId === order.id
+                                                        ? (language === 'ar' ? 'إخفاء السجل' : 'Hide log')
+                                                        : (language === 'ar' ? 'سجل الإجراءات' : 'Audit log')}
                                                 </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
+                                                {canViewAccounting && order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openCodAudit(order.id)}
+                                                        className="mt-2 w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-semibold"
+                                                    >
+                                                        عرض سجل COD
+                                                    </button>
+                                                )}
+                                                {expandedAuditOrderId === order.id && (
+                                                    <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
+                                                        {auditLoadingOrderId === order.id ? (
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'جاري تحميل السجل...' : 'Loading log...'}</div>
+                                                        ) : (auditByOrderId[order.id]?.length || 0) > 0 ? (
+                                                            <ul className="space-y-2 text-xs">
+                                                                {auditByOrderId[order.id]!.map(ev => {
+                                                                    const actor = ev.actorType === 'admin'
+                                                                        ? (language === 'ar' ? 'إداري' : 'Admin')
+                                                                        : ev.actorType === 'customer'
+                                                                            ? (language === 'ar' ? 'زبون' : 'Customer')
+                                                                            : (language === 'ar' ? 'نظام' : 'System');
+
+                                                                    const statusPart = ev.fromStatus || ev.toStatus
+                                                                        ? `${ev.fromStatus ? (statusTranslations[ev.fromStatus as OrderStatus] || ev.fromStatus) : ''}${ev.fromStatus && ev.toStatus ? ' → ' : ''}${ev.toStatus ? (statusTranslations[ev.toStatus as OrderStatus] || ev.toStatus) : ''}`.trim()
+                                                                        : '';
+
+                                                                    const payload = ev.payload;
+                                                                    const deliveredLocationCandidate =
+                                                                        payload && typeof payload === 'object' && 'deliveredLocation' in payload
+                                                                            ? (payload as Record<string, unknown>).deliveredLocation
+                                                                            : undefined;
+                                                                    const deliveredLocation = isDeliveredLocation(deliveredLocationCandidate)
+                                                                        ? deliveredLocationCandidate
+                                                                        : undefined;
+
+                                                                    const deliveryPinVerified =
+                                                                        payload && typeof payload === 'object' && 'deliveryPinVerified' in payload
+                                                                            ? Boolean((payload as Record<string, unknown>).deliveryPinVerified)
+                                                                            : false;
+
+                                                                    return (
+                                                                        <li key={ev.id} className="text-gray-700 dark:text-gray-200">
+                                                                            <div className="flex items-start justify-between gap-2">
+                                                                                <div className="min-w-0">
+                                                                                    <div className="font-semibold">{ev.action}</div>
+                                                                                    <div className="text-gray-500 dark:text-gray-400">
+                                                                                        {actor}{ev.actorId ? ` • ${ev.actorId}` : ''}{statusPart ? ` • ${statusPart}` : ''}
+                                                                                    </div>
+                                                                                    {(deliveryPinVerified || deliveredLocation) && (
+                                                                                        <div className="mt-1 text-gray-500 dark:text-gray-400">
+                                                                                            {deliveryPinVerified && (
+                                                                                                <span>{language === 'ar' ? 'تم التحقق من الرمز' : 'PIN verified'}</span>
+                                                                                            )}
+                                                                                            {deliveryPinVerified && deliveredLocation && <span>{' • '}</span>}
+                                                                                            {deliveredLocation && (
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => setMapModal({ title: language === 'ar' ? 'موقع التسليم' : 'Delivery location', coords: { lat: deliveredLocation.lat, lng: deliveredLocation.lng } })}
+                                                                                                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                                                                                                >
+                                                                                                    {language === 'ar' ? 'موقع التسليم' : 'Delivery location'}
+                                                                                                    {typeof deliveredLocation.accuracy === 'number'
+                                                                                                        ? ` (${deliveredLocation.accuracy.toFixed(0)}m)`
+                                                                                                        : ''}
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
+                                                                                    {new Date(ev.createdAt).toLocaleString('ar-EG-u-nu-latn')}
+                                                                                </div>
+                                                                            </div>
+                                                                        </li>
+                                                                    );
+                                                                })}
+                                                            </ul>
+                                                        ) : (
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'لا يوجد سجل لهذا الطلب.' : 'No audit events for this order.'}</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {!isInStoreOrder(order) && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditOrderId(order.id);
+                                                            setEditChangesByCartItemId({});
+                                                        }}
+                                                        className="mt-2 w-full px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition text-sm font-semibold"
+                                                    >
+                                                        تعديل الأصناف
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             ) : (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                    <td colSpan={8} className="text-center py-10 text-gray-500 dark:text-gray-400">
                                         لا توجد طلبات تطابق الفلاتر الحالية.
                                     </td>
                                 </tr>
@@ -2645,7 +4031,7 @@ const ManageOrdersScreen: React.FC = () => {
                 cancelText={language === 'ar' ? 'رجوع' : 'Back'}
                 confirmButtonClassName="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400"
                 maxWidthClassName="max-w-5xl"
-                hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod}
+                hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod || inStorePricingBusy || inStoreMissingServerPricing}
             >
                 <div className="space-y-4">
                     <div className="flex items-center justify-between text-xs">
@@ -2666,13 +4052,9 @@ const ManageOrdersScreen: React.FC = () => {
                                 value={inStoreTransactionCurrency}
                                 onChange={(e) => {
                                     const next = String(e.target.value || '').trim().toUpperCase();
-                                    if (inStoreLines.length > 0) {
-                                        showNotification('لا يمكن تغيير العملة بعد إضافة أصناف. احفظ أو امسح الأصناف أولاً.', 'error');
-                                        return;
-                                    }
                                     setInStoreTransactionCurrency(next);
                                 }}
-                                disabled={inStorePricingBusy || isInStoreCreating || inStoreLines.length > 0}
+                                disabled={inStorePricingBusy || isInStoreCreating}
                                 className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             >
                                 {operationalCurrencies.map((c) => (
@@ -2683,9 +4065,12 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
                             <span className="text-gray-600 dark:text-gray-300 mr-1">FX</span>
                             <span className="font-mono" dir="ltr">{Number(inStoreTransactionFxRate || 1).toFixed(6)}</span>
+                            {String(inStoreTransactionCurrency || '').trim().toUpperCase() !== String(baseCode || '').trim().toUpperCase() && Number(inStoreTransactionFxRate || 0) > 0 && (
+                                <span className="font-mono text-gray-500 dark:text-gray-300 ml-2" dir="ltr">{`(1 ${String(baseCode || '').trim().toUpperCase()} = ${(1 / Number(inStoreTransactionFxRate || 1)).toFixed(3)} ${String(inStoreTransactionCurrency || '').trim().toUpperCase()})`}</span>
+                            )}
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
                         <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600">
                             <div className="text-gray-500 dark:text-gray-300">المجموع الفرعي</div>
                             <CurrencyDualAmount
@@ -2707,16 +4092,23 @@ const ManageOrdersScreen: React.FC = () => {
                             />
                         </div>
                         <div className="p-2 rounded bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+                            <div className="text-gray-500 dark:text-gray-300 font-bold mb-1">الإجمالي</div>
                             <CurrencyDualAmount
                                 amount={inStoreTotals.total}
                                 currencyCode={inStoreTransactionCurrency}
                                 baseAmount={undefined}
                                 fxRate={undefined}
-                                label="الإجمالي"
                                 compact
                             />
                         </div>
                     </div>
+                    {(inStorePricingBusy || inStoreMissingServerPricing) && (
+                        <div className="text-xs text-amber-700 dark:text-amber-300">
+                            {inStorePricingBusy
+                                ? 'يتم الآن جلب السعر النهائي من الخادم وقد يختلف عن السعر المحلي.'
+                                : 'لا يوجد تسعير خادمي معتمد لكل الأصناف، لذلك تم إيقاف التسجيل حتى اكتمال التسعير.'}
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                             <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">{language === 'ar' ? 'اسم الزبون (اختياري)' : 'Customer name (optional)'}</label>
@@ -2744,7 +4136,7 @@ const ManageOrdersScreen: React.FC = () => {
                                 <input
                                     type="radio"
                                     checked={inStoreCustomerMode === 'walk_in'}
-                                    onChange={() => { setInStoreCustomerMode('walk_in'); setInStoreSelectedCustomerId(''); setInStoreCustomerSearchResult(null); }}
+                                    onChange={() => { setInStoreCustomerMode('walk_in'); setInStoreSelectedCustomerId(''); setInStoreCustomerSearchResult(null); setInStoreCustomerPhoneSearch(''); setInStoreSelectedPartyId(''); }}
                                 />
                                 زبون حضوري (Walk‑In)
                             </label>
@@ -2752,9 +4144,17 @@ const ManageOrdersScreen: React.FC = () => {
                                 <input
                                     type="radio"
                                     checked={inStoreCustomerMode === 'existing'}
-                                    onChange={() => setInStoreCustomerMode('existing')}
+                                    onChange={() => { setInStoreCustomerMode('existing'); setInStoreSelectedPartyId(''); }}
                                 />
                                 عميل موجود (customers)
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                                <input
+                                    type="radio"
+                                    checked={inStoreCustomerMode === 'party'}
+                                    onChange={() => { setInStoreCustomerMode('party'); setInStoreSelectedCustomerId(''); setInStoreCustomerSearchResult(null); setInStoreCustomerPhoneSearch(''); }}
+                                />
+                                طرف مالي (financial_parties)
                             </label>
                         </div>
                         {inStoreCustomerMode === 'existing' && (
@@ -2845,6 +4245,43 @@ const ManageOrdersScreen: React.FC = () => {
                                 <div className="mt-1 text-[11px] text-gray-500">ID: <span className="font-mono">{inStoreSelectedCustomerId}</span></div>
                             </div>
                         )}
+                        {inStoreCustomerMode === 'party' && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                                <div className="md:col-span-2">
+                                    <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">اختيار طرف مالي</label>
+                                    <select
+                                        value={inStoreSelectedPartyId}
+                                        onChange={(e) => {
+                                            const next = String(e.target.value || '').trim();
+                                            setInStoreSelectedPartyId(next);
+                                            const selected = inStorePartyOptions.find(p => p.id === next);
+                                            if (selected?.name) {
+                                                setInStoreCustomerName(selected.name);
+                                                setInStorePhoneNumber('');
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    >
+                                        <option value="">{inStorePartyLoading ? 'جاري التحميل...' : 'اختر طرفاً'}</option>
+                                        {inStorePartyOptions.map((p) => (
+                                            <option key={p.id} value={p.id}>{p.name}{p.type ? ` — ${p.type}` : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setInStoreSelectedPartyId('');
+                                        setInStoreCustomerName('');
+                                        setInStorePhoneNumber('');
+                                        setInStoreInvoiceStatement('');
+                                    }}
+                                    className="px-3 py-2 rounded-md bg-gray-700 text-white hover:bg-gray-800 transition text-xs font-semibold"
+                                >
+                                    مسح
+                                </button>
+                            </div>
+                        )}
                     </div>
                     <div>
                         <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">{language === 'ar' ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</label>
@@ -2852,6 +4289,15 @@ const ManageOrdersScreen: React.FC = () => {
                             rows={3}
                             value={inStoreNotes}
                             onChange={(e) => setInStoreNotes(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">{language === 'ar' ? 'بيان الفاتورة (اختياري)' : 'Invoice statement (optional)'}</label>
+                        <textarea
+                            rows={2}
+                            value={inStoreInvoiceStatement}
+                            onChange={(e) => setInStoreInvoiceStatement(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         />
                     </div>
@@ -2888,9 +4334,32 @@ const ManageOrdersScreen: React.FC = () => {
                                     setInStoreIsCredit(checked);
                                     if (checked) {
                                         const base = toYmd(new Date());
-                                        const days = Math.max(0, Number(inStoreCreditDays) || 0) || 30;
-                                        setInStoreCreditDays(days);
-                                        setInStoreCreditDueDate(addDaysToYmd(base, days));
+                                        (async () => {
+                                            let days = Math.max(0, Number(inStoreCreditDays) || 0) || 30;
+                                            if (inStoreCustomerMode === 'party' && inStoreSelectedPartyId) {
+                                                const hint = Number(inStoreCreditSummary?.net_days_default);
+                                                if (Number.isFinite(hint) && hint >= 0) {
+                                                    days = Math.floor(hint);
+                                                } else {
+                                                    try {
+                                                        const supabase = getSupabaseClient();
+                                                        if (supabase) {
+                                                            const { data, error } = await supabase.rpc('get_party_credit_summary', { p_party_id: String(inStoreSelectedPartyId) });
+                                                            if (!error) {
+                                                                const d = data as any;
+                                                                const nd = Number(d?.net_days_default);
+                                                                if (Number.isFinite(nd) && nd >= 0) {
+                                                                    days = Math.floor(nd);
+                                                                }
+                                                            }
+                                                        }
+                                                    } catch {
+                                                    }
+                                                }
+                                            }
+                                            setInStoreCreditDays(days);
+                                            setInStoreCreditDueDate(addDaysToYmd(base, days));
+                                        })();
                                         setInStoreMultiPaymentEnabled(true);
                                         const initialMethod = inStorePaymentMethod && inStoreVisiblePaymentMethods.includes(inStorePaymentMethod)
                                             ? inStorePaymentMethod
@@ -2907,10 +4376,15 @@ const ManageOrdersScreen: React.FC = () => {
                                         setInStoreCreditDueDate('');
                                     }
                                 }}
-                                disabled={inStoreCustomerMode !== 'existing' || !inStoreSelectedCustomerId}
+                                disabled={
+                                    !(
+                                        (inStoreCustomerMode === 'existing' && !!inStoreSelectedCustomerId) ||
+                                        (inStoreCustomerMode === 'party' && !!inStoreSelectedPartyId)
+                                    )
+                                }
                                 className="form-checkbox h-5 w-5 text-purple-600 rounded focus:ring-purple-600 disabled:opacity-50"
                             />
-                            بيع آجل / ذمم (يتطلب عميل مسجل)
+                            بيع آجل / ذمم (عميل مسجل أو طرف مالي)
                         </label>
                         <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 md:pt-6">
                             <input
@@ -2962,20 +4436,42 @@ const ManageOrdersScreen: React.FC = () => {
                                 <div className="text-[11px] text-gray-700 dark:text-gray-300 mt-1">تعذر تحميل بيانات الائتمان.</div>
                             )}
                             {!inStoreCreditSummaryLoading && (inStoreCreditSummary && inStoreCreditSummary.exists) && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان" compact />
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي" compact />
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
-                                    <div>
-                                        المتاح بعد هذا البيع:{' '}
-                                        <span className="font-mono">
-                                            {Math.max(
-                                                0,
-                                                Number(inStoreCreditSummary.available_credit || 0) - Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
-                                            ).toFixed(2)} {baseCode || '—'}
-                                        </span>
+                                (inStoreCreditSummary.party_mode ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان (طرف)" compact />
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي (ذمم)" compact />
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
+                                        <div>
+                                            المتاح بعد هذا البيع:{' '}
+                                            <span className="font-mono">
+                                                {(
+                                                    Number(inStoreCreditSummary.available_credit || 0) -
+                                                    Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
+                                                ).toFixed(getCurrencyDecimalsByCode(baseCode || ''))} {baseCode || '—'}
+                                            </span>
+                                        </div>
+                                        {Boolean(inStoreCreditSummary.credit_hold) && (
+                                            <div className="md:col-span-2 text-[11px] text-red-700 dark:text-red-300">
+                                                هذا الطرف عليه إيقاف ائتمان (Credit Hold) — البيع الآجل يتطلب موافقة/تجاوز.
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان" compact />
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي" compact />
+                                        <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
+                                        <div>
+                                            المتاح بعد هذا البيع:{' '}
+                                            <span className="font-mono">
+                                                {Math.max(
+                                                    0,
+                                                    Number(inStoreCreditSummary.available_credit || 0) - Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
+                                                ).toFixed(getCurrencyDecimalsByCode(baseCode || ''))} {baseCode || '—'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))
                             )}
                         </div>
                     )}
@@ -2997,7 +4493,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                 : (inStoreVisiblePaymentMethods[0] || '');
                                             setInStorePaymentLines([{
                                                 method: initialMethod,
-                                                amount: inStoreIsCredit ? 0 : Number(total.toFixed(2)),
+                                                amount: inStoreIsCredit ? 0 : roundMoney(total),
                                                 declaredAmount: 0,
                                                 amountConfirmed: initialMethod === 'cash',
                                                 cashReceived: 0,
@@ -3048,6 +4544,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 declaredAmount: 0,
                                                                 amountConfirmed: nextMethod === 'cash',
                                                                 cashReceived: 0,
+                                                                destinationAccountId: undefined,
                                                             } : row));
                                                         }}
                                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
@@ -3104,6 +4601,21 @@ const ManageOrdersScreen: React.FC = () => {
 
                                             {needsReference && (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div className="md:col-span-2">
+                                                        <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">تحديد الحساب المالي</label>
+                                                        <select
+                                                            value={p.destinationAccountId || ''}
+                                                            onChange={(e) => setInStorePaymentLines(prev => prev.map((row, i) => i === idx ? { ...row, destinationAccountId: e.target.value } : row))}
+                                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                        >
+                                                            <option value="">(افتراضي)</option>
+                                                            {availableInStoreDestinations
+                                                                .filter(a => p.method === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                                                .map(a => (
+                                                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                                                ))}
+                                                        </select>
+                                                    </div>
                                                     <div>
                                                         <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">{p.method === 'kuraimi' ? 'رقم الإيداع' : 'رقم الحوالة'}</label>
                                                         <input
@@ -3219,6 +4731,21 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="p-3 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-3">
                             <div className="text-xs font-semibold text-blue-800 dark:text-blue-300">
                                 {inStorePaymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">تحديد الحساب المالي</label>
+                                <select
+                                    value={inStorePaymentDestinationAccountId}
+                                    onChange={(e) => setInStorePaymentDestinationAccountId(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                >
+                                    <option value="">(افتراضي)</option>
+                                    {availableInStoreDestinations
+                                        .filter(a => inStorePaymentMethod === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                        .map(a => (
+                                            <option key={a.id} value={a.id}>{a.name}</option>
+                                        ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
@@ -3403,9 +4930,12 @@ const ManageOrdersScreen: React.FC = () => {
                                     const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
                                     const priced = inStorePricingMap[pricingKey];
                                     const fallbackUnitPrice = mi.unitType === 'gram' && mi.pricePerUnit ? mi.pricePerUnit / 1000 : mi.price;
-                                    const baseUnitPrice = mi.unitType === 'gram'
+                                    const pricedUnitPrice = mi.unitType === 'gram'
                                         ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
                                         : (Number(priced?.unitPrice) || fallbackUnitPrice);
+                                    const baseUnitPrice = priced?.isTxnPrice
+                                        ? convertInStoreTxnToBase(pricedUnitPrice, Number(inStoreTransactionFxRate) || 1)
+                                        : pricedUnitPrice;
                                     const available = typeof mi.availableStock === 'number' ? mi.availableStock : undefined;
                                     let baseAddonsCost = 0;
                                     if (line.selectedAddons && mi.addons) {
@@ -3491,25 +5021,74 @@ const ManageOrdersScreen: React.FC = () => {
                                                             value={String(line.uomCode || mi.unitType || 'piece')}
                                                             onChange={(e) => {
                                                                 const code = String(e.target.value || '').trim();
-                                                                const options = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
+                                                                const baseLabel = String(mi.unitType || 'piece');
+                                                                const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                                                                const fromMap = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
                                                                     ? itemUomRowsByItemId[mi.id]
-                                                                    : (Array.isArray((mi as any)?.uomUnits) ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>) : []);
-                                                                const baseLabel = (mi.unitType || 'piece');
-                                                                const found = options.find((o: any) => String(o?.code || '') === code);
-                                                                const qtyBase = Number(found?.qtyInBase || (code === baseLabel ? 1 : 0)) || (code === baseLabel ? 1 : 0);
+                                                                    : [];
+                                                                const fromItem = Array.isArray((mi as any)?.uomUnits)
+                                                                    ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>)
+                                                                    : [];
+                                                                const merged = [
+                                                                    { code: baseLabel, name: baseDisplay, qtyInBase: 1 },
+                                                                    ...fromMap,
+                                                                    ...fromItem,
+                                                                ].filter((o: any) => String(o?.code || '').trim());
+                                                                const uniq = new Map<string, { code: string; name?: string; qtyInBase: number }>();
+                                                                for (const o of merged) {
+                                                                    const c = String((o as any).code || '').trim();
+                                                                    if (!c) continue;
+                                                                    const qty = Number((o as any).qtyInBase || 0) || 0;
+                                                                    if (!(qty > 0)) continue;
+                                                                    if (!uniq.has(c)) uniq.set(c, { code: c, name: (o as any).name, qtyInBase: qty });
+                                                                }
+                                                                if (!uniq.has('pack')) {
+                                                                    const packSize = Number((mi as any)?.packSize || 0);
+                                                                    if (packSize > 0) uniq.set('pack', { code: 'pack', name: 'باكت', qtyInBase: packSize });
+                                                                }
+                                                                if (!uniq.has('carton')) {
+                                                                    const cartonSize = Number((mi as any)?.cartonSize || 0);
+                                                                    if (cartonSize > 0) uniq.set('carton', { code: 'carton', name: 'كرتون', qtyInBase: cartonSize });
+                                                                }
+                                                                const options = Array.from(uniq.values());
+                                                                const found = options.find((o) => String(o?.code || '').trim() === code);
+                                                                const qtyBase = found ? Number(found.qtyInBase) || 1 : (Number(line.uomQtyInBase || 1) || 1);
                                                                 updateInStoreLine(index, { uomCode: code, uomQtyInBase: qtyBase });
                                                             }}
                                                             className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                                         >
                                                             {(() => {
-                                                                const options = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
-                                                                    ? itemUomRowsByItemId[mi.id]
-                                                                    : (Array.isArray((mi as any)?.uomUnits) ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>) : []);
-                                                                const baseLabel = (mi.unitType || 'piece');
+                                                                const baseLabel = String(mi.unitType || 'piece');
                                                                 const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
-                                                                const baseOpt = [{ code: baseLabel, name: baseDisplay, qtyInBase: 1 }];
-                                                                const merged = [...baseOpt, ...options.filter((o: any) => String(o?.code || '') !== baseLabel)];
-                                                                return merged.map((o: any) => {
+                                                                const fromMap = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
+                                                                    ? itemUomRowsByItemId[mi.id]
+                                                                    : [];
+                                                                const fromItem = Array.isArray((mi as any)?.uomUnits)
+                                                                    ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>)
+                                                                    : [];
+                                                                const merged = [
+                                                                    { code: baseLabel, name: baseDisplay, qtyInBase: 1 },
+                                                                    ...fromMap,
+                                                                    ...fromItem,
+                                                                ].filter((o: any) => String(o?.code || '').trim());
+                                                                const uniq = new Map<string, { code: string; name?: string; qtyInBase: number }>();
+                                                                for (const o of merged) {
+                                                                    const c = String((o as any).code || '').trim();
+                                                                    if (!c) continue;
+                                                                    const qty = Number((o as any).qtyInBase || 0) || 0;
+                                                                    if (!(qty > 0)) continue;
+                                                                    if (!uniq.has(c)) uniq.set(c, { code: c, name: (o as any).name, qtyInBase: qty });
+                                                                }
+                                                                if (!uniq.has('pack')) {
+                                                                    const packSize = Number((mi as any)?.packSize || 0);
+                                                                    if (packSize > 0) uniq.set('pack', { code: 'pack', name: 'باكت', qtyInBase: packSize });
+                                                                }
+                                                                if (!uniq.has('carton')) {
+                                                                    const cartonSize = Number((mi as any)?.cartonSize || 0);
+                                                                    if (cartonSize > 0) uniq.set('carton', { code: 'carton', name: 'كرتون', qtyInBase: cartonSize });
+                                                                }
+                                                                const options = Array.from(uniq.values()).sort((a, b) => (a.qtyInBase || 0) - (b.qtyInBase || 0));
+                                                                return options.map((o: any) => {
                                                                     const codeLower = String(o.code || '').trim().toLowerCase();
                                                                     const nameRaw = String(o.name || '').trim();
                                                                     const displayName = codeLower === 'pack'
@@ -3531,11 +5110,57 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => removeInStoreLine(index)}
-                                                    className="px-2 py-1 bg-red-100 text-red-600 rounded hover:bg-red-200 transition text-xs font-semibold dark:bg-red-900/30 dark:text-red-400"
+                                                    className="w-10 h-10 flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md shrink-0 transition"
                                                 >
-                                                    {language === 'ar' ? 'حذف' : 'Remove'}
+                                                    <Trash className="w-5 h-5" />
                                                 </button>
                                             </div>
+                                            <div className="flex items-center gap-2 text-xs mt-1 border-t border-gray-100 dark:border-gray-700 pt-1">
+                                                <span className="text-gray-500 dark:text-gray-400 min-w-16 ml-2 font-medium">{language === 'ar' ? 'المستودع:' : 'Warehouse:'}</span>
+                                                <select
+                                                    value={line.warehouseId || sessionScope.scope?.warehouseId || ''}
+                                                    onChange={(e) => updateInStoreLine(index, { warehouseId: e.target.value })}
+                                                    className="flex-1 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-xs py-1 px-2 dark:bg-gray-700 dark:text-gray-200"
+                                                >
+                                                    {warehouses?.filter(w => w.isActive).map(w => (
+                                                        <option key={w.id} value={w.id}>{w.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            {/* ── Warehouse FEFO Alerts ── */}
+                                            {(() => {
+                                                const alerts = inStoreAlertsByIndex[index] || [];
+                                                const loading = inStoreAlertsLoadingByIndex[index];
+                                                if (loading) return <div className="mt-1 text-[11px] text-gray-400 animate-pulse">جارِ فحص المستودع...</div>;
+                                                if (alerts.length === 0) return null;
+                                                return (
+                                                    <div className="mt-1 flex flex-wrap gap-1">
+                                                        {alerts.map((a: WarehouseAlert, i: number) => {
+                                                            const colors = {
+                                                                error: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800',
+                                                                warning: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800',
+                                                                info: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800',
+                                                                success: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800',
+                                                            };
+                                                            const cls = colors[a.severity] || colors.info;
+                                                            return (
+                                                                <div key={i} className={`text-[11px] px-2 py-1 rounded-lg border font-medium ${cls}`}
+                                                                    onClick={() => {
+                                                                        if (a.other_warehouse_id) {
+                                                                            if (window.confirm(`هل تريد التبديل إلى مستودع "${a.other_warehouse || ''}"؟`)) {
+                                                                                updateInStoreLine(index, { warehouseId: a.other_warehouse_id });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    style={{ cursor: a.other_warehouse_id ? 'pointer' : 'default' }}
+                                                                >
+                                                                    {a.message}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     );
                                 })}
@@ -3573,16 +5198,156 @@ const ManageOrdersScreen: React.FC = () => {
                             type="button"
                             onClick={saveInStoreDraftQuotation}
                             disabled={isInStoreCreating || inStoreLines.length === 0}
-                            className="px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-gray-900 transition text-sm font-semibold disabled:opacity-60"
+                            className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition text-sm font-semibold disabled:opacity-50"
                         >
-                            حفظ كمسودة (Quotation)
+                            حفظ كعرض سعر وطباعة
                         </button>
                         <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                            المسودة لا تحجز المخزون. الحجز يتم عند الإتمام.
+                            العرض لا يحجز المخزون.
                         </div>
                     </div>
                 </div >
             </ConfirmationModal >
+            <ConfirmationModal
+                isOpen={inStoreCreditOverrideModalOpen}
+                onClose={() => {
+                    if (isInStoreCreating) return;
+                    setInStoreCreditOverrideModalOpen(false);
+                    setInStoreCreditOverridePending(null);
+                    setInStoreCreditOverrideReason('');
+                }}
+                onConfirm={async () => {
+                    const payload = inStoreCreditOverridePending;
+                    const reason = String(inStoreCreditOverrideReason || '').trim();
+                    if (!payload) {
+                        setInStoreCreditOverrideModalOpen(false);
+                        return;
+                    }
+                    if (!reason) {
+                        showNotification('يرجى إدخال سبب التجاوز.', 'error');
+                        return;
+                    }
+                    setInStoreCreditOverrideModalOpen(false);
+                    setInStoreCreditOverridePending(null);
+                    await runCreateInStoreSale(payload, reason);
+                }}
+                title="موافقة تجاوز سقف ائتمان الطرف"
+                message=""
+                isConfirming={isInStoreCreating}
+                confirmText="اعتماد التجاوز"
+                confirmingText="جاري الاعتماد..."
+                cancelText="رجوع"
+                confirmButtonClassName="bg-red-600 hover:bg-red-700 disabled:bg-red-400"
+            >
+                <div className="space-y-3">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                        هذا البيع الآجل يحتاج تجاوز سقف الائتمان أو الطرف عليه Credit Hold. سيتم تسجيل الموافقة في سجل التدقيق.
+                    </div>
+                    <textarea
+                        rows={4}
+                        value={inStoreCreditOverrideReason}
+                        onChange={(e) => setInStoreCreditOverrideReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="اكتب سبب التجاوز..."
+                    />
+                </div>
+            </ConfirmationModal>
+            <ConfirmationModal
+                isOpen={inStoreBelowCostModalOpen}
+                onClose={() => {
+                    if (isInStoreCreating) return;
+                    setInStoreBelowCostModalOpen(false);
+                    setInStoreBelowCostPending(null);
+                    setInStoreBelowCostReason('');
+                }}
+                onConfirm={async () => {
+                    const pending = inStoreBelowCostPending;
+                    const reason = String(inStoreBelowCostReason || '').trim();
+                    if (!pending) {
+                        setInStoreBelowCostModalOpen(false);
+                        return;
+                    }
+                    if (!reason) {
+                        showNotification('يرجى إدخال سبب التجاوز.', 'error');
+                        return;
+                    }
+                    setInStoreBelowCostModalOpen(false);
+                    setInStoreBelowCostPending(null);
+                    await runCreateInStoreSale({
+                        ...pending.payload,
+                        belowCostOverrideReason: reason,
+                        existingOrderId: pending.pendingOrderId || (pending.payload as any)?.existingOrderId,
+                    }, pending.creditOverrideReason);
+                }}
+                title="سبب البيع تحت التكلفة"
+                message=""
+                isConfirming={isInStoreCreating}
+                confirmText="متابعة"
+                confirmingText="جارٍ التنفيذ..."
+                cancelText="رجوع"
+                confirmButtonClassName="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400"
+            >
+                <div className="space-y-3">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                        هذا البيع يحتوي صنفاً بسعر صافي أقل من الحد الأدنى (حسب التكلفة/هامش الربح). أدخل سبباً للتجاوز حتى يُسجّل في سجل التدقيق.
+                    </div>
+                    <textarea
+                        rows={4}
+                        value={inStoreBelowCostReason}
+                        onChange={(e) => setInStoreBelowCostReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="اكتب سبب التجاوز..."
+                    />
+                </div>
+            </ConfirmationModal>
+            <ConfirmationModal
+                isOpen={Boolean(resumePendingBelowCostOrderId)}
+                onClose={() => {
+                    if (resumePendingBusyId) return;
+                    setResumePendingBelowCostOrderId(null);
+                    setResumePendingBelowCostReason('');
+                }}
+                onConfirm={async () => {
+                    const orderId = String(resumePendingBelowCostOrderId || '').trim();
+                    const reason = String(resumePendingBelowCostReason || '').trim();
+                    if (!orderId) {
+                        setResumePendingBelowCostOrderId(null);
+                        return;
+                    }
+                    if (!reason) {
+                        showNotification('يرجى إدخال سبب التجاوز.', 'error');
+                        return;
+                    }
+                    const order = orders.find(o => o.id === orderId);
+                    setResumePendingBelowCostOrderId(null);
+                    setResumePendingBelowCostReason('');
+                    if (!order) {
+                        showNotification('الطلب غير موجود.', 'error');
+                        return;
+                    }
+                    await attemptResumeInStorePending(order, reason);
+                }}
+                title="سبب البيع تحت التكلفة (إتمام طلب معلّق)"
+                message=""
+                isConfirming={Boolean(resumePendingBusyId)}
+                confirmText="متابعة"
+                confirmingText="جارٍ الإتمام..."
+                cancelText="رجوع"
+                confirmButtonClassName="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400"
+            >
+                <div className="space-y-3">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                        هذا الطلب المعلّق يحتوي صنفاً بسعر صافي أقل من الحد الأدنى. أدخل سبباً للتجاوز ثم أعد المحاولة.
+                    </div>
+                    <textarea
+                        rows={4}
+                        value={resumePendingBelowCostReason}
+                        onChange={(e) => setResumePendingBelowCostReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="اكتب سبب التجاوز..."
+                    />
+                </div>
+            </ConfirmationModal>
             <ConfirmationModal
                 isOpen={Boolean(cancelOrderId)}
                 onClose={() => {
@@ -3918,8 +5683,10 @@ const ManageOrdersScreen: React.FC = () => {
                 {partialPaymentOrderId && (() => {
                     const order = filteredAndSortedOrders.find(o => o.id === partialPaymentOrderId) || orders.find(o => o.id === partialPaymentOrderId);
                     if (!order) return null;
-                    const paid = Number(paidSumByOrderId[partialPaymentOrderId]) || 0;
-                    const remaining = Math.max(0, (Number(order.total) || 0) - paid);
+                    const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                    const paid = roundMoneyByCode(Number(paidSumByOrderId[partialPaymentOrderId]) || 0, currency);
+                    const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                    const remaining = roundMoneyByCode(Math.max(0, total - paid), currency);
                     return (
                         <div className="space-y-4">
                             <div className="grid grid-cols-3 gap-3 text-xs">
@@ -3980,6 +5747,101 @@ const ManageOrdersScreen: React.FC = () => {
                                     step={0.01}
                                 />
                             </div>
+                            {(partialPaymentMethod === 'kuraimi' || partialPaymentMethod === 'network') && (
+                                <div className="p-3 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-3">
+                                    <div className="text-xs font-semibold text-blue-800 dark:text-blue-300">
+                                        {partialPaymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">تحديد الحساب المالي</label>
+                                        <select
+                                            value={partialPaymentDestinationAccountId}
+                                            onChange={(e) => setPartialPaymentDestinationAccountId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        >
+                                            <option value="">(افتراضي)</option>
+                                            {availablePartialDestinations
+                                                .filter(a => partialPaymentMethod === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                                .map(a => (
+                                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                                ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                            {partialPaymentMethod === 'kuraimi' ? 'رقم الإيداع' : 'رقم الحوالة'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={partialPaymentReferenceNumber}
+                                            onChange={(e) => setPartialPaymentReferenceNumber(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            placeholder={partialPaymentMethod === 'kuraimi' ? 'مثال: DEP-12345' : 'مثال: TRX-12345'}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                                {partialPaymentMethod === 'kuraimi' ? 'اسم المودِع' : 'اسم المرسل'}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={partialPaymentSenderName}
+                                                onChange={(e) => setPartialPaymentSenderName(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                                {partialPaymentMethod === 'kuraimi' ? 'رقم هاتف المودِع (اختياري)' : 'رقم هاتف المرسل (اختياري)'}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={partialPaymentSenderPhone}
+                                                onChange={(e) => setPartialPaymentSenderPhone(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                placeholder="مثال: 771234567"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                                        <div>
+                                            <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                                                مبلغ العملية (يجب أن يطابق مبلغ هذه الدفعة)
+                                            </label>
+                                            <NumberInput
+                                                id="partialPaymentDeclaredAmount"
+                                                name="partialPaymentDeclaredAmount"
+                                                value={partialPaymentDeclaredAmount}
+                                                onChange={(e) => setPartialPaymentDeclaredAmount(parseFloat(e.target.value) || 0)}
+                                                min={0}
+                                                step={1}
+                                                className={(Math.abs((Number(partialPaymentDeclaredAmount) || 0) - (Number(partialPaymentAmount) || 0)) > 0.0001) ? 'border-red-500' : ''}
+                                            />
+                                            <div className="mt-1">
+                                                <CurrencyDualAmount
+                                                    amount={Number(partialPaymentAmount) || 0}
+                                                    currencyCode={(order as any).currency}
+                                                    baseAmount={undefined}
+                                                    fxRate={(order as any).fxRate}
+                                                    baseCurrencyCode={baseCode}
+                                                    label="مبلغ الدفعة الحالي"
+                                                    compact
+                                                />
+                                            </div>
+                                        </div>
+                                        <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={partialPaymentAmountConfirmed}
+                                                onChange={(e) => setPartialPaymentAmountConfirmed(e.target.checked)}
+                                                className="form-checkbox h-5 w-5 text-gold-500 rounded focus:ring-gold-500"
+                                            />
+                                            أؤكد مطابقة المبلغ وتم التحقق منه
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">وقت الدفعة</label>
                                 <input
@@ -4034,6 +5896,7 @@ const ManageOrdersScreen: React.FC = () => {
                     if (isCreatingReturn) return;
                     setReturnOrderId(null);
                     setReturnItems({});
+                    setReturnUnits({});
                     setReturnReason('');
                 }}
                 onConfirm={handleConfirmReturn}
@@ -4061,9 +5924,21 @@ const ManageOrdersScreen: React.FC = () => {
                                     const itemId = item.cartItemId || item.id;
                                     const unitType = (item as any).unitType;
                                     const isWeightBased = isWeightBasedUnit(unitType as any);
-                                    const maxQty = isWeightBased ? (Number((item as any).weight) || 0) : item.quantity;
-                                    const currentReturnQty = returnItems[itemId] || 0;
+                                    const salesQty = isWeightBased ? (Number((item as any).weight) || 0) : (Number(item.quantity) || 0);
+                                    const orderUomQtyInBase = Number((item as any).uomQtyInBase || 1) || 1;
+                                    const totalBaseQty = isWeightBased ? salesQty : (salesQty * orderUomQtyInBase);
                                     const itemName = item.name?.ar || item.name?.en || 'Item';
+                                    const menuItemId = String(item.id || item.menuItemId || itemId || '').trim();
+                                    const options = !isWeightBased ? getReturnUomOptions(item, menuItemId || String(itemId)) : [];
+                                    const defaultCode = String(returnUnits[itemId] || (item as any).uomCode || unitType || 'piece').trim().toLowerCase();
+                                    const selectedOption = !isWeightBased
+                                        ? (options.find(o => o.code === defaultCode) || options[0] || { code: String(unitType || 'piece').toLowerCase(), name: unitType, qtyInBase: 1 })
+                                        : null;
+                                    const selectedQtyInBase = isWeightBased ? 1 : (Number(selectedOption?.qtyInBase || 1) || 1);
+                                    const maxQty = isWeightBased
+                                        ? salesQty
+                                        : (selectedQtyInBase > 0 ? (totalBaseQty / selectedQtyInBase) : salesQty);
+                                    const currentReturnQty = returnItems[itemId] || 0;
 
                                     return (
                                         <div key={itemId} className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800">
@@ -4071,10 +5946,35 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <div className="font-semibold text-sm">{itemName}</div>
                                                 <div className="text-xs text-gray-500">
                                                     {isWeightBased ? 'الوزن في الطلب: ' : 'الكمية في الطلب: '}
-                                                    {maxQty}
+                                                    {salesQty}
+                                                    {!isWeightBased && totalBaseQty > 0 && (
+                                                        <span className="ms-2 text-[11px] text-gray-400">
+                                                            (بالأساس: {totalBaseQty})
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
+                                                {!isWeightBased && options.length > 0 && (
+                                                    <select
+                                                        value={selectedOption?.code || ''}
+                                                        onChange={(e) => {
+                                                            const nextCode = String(e.target.value || '').trim().toLowerCase();
+                                                            const nextOpt = options.find(o => o.code === nextCode);
+                                                            const nextQtyInBase = Number(nextOpt?.qtyInBase || 1) || 1;
+                                                            const nextMax = nextQtyInBase > 0 ? (totalBaseQty / nextQtyInBase) : maxQty;
+                                                            setReturnUnits(prev => ({ ...prev, [itemId]: nextCode }));
+                                                            setReturnItems(prev => ({ ...prev, [itemId]: Math.min(prev[itemId] || 0, nextMax) }));
+                                                        }}
+                                                        className="h-8 px-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs"
+                                                    >
+                                                        {options.map((opt) => (
+                                                            <option key={opt.code} value={opt.code}>
+                                                                {opt.name || opt.code} ({opt.qtyInBase})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
                                                 <label className="text-xs text-gray-600 dark:text-gray-400">للاسترجاع:</label>
                                                 <NumberInput
                                                     id={`return-qty-${itemId}`}
@@ -4115,6 +6015,8 @@ const ManageOrdersScreen: React.FC = () => {
                                     <option value="cash">نقدي</option>
                                     <option value="network">حوالات</option>
                                     <option value="kuraimi">حسابات بنكية</option>
+                                    <option value="ar">تخفيض ذمة مدينة (آجل)</option>
+                                    <option value="store_credit">رصيد عميل</option>
                                 </select>
                             </div>
 
@@ -4145,7 +6047,18 @@ const ManageOrdersScreen: React.FC = () => {
                                             const lineGross = isWeightBased
                                                 ? (unitPrice * totalQty) + addonsCost
                                                 : ((unitPrice * uomQtyInBase) + addonsCost) * totalQty;
-                                            const proportion = Math.max(0, Math.min(1, (Number(qty) || 0) / totalQty));
+                                            const menuItemId = String(item.id || (item as any).menuItemId || cartItemId || '').trim();
+                                            const options = !isWeightBased ? getReturnUomOptions(item, menuItemId || String(cartItemId)) : [];
+                                            const defaultCode = String(returnUnits[cartItemId] || (item as any).uomCode || unitType || 'piece').trim().toLowerCase();
+                                            const selectedOption = !isWeightBased
+                                                ? (options.find(o => o.code === defaultCode) || options[0] || { code: String(unitType || 'piece').toLowerCase(), name: unitType, qtyInBase: 1 })
+                                                : null;
+                                            const selectedQtyInBase = isWeightBased ? 1 : (Number(selectedOption?.qtyInBase || 1) || 1);
+                                            const totalBaseQty = isWeightBased ? totalQty : (totalQty * uomQtyInBase);
+                                            const qtyBase = isWeightBased
+                                                ? Number(qty) || 0
+                                                : (Number(qty) || 0) * selectedQtyInBase;
+                                            const proportion = totalBaseQty > 0 ? Math.max(0, Math.min(1, qtyBase / totalBaseQty)) : 0;
                                             return sum + (lineGross * proportion * discountFactor);
                                         }, 0);
 
@@ -4216,6 +6129,18 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="text-xs text-gray-600 dark:text-gray-300">
                             الطلب: #{returnsOrderId.slice(-6).toUpperCase()}
                         </div>
+                        {canManageAccounting && (
+                            <div className="flex items-center justify-end">
+                                <button
+                                    type="button"
+                                    disabled={returnsDocsRepairing}
+                                    onClick={() => void handleRepairLegacySalesReturnDocuments()}
+                                    className="px-3 py-2 rounded-md bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-60"
+                                >
+                                    {returnsDocsRepairing ? 'جاري الإصلاح...' : 'إصلاح سندات الصرف للمرتجعات القديمة'}
+                                </button>
+                            </div>
+                        )}
                         {returnsLoading && !returnsByOrderId[returnsOrderId] ? (
                             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                                 <Spinner />
@@ -4234,8 +6159,44 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <div className="font-semibold text-sm">
                                                     مرتجع #{String(r.id).slice(-6).toUpperCase()}
                                                 </div>
-                                                <div className="text-xs text-gray-600 dark:text-gray-300">
-                                                    {r.status === 'completed' ? 'مكتمل' : (r.status === 'draft' ? 'مسودة' : 'ملغي')}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                                                        {r.status === 'completed' ? 'مكتمل' : (r.status === 'draft' ? 'مسودة' : 'ملغي')}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (!returnsOrder) return;
+                                                            void handlePrintSalesReturn(String(r.id), returnsOrder);
+                                                        }}
+                                                        className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                    >
+                                                        طباعة
+                                                    </button>
+                                                    {r.status === 'completed' && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (!returnsOrder) return;
+                                                                    void handlePrintSalesReturnPaymentVoucher(String(r.id), returnsOrder);
+                                                                }}
+                                                                className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                            >
+                                                                سند صرف
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (!returnsOrder) return;
+                                                                    void handlePrintSalesReturnJournalVoucher(String(r.id), returnsOrder);
+                                                                }}
+                                                                className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                            >
+                                                                قيد
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                             {r.status === 'draft' && (
@@ -4299,6 +6260,49 @@ const ManageOrdersScreen: React.FC = () => {
                         )}
                     </div>
                 )}
+            </ConfirmationModal>
+
+            {/* Purge Payment Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={Boolean(purgePaymentOrderId)}
+                onClose={() => {
+                    if (isPurgingPayment) return;
+                    setPurgePaymentOrderId(null);
+                    setPurgePaymentReason('');
+                }}
+                onConfirm={executePurgePayment}
+                title="⚠️ مسح الدفعة نهائياً"
+                message=""
+                isConfirming={isPurgingPayment}
+                confirmText="مسح نهائي"
+                confirmingText="جاري المسح..."
+                confirmButtonClassName="bg-red-700 hover:bg-red-800 disabled:bg-red-400"
+            >
+                <div className="space-y-4">
+                    <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-800 dark:text-red-200 leading-relaxed">
+                        <p className="font-semibold mb-1">سيتم حذف:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                            <li>جميع سجلات الدفع لهذا الطلب</li>
+                            <li>جميع القيود المحاسبية المرتبطة</li>
+                            <li>جميع حركات كشف حساب الطرف المالي</li>
+                        </ul>
+                        <p className="mt-2 font-bold">هذا الإجراء لا يمكن التراجع عنه.</p>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">سبب المسح (اختياري)</label>
+                        <input
+                            type="text"
+                            value={purgePaymentReason}
+                            onChange={(e) => setPurgePaymentReason(e.target.value)}
+                            placeholder="دفعة خاطئة — حذف يدوي"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                            disabled={isPurgingPayment}
+                        />
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                        الطلب: #{purgePaymentOrderId?.slice(-6).toUpperCase()}
+                    </div>
+                </div>
             </ConfirmationModal>
         </div >
     );

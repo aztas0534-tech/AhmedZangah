@@ -4,6 +4,9 @@ import { useWarehouses } from '../../../contexts/WarehouseContext';
 import { getSupabaseClient } from '../../../supabase';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
+import { exportToXlsx, sharePdf } from '../../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
+import { useSettings } from '../../../contexts/SettingsContext';
 
 type ReservationRow = {
     orderId: string;
@@ -35,6 +38,8 @@ const statusLabel = (status: string) => {
 const ReservationsReports: React.FC = () => {
     const { showNotification } = useToast();
     const { warehouses } = useWarehouses();
+    const { settings } = useSettings();
+    const [isSharing, setIsSharing] = useState(false);
 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -259,10 +264,56 @@ const ReservationsReports: React.FC = () => {
                         />
                         عرض حتى 20000 سجل
                     </label>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={async () => {
+                                const headers = ['الطلب', 'الحالة', 'التاريخ', 'العميل', 'المنطقة', 'المخزن', 'الصنف', 'الكمية', 'المصدر'];
+                                const xlsxRows = rows.map(r => [
+                                    r.orderId.slice(-6).toUpperCase(),
+                                    r.orderStatus || '-',
+                                    r.orderCreatedAt ? new Date(r.orderCreatedAt).toLocaleString('ar-EG-u-nu-latn') : '-',
+                                    r.customerName || '-',
+                                    r.deliveryZoneName || '-',
+                                    r.warehouseName || '-',
+                                    getItemName(r.itemName),
+                                    Number(r.reservedQuantity || 0),
+                                    r.orderSource || '-',
+                                ]);
+                                const ok = await exportToXlsx(
+                                    headers,
+                                    xlsxRows,
+                                    `reservations_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`,
+                                    { sheetName: 'Reservations', ...buildXlsxBrandOptions(settings, 'تقرير الحجوزات', headers.length, { periodText: `الفترة: ${startDate || '—'} → ${endDate || '—'}` }) }
+                                );
+                                showNotification(ok ? 'تم حفظ التقرير' : 'فشل التصدير', ok ? 'success' : 'error');
+                            }}
+                            disabled={loading || rows.length === 0}
+                            className="px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60"
+                        >
+                            Excel
+                        </button>
+                        <button
+                            onClick={async () => {
+                                setIsSharing(true);
+                                const ok = await sharePdf(
+                                    'reservations-print-area',
+                                    'تقرير الحجوزات',
+                                    `reservations_${startDate || 'all'}_to_${endDate || 'all'}.pdf`,
+                                    buildPdfBrandOptions(settings, `تقرير الحجوزات • ${startDate || '—'} → ${endDate || '—'}`, { pageNumbers: true })
+                                );
+                                showNotification(ok ? 'تم حفظ التقرير' : 'فشل التصدير', ok ? 'success' : 'error');
+                                setIsSharing(false);
+                            }}
+                            disabled={loading || isSharing || rows.length === 0}
+                            className="px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60"
+                        >
+                            PDF
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+            <div id="reservations-print-area" className="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
                 {loading ? (
                     <div className="p-6 text-center text-gray-600 dark:text-gray-300">جاري التحميل...</div>
                 ) : rows.length === 0 ? (

@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-03-10T22:23:17.470Z",
+  "anomalies_before_count": 4,
+  "batches_fixed": [
+    {
+      "batch_id": "56f4a339-f753-4e27-bf77-d797ce095562",
+      "old_unit_cost": 12.15,
+      "new_unit_cost": 140.186916,
+      "remaining_qty": 381,
+      "delta_total": 48782.064996
+    },
+    {
+      "batch_id": "a048f473-459c-492b-877d-cdf5f825d283",
+      "old_unit_cost": 26.33,
+      "new_unit_cost": 151.869159,
+      "remaining_qty": 209,
+      "delta_total": 26237.684231
+    },
+    {
+      "batch_id": "8b106f66-814e-4e30-bddb-35539e8f13a4",
+      "old_unit_cost": 4.51,
+      "new_unit_cost": 103.971963,
+      "remaining_qty": 982,
+      "delta_total": 97671.647666
+    },
+    {
+      "batch_id": "48cd68d4-70d9-4698-964a-84e460ed7c41",
+      "old_unit_cost": 27.04,
+      "new_unit_cost": 103.971963,
+      "remaining_qty": 160,
+      "delta_total": 12309.11408
+    }
+  ],
+  "journals_created": [
+    {
+      "batch_id": "56f4a339-f753-4e27-bf77-d797ce095562",
+      "journal_entry_id": "f79fd431-0006-481c-8d3e-2dedb21d288e",
+      "delta_total": 48782.064996
+    },
+    {
+      "batch_id": "a048f473-459c-492b-877d-cdf5f825d283",
+      "journal_entry_id": "1b6aad12-3c76-4932-975c-2346e4b9c992",
+      "delta_total": 26237.684231
+    },
+    {
+      "batch_id": "8b106f66-814e-4e30-bddb-35539e8f13a4",
+      "journal_entry_id": "62e86380-cd78-4de7-86b0-997d4d6da9d0",
+      "delta_total": 97671.647666
+    },
+    {
+      "batch_id": "48cd68d4-70d9-4698-964a-84e460ed7c41",
+      "journal_entry_id": "0f4f3b49-535f-4753-83b0-837026521b2c",
+      "delta_total": 12309.11408
+    }
+  ],
+  "failures": [],
+  "anomalies_after_count": 0
+}

@@ -171,6 +171,7 @@ const CheckoutScreen: React.FC = () => {
     const [locationError, setLocationError] = useState('');
     const [autoDetectedZone, setAutoDetectedZone] = useState<string | null>(null);
     const [zoneMismatch, setZoneMismatch] = useState<{ distance: number; zoneName: string } | null>(null);
+    const isUuidText = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || '').trim());
     const manualLocationOverrideRef = useRef(false);
     const locateRequestIdRef = useRef(0);
 
@@ -329,7 +330,12 @@ const CheckoutScreen: React.FC = () => {
     }, []);
 
     const banksForPayment = useMemo(() => {
-        return banks.filter(bank => Boolean(bank?.name?.trim()) && Boolean(bank?.accountName?.trim()) && Boolean(bank?.accountNumber?.trim()));
+        return banks.filter(bank =>
+            Boolean(bank?.name?.trim()) &&
+            Boolean(bank?.accountName?.trim()) &&
+            Boolean(bank?.accountNumber?.trim()) &&
+            isUuidText(String((bank as any)?.destinationAccountId || '').trim())
+        );
     }, [banks]);
 
     const selectedBank = useMemo(() => {
@@ -369,7 +375,11 @@ const CheckoutScreen: React.FC = () => {
     }, []);
 
     const transferRecipientsForPayment = useMemo(() => {
-        return transferRecipients.filter(r => Boolean(r?.name?.trim()) && Boolean(r?.phoneNumber?.trim()));
+        return transferRecipients.filter(r =>
+            Boolean(r?.name?.trim()) &&
+            Boolean(r?.phoneNumber?.trim()) &&
+            isUuidText(String((r as any)?.destinationAccountId || '').trim())
+        );
     }, [transferRecipients]);
 
     const selectedTransferRecipient = useMemo(() => {
@@ -667,6 +677,7 @@ const CheckoutScreen: React.FC = () => {
                     bankName: selectedBank.name,
                     accountName: selectedBank.accountName,
                     accountNumber: selectedBank.accountNumber,
+                    destinationAccountId: String((selectedBank as any)?.destinationAccountId || '').trim() || undefined,
                 }
                 : undefined;
             const paymentNetworkRecipient = (paymentMethod === 'network' && selectedTransferRecipient)
@@ -674,6 +685,7 @@ const CheckoutScreen: React.FC = () => {
                     recipientId: selectedTransferRecipient.id,
                     recipientName: selectedTransferRecipient.name,
                     recipientPhoneNumber: selectedTransferRecipient.phoneNumber,
+                    destinationAccountId: String((selectedTransferRecipient as any)?.destinationAccountId || '').trim() || undefined,
                 }
                 : undefined;
 

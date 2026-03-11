@@ -328,23 +328,20 @@ begin
         coalesce(pi.received_quantity, 0) as received_quantity,
         (
           case
-            when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
-              then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
-            else coalesce(pi.unit_cost, 0)
-          end
-        ) as unit_cost_po,
-        (
-          case
             when upper(v_po.currency) <> upper(v_base_currency) then
-              (
-                case
-                  when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
-                    then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
-                  else coalesce(pi.unit_cost, 0)
-                end
-              ) * v_po_fx_rate
+              coalesce(
+                pi.unit_cost_base,
+                (
+                  case
+                    when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
+                      then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
+                    else coalesce(pi.unit_cost, 0)
+                  end
+                ) * v_po_fx_rate
+              )
             else
-              (
+              coalesce(
+                pi.unit_cost_base,
                 case
                   when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
                     then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
@@ -356,11 +353,14 @@ begin
         (
           case
             when upper(v_po.currency) <> upper(v_base_currency) then
-              case
-                when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
-                  then coalesce(pi.unit_cost_foreign, pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
-                else coalesce(pi.unit_cost_foreign, pi.unit_cost, 0)
-              end
+              coalesce(
+                nullif(pi.unit_cost_foreign, 0),
+                case
+                  when coalesce(pi.qty_base, 0) > 0 and coalesce(pi.quantity, 0) > 0
+                    then coalesce(pi.unit_cost, 0) * (coalesce(pi.quantity, 0) / pi.qty_base)
+                  else coalesce(pi.unit_cost, 0)
+                end
+              )
             else 0
           end
         ) as unit_cost_foreign

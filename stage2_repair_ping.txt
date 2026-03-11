@@ -1,0 +1,9 @@
+2026-03-10T03:05:15.394Z start
+2026-03-10T03:05:16.831Z connected
+2026-03-10T03:05:17.106Z actor_ready
+2026-03-10T03:05:17.337Z session_ready
+2026-03-10T03:05:17.679Z rows=54
+2026-03-10T03:05:17.680Z anomalous_items=11
+2026-03-10T03:05:20.246Z dry_run_done
+2026-03-10T03:05:21.159Z error=cannot modify posted inventory movement; create reversal instead
+2026-03-10T03:05:21.383Z end

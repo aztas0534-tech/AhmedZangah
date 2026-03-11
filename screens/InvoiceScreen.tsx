@@ -13,7 +13,7 @@ import PrintableOrder from '../components/admin/PrintableOrder';
 import { Capacitor } from '@capacitor/core';
 import PageLoader from '../components/PageLoader';
 import { useSettings } from '../contexts/SettingsContext';
-import { getSupabaseClient } from '../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../supabase';
 import ConfirmationModal from '../components/admin/ConfirmationModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionScope } from '../contexts/SessionScopeContext';
@@ -34,8 +34,8 @@ const InvoiceScreen: React.FC = () => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isPrinting, setIsPrinting] = useState(false);
-    const [isPrintingA4, setIsPrintingA4] = useState(false);
-    const [isPrintingA4Pdf, setIsPrintingA4Pdf] = useState(false);
+    const [isPrintingA5, setIsPrintingA5] = useState(false);
+    const [isPrintingA5Pdf, setIsPrintingA5Pdf] = useState(false);
     const [invoiceAudit, setInvoiceAudit] = useState<any>(null);
     const { settings, language } = useSettings();
     const storeName = (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim();
@@ -46,17 +46,19 @@ const InvoiceScreen: React.FC = () => {
     const sessionScope = useSessionScope();
     const { getWarehouseById } = useWarehouses();
     const { getDeliveryZoneById } = useDeliveryZones();
-    const [selectedTemplate, setSelectedTemplate] = useState<'thermal' | 'a4'>(() => {
+    const [costCenterLabel, setCostCenterLabel] = useState<string>('');
+    const [creditSummary, setCreditSummary] = useState<{ previousBalance: number; invoiceAmount: number; newBalance: number; currencyCode: string } | null>(null);
+    const [selectedTemplate, setSelectedTemplate] = useState<'thermal' | 'a5'>(() => {
         if (adminUser?.role === 'cashier') {
-            return settings.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal';
+            return settings.defaultInvoiceTemplateByRole?.pos === 'a5' ? 'a5' : 'thermal';
         }
         if (isAdminInvoice) {
-            return settings.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a4';
+            return settings.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a5';
         }
-        return 'a4';
+        return 'a5';
     });
     const [previewOpen, setPreviewOpen] = useState(false);
-    const [previewKind, setPreviewKind] = useState<'thermal' | 'a4'>('thermal');
+    const [previewKind, setPreviewKind] = useState<'thermal' | 'a5'>('thermal');
     const [previewHtml, setPreviewHtml] = useState<string>('');
     const [previewTitle, setPreviewTitle] = useState<string>('معاينة الطباعة');
     const autoPrintRunKeyRef = useRef<string>('');
@@ -79,6 +81,144 @@ const InvoiceScreen: React.FC = () => {
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
         };
     };
+
+    const isUuidText = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+    const isCreditInvoice = (ord: any): boolean => {
+        if (!ord) return false;
+        const snap = ord.invoiceSnapshot;
+        const terms = String(snap?.invoiceTerms ?? ord.invoiceTerms ?? '').trim().toLowerCase();
+        const method = String(snap?.paymentMethod ?? ord.paymentMethod ?? '').trim().toLowerCase();
+        return terms === 'credit' || method === 'ar';
+    };
+
+    useEffect(() => {
+        if (!order?.id) {
+            setCostCenterLabel('');
+            return;
+        }
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        let cancelled = false;
+        (async () => {
+            const branchId = String(sessionScope.scope?.branchId || '').trim();
+            if (branchId) {
+                try {
+                    const { data, error } = await supabase.from('branches').select('name,code').eq('id', branchId).maybeSingle();
+                    if (error) throw error;
+                    const name = String((data as any)?.name || '').trim();
+                    const code = String((data as any)?.code || '').trim();
+                    const label = [name, code ? `(${code})` : ''].filter(Boolean).join(' ');
+                    if (!cancelled) setCostCenterLabel(label);
+                    return;
+                } catch {
+                }
+            }
+            const wid = String((order as any)?.warehouseId || sessionScope.scope?.warehouseId || '').trim();
+            const w = wid ? getWarehouseById(wid) : null;
+            const label = String(w?.name || '').trim();
+            if (!cancelled) setCostCenterLabel(label);
+        })();
+        return () => { cancelled = true; };
+    }, [getWarehouseById, order?.id, sessionScope.scope?.branchId, sessionScope.scope?.warehouseId]);
+
+    useEffect(() => {
+        if (!order?.id) {
+            setCreditSummary(null);
+            return;
+        }
+        if (!isCreditInvoice(order)) {
+            setCreditSummary(null);
+            return;
+        }
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        let cancelled = false;
+        (async () => {
+            const baseCode = String((await getBaseCurrencyCode()) || '').trim().toUpperCase() || 'YER';
+            const snap = (order as any).invoiceSnapshot || null;
+            const asOf = String(snap?.issuedAt || (order as any).invoiceIssuedAt || (order as any).deliveredAt || (order as any).createdAt || new Date().toISOString());
+
+            let partyId = String((order as any).partyId || '').trim();
+            if (!isUuidText(partyId)) {
+                try {
+                    const { data, error } = await supabase.from('orders').select('party_id').eq('id', order.id).maybeSingle();
+                    if (!error) {
+                        const pid = String((data as any)?.party_id || '').trim();
+                        if (isUuidText(pid)) partyId = pid;
+                    }
+                } catch {
+                }
+            }
+            if (!isUuidText(partyId)) {
+                if (!cancelled) setCreditSummary(null);
+                return;
+            }
+
+            const fx = Number((snap?.fxRate ?? (order as any)?.fxRate ?? 1) || 1) || 1;
+            const orderCurrency = String((snap?.currency ?? (order as any)?.currency ?? '')).trim().toUpperCase();
+            const totalForeign = Number(snap?.total ?? (order as any)?.total ?? 0) || 0;
+            const computedInvoiceBase = orderCurrency && orderCurrency !== baseCode ? (totalForeign * fx) : totalForeign;
+            const statementCurrency = (orderCurrency || baseCode).trim().toUpperCase() || baseCode;
+            const invoiceAmountInStatementCurrency = statementCurrency !== baseCode ? totalForeign : computedInvoiceBase;
+
+            const loadStatement = async (endIso: string | null) => {
+                const { data, error } = await supabase.rpc('party_ledger_statement_v2', {
+                    p_party_id: partyId,
+                    p_account_code: '1200',
+                    p_currency: statementCurrency || null,
+                    p_start: null,
+                    p_end: endIso,
+                } as any);
+                if (error) throw error;
+                return Array.isArray(data) ? data : [];
+            };
+
+            let rows: any[] = [];
+            try {
+                rows = await loadStatement(asOf || null);
+            } catch {
+                try {
+                    rows = await loadStatement(null);
+                } catch {
+                    rows = [];
+                }
+            }
+            if (rows.length === 0) {
+                if (!cancelled) setCreditSummary(null);
+                return;
+            }
+
+            const orderRows = rows.filter((r) => String(r?.source_table || '').trim().toLowerCase() === 'orders' && String(r?.source_id || '').trim() === String(order.id).trim());
+            const lastRow = rows[rows.length - 1];
+            const orderRow = orderRows.length ? orderRows[orderRows.length - 1] : null;
+            const running = Number((orderRow || lastRow)?.running_foreign_balance ?? (orderRow || lastRow)?.running_balance ?? 0) || 0;
+
+            const deriveInvoiceImpact = () => {
+                if (orderRow) {
+                    const dir = String(orderRow?.direction || '').trim().toLowerCase();
+                    const amt = Number(orderRow?.foreign_amount ?? orderRow?.base_amount ?? 0) || 0;
+                    const nb = String(orderRow?.account_normal_balance || 'debit').trim().toLowerCase();
+                    const signed = nb === 'credit'
+                        ? (dir === 'credit' ? 1 : -1) * Math.abs(amt)
+                        : (dir === 'debit' ? 1 : -1) * Math.abs(amt);
+                    return { signed, amount: Math.abs(amt) };
+                }
+                return { signed: Math.abs(invoiceAmountInStatementCurrency), amount: Math.abs(invoiceAmountInStatementCurrency) };
+            };
+            const impact = deriveInvoiceImpact();
+            const previous = running - (impact.signed || 0);
+
+            if (!cancelled) {
+                setCreditSummary({
+                    previousBalance: previous,
+                    invoiceAmount: impact.amount || 0,
+                    newBalance: running,
+                    currencyCode: statementCurrency,
+                });
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [order?.id]);
 
     const resolveDeliveryZoneName = (ord: any): string | undefined => {
         if (!ord) return undefined;
@@ -140,10 +280,11 @@ const InvoiceScreen: React.FC = () => {
             container.style.width = '576px';
             container.style.background = '#ffffff';
             const currentCount = typeof order.invoicePrintCount === 'number' ? order.invoicePrintCount : 0;
+            const printedBy = (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null;
             const thermalHtml = renderToString(
                 <PrintableInvoice
                     order={order}
-                    audit={invoiceAudit}
+                    audit={{ ...(invoiceAudit || {}), printedBy }}
                     language="ar"
                     companyName={storeName}
                     companyPhone={settings.contactNumber || ''}
@@ -155,6 +296,8 @@ const InvoiceScreen: React.FC = () => {
                     thermalPaperWidth={thermalPaperWidth}
                     isCopy={currentCount > 0}
                     copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
+                    costCenterLabel={costCenterLabel || undefined}
+                    creditSummary={creditSummary}
                 />
             );
             container.innerHTML = thermalHtml;
@@ -229,7 +372,7 @@ const InvoiceScreen: React.FC = () => {
         const content = renderToString(
             <PrintableInvoice
                 order={order}
-                audit={invoiceAudit}
+                audit={{ ...(invoiceAudit || {}), printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
                 language="ar"
                 companyName={brand.name}
                 companyPhone={brand.contactNumber}
@@ -242,13 +385,15 @@ const InvoiceScreen: React.FC = () => {
                 isCopy={currentCount > 0}
                 copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
                 qrCodeDataUrl={qrCodeDataUrl}
+                costCenterLabel={costCenterLabel || undefined}
+                creditSummary={creditSummary}
             />
         );
         printContent(content, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { page: 'auto' });
         incrementInvoicePrintCount(order.id);
     };
 
-    const handlePrintA4 = () => {
+    const handlePrintA5 = () => {
         if (!order) return;
 
         const currentCount = typeof order.invoicePrintCount === 'number' ? order.invoicePrintCount : 0;
@@ -267,7 +412,7 @@ const InvoiceScreen: React.FC = () => {
         };
 
         if (Capacitor.isNativePlatform()) {
-            setIsPrintingA4(true);
+            setIsPrintingA5(true);
             sharePdf(
                 'print-area',
                 `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
@@ -280,7 +425,7 @@ const InvoiceScreen: React.FC = () => {
                 } else {
                     showNotification('تعذر إنشاء ملف PDF للطباعة', 'error');
                 }
-            }).finally(() => setIsPrintingA4(false));
+            }).finally(() => setIsPrintingA5(false));
             return;
         }
 
@@ -291,9 +436,9 @@ const InvoiceScreen: React.FC = () => {
         }
     };
 
-    const handlePrintA4WithPageNumbers = () => {
+    const handlePrintA5WithPageNumbers = () => {
         if (!order) return;
-        setIsPrintingA4Pdf(true);
+        setIsPrintingA5Pdf(true);
         const brand = resolveBranding();
         const brandSettings: any = {
             ...settings,
@@ -310,12 +455,21 @@ const InvoiceScreen: React.FC = () => {
             if (success) {
                 incrementInvoicePrintCount(order.id);
             }
-        }).finally(() => setIsPrintingA4Pdf(false));
+        }).finally(() => setIsPrintingA5Pdf(false));
     };
 
-    const handlePrintDeliveryNote = () => {
+    const handlePrintDeliveryNote = async () => {
         if (!order) return;
         const brand = resolveBranding();
+        const printedBy = (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null;
+        let printNumber = 1;
+        try {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableOrder' });
+                printNumber = Number(pn) || 1;
+            }
+        } catch { /* fallback */ }
         const content = renderToString(
             <PrintableOrder
                 order={order}
@@ -324,6 +478,8 @@ const InvoiceScreen: React.FC = () => {
                 companyAddress={brand.address}
                 companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
+                audit={{ printedBy }}
+                printNumber={printNumber}
             />
         );
         printContent(content, `سند تسليم #${order.id.slice(-6).toUpperCase()}`);
@@ -333,7 +489,7 @@ const InvoiceScreen: React.FC = () => {
         if (selectedTemplate === 'thermal') {
             void handlePrint();
         } else {
-            handlePrintA4();
+            handlePrintA5();
         }
     };
 
@@ -341,7 +497,7 @@ const InvoiceScreen: React.FC = () => {
         void openPreview(selectedTemplate);
     };
 
-    const openPreview = async (kind: 'thermal' | 'a4') => {
+    const openPreview = async (kind: 'thermal' | 'a5') => {
         if (!order) return;
         setPreviewKind(kind);
         if (kind === 'thermal') {
@@ -365,7 +521,7 @@ const InvoiceScreen: React.FC = () => {
             const content = renderToString(
                 <PrintableInvoice
                     order={order}
-                    audit={invoiceAudit}
+                    audit={{ ...(invoiceAudit || {}), printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
                     language="ar"
                     companyName={brand.name}
                     companyPhone={brand.contactNumber}
@@ -378,13 +534,15 @@ const InvoiceScreen: React.FC = () => {
                     isCopy={currentCount > 0}
                     copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
                     qrCodeDataUrl={qrCodeDataUrl}
+                    costCenterLabel={costCenterLabel || undefined}
+                    creditSummary={creditSummary}
                 />
             );
             setPreviewHtml(buildPrintHtml(content, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { page: 'auto' }));
             setPreviewTitle('معاينة الطباعة الحرارية');
         } else {
             setPreviewHtml('');
-            setPreviewTitle('معاينة طباعة A4');
+            setPreviewTitle('معاينة طباعة A5');
         }
         setPreviewOpen(true);
     };
@@ -458,7 +616,7 @@ const InvoiceScreen: React.FC = () => {
     }, [order]);
 
     return (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 print:max-w-none print:w-full print:m-0 print:p-0">
             <div className="my-6 flex justify-between items-center gap-4">
                 <button onClick={() => navigate(-1)} className="flex items-center text-sm font-semibold text-gray-600 dark:text-gray-300 hover:text-orange-500 dark:hover:text-orange-400 transition-colors">
                     <BackArrowIcon />
@@ -489,11 +647,11 @@ const InvoiceScreen: React.FC = () => {
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">القالب:</span>
                             <select
                                 value={selectedTemplate}
-                                onChange={(e) => setSelectedTemplate(e.target.value === 'thermal' ? 'thermal' : 'a4')}
+                                onChange={(e) => setSelectedTemplate(e.target.value === 'thermal' ? 'thermal' : 'a5')}
                                 className="text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-gray-800 dark:text-gray-200"
                             >
                                 <option value="thermal">حراري</option>
-                                <option value="a4">A4</option>
+                                <option value="a5">A5</option>
                             </select>
                         </div>
                     )}
@@ -503,7 +661,7 @@ const InvoiceScreen: React.FC = () => {
                             className="inline-flex items-center justify-center bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-indigo-700 transition-colors gap-2"
                         >
                             <PrinterIcon />
-                            طباعة ({selectedTemplate === 'thermal' ? 'حراري' : 'A4'})
+                            طباعة ({selectedTemplate === 'thermal' ? 'حراري' : 'A5'})
                         </button>
                     )}
                     {isAdminInvoice && (
@@ -531,26 +689,26 @@ const InvoiceScreen: React.FC = () => {
                         </button>
                     )}
                     <button
-                        onClick={handlePrintA4}
-                        disabled={isPrintingA4}
+                        onClick={handlePrintA5}
+                        disabled={isPrintingA5}
                         className="inline-flex items-center justify-center bg-gray-800 text-white font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-gray-900 transition-colors disabled:bg-gray-500 disabled:cursor-wait gap-2"
                     >
                         <PrinterIcon />
-                        {isPrintingA4 ? 'جاري التحميل...' : 'طباعة A4'}
+                        {isPrintingA5 ? 'جاري التحميل...' : 'طباعة A5'}
                     </button>
                     {isAdminInvoice && (
                         <button
-                            onClick={handlePrintA4WithPageNumbers}
-                            disabled={isPrintingA4Pdf}
+                            onClick={handlePrintA5WithPageNumbers}
+                            disabled={isPrintingA5Pdf}
                             className="inline-flex items-center justify-center bg-gray-50 text-gray-900 font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-gray-100 transition-colors disabled:bg-gray-200 disabled:cursor-wait gap-2 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
                         >
                             <PrinterIcon />
-                            {isPrintingA4Pdf ? 'جاري التحضير...' : 'A4 (ترقيم صفحات)'}
+                            {isPrintingA5Pdf ? 'جاري التحضير...' : 'A5 (ترقيم صفحات)'}
                         </button>
                     )}
                     {isAdminInvoice && (
                         <button
-                            onClick={() => openPreview('a4')}
+                            onClick={() => openPreview('a5')}
                             className="inline-flex items-center justify-center bg-gray-100 text-gray-900 font-bold py-2 px-4 rounded-lg shadow-lg hover:bg-gray-200 transition-colors gap-2 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
                         >
                             معاينة
@@ -583,7 +741,7 @@ const InvoiceScreen: React.FC = () => {
                     if (previewKind === 'thermal') {
                         handlePrint();
                     } else {
-                        handlePrintA4();
+                        handlePrintA5();
                     }
                 }}
                 title={previewTitle}
@@ -601,21 +759,55 @@ const InvoiceScreen: React.FC = () => {
                     />
                 ) : (
                     <div className="bg-white p-4 rounded border border-gray-200">
-                        <div className="text-xs text-gray-500 mb-3">هذه معاينة A4 ضمن الواجهة. عند الطباعة قد تُطبّق قواعد @media print.</div>
+                        <div className="text-xs text-gray-500 mb-3">هذه معاينة A5 ضمن الواجهة. عند الطباعة قد تُطبّق قواعد @media print.</div>
                         {isAdminInvoice ? (
-                            <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                            <TriplicateInvoice
+                                ref={invoiceRef}
+                                order={order}
+                                settings={settings as any}
+                                branding={resolveBranding()}
+                                costCenterLabel={costCenterLabel || null}
+                                creditSummary={creditSummary}
+                                audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                            />
                         ) : (
-                            <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                            <Invoice
+                                ref={invoiceRef}
+                                order={order}
+                                settings={settings as any}
+                                branding={resolveBranding()}
+                                costCenterLabel={costCenterLabel || null}
+                                creditSummary={creditSummary}
+                                audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                            />
                         )}
                     </div>
                 )}
             </ConfirmationModal>
 
-            {isAdminInvoice && selectedTemplate === 'a4' ? (
-                <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
-            ) : (
-                <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
-            )}
+            <div id="print-area">
+                {isAdminInvoice && selectedTemplate === 'a5' ? (
+                    <TriplicateInvoice
+                        ref={invoiceRef}
+                        order={order}
+                        settings={settings as any}
+                        branding={resolveBranding()}
+                        costCenterLabel={costCenterLabel || null}
+                        creditSummary={creditSummary}
+                        audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                    />
+                ) : (
+                    <Invoice
+                        ref={invoiceRef}
+                        order={order}
+                        settings={settings as any}
+                        branding={resolveBranding()}
+                        costCenterLabel={costCenterLabel || null}
+                        creditSummary={creditSummary}
+                        audit={{ printedBy: (adminUser?.fullName || adminUser?.username || adminUser?.email || '').trim() || null }}
+                    />
+                )}
+            </div>
         </div>
     );
 };

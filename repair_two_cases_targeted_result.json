@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-03-10T20:07:38.470Z",
+  "batches_revalued": [
+    {
+      "batchId": "f64960ce-b721-4c96-bd28-feb18e3b38cd",
+      "oldUnitCost": "0.186916",
+      "newUnitCost": "6.6666666666666667",
+      "error": "Foreign cost snapshot cannot be modified after receipt"
+    },
+    {
+      "batchId": "b9ce6039-7b9b-4f8a-9d2f-d703dc2dbcf4",
+      "oldUnitCost": "0.147196",
+      "newUnitCost": "5.2500000000000000",
+      "error": "Foreign cost snapshot cannot be modified after receipt"
+    }
+  ],
+  "oic_rows_deleted": 7,
+  "oic_rows_inserted": 7
+}

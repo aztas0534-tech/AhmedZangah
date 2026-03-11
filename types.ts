@@ -181,9 +181,9 @@ export interface ImportExpense {
   currency: string;
   exchangeRate: number;
   baseAmount?: number;
-  paymentMethod?: 'cash' | 'bank';
   description?: string;
   invoiceNumber?: string;
+  paymentMethod?: 'cash' | 'bank'; // Added this back
   paidAt?: string;
   createdBy?: string;
   createdAt: string;
@@ -331,6 +331,7 @@ export interface CartItem extends MenuItem {
   quantity: number; // Number of units (pieces, bundles) or weight (kg)
   selectedAddons: Record<string, { addon: Addon; quantity: number }>;
   cartItemId: string;
+  notes?: string;
   lineDiscountType?: 'amount' | 'percent';
   lineDiscountValue?: number;
   lineType?: 'menu' | 'promotion';
@@ -343,6 +344,7 @@ export interface CartItem extends MenuItem {
   uomCode?: string;
   uomQtyInBase?: number;
   forcedBatchId?: string;
+  warehouseId?: string;
 }
 
 export type OrderStatus = 'pending' | 'preparing' | 'out_for_delivery' | 'delivered' | 'scheduled' | 'cancelled';
@@ -367,6 +369,7 @@ export interface Order {
   customerName: string;
   phoneNumber: string;
   notes?: string;
+  invoiceStatement?: string;
   address: string;
   isDraft?: boolean;
   location?: {
@@ -380,6 +383,7 @@ export interface Order {
     referenceNumber?: string;
     senderName?: string;
     senderPhone?: string;
+    destinationAccountId?: string;
     cashReceived?: number;
     cashChange?: number;
   }>;
@@ -390,11 +394,13 @@ export interface Order {
     bankName: string;
     accountName: string;
     accountNumber: string;
+    destinationAccountId?: string;
   };
   paymentNetworkRecipient?: {
     recipientId: string;
     recipientName: string;
     recipientPhoneNumber: string;
+    destinationAccountId?: string;
   };
   paymentProofType?: 'image' | 'ref_number';
   paymentProof?: string; // base64 string for image, or reference number
@@ -451,6 +457,7 @@ export interface Order {
       referenceNumber?: string;
       senderName?: string;
       senderPhone?: string;
+      destinationAccountId?: string;
       cashReceived?: number;
       cashChange?: number;
     }>;
@@ -461,11 +468,13 @@ export interface Order {
       bankName: string;
       accountName: string;
       accountNumber: string;
+      destinationAccountId?: string;
     };
     paymentNetworkRecipient?: {
       recipientId: string;
       recipientName: string;
       recipientPhoneNumber: string;
+      destinationAccountId?: string;
     };
     paymentProofType?: 'image' | 'ref_number';
     paymentProof?: string;
@@ -476,10 +485,12 @@ export interface Order {
     paymentVerifiedAt?: string;
     customerName: string;
     phoneNumber: string;
+    invoiceStatement?: string;
     address: string;
     deliveryZoneId?: string;
     taxAmount?: number;
     taxRate?: number;
+    isCreditSale?: boolean;
     invoiceTerms?: 'cash' | 'credit';
     netDays?: number;
     dueDate?: string;
@@ -498,6 +509,7 @@ export interface Order {
   invoiceTerms?: 'cash' | 'credit';
   netDays?: number;
   dueDate?: string;
+  _createdBy?: string;
 }
 
 export interface User {
@@ -552,6 +564,7 @@ export interface AppSettings {
   baseCurrency?: string;
   operationalCurrencies?: string[];
   ENABLE_MULTI_CURRENCY_PRICING?: boolean;
+  ALLOW_BELOW_COST_SALES?: boolean;
   maintenanceEnabled?: boolean;
   maintenanceMessage?: string;
   brandColors?: {
@@ -572,9 +585,9 @@ export interface AppSettings {
     logoUrl?: string;
   }>;
   defaultInvoiceTemplateByRole?: {
-    pos?: 'thermal' | 'a4';
-    admin?: 'thermal' | 'a4';
-    merchant?: 'thermal' | 'a4';
+    pos?: 'thermal' | 'a5';
+    admin?: 'thermal' | 'a5';
+    merchant?: 'thermal' | 'a5';
   };
   inventoryFlags?: {
     autoArchiveExpired?: boolean;
@@ -760,6 +773,7 @@ export interface StockManagement {
   reservedQuantity: number; // Reserved in active orders
   lastUpdated: string; // ISO string
   lowStockThreshold?: number; // Alert when stock is low
+  minimumStockLevel?: number; // Core DB minimum to trigger low stock alerts
   avgCost?: number;
   lastBatchId?: string;
 }
@@ -784,9 +798,16 @@ export interface ItemBatch {
   batchId: string;
   occurredAt: string;
   unitCost: number;
+  unitCostOriginal?: number;
+  unitCostCurrency?: string;
+  fxAtReceipt?: number;
   receivedQuantity: number;
   consumedQuantity: number;
   remainingQuantity: number;
+  returnedQuantity?: number;
+  soldQuantity?: number;
+  wastageQuantity?: number;
+  adjustOutQuantity?: number;
   qcStatus?: string;
   lastQcResult?: 'pass' | 'fail';
   lastQcAt?: string;
@@ -879,6 +900,7 @@ export interface Bank {
   name: string;
   accountName: string;
   accountNumber: string;
+  destinationAccountId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -888,6 +910,7 @@ export interface TransferRecipient {
   id: string;
   name: string;
   phoneNumber: string;
+  destinationAccountId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -1191,11 +1214,46 @@ export interface Expense {
   id: string;
   title: string;
   amount: number;
+  currency?: string;
+  fx_rate?: number;
+  base_amount?: number;
   category: 'rent' | 'salary' | 'utilities' | 'marketing' | 'maintenance' | 'other';
   date: string; // ISO date string YYYY-MM-DD
   notes?: string;
   cost_center_id?: string;
+  data?: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface DocumentAttachment {
+  name: string;
+  url: string;
+}
+
+export interface InventoryCount {
+  id: string;
+  warehouseId: string;
+  warehouseName?: string;
+  status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
+  createdBy: string;
+  createdByName?: string;
+  startedAt?: string;
+  completedAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryCountItem {
+  id: string;
+  countId: string;
+  itemId: string;
+  itemName?: string;
+  expectedQuantity: number;
+  actualQuantity: number | null;
+  variance: number | null;
+  unitCost: number | null;
+  notes?: string;
 }
 
 export interface CostCenter {
@@ -1235,6 +1293,7 @@ export interface WarehouseTransfer {
   transferDate: string;
   status: 'pending' | 'in_transit' | 'completed' | 'cancelled';
   notes?: string;
+  shippingCost?: number;
   createdBy?: string;
   approvedBy?: string;
   completedAt?: string;

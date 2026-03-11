@@ -390,7 +390,7 @@ export default function DocumentTemplatesScreen() {
             brand={{ name: brand.name, address: brand.address, contactNumber: brand.contactNumber, logoUrl: brand.logoUrl, vatNumber: brand.vatNumber }}
           />
         );
-        printContent(content, 'أمر شراء (قالب)', { page: 'A4' });
+        printContent(content, 'أمر شراء (قالب)', { page: 'A5' });
         return;
       }
 
@@ -402,7 +402,7 @@ export default function DocumentTemplatesScreen() {
             brand={{ name: brand.name, address: brand.address, contactNumber: brand.contactNumber, logoUrl: brand.logoUrl, vatNumber: brand.vatNumber }}
           />
         );
-        printContent(content, 'إشعار استلام (GRN) (قالب)', { page: 'A4' });
+        printContent(content, 'إشعار استلام (GRN) (قالب)', { page: 'A5' });
         return;
       }
 
@@ -414,7 +414,7 @@ export default function DocumentTemplatesScreen() {
             brand={{ name: brand.name, address: brand.address, contactNumber: brand.contactNumber, logoUrl: brand.logoUrl }}
           />
         );
-        printContent(content, 'تحويل مخزني (قالب)', { page: 'A4' });
+        printContent(content, 'تحويل مخزني (قالب)', { page: 'A5' });
         return;
       }
     } catch (e: any) {

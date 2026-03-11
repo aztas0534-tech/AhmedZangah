@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-03-10T20:23:56.169Z",
+  "po_numbers": [
+    "PO-MAIN-2026-000002",
+    "PO-MAIN-2026-000003"
+  ],
+  "plans": [
+    {
+      "po_id": "8d2f585c-752a-4102-9efd-2417ec994a2e",
+      "po_number": "PO-MAIN-2026-000002",
+      "lines": []
+    },
+    {
+      "po_id": "fea79095-8def-4609-a1b3-c106c9e2ae57",
+      "po_number": "PO-MAIN-2026-000003",
+      "lines": []
+    }
+  ],
+  "created_returns": [],
+  "shortages": []
+}

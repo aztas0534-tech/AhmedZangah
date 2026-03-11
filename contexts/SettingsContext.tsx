@@ -134,6 +134,7 @@ const defaultSettings: AppSettings = {
   baseCurrency: '',
   operationalCurrencies: [],
   ENABLE_MULTI_CURRENCY_PRICING: false,
+  ALLOW_BELOW_COST_SALES: false,
   maintenanceEnabled: false,
   maintenanceMessage: 'التطبيق في وضع الصيانة مؤقتًا. الرجاء المحاولة لاحقًا.',
   brandColors: {
@@ -149,8 +150,8 @@ const defaultSettings: AppSettings = {
   },
   defaultInvoiceTemplateByRole: {
     pos: 'thermal',
-    admin: 'a4',
-    merchant: 'a4',
+    admin: 'a5',
+    merchant: 'a5',
   },
   inventoryFlags: {
     autoArchiveExpired: false,

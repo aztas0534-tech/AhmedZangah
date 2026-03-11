@@ -11,26 +11,43 @@ interface ShiftManagementModalProps {
 }
 
 const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onClose }) => {
-    const { currentShift, startShift, endShift, expectedCash, loading } = useCashShift();
+    const { currentShift, startShift, endShift, expectedCash, expectedCashJson, loading } = useCashShift();
     const { user } = useAuth();
     const supabase = getSupabaseClient();
     const navigate = useNavigate();
 
     const [amount, setAmount] = useState<string>('');
+    const [tenderCounts, setTenderCounts] = useState<Record<string, string>>({});
+    const [fxRates, setFxRates] = useState<Record<string, number>>({});
     const [notes, setNotes] = useState('');
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [cashierLabel, setCashierLabel] = useState<string>('');
     const [baseCode, setBaseCode] = useState('—');
 
-    // Reset form when modal opens or shift state changes
     useEffect(() => {
         if (isOpen) {
             setAmount('');
             setNotes('');
             setError('');
+            const init: Record<string, string> = {};
+            if (expectedCashJson && Object.keys(expectedCashJson).length > 0) {
+                Object.keys(expectedCashJson).forEach(c => { init[c] = ''; });
+            }
+            setTenderCounts(init);
         }
-    }, [isOpen, currentShift]);
+    }, [isOpen, currentShift, expectedCashJson]);
+
+    useEffect(() => {
+        const fetchFx = async () => {
+            if (!supabase) return;
+            const { data } = await supabase.from('currencies').select('code, current_exchange_rate');
+            const map: Record<string, number> = {};
+            data?.forEach(d => { map[String(d.code).toUpperCase()] = Number(d.current_exchange_rate) || 1; });
+            setFxRates(map);
+        };
+        fetchFx();
+    }, [supabase]);
 
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
@@ -67,17 +84,28 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
 
     if (!isOpen) return null;
 
+    const isClosing = !!currentShift;
+
+    // Auto calculate amount from tender counts if configured
+    const calculatedBaseAmount = Object.keys(tenderCounts).length > 0
+        ? Object.entries(tenderCounts).reduce((sum, [cur, val]) => {
+            const n = parseFloat(val);
+            if (isNaN(n)) return sum;
+            const fx = fxRates[cur] || 1;
+            return sum + (n * fx);
+        }, 0)
+        : parseFloat(amount || '0');
+
+    const difference = isClosing ? (calculatedBaseAmount - expectedCash) : 0;
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
-        const numAmount = parseFloat(amount);
-        if (isNaN(numAmount) || numAmount < 0) {
+        if (isNaN(calculatedBaseAmount) || calculatedBaseAmount < 0) {
             setError('يرجى إدخال مبلغ صحيح.');
             return;
         }
-
-        const difference = isClosing ? (numAmount - expectedCash) : 0;
 
         if (isClosing && Math.abs(difference) > 0.01 && !notes.trim()) {
             setError('يوجد فرق في النقدية. يرجى كتابة سبب العجز/الزيادة في الملاحظات.');
@@ -87,9 +115,14 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
         setIsSubmitting(true);
         try {
             if (currentShift) {
-                await endShift(numAmount, notes);
+                const parsedTenders: Record<string, number> = {};
+                for (const [k, v] of Object.entries(tenderCounts)) {
+                    if (v.trim() !== '') parsedTenders[k] = parseFloat(v) || 0;
+                }
+                const hasTenders = Object.keys(parsedTenders).length > 0;
+                await endShift(calculatedBaseAmount, notes, hasTenders ? parsedTenders : undefined);
             } else {
-                await startShift(numAmount);
+                await startShift(parseFloat(amount || '0') || 0);
             }
             onClose();
         } catch (err) {
@@ -100,9 +133,6 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
             setIsSubmitting(false);
         }
     };
-
-    const isClosing = !!currentShift;
-    const difference = isClosing ? (parseFloat(amount || '0') - expectedCash) : 0;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -122,16 +152,16 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
                 {/* Body */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
 
-                        {/* Info Section */}
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-sm text-gray-500 dark:text-gray-400">الكاشير:</span>
+                    {/* Info Section */}
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">الكاشير:</span>
                             <span className="font-semibold dark:text-gray-200">{cashierLabel}</span>
-                            </div>
-                            {isClosing && (
-                                <>
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-sm text-gray-500 dark:text-gray-400">وقت البدء:</span>
+                        </div>
+                        {isClosing && (
+                            <>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm text-gray-500 dark:text-gray-400">وقت البدء:</span>
                                     <span className="font-mono text-xs dark:text-gray-300">{new Date(currentShift.openedAt).toLocaleString('ar-EG-u-nu-latn')}</span>
                                 </div>
                                 <div className="flex justify-between items-center mb-1">
@@ -147,32 +177,66 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
                     </div>
 
                     {/* Amount Input */}
-                    <div>
-                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">
-                            {isClosing ? 'النقد الفعلي بعد الجرد' : 'عهدة البداية'}
-                        </label>
-                        <div className="relative">
-                            <Icons.MoneyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                            <input
-                                type="number"
-                                step="0.01"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                min={0}
-                                className="w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                placeholder="0.00"
-                                autoFocus
-                                required
-                            />
+                    {!isClosing || Object.keys(expectedCashJson || {}).length === 0 ? (
+                        <div>
+                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">
+                                {isClosing ? 'النقد الفعلي بعد الجرد (إجمالي)' : 'عهدة البداية'}
+                            </label>
+                            <div className="relative">
+                                <Icons.MoneyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    min={0}
+                                    className="w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    placeholder="0.00"
+                                    autoFocus={!isClosing}
+                                    required={!isClosing || Object.keys(tenderCounts).length === 0}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">
+                                النقد الفعلي بعد الجرد (تفصيلي)
+                            </label>
+                            {Object.entries(expectedCashJson).map(([cur, expectedVal]) => (
+                                <div key={cur} className="flex flex-col gap-1 p-3 border rounded-lg dark:border-gray-600 dark:bg-gray-750">
+                                    <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                        <span>عملة: {cur}</span>
+                                        <span className="font-mono">المتوقع: {Number(expectedVal).toFixed(2)}</span>
+                                    </div>
+                                    <div className="relative">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 text-center text-xs font-bold text-gray-400">{cur}</div>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={tenderCounts[cur] !== undefined ? tenderCounts[cur] : ''}
+                                            onChange={(e) => setTenderCounts(prev => ({ ...prev, [cur]: e.target.value }))}
+                                            min={0}
+                                            className="w-full pl-12 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            placeholder="0.00"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                            {Object.keys(tenderCounts).length > 0 && (
+                                <div className="text-left text-sm text-gray-500 dark:text-gray-400 mt-2 font-mono">
+                                    الإجمالي المقدر: {calculatedBaseAmount.toFixed(2)} {baseCode}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Difference Warning (Closing only) */}
-                    {isClosing && amount !== '' && Math.abs(difference) > 0.01 && (
+                    {isClosing && calculatedBaseAmount > 0 && Math.abs(difference) > 0.01 && (
                         <div className={`p-3 rounded-lg flex items-start gap-3 ${difference < 0 ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>
                             <Icons.InfoIcon className="w-5 h-5 shrink-0 mt-0.5" />
                             <div>
-                                <p className="font-bold">تم رصد فرق</p>
+                                <p className="font-bold">تم رصد فرق (تقريبي)</p>
                                 <p className="text-sm">
                                     الفرق: <span dir="ltr">{difference > 0 ? '+' : ''}{difference.toFixed(2)} {baseCode || '—'}</span>
                                 </p>
@@ -186,20 +250,19 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
                     {/* Notes Input */}
                     <div>
                         <label className="block text-sm font-medium mb-1 dark:text-gray-300">
-                            {isClosing && amount !== '' && Math.abs(difference) > 0.01 
-                                ? 'سبب الفرق (مطلوب)' 
+                            {isClosing && calculatedBaseAmount > 0 && Math.abs(difference) > 0.01
+                                ? 'سبب الفرق (مطلوب)'
                                 : 'ملاحظات (اختياري)'}
                         </label>
                         <textarea
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
-                            className={`w-full p-3 border rounded-lg focus:ring-2 outline-none h-20 resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                                isClosing && amount !== '' && Math.abs(difference) > 0.01 && !notes.trim()
-                                    ? 'border-red-500 focus:ring-red-500' 
-                                    : 'focus:ring-indigo-500'
-                            }`}
-                            placeholder={isClosing && amount !== '' && Math.abs(difference) > 0.01 
-                                ? "يرجى توضيح سبب العجز أو الزيادة..." 
+                            className={`w-full p-3 border rounded-lg focus:ring-2 outline-none h-20 resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white ${isClosing && calculatedBaseAmount > 0 && Math.abs(difference) > 0.01 && !notes.trim()
+                                ? 'border-red-500 focus:ring-red-500'
+                                : 'focus:ring-indigo-500'
+                                }`}
+                            placeholder={isClosing && calculatedBaseAmount > 0 && Math.abs(difference) > 0.01
+                                ? "يرجى توضيح سبب العجز أو الزيادة..."
                                 : "اكتب ملاحظاتك حول الوردية..."}
                         />
                     </div>

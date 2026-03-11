@@ -10,6 +10,8 @@ import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import * as Icons from '../../components/icons';
+
+import { translateAccountName } from '../../utils/accountUtils';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { MenuItem } from '../../types';
@@ -21,6 +23,8 @@ import PrintablePurchaseOrder from '../../components/admin/documents/PrintablePu
 import PrintableGrn, { PrintableGrnData } from '../../components/admin/documents/PrintableGrn';
 import { printPaymentVoucherByPaymentId } from '../../utils/vouchers';
 import { localizeSupabaseError } from '../../utils/errorUtils';
+import { printPurchaseReturnById } from '../../utils/returnsPrint';
+import { inferDestinationParentCode, matchesDestinationCurrency } from '../../utils/accountDestinationUtils';
 
 interface OrderItemRow {
     itemId: string;
@@ -40,6 +44,7 @@ interface ReceiveRow {
     remaining: number;
     receiveNow: number | string;
     uomCode?: string;
+    uomQtyInBase?: number;
     productionDate?: string;
     expiryDate?: string;
     previousReturned?: number;
@@ -52,7 +57,7 @@ type ItemUomRow = { code: string; name: string; qtyInBase: number };
 
 const PurchaseOrderScreen: React.FC = () => {
     const location = useLocation();
-    const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
+    const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReceivedSummary, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
     const { menuItems } = useMenu();
     const { stockItems } = useStock();
     const { user, hasPermission } = useAuth();
@@ -70,6 +75,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const { scope } = useSessionScope();
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, ItemUomRow[]>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
+    const [itemExpiryMetaById, setItemExpiryMetaById] = useState<Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }>>({});
     const [receiptPostingByOrderId, setReceiptPostingByOrderId] = useState<Record<string, { receiptId: string; status: string; error: string }>>({});
     const [receiptPostingLoading, setReceiptPostingLoading] = useState(false);
     const canDelete = user?.role === 'owner';
@@ -83,9 +89,13 @@ const PurchaseOrderScreen: React.FC = () => {
     const [reportingPartial, setReportingPartial] = useState(false);
     const [finalizingNoShortages, setFinalizingNoShortages] = useState(false);
     const [forcingStatusOnly, setForcingStatusOnly] = useState(false);
+    const [repairingPurchaseInJournals, setRepairingPurchaseInJournals] = useState(false);
+    const [returnPickerOrder, setReturnPickerOrder] = useState<PurchaseOrder | null>(null);
+    const [returnPickerList, setReturnPickerList] = useState<Array<{ id: string; returnedAt: string; reason: string | null; itemCount: number }>>([]);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
+        const companyName = (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '';
         const fallback = {
-            name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
+            name: companyName,
             address: settings?.address || '',
             contactNumber: settings?.contactNumber || '',
             logoUrl: settings?.logoUrl || '',
@@ -94,10 +104,11 @@ const PurchaseOrderScreen: React.FC = () => {
         const wh = wid ? warehouses.find(w => String(w.id) === wid) : undefined;
         const override = wid ? settings?.branchBranding?.[wid] : undefined;
         return {
-            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            name: (override?.name || fallback.name || '').trim(),
             address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
             contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+            branchName: (wh?.name || '').trim(),
         };
     };
 
@@ -125,9 +136,31 @@ const PurchaseOrderScreen: React.FC = () => {
             : order.status === 'cancelled'
                 ? 'Cancelled'
                 : 'Approved';
+        const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+        let printNumber = 1;
+        const supabase = getSupabaseClient();
+        if (supabase) {
+            try {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'purchase_orders', p_source_id: order.id, p_template: 'PrintablePurchaseOrder' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
+        }
         const content = renderToString(
             <PrintablePurchaseOrder
-                order={order}
+                order={{
+                    ...order,
+                    items: (order.items || []).map((it: any) => {
+                        const existingUom = String(it?.uomCode || it?.uom_code || it?.unit || '').trim();
+                        if (existingUom && /[\u0600-\u06FF]/.test(existingUom)) return it;
+                        const itemId = String(it?.itemId || '').trim();
+                        const mi = menuItems.find((m: any) => String(m?.id) === itemId);
+                        const unitTypeKey = String((mi as any)?.unitType || (mi as any)?.unit_type || existingUom || '').trim();
+                        if (!unitTypeKey) return it;
+                        const arLabel = getUnitLabel(unitTypeKey as any, 'ar');
+                        const resolved = (arLabel && /[\u0600-\u06FF]/.test(String(arLabel))) ? String(arLabel) : unitTypeKey;
+                        return { ...it, uomCode: resolved };
+                    }),
+                }}
                 language="ar"
                 brand={{
                     ...brand,
@@ -136,10 +169,11 @@ const PurchaseOrderScreen: React.FC = () => {
                 }}
                 documentStatus={statusLabel}
                 referenceId={order.id}
+                audit={{ printedBy }}
+                printNumber={printNumber}
             />
         );
         printContent(content, `أمر شراء #${String(order.poNumber || order.id).slice(-12)}`);
-        const supabase = getSupabaseClient();
         if (supabase) {
             try {
                 await supabase.from('system_audit_logs').insert({
@@ -269,6 +303,95 @@ const PurchaseOrderScreen: React.FC = () => {
             alert(getErrorMessage(e, 'فشل إكمال الحالة.'));
         } finally {
             setForcingStatusOnly(false);
+        }
+    };
+
+    const handleRepairPurchaseInJournalsFromMovements = async () => {
+        if (!canManageAccounting) {
+            showNotification('ليس لديك صلاحية تنفيذ إصلاح القيود.', 'error');
+            return;
+        }
+        if (repairingPurchaseInJournals) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة.', 'error');
+            return;
+        }
+
+        const startDate = window.prompt('أدخل تاريخ البداية (YYYY-MM-DD) أو اتركه فارغاً:', '');
+        if (startDate === null) return;
+        const endDate = window.prompt('أدخل تاريخ النهاية (YYYY-MM-DD) أو اتركه فارغاً:', '');
+        if (endDate === null) return;
+        const limitText = window.prompt('حد أقصى لعدد القيود للفحص/الإصلاح:', '500');
+        if (limitText === null) return;
+        const limit = Math.max(1, Math.min(5000, Number(limitText || 500) || 500));
+
+        const toStartIso = (d: string) => {
+            const x = String(d || '').trim();
+            if (!x) return null;
+            return `${x}T00:00:00Z`;
+        };
+        const toEndIso = (d: string) => {
+            const x = String(d || '').trim();
+            if (!x) return null;
+            return `${x}T23:59:59Z`;
+        };
+
+        const p_start = toStartIso(startDate);
+        const p_end = toEndIso(endDate);
+
+        setRepairingPurchaseInJournals(true);
+        try {
+            const dryRes = await supabase.rpc('repair_purchase_in_journals_from_movements', {
+                p_start,
+                p_end,
+                p_limit: limit,
+                p_dry_run: true,
+            } as any);
+            if ((dryRes as any)?.error) throw (dryRes as any).error;
+            const dryRows = Array.isArray((dryRes as any)?.data) ? ((dryRes as any).data as any[]) : [];
+
+            if (dryRows.length === 0) {
+                showNotification('لا توجد قيود مشتريات تحتاج إصلاح ضمن النطاق.', 'info');
+                return;
+            }
+
+            const dryCount = dryRows.filter((r) => String(r?.action || '') === 'dry_run').length;
+            const skippedCount = dryRows.filter((r) => String(r?.action || '') === 'skipped_complex').length;
+            const preview = dryRows.slice(0, 10).map((r) => {
+                const je = String(r?.journal_entry_id || '').slice(0, 8);
+                const mv = String(r?.movement_id || '').slice(0, 8);
+                const oldC = Number(r?.old_total_cost || 0);
+                const newC = Number(r?.new_total_cost || 0);
+                const act = String(r?.action || '');
+                return `- JE ${je} / MV ${mv} : ${oldC} → ${newC} (${act})`;
+            }).join('\n');
+
+            const ok = window.confirm(
+                `نتيجة الفحص:\n` +
+                `جاهز للإصلاح=${dryCount}\n` +
+                `تم تخطيه (قيد مركّب)=${skippedCount}\n\n` +
+                `عينة:\n${preview}\n\n` +
+                `هل تريد تنفيذ الإصلاح الآن؟`
+            );
+            if (!ok) return;
+
+            const runRes = await supabase.rpc('repair_purchase_in_journals_from_movements', {
+                p_start,
+                p_end,
+                p_limit: limit,
+                p_dry_run: false,
+            } as any);
+            if ((runRes as any)?.error) throw (runRes as any).error;
+            const runRows = Array.isArray((runRes as any)?.data) ? ((runRes as any).data as any[]) : [];
+            const fixedCount = runRows.filter((r) => String(r?.action || '') === 'fixed').length;
+            const runSkipped = runRows.filter((r) => String(r?.action || '') === 'skipped_complex').length;
+
+            showNotification(`تم إصلاح ${fixedCount} قيد. تم تخطي ${runSkipped} قيد مركب.`, 'success');
+        } catch (e) {
+            alert(getErrorMessage(e, localizeSupabaseError(e)));
+        } finally {
+            setRepairingPurchaseInJournals(false);
         }
     };
 
@@ -539,6 +662,28 @@ const PurchaseOrderScreen: React.FC = () => {
                 totalCost: Number(r.totalCost || ((Number(r.quantity || 0) || 0) * (Number(r.unitCost || 0) || 0))),
             }))).filter((x: any) => Number(x.quantity || 0) > 0);
 
+        // Map uomCode from PO items to GRN items by itemId
+        const poUomByItemId = new Map<string, string>();
+        for (const poItem of (po.items || [])) {
+            const itemId = String((poItem as any)?.itemId || '').trim();
+            const uomCode = String((poItem as any)?.uomCode || (poItem as any)?.uom_code || (poItem as any)?.unit || (poItem as any)?.uom || '').trim();
+            if (itemId && uomCode) poUomByItemId.set(itemId, uomCode);
+        }
+        const grnItems = normalizedItems.map((it: any) => {
+            const rawUom = poUomByItemId.get(String(it.itemId || '').trim()) || '';
+            let resolvedUom = rawUom;
+            if (!resolvedUom || !/[\u0600-\u06FF]/.test(resolvedUom)) {
+                const itemId = String(it.itemId || '').trim();
+                const mi = menuItems.find((m: any) => String(m?.id) === itemId);
+                const unitTypeKey = String((mi as any)?.unitType || (mi as any)?.unit_type || resolvedUom || '').trim();
+                if (unitTypeKey) {
+                    const arLabel = getUnitLabel(unitTypeKey as any, 'ar');
+                    resolvedUom = (arLabel && /[\u0600-\u06FF]/.test(String(arLabel))) ? String(arLabel) : unitTypeKey;
+                }
+            }
+            return { ...it, uomCode: resolvedUom };
+        });
+
         const grn: PrintableGrnData = {
             grnNumber: String((receipt as any)?.grn_number || `GRN-${receiptId.slice(-6).toUpperCase()}`),
             documentStatus: 'Approved',
@@ -548,10 +693,16 @@ const PurchaseOrderScreen: React.FC = () => {
             supplierName: po.supplierName || undefined,
             warehouseName: po.warehouseName || undefined,
             notes: (receipt as any)?.notes ?? null,
-            items: normalizedItems,
+            items: grnItems,
             currency: String(po.currency || ''),
         };
 
+        const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+        let printNumber = 1;
+        try {
+            const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'purchase_receipts', p_source_id: receiptId, p_template: 'PrintableGrn' });
+            printNumber = Number(pn) || 1;
+        } catch { /* fallback */ }
         const content = renderToString(
             <PrintableGrn
                 data={grn}
@@ -561,6 +712,8 @@ const PurchaseOrderScreen: React.FC = () => {
                     branchName: branchHdr.branchName,
                     branchCode: branchHdr.branchCode,
                 }}
+                audit={{ printedBy }}
+                printNumber={printNumber}
             />
         );
         printContent(content, `GRN #${grn.grnNumber}`);
@@ -604,6 +757,58 @@ const PurchaseOrderScreen: React.FC = () => {
             postingStatus: String((data as any).posting_status || ''),
             postingError: String((data as any).posting_error || ''),
         };
+    };
+
+    const getAllPurchaseReturnsForOrder = async (orderId: string) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return [];
+        const { data, error } = await supabase
+            .from('purchase_returns')
+            .select('id,returned_at,reason,created_at,purchase_return_items(id)')
+            .eq('purchase_order_id', orderId)
+            .order('returned_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return (Array.isArray(data) ? data : []).map((r: any) => ({
+            id: String(r.id),
+            returnedAt: String(r.returned_at || r.created_at || ''),
+            reason: r.reason ? String(r.reason) : null,
+            itemCount: Array.isArray(r.purchase_return_items) ? r.purchase_return_items.length : 0,
+        }));
+    };
+
+    const openReturnPrintPicker = async (order: PurchaseOrder) => {
+        setReturnPickerOrder(order);
+        try {
+            const list = await getAllPurchaseReturnsForOrder(order.id);
+            if (list.length === 0) {
+                showNotification('لا يوجد مرتجعات لهذا الأمر.', 'info');
+                setReturnPickerOrder(null);
+                return;
+            }
+            if (list.length === 1) {
+                // Only one return — print directly without modal
+                await handlePrintSelectedReturn(order, list[0].id);
+                setReturnPickerOrder(null);
+                return;
+            }
+            setReturnPickerList(list);
+        } catch (e) {
+            showNotification(getErrorMessage(e, 'تعذر جلب المرتجعات'), 'error');
+            setReturnPickerOrder(null);
+        }
+    };
+
+    const handlePrintSelectedReturn = async (order: PurchaseOrder, returnId: string) => {
+        const brand = resolveBrandingForWarehouseId(order.warehouseId);
+        const branchHdr = await fetchBranchHeader(scope?.branchId);
+        const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+        await printPurchaseReturnById(
+            returnId,
+            { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode },
+            baseCode,
+            { printedBy }
+        );
     };
 
     const loadLatestReceiptPostingForOrders = async (orderIds: string[]) => {
@@ -734,6 +939,54 @@ const PurchaseOrderScreen: React.FC = () => {
     const [warehouseId, setWarehouseId] = useState<string>('');
     const [paymentTerms, setPaymentTerms] = useState<'cash' | 'credit'>('cash');
     const [netDays, setNetDays] = useState<number>(0);
+    const [poNotes, setPoNotes] = useState<string>('');
+
+    // ── UX Filters & Search ──
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [paymentFilter, setPaymentFilter] = useState('all');
+    const [isAdvancedActionsOpen, setIsAdvancedActionsOpen] = useState(false);
+    const [openRowDropdownId, setOpenRowDropdownId] = useState<string | null>(null);
+
+    const filteredPurchaseOrders = useMemo(() => {
+        return purchaseOrders.filter((order) => {
+            let matchSearch = true;
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const num = (order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`).toLowerCase();
+                const ref = (order.referenceNumber || '').toLowerCase();
+                const sup = (order.supplierName || '').toLowerCase();
+                matchSearch = num.includes(q) || ref.includes(q) || sup.includes(q);
+            }
+
+            let matchStatus = true;
+            if (statusFilter !== 'all') {
+                const eps = 0.000000001;
+                const items = Array.isArray(order.items) ? order.items : [];
+                const hasReceived = order.status === 'completed' || items.some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                const fullyReceived = order.status === 'completed' || (items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0)));
+
+                if (statusFilter === 'draft') matchStatus = order.status === 'draft' && !hasReceived;
+                else if (statusFilter === 'partial') matchStatus = hasReceived && !fullyReceived;
+                else if (statusFilter === 'received') matchStatus = fullyReceived;
+                else if (statusFilter === 'cancelled') matchStatus = order.status === 'cancelled';
+            }
+
+            let matchPayment = true;
+            if (paymentFilter !== 'all') {
+                const total = Number(order.totalAmount || 0);
+                const paid = Number(order.paidAmount || 0);
+                const remaining = total - paid;
+
+                if (paymentFilter === 'unpaid') matchPayment = remaining > 0.000000001 && paid <= 0;
+                else if (paymentFilter === 'partial') matchPayment = remaining > 0.000000001 && paid > 0;
+                else if (paymentFilter === 'paid') matchPayment = remaining <= 0.000000001 && total > 0;
+            }
+
+            return matchSearch && matchStatus && matchPayment;
+        });
+    }, [purchaseOrders, searchQuery, statusFilter, paymentFilter]);
+
     const [dueDate, setDueDate] = useState<string>(toDateInputValue());
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
@@ -754,7 +1007,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>('');
     const [paymentAdvancedAccounting, setPaymentAdvancedAccounting] = useState(false);
     const [paymentOverrideAccountId, setPaymentOverrideAccountId] = useState<string>('');
-    const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [paymentDestinationAccountId, setPaymentDestinationAccountId] = useState<string>('');
+    const [accounts, setAccounts] = useState<{ id: string; code: string; name: string; nameAr: string }[]>([]);
     const [accountsError, setAccountsError] = useState<string>('');
     const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null);
     const [receiveRows, setReceiveRows] = useState<ReceiveRow[]>([]);
@@ -772,7 +1026,41 @@ const PurchaseOrderScreen: React.FC = () => {
     const [returnReason, setReturnReason] = useState<string>('');
     const [isCreatingReturn, setIsCreatingReturn] = useState<boolean>(false);
     const createReturnInFlightRef = useRef(false);
+    const [returnStatusByOrderId, setReturnStatusByOrderId] = useState<Record<string, { isFull: boolean; receivedQty: number; returnedQty: number }>>({});
     const [formErrors, setFormErrors] = useState<string[]>([]);
+
+    useEffect(() => {
+        const orderIds = Array.from(new Set((purchaseOrders || []).map((o: any) => String(o?.id || '').trim()).filter(Boolean)));
+        if (!orderIds.length) {
+            setReturnStatusByOrderId({});
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const next: Record<string, { isFull: boolean; receivedQty: number; returnedQty: number }> = {};
+                await Promise.all(orderIds.map(async (oid) => {
+                    const [receivedSummary, returnedSummary] = await Promise.all([
+                        getPurchaseReceivedSummary(oid),
+                        getPurchaseReturnSummary(oid),
+                    ]);
+                    const receiptQty = Object.values(receivedSummary || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+                    const returnQty = Object.values(returnedSummary || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+                    next[oid] = {
+                        isFull: receiptQty > 0 && (returnQty + 1e-9) >= receiptQty,
+                        receivedQty: receiptQty,
+                        returnedQty: returnQty,
+                    };
+                }));
+                if (!cancelled) setReturnStatusByOrderId(next);
+            } catch {
+                if (!cancelled) setReturnStatusByOrderId({});
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [purchaseOrders]);
 
     useEffect(() => {
         const supabase = getSupabaseClient();
@@ -807,6 +1095,49 @@ const PurchaseOrderScreen: React.FC = () => {
             })();
         }
     }, [orderItems, itemUomRowsByItemId]);
+
+    useEffect(() => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const ids = Array.from(new Set([
+            ...orderItems.map((r) => String(r.itemId || '').trim()),
+            ...receiveRows.map((r) => String((r as any)?.itemId || '').trim()),
+            ...returnRows.map((r) => String((r as any)?.itemId || '').trim()),
+        ].filter(Boolean)));
+        const missing = ids.filter((id) => !(id in itemExpiryMetaById));
+        if (!missing.length) return;
+
+        let cancelled = false;
+        void (async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('menu_items')
+                    .select('id,is_food,expiry_required,category')
+                    .in('id', missing);
+                if (cancelled) return;
+                if (error) throw error;
+                const rows = Array.isArray(data) ? data : [];
+                const mapped: Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }> = {};
+                for (const r of rows as any[]) {
+                    const id = String((r as any)?.id || '').trim();
+                    if (!id) continue;
+                    mapped[id] = {
+                        isFood: Boolean((r as any)?.is_food),
+                        expiryRequired: Boolean((r as any)?.expiry_required),
+                        category: typeof (r as any)?.category === 'string' ? String((r as any).category) : undefined,
+                    };
+                }
+                setItemExpiryMetaById((prev) => ({ ...prev, ...mapped }));
+            } catch {
+                const fallback: Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }> = {};
+                for (const id of missing) fallback[id] = {};
+                setItemExpiryMetaById((prev) => ({ ...prev, ...fallback }));
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [orderItems, receiveRows, returnRows, itemExpiryMetaById]);
 
     useEffect(() => {
         if (!isModalOpen) return;
@@ -903,6 +1234,20 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     // Helper to update a row
+    const getShelfLifeDays = (itemId: string): number | null => {
+        const item = getItemById(itemId) || (menuItems || []).find((i) => i && i.id === itemId);
+        const days = (item as any)?.shelf_life_days ?? (item as any)?.shelfLifeDays;
+        return (typeof days === 'number' && days > 0) ? days : null;
+    };
+    const autoFillExpiry = (productionDate: string, itemId: string): string => {
+        if (!productionDate) return '';
+        const days = getShelfLifeDays(itemId);
+        if (!days) return '';
+        const d = new Date(productionDate);
+        if (isNaN(d.getTime())) return '';
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+    };
     const updateRow = (index: number, field: keyof OrderItemRow, value: any) => {
         const newRows = [...orderItems];
         const next = { ...newRows[index], [field]: value } as any;
@@ -911,6 +1256,13 @@ const PurchaseOrderScreen: React.FC = () => {
             const baseCode = String(it?.unitType || 'piece');
             next.uomCode = baseCode;
             next.uomQtyInBase = 1;
+        }
+        // Auto-fill expiry when production date is entered
+        if (field === 'productionDate' && value) {
+            const calcExpiry = autoFillExpiry(String(value), next.itemId);
+            if (calcExpiry && !next.expiryDate) {
+                next.expiryDate = calcExpiry;
+            }
         }
         newRows[index] = next;
         setOrderItems(newRows);
@@ -941,13 +1293,28 @@ const PurchaseOrderScreen: React.FC = () => {
         if (compact.includes('غذ')) return true;
         if (compact.includes('food')) return true;
         if (compact.includes('grocery')) return true;
+        // If key is auto-generated (cat_xxx), lookup the category name from definitions
+        if (raw.startsWith('cat_')) {
+            try {
+                // Sync check from cached categories in the page
+                const el = document.querySelector('[data-categories]');
+                if (el) {
+                    const cats = JSON.parse(el.getAttribute('data-categories') || '[]');
+                    const cat = cats.find((c: any) => c.key === raw);
+                    if (cat) return isFoodCategoryValue(cat.name?.ar || cat.name?.en || '');
+                }
+            } catch { }
+        }
         return false;
     };
     const isFoodItem = (itemId: string) => {
+        const cached = itemExpiryMetaById[String(itemId || '').trim()];
+        if (cached && (cached.isFood || cached.expiryRequired)) return true;
+        if (cached?.category && isFoodCategoryValue(cached.category)) return true;
         const item = getItemById(itemId) || (menuItems || []).find((i) => i && i.id === itemId);
         const flagged = Boolean((item as any)?.isFood ?? (item as any)?.is_food ?? (item as any)?.expiryRequired ?? (item as any)?.expiry_required);
         if (flagged) return true;
-        if (isFoodCategoryValue((item as any)?.category)) return true;
+        if (isFoodCategoryValue((item as any)?.category ?? (item as any)?.data?.category)) return true;
         const groupKeyRaw =
             String((item as any)?.group || (item as any)?.groupKey || (item as any)?.group_key || (item as any)?.data?.group || '').trim();
         if (!groupKeyRaw) return false;
@@ -960,6 +1327,46 @@ const PurchaseOrderScreen: React.FC = () => {
     const getQuantityStep = (itemId: string) => {
         const unit = getItemById(itemId)?.unitType;
         return unit === 'kg' || unit === 'gram' ? 0.5 : 1;
+    };
+
+    const getUomOptionsForItem = (itemId: string) => {
+        const it = itemId ? getItemById(itemId) : undefined;
+        const baseUom = String(it?.unitType || 'piece');
+        const baseLabel = (() => {
+            try {
+                const lbl = getUnitLabel(baseUom as any, language as any);
+                return String(lbl || baseUom);
+            } catch {
+                return baseUom;
+            }
+        })();
+        const baseLower = baseUom.toLowerCase();
+        const options: Array<{ code: string; label: string; qtyInBase: number }> = [
+            { code: baseUom, label: baseLabel, qtyInBase: 1 },
+        ];
+        const uomRows = itemId ? (itemUomRowsByItemId[String(itemId)] || []) : [];
+        for (const u of uomRows) {
+            const code = String((u as any)?.code || '').trim();
+            const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
+            if (!code || qtyInBase <= 0) continue;
+            const codeLower = code.toLowerCase();
+            if (codeLower === baseLower) continue;
+            const nameRaw = String((u as any)?.name || '').trim();
+            const displayName = codeLower === 'pack'
+                ? 'باكت'
+                : codeLower === 'carton'
+                    ? 'كرتون'
+                    : (nameRaw || code);
+            const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
+            options.push({ code, label, qtyInBase });
+        }
+        if (options.length === 1) {
+            const packSize = Number((it as any)?.packSize || 0);
+            const cartonSize = Number((it as any)?.cartonSize || 0);
+            if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
+            if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+        }
+        return options;
     };
 
     const normalizeCode = (value: unknown) => String(value || '').trim();
@@ -1119,6 +1526,7 @@ const PurchaseOrderScreen: React.FC = () => {
         e.preventDefault();
         try {
             const invoiceRef = typeof supplierInvoiceNumber === 'string' ? supplierInvoiceNumber.trim() : '';
+            const termsAtSubmit = paymentTerms;
             const errors: string[] = [];
             if (!supplierId) errors.push('المورد مطلوب');
             if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
@@ -1137,6 +1545,36 @@ const PurchaseOrderScreen: React.FC = () => {
                 productionDate: normalizeIsoDateOnly(row.productionDate || ''),
                 expiryDate: normalizeIsoDateOnly(row.expiryDate || ''),
             }));
+            let submitExpiryMetaById = itemExpiryMetaById;
+            if (receiveOnCreate) {
+                const supabase = getSupabaseClient();
+                const ids = Array.from(new Set(normalizedItems.map((r) => String(r.itemId || '').trim()).filter(Boolean)));
+                const missing = ids.filter((id) => !(id in submitExpiryMetaById));
+                if (supabase && missing.length > 0) {
+                    try {
+                        const { data, error } = await supabase
+                            .from('menu_items')
+                            .select('id,is_food,expiry_required,category')
+                            .in('id', missing);
+                        if (!error) {
+                            const rows = Array.isArray(data) ? data : [];
+                            const mapped: Record<string, { isFood?: boolean; expiryRequired?: boolean; category?: string }> = {};
+                            for (const r of rows as any[]) {
+                                const id = String((r as any)?.id || '').trim();
+                                if (!id) continue;
+                                mapped[id] = {
+                                    isFood: Boolean((r as any)?.is_food),
+                                    expiryRequired: Boolean((r as any)?.expiry_required),
+                                    category: typeof (r as any)?.category === 'string' ? String((r as any).category) : undefined,
+                                };
+                            }
+                            submitExpiryMetaById = { ...submitExpiryMetaById, ...mapped };
+                            setItemExpiryMetaById((prev) => ({ ...prev, ...mapped }));
+                        }
+                    } catch {
+                    }
+                }
+            }
             normalizedItems.forEach((row, idx) => {
                 const rowNo = idx + 1;
                 if (!row.itemId) errors.push(`سطر ${rowNo}: الصنف مطلوب`);
@@ -1145,9 +1583,14 @@ const PurchaseOrderScreen: React.FC = () => {
                 const item = row.itemId ? getItemById(row.itemId) : null;
                 const exp = typeof row.expiryDate === 'string' ? row.expiryDate.trim() : '';
                 const hv = typeof row.productionDate === 'string' ? row.productionDate.trim() : '';
-                if (receiveOnCreate && item && item.category === 'food') {
-                    if (!exp) errors.push(`سطر ${rowNo}: تاريخ الانتهاء مطلوب للصنف الغذائي (${item.name.ar})`);
-                    else if (!isIsoDate(exp)) errors.push(`سطر ${rowNo}: صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف (${item.name.ar})`);
+                const cached = submitExpiryMetaById[String(row.itemId || '').trim()];
+                const expiryRequired =
+                    Boolean(cached?.expiryRequired || cached?.isFood) ||
+                    isFoodItem(String(row.itemId || '').trim());
+                if (receiveOnCreate && expiryRequired) {
+                    const nm = item ? item.name.ar : (row.itemId || `سطر ${rowNo}`);
+                    if (!exp) errors.push(`سطر ${rowNo}: تاريخ الانتهاء مطلوب للصنف (${nm})`);
+                    else if (!isIsoDate(exp)) errors.push(`سطر ${rowNo}: صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف (${nm})`);
                 }
                 if (hv && !isIsoDate(hv)) {
                     const nm = item ? item.name.ar : (row.itemId || `سطر ${rowNo}`);
@@ -1165,7 +1608,8 @@ const PurchaseOrderScreen: React.FC = () => {
                 uomCode: String((i as any).uomCode || '').trim(),
                 uomQtyInBase: Number((i as any).uomQtyInBase || 1) || 1,
             }));
-            await createPurchaseOrder(
+            const createdTotalAmount = validItems.reduce((sum, it) => sum + (Number(it.quantity || 0) * Number(it.unitCost || 0)), 0);
+            const createdId = await createPurchaseOrder(
                 supplierId,
                 purchaseDate,
                 normalizedPoCurrency,
@@ -1173,15 +1617,41 @@ const PurchaseOrderScreen: React.FC = () => {
                 receiveOnCreate,
                 invoiceRef || undefined,
                 warehouseId,
-                paymentTerms,
+                termsAtSubmit,
                 netDays,
-                dueDate
+                dueDate,
+                poNotes.trim() || undefined
             );
             setIsModalOpen(false);
+            if (termsAtSubmit === 'cash') {
+                const supplierName = suppliers.find(s => s.id === supplierId)?.name || '';
+                const nowIso = new Date().toISOString();
+                openPaymentModal({
+                    id: createdId,
+                    supplierId,
+                    supplierName,
+                    status: 'draft',
+                    referenceNumber: invoiceRef || undefined,
+                    currency: normalizedPoCurrency,
+                    fxRate: poFxRate,
+                    totalAmount: createdTotalAmount,
+                    paidAmount: 0,
+                    purchaseDate,
+                    itemsCount: validItems.length,
+                    warehouseId,
+                    paymentTerms: termsAtSubmit,
+                    netDays: 0,
+                    dueDate: purchaseDate,
+                    createdBy: user!.id,
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
+                } as PurchaseOrder);
+            }
             // Reset form
             setSupplierId('');
             setSupplierInvoiceNumber('');
             setPaymentTerms('cash');
+            setPoNotes('');
             setNetDays(0);
             setDueDate(toDateInputValue());
             setOrderItems([]);
@@ -1354,7 +1824,16 @@ const PurchaseOrderScreen: React.FC = () => {
     };
     const updateReceiveProduction = (index: number, value: string) => {
         const next = [...receiveRows];
-        next[index] = { ...next[index], productionDate: value || '' };
+        const row = next[index];
+        const updated = { ...row, productionDate: value || '' };
+        // Auto-fill expiry date from shelf_life_days if not already set
+        if (value && row.itemId) {
+            const calcExpiry = autoFillExpiry(value, row.itemId);
+            if (calcExpiry && !row.expiryDate) {
+                updated.expiryDate = calcExpiry;
+            }
+        }
+        next[index] = updated;
         setReceiveRows(next);
     };
     const updateReceiveExpiry = (index: number, value: string) => {
@@ -1411,6 +1890,13 @@ const PurchaseOrderScreen: React.FC = () => {
                 const item = getItemById(r.itemId);
                 const isFood = isFoodItem(r.itemId);
                 if (item && isFood) {
+                    // Mandatory production date for food items
+                    const prod = typeof r.productionDate === 'string' ? r.productionDate.trim() : '';
+                    if (!prod) {
+                        const nm = String(item?.name?.ar || item?.name?.en || r.itemName || r.itemId);
+                        alert(`يرجى إدخال تاريخ الإنتاج للصنف الغذائي: ${nm}`);
+                        return;
+                    }
                     const exp = typeof r.expiryDate === 'string' ? r.expiryDate.trim() : '';
                     if (!exp) {
                         const nm = String(item?.name?.ar || item?.name?.en || r.itemName || r.itemId);
@@ -1493,14 +1979,17 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     const openReturnModal = async (order: PurchaseOrder) => {
+        const receivedSummary = await getPurchaseReceivedSummary(order.id);
         const summary = await getPurchaseReturnSummary(order.id);
         const rows: ReceiveRow[] = (order.items || []).map((it: any) => {
-            const ordered = Number(it.quantity || 0);
-            const received = Number(it.receivedQuantity || 0);
+            const ordered = Number(it.qtyBase ?? it.quantity ?? 0);
+            const received = Number(receivedSummary[it.itemId] ?? it.receivedQuantity ?? 0);
             const prev = Number(summary[it.itemId] || 0);
             const remaining = Math.max(0, received - prev);
             const stock = stockItems.find(s => s.itemId === it.itemId);
             const available = stock ? Math.max(0, (stock as any).availableQuantity - (stock as any).reservedQuantity) : 0;
+            const base = getItemById(it.itemId);
+            const baseUom = String(base?.unitType || 'piece');
             return {
                 itemId: it.itemId,
                 itemName: it.itemName || it.itemId,
@@ -1509,7 +1998,9 @@ const PurchaseOrderScreen: React.FC = () => {
                 previousReturned: prev,
                 remaining,
                 receiveNow: remaining > 0 ? 0 : 0,
-                available
+                available,
+                uomCode: baseUom,
+                uomQtyInBase: 1,
             };
         });
         setReturnOrder(order);
@@ -1525,10 +2016,27 @@ const PurchaseOrderScreen: React.FC = () => {
         let nextVal = value;
         const num = Number(value);
         if (Number.isFinite(num)) {
-            if (num > row.remaining) nextVal = row.remaining;
+            const qtyInBase = Math.max(1, Number((row as any).uomQtyInBase || 1) || 1);
+            const maxBase = Math.max(0, Math.min(Number(row.remaining || 0), Number(row.available || 0) || 0));
+            const maxUom = qtyInBase > 0 ? (maxBase / qtyInBase) : 0;
+            if (num > maxUom) nextVal = maxUom;
             else if (num < 0) nextVal = 0;
         }
         next[index] = { ...row, receiveNow: nextVal };
+        setReturnRows(next);
+    };
+
+    const updateReturnUom = (index: number, code: string) => {
+        const next = [...returnRows];
+        const row = next[index];
+        const options = getUomOptionsForItem(row.itemId);
+        const found = options.find(o => o.code === code) || options[0];
+        const qtyInBase = Math.max(1, Number(found?.qtyInBase || 1) || 1);
+        const num = Number(row.receiveNow);
+        const maxBase = Math.max(0, Math.min(Number(row.remaining || 0), Number(row.available || 0) || 0));
+        const maxUom = qtyInBase > 0 ? (maxBase / qtyInBase) : 0;
+        const nextReceiveNow = Number.isFinite(num) ? Math.min(Math.max(0, num), maxUom) : row.receiveNow;
+        next[index] = { ...row, uomCode: found.code, uomQtyInBase: qtyInBase, receiveNow: nextReceiveNow };
         setReturnRows(next);
     };
 
@@ -1540,14 +2048,26 @@ const PurchaseOrderScreen: React.FC = () => {
         setIsCreatingReturn(true);
         try {
             const items = returnRows
-                .filter(r => Number(r.receiveNow) > 0)
-                .map(r => ({ itemId: r.itemId, quantity: Number(r.receiveNow) }));
+                .map((r) => {
+                    const qtyInBase = Math.max(1, Number((r as any).uomQtyInBase || 1) || 1);
+                    const qty = Number(r.receiveNow) || 0;
+                    const baseQty = qtyInBase > 0 ? (qty * qtyInBase) : 0;
+                    return { itemId: r.itemId, quantity: baseQty };
+                })
+                .filter(r => Number(r.quantity) > 0);
             if (items.length === 0) {
                 alert('الرجاء إدخال كمية للمرتجع.');
                 return;
             }
-            await createPurchaseReturn(returnOrder.id, items, returnReason, returnOccurredAt);
+            const returnId = await createPurchaseReturn(returnOrder.id, items, returnReason, returnOccurredAt);
             showNotification('تم تسجيل المرتجع بنجاح.', 'success', 3500);
+            try {
+                const brand = resolveBrandingForWarehouseId(returnOrder.warehouseId);
+                const branchHdr = await fetchBranchHeader(scope?.branchId);
+                const printedBy = (user?.fullName || user?.username || user?.email || '').trim() || null;
+                await printPurchaseReturnById(returnId, { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode }, baseCode, { printedBy });
+            } catch {
+            }
             setIsReturnModalOpen(false);
             setReturnOrder(null);
             setReturnRows([]);
@@ -1596,6 +2116,7 @@ const PurchaseOrderScreen: React.FC = () => {
                         id: String(r?.id || ''),
                         code: String(r?.code || ''),
                         name: String(r?.name || ''),
+                        nameAr: translateAccountName(String(r?.name || '')),
                     })).filter((r: any) => Boolean(r.id)));
                     return;
                 }
@@ -1604,6 +2125,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     id: String(r?.id || ''),
                     code: String(r?.code || ''),
                     name: String(r?.name || ''),
+                    nameAr: translateAccountName(String(r?.name || '')),
                 })).filter((r: any) => Boolean(r.id)));
             } catch (e) {
                 setAccounts([]);
@@ -1620,6 +2142,18 @@ const PurchaseOrderScreen: React.FC = () => {
         return method;
     };
 
+    const availablePurchaseDestinations = useMemo(() => {
+        const currency = String((paymentOrder as any)?.currency || baseCode || '').trim().toUpperCase();
+        if (!currency) return [] as Array<{ id: string; code: string; name: string; nameAr: string; parentCode: string }>;
+        return (accounts || [])
+            .map((a: any) => {
+                const code = String(a?.code || '').trim().toUpperCase();
+                const parentCode = inferDestinationParentCode(code, String((a as any)?.parentCode || '')) || '';
+                return { ...a, code, parentCode };
+            })
+            .filter((a: any) => Boolean(a.parentCode) && matchesDestinationCurrency(String(a.code || ''), String(a.name || ''), currency));
+    }, [accounts, baseCode, paymentOrder]);
+
     const openPaymentModal = (order: PurchaseOrder) => {
         const remaining = Math.max(0, Number(order.totalAmount || 0) - Number(order.paidAmount || 0));
         setPaymentOrder(order);
@@ -1635,6 +2169,9 @@ const PurchaseOrderScreen: React.FC = () => {
         setPaymentIdempotencyKey(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
         setPaymentAdvancedAccounting(false);
         setPaymentOverrideAccountId('');
+        const parentCodeFilter = nextMethod === 'kuraimi' ? '1020' : nextMethod === 'network' ? '1030' : '';
+        const defaultDest = parentCodeFilter ? availablePurchaseDestinations.find(a => a.parentCode === parentCodeFilter)?.id : '';
+        setPaymentDestinationAccountId(defaultDest || '');
         setIsPaymentModalOpen(true);
     };
 
@@ -1661,6 +2198,12 @@ const PurchaseOrderScreen: React.FC = () => {
                 return;
             }
             if (needsReference) {
+                const neededParent = paymentMethod === 'kuraimi' ? '1020' : '1030';
+                const availableForMethod = availablePurchaseDestinations.filter(a => a.parentCode === neededParent);
+                if (availableForMethod.length > 0 && !String(paymentDestinationAccountId || '').trim()) {
+                    alert('يرجى اختيار الحساب البنكي / شركة الصرافة.');
+                    return;
+                }
                 if (!paymentReferenceNumber.trim()) {
                     alert(paymentMethod === 'kuraimi' ? 'يرجى إدخال رقم الإيداع.' : 'يرجى إدخال رقم الحوالة.');
                     return;
@@ -1694,6 +2237,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     paymentSenderPhone: paymentSenderPhone.trim() || null,
                     paymentDeclaredAmount: Number(paymentDeclaredAmount) || 0,
                     paymentAmountConfirmed: Boolean(paymentAmountConfirmed),
+                    destinationAccountId: String(paymentDestinationAccountId || '').trim() || undefined,
                 }
                 : { idempotencyKey: paymentIdempotencyKey };
 
@@ -1727,6 +2271,7 @@ const PurchaseOrderScreen: React.FC = () => {
             setPaymentOrder(null);
             setPaymentAdvancedAccounting(false);
             setPaymentOverrideAccountId('');
+            setPaymentDestinationAccountId('');
         } catch (error) {
             console.error(error);
             alert(getErrorMessage(error, 'فشل تسجيل الدفعة.'));
@@ -1742,46 +2287,74 @@ const PurchaseOrderScreen: React.FC = () => {
                     أوامر الشراء (المخزون)
                 </h1>
                 <div className="flex items-center gap-2">
-                    {canReconcileAll ? (
-                        <>
+                    {canReconcileAll && (
+                        <div className="relative">
                             <button
-                                onClick={() => { void handleReconcileAllPurchaseOrders(); }}
-                                disabled={reconcilingAll}
-                                className="bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-900 shadow-lg"
+                                onClick={() => setIsAdvancedActionsOpen(!isAdvancedActionsOpen)}
+                                className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 shadow-sm border border-gray-200 dark:border-gray-700 transition"
                             >
                                 <Icons.SettingsIcon className="w-5 h-5" />
-                                <span>{reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}</span>
+                                <span className="hidden sm:inline">إجراءات متقدمة</span>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                             </button>
-                            <button
-                                onClick={() => { void handleReportPartialPurchaseOrders(); }}
-                                disabled={reportingPartial}
-                                className="bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 shadow-lg"
-                            >
-                                <Icons.PrinterIcon className="w-5 h-5" />
-                                <span>{reportingPartial ? 'جاري إنشاء التقرير...' : 'تقرير النواقص'}</span>
-                            </button>
-                            <button
-                                onClick={() => { void handleFinalizeWithoutShortages(); }}
-                                disabled={finalizingNoShortages}
-                                className="bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-800 shadow-lg"
-                            >
-                                <Icons.CheckIcon className="w-5 h-5" />
-                                <span>{finalizingNoShortages ? 'جاري الإنهاء...' : 'إنهاء بدون نواقص'}</span>
-                            </button>
-                            <button
-                                onClick={() => { void handleForceCompleteStatusOnly(); }}
-                                disabled={forcingStatusOnly}
-                                className="bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-emerald-800 shadow-lg"
-                            >
-                                <Icons.CheckIcon className="w-5 h-5" />
-                                <span>{forcingStatusOnly ? 'جاري الإكمال...' : 'إكمال الحالة فقط'}</span>
-                            </button>
-                        </>
-                    ) : null}
+                            {isAdvancedActionsOpen && (
+                                <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                    <div className="py-1">
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleReconcileAllPurchaseOrders(); }}
+                                            disabled={reconcilingAll}
+                                            className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <Icons.SettingsIcon className="w-4 h-4 text-gray-400" />
+                                            {reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}
+                                        </button>
+                                        {canManageAccounting ? (
+                                            <button
+                                                onClick={() => { setIsAdvancedActionsOpen(false); void handleRepairPurchaseInJournalsFromMovements(); }}
+                                                disabled={repairingPurchaseInJournals}
+                                                className="w-full text-right px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 flex items-center gap-2 border-t border-gray-50 dark:border-gray-700/50"
+                                            >
+                                                <Icons.SettingsIcon className="w-4 h-4 opacity-70" />
+                                                {repairingPurchaseInJournals ? 'جاري إصلاح القيود...' : 'إصلاح قيود المشتريات'}
+                                            </button>
+                                        ) : null}
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleReportPartialPurchaseOrders(); }}
+                                            disabled={reportingPartial}
+                                            className="w-full text-right px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 flex items-center gap-2 border-t border-gray-50 dark:border-gray-700/50"
+                                        >
+                                            <Icons.PrinterIcon className="w-4 h-4 opacity-70" />
+                                            {reportingPartial ? 'جاري إنشاء التقرير...' : 'تقرير النواقص'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleFinalizeWithoutShortages(); }}
+                                            disabled={finalizingNoShortages}
+                                            className="w-full text-right px-4 py-2 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <Icons.CheckIcon className="w-4 h-4 opacity-70" />
+                                            {finalizingNoShortages ? 'جاري الإنهاء...' : 'إنهاء بدون نواقص'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setIsAdvancedActionsOpen(false); void handleForceCompleteStatusOnly(); }}
+                                            disabled={forcingStatusOnly}
+                                            className="w-full text-right px-4 py-2 text-sm text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <Icons.CheckIcon className="w-4 h-4 opacity-70" />
+                                            {forcingStatusOnly ? 'جاري الإكمال...' : 'إكمال الحالة فقط'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {isAdvancedActionsOpen && (
+                                <div className="fixed inset-0 z-40" onClick={() => setIsAdvancedActionsOpen(false)}></div>
+                            )}
+                        </div>
+                    )}
                     <button
                         onClick={() => {
                             setIsModalOpen(true);
                             setSupplierInvoiceNumber('');
+                            setPoNotes('');
                             setWarehouseId(String(scope?.warehouseId || warehouses.find(w => w.isActive)?.id || ''));
                             setPurchaseDate(toDateInputValue());
                             setPaymentTerms('cash');
@@ -1815,14 +2388,51 @@ const PurchaseOrderScreen: React.FC = () => {
                 </div>
             ) : null}
 
+            {/* ── Search & Filters Bar ── */}
+            <div className="bg-white dark:bg-gray-800 text-sm p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-center">
+                <div className="relative flex-1 w-full">
+                    <Icons.Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="ابحث برقم الأمر، المورد، أو فاتورة المورد..."
+                        className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg pr-10 pl-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:text-gray-200 transaction"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+                <div className="flex gap-3 w-full md:w-auto">
+                    <select
+                        className="flex-1 md:w-40 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                        <option value="all">كل الحالات</option>
+                        <option value="draft">مسودة / غير مستلم</option>
+                        <option value="partial">مستلم جزئياً</option>
+                        <option value="received">مستلم بالكامل</option>
+                        <option value="cancelled">ملغي</option>
+                    </select>
+                    <select
+                        className="flex-1 md:w-40 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500"
+                        value={paymentFilter}
+                        onChange={(e) => setPaymentFilter(e.target.value)}
+                    >
+                        <option value="all">كل الدفعات</option>
+                        <option value="unpaid">غير مسدد</option>
+                        <option value="partial">مسدد جزئياً</option>
+                        <option value="paid">مسدد بالكامل</option>
+                    </select>
+                </div>
+            </div>
+
             {/* List of Orders */}
             <div className="md:hidden space-y-3">
-                {purchaseOrders.length === 0 ? (
+                {filteredPurchaseOrders.length === 0 ? (
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-6 text-center text-gray-500">
-                        لا توجد أوامر شراء سابقة.
+                        لا توجد أوامر شراء مطابقة للبحث.
                     </div>
                 ) : (
-                    purchaseOrders.map((order) => {
+                    filteredPurchaseOrders.map((order) => {
                         const eps = 0.000000001;
                         const total = Number(order.totalAmount || 0);
                         const paid = Number(order.paidAmount || 0);
@@ -1843,12 +2453,12 @@ const PurchaseOrderScreen: React.FC = () => {
                         const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                         const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
                         const statusClass = order.status === 'cancelled'
-                            ? 'bg-red-100 text-red-700'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
                             : fullyReceived
-                                ? 'bg-green-100 text-green-700'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : hasReceived
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-700';
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-gray-50 text-gray-700 border border-gray-200';
                         const statusLabel = order.status === 'cancelled'
                             ? 'ملغي'
                             : fullyReceived
@@ -1894,7 +2504,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     </div>
                                     {order.hasReturns ? (
                                         <span className="px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-blue-100 text-blue-700">
-                                            {total <= 1e-9 ? 'مرتجع كلي' : 'مرتجع جزئي'}
+                                            {returnStatusByOrderId[order.id]?.isFull ? 'مرتجع كلي' : 'مرتجع جزئي'}
                                         </span>
                                     ) : null}
                                 </div>
@@ -2112,18 +2722,16 @@ const PurchaseOrderScreen: React.FC = () => {
                 )}
             </div>
 
-            <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-x-auto">
-                <table className="min-w-[1400px] w-full text-right">
+            <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-x-auto pb-48">
+                <table className="min-w-[1400px] w-full text-right" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم أمر الشراء</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">فاتورة المورد</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الأمر / الفاتورة</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المورد</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المستودع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">النوع</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الاستحقاق</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عدد الأصناف (سطور/كمية)</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ / الاستحقاق</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الأصناف (سطور/كمية)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجمالي</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المدفوع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المتبقي</th>
@@ -2132,10 +2740,10 @@ const PurchaseOrderScreen: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {purchaseOrders.length === 0 ? (
-                            <tr><td colSpan={13} className="p-8 text-center text-gray-500">لا توجد أوامر شراء سابقة.</td></tr>
+                        {filteredPurchaseOrders.length === 0 ? (
+                            <tr><td colSpan={11} className="p-8 text-center text-gray-500">لا توجد أوامر شراء مطابقة للبحث.</td></tr>
                         ) : (
-                            purchaseOrders.map((order) => (
+                            filteredPurchaseOrders.map((order) => (
                                 (() => {
                                     const eps = 0.000000001;
                                     const items = Array.isArray(order.items) ? order.items : [];
@@ -2164,247 +2772,269 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const termsLabel = inferredTerms === 'credit' ? 'أجل' : 'نقد';
                                     const dueLabel = order.dueDate ? formatPurchaseDate(order.dueDate) : '-';
                                     return (
-                                <tr
-                                    key={order.id}
-                                    id={`po-${order.id}`}
-                                    className={[
-                                        'hover:bg-gray-50 dark:hover:bg-gray-700/30',
-                                        focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : ''
-                                    ].join(' ')}
-                                >
-                                    <td className="p-4 font-mono text-sm dark:text-gray-300">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</td>
-                                    <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
-                                    <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300">{order.warehouseName || '-'}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inferredTerms === 'credit' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>
-                                            {termsLabel}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 text-sm dark:text-gray-300">{dueLabel}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
-                                    <td className="p-4 font-bold text-primary-600 dark:text-primary-400">
-                                        {(() => {
-                                            const code = currencyCode;
-                                            const fmt = (n: number) => { try { return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return n.toFixed(2); } };
-                                            const totalCur = fmt(Number(order.totalAmount || 0));
-                                            const totalBase = fmt(Number(order.baseTotal || 0));
-                                            const rate = Number(order.fxRate || 0);
-                                            return (
-                                                <div className="space-y-1">
-                                                    <div>{totalCur} <span className="text-xs">{code || '—'}</span></div>
-                                                    <div className="text-xs text-gray-600 dark:text-gray-300">{`FX=${rate > 0 ? rate.toFixed(6) : '—'} • ${totalBase} ${baseCode || '—'}`}</div>
+                                        <tr
+                                            key={order.id}
+                                            id={`po-${order.id}`}
+                                            className={[
+                                                'hover:bg-gray-50 dark:hover:bg-gray-700/30',
+                                                focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : '',
+                                                openRowDropdownId === order.id ? 'relative z-[999]' : 'relative z-0'
+                                            ].join(' ')}
+                                        >
+                                            <td className="p-4">
+                                                <div className="font-mono text-sm dark:text-gray-300 font-bold">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</div>
+                                                <div className="text-xs text-gray-500 font-mono mt-0.5">{order.referenceNumber ? `فاتورة: ${order.referenceNumber}` : 'بلا فاتورة'}</div>
+                                            </td>
+                                            <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
+                                            <td className="p-4 text-sm dark:text-gray-300">{order.warehouseName || '-'}</td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inferredTerms === 'credit' ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-emerald-100 text-emerald-900 border border-emerald-200'}`}>
+                                                    {termsLabel}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <div>{formatPurchaseDate(order.purchaseDate)}</div>
+                                                {inferredTerms === 'credit' && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">يُستحق: {dueLabel}</div>}
+                                            </td>
+                                            <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
+                                            <td className="p-4 font-bold text-primary-600 dark:text-primary-400">
+                                                {(() => {
+                                                    const code = currencyCode;
+                                                    const fmt = (n: number) => { try { return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return n.toFixed(2); } };
+                                                    const totalCur = fmt(Number(order.totalAmount || 0));
+                                                    const totalBase = fmt(Number(order.baseTotal || 0));
+                                                    const rate = Number(order.fxRate || 0);
+                                                    return (
+                                                        <div className="space-y-1">
+                                                            <div>{totalCur} <span className="text-xs">{code || '—'}</span></div>
+                                                            <div className="text-xs text-gray-600 dark:text-gray-300">{`FX=${rate > 0 ? rate.toFixed(6) : '—'} • ${totalBase} ${baseCode || '—'}`}</div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <CurrencyDualAmount amount={paid} currencyCode={currencyCode} compact />
+                                            </td>
+                                            <td className="p-4 text-sm dark:text-gray-300">
+                                                <CurrencyDualAmount amount={remaining} currencyCode={currencyCode} compact />
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex flex-col items-start gap-1">
+                                                    <span className={[
+                                                        'px-2 py-1 rounded-full text-xs font-bold',
+                                                        order.status === 'cancelled' ? 'bg-red-100 text-red-700'
+                                                            : fullyReceived ? 'bg-green-100 text-green-700'
+                                                                : hasReceived ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-gray-100 text-gray-700'
+                                                    ].join(' ')}>
+                                                        {order.status === 'cancelled'
+                                                            ? 'الاستلام: ملغي'
+                                                            : fullyReceived
+                                                                ? 'الاستلام: مستلم بالكامل'
+                                                                : hasReceived
+                                                                    ? 'الاستلام: مستلم جزئيًا'
+                                                                    : order.status === 'draft'
+                                                                        ? 'الاستلام: مسودة'
+                                                                        : 'الاستلام: غير مستلم'}
+                                                    </span>
+                                                    <span className={['px-2 py-1 rounded-full text-xs font-bold', paymentBadge.className].join(' ')}>
+                                                        {`الدفع: ${paymentBadge.label}`}
+                                                    </span>
                                                 </div>
-                                            );
-                                        })()}
-                                    </td>
-                                    <td className="p-4 text-sm dark:text-gray-300">
-                                        <CurrencyDualAmount amount={paid} currencyCode={currencyCode} compact />
-                                    </td>
-                                    <td className="p-4 text-sm dark:text-gray-300">
-                                        <CurrencyDualAmount amount={remaining} currencyCode={currencyCode} compact />
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex flex-col items-start gap-1">
-                                            <span className={[
-                                                'px-2 py-1 rounded-full text-xs font-bold',
-                                                order.status === 'cancelled' ? 'bg-red-100 text-red-700'
-                                                    : fullyReceived ? 'bg-green-100 text-green-700'
-                                                        : hasReceived ? 'bg-yellow-100 text-yellow-700'
-                                                            : 'bg-gray-100 text-gray-700'
-                                            ].join(' ')}>
-                                                {order.status === 'cancelled'
-                                                    ? 'الاستلام: ملغي'
-                                                    : fullyReceived
-                                                        ? 'الاستلام: مستلم بالكامل'
-                                                        : hasReceived
-                                                            ? 'الاستلام: مستلم جزئيًا'
-                                                            : order.status === 'draft'
-                                                                ? 'الاستلام: مسودة'
-                                                                : 'الاستلام: غير مستلم'}
-                                            </span>
-                                            <span className={['px-2 py-1 rounded-full text-xs font-bold', paymentBadge.className].join(' ')}>
-                                                {`الدفع: ${paymentBadge.label}`}
-                                            </span>
-                                        </div>
-                                        {order.hasReturns ? (
-                                            <span className="ml-2 px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-                                                {total <= 1e-9 ? 'مرتجع كلي' : 'مرتجع جزئي'}
-                                            </span>
-                                        ) : null}
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex flex-wrap gap-2 justify-end">
-                                            <button
-                                                type="button"
-                                                onClick={() => { void handlePrintPo(order); }}
-                                                disabled={order.status === 'cancelled'}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                طباعة PO
-                                            </button>
-                                            {hasReceived ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        void (async () => {
-                                                            try {
-                                                                const latest = await getLatestReceiptForOrder(order.id);
-                                                                if (!latest?.id) {
-                                                                    showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
-                                                                    return;
-                                                                }
-                                                                await handlePrintGrn(latest.id, order);
-                                                            } catch (e) {
-                                                                alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.'));
-                                                            }
-                                                        })();
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    طباعة الاستلام
-                                                </button>
-                                            ) : null}
-                                            {hasReceived && hasPermission('accounting.manage') ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        void (async () => {
-                                                            try {
-                                                                const latest = await getLatestReceiptForOrder(order.id);
-                                                                if (!latest?.id) {
-                                                                    showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
-                                                                    return;
-                                                                }
-                                                                if (latest.postingStatus === 'posted') {
-                                                                    showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
-                                                                    return;
-                                                                }
-                                                                const supabase = getSupabaseClient();
-                                                                if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
-                                                                const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
-                                                                if (error) throw error;
-                                                                const st = String((data as any)?.status || '');
-                                                                if (st === 'failed') {
-                                                                    const details = String((data as any)?.error || latest.postingError || '');
-                                                                    alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
-                                                                    setReceiptPostingByOrderId((prev) => ({
-                                                                        ...prev,
-                                                                        [order.id]: { receiptId: latest.id, status: 'failed', error: details },
-                                                                    }));
-                                                                } else {
-                                                                    showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
-                                                                    setReceiptPostingByOrderId((prev) => ({
-                                                                        ...prev,
-                                                                        [order.id]: { receiptId: latest.id, status: 'posted', error: '' },
-                                                                    }));
-                                                                    await fetchPurchaseOrders();
-                                                                }
-                                                            } catch (e) {
-                                                                alert(getErrorMessage(e, localizeSupabaseError(e)));
-                                                            }
-                                                        })();
-                                                    }}
-                                                    disabled={receiptPostingLoading || isReceiptPosted}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
-                                                </button>
-                                            ) : null}
-                                            <button
-                                                type="button"
-                                                onClick={() => openReceiveModal(order)}
-                                                disabled={order.status === 'cancelled' || order.status === 'completed' || fullyReceived}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {fullyReceived ? 'مستلم بالكامل' : 'استلام'}
-                                            </button>
-                                            {canManageImports ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { void handleCreateOrUpdateShipmentFromOrder(order); }}
-                                                    disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    شحنة
-                                                </button>
-                                            ) : null}
-                                            {canRepairReceipt ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRepairPurchaseOrder(order)}
-                                                    disabled={order.status === 'cancelled'}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    إصلاح الاستلام
-                                                </button>
-                                            ) : null}
-                                            <button
-                                                type="button"
-                                                onClick={() => openReturnModal(order)}
-                                                disabled={order.status === 'cancelled'}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                مرتجع
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => openPaymentModal(order)}
-                                                disabled={!canPay}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const ref = order.poNumber || order.referenceNumber || order.id;
-                                                    const current = order.referenceNumber || '';
-                                                    const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, current);
-                                                    if (next === null) return;
-                                                    updatePurchaseOrderInvoiceNumber(order.id, next)
-                                                        .catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
-                                                }}
-                                                disabled={order.status === 'cancelled'}
-                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                فاتورة المورد
-                                            </button>
-                                            {canCancelOrder ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const ref = order.poNumber || order.referenceNumber || order.id;
-                                                        const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
-                                                        const ok = window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`);
-                                                        if (!ok) return;
-                                                        cancelPurchaseOrder(order.id, reason)
-                                                            .catch((e) => alert(getErrorMessage(e, 'فشل إلغاء أمر الشراء.')));
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700"
-                                                >
-                                                    إلغاء
-                                                </button>
-                                            ) : null}
-                                            {canPurge ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const ref = order.poNumber || order.referenceNumber || order.id;
-                                                        const ok = window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`);
-                                                        if (!ok) return;
-                                                        deletePurchaseOrder(order.id)
-                                                            .catch((e) => alert(getErrorMessage(e, 'فشل حذف أمر الشراء.')));
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black"
-                                                >
-                                                    حذف
-                                                </button>
-                                            ) : null}
-                                        </div>
-                                    </td>
-                                </tr>
+                                                {order.hasReturns ? (
+                                                    <span className="ml-2 px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                                        {returnStatusByOrderId[order.id]?.isFull ? 'مرتجع كلي' : 'مرتجع جزئي'}
+                                                    </span>
+                                                ) : null}
+                                            </td>
+                                            <td className="p-4 relative" style={{ zIndex: openRowDropdownId === order.id ? 9999 : 0 }}>
+                                                <div className="relative flex justify-end w-full">
+                                                    <button
+                                                        onClick={() => setOpenRowDropdownId(openRowDropdownId === order.id ? null : order.id)}
+                                                        className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                    >
+                                                        <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                                        </svg>
+                                                    </button>
+
+                                                    {openRowDropdownId === order.id && (
+                                                        <>
+                                                            <div className="fixed inset-0 z-40" onClick={() => setOpenRowDropdownId(null)}></div>
+                                                            <div className="absolute left-0 top-10 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border border-gray-200 dark:border-gray-600 z-50 py-1 origin-top-left transition-all">
+                                                                <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 dark:bg-gray-900/50 uppercase tracking-wide">الإجراءات</div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); openReceiveModal(order); }}
+                                                                    disabled={order.status === 'cancelled' || order.status === 'completed' || fullyReceived}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-50"
+                                                                >
+                                                                    {fullyReceived ? 'مستلم بالكامل' : 'استلام'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); openPaymentModal(order); }}
+                                                                    disabled={!canPay}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50"
+                                                                >
+                                                                    {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
+                                                                </button>
+                                                                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); void handlePrintPo(order); }}
+                                                                    disabled={order.status === 'cancelled'}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50"
+                                                                >
+                                                                    طباعة PO
+                                                                </button>
+                                                                {hasReceived && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            void (async () => {
+                                                                                try {
+                                                                                    const latest = await getLatestReceiptForOrder(order.id);
+                                                                                    if (!latest?.id) return showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
+                                                                                    await handlePrintGrn(latest.id, order);
+                                                                                } catch (e) { alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.')); }
+                                                                            })();
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50"
+                                                                    >
+                                                                        طباعة الاستلام
+                                                                    </button>
+                                                                )}
+                                                                {hasReceived && hasPermission('accounting.manage') && (
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={receiptPostingLoading || isReceiptPosted}
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            void (async () => {
+                                                                                try {
+                                                                                    const latest = await getLatestReceiptForOrder(order.id);
+                                                                                    if (!latest?.id) return showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
+                                                                                    if (latest.postingStatus === 'posted') return showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
+                                                                                    const supabase = getSupabaseClient();
+                                                                                    if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
+                                                                                    const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
+                                                                                    if (error) throw error;
+                                                                                    const st = String((data as any)?.status || '');
+                                                                                    if (st === 'failed') {
+                                                                                        const details = String((data as any)?.error || latest.postingError || '');
+                                                                                        alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
+                                                                                        setReceiptPostingByOrderId((prev) => ({ ...prev, [order.id]: { receiptId: latest.id, status: 'failed', error: details } }));
+                                                                                    } else {
+                                                                                        showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                                                        setReceiptPostingByOrderId((prev) => ({ ...prev, [order.id]: { receiptId: latest.id, status: 'posted', error: '' } }));
+                                                                                        await fetchPurchaseOrders();
+                                                                                    }
+                                                                                } catch (e) { alert(getErrorMessage(e, localizeSupabaseError(e))); }
+                                                                            })();
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50"
+                                                                    >
+                                                                        {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { setOpenRowDropdownId(null); openReturnModal(order); }}
+                                                                    disabled={order.status === 'cancelled'}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                                                                >
+                                                                    مرتجع
+                                                                </button>
+                                                                {order.hasReturns && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            void (async () => {
+                                                                                try {
+                                                                                    await openReturnPrintPicker(order);
+                                                                                } catch (e) {
+                                                                                    alert(getErrorMessage(e, 'تعذر جلب سندات مرتجع المشتريات.'));
+                                                                                }
+                                                                            })();
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50"
+                                                                    >
+                                                                        طباعة سند مرتجع
+                                                                    </button>
+                                                                )}
+                                                                {canManageImports && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { setOpenRowDropdownId(null); void handleCreateOrUpdateShipmentFromOrder(order); }}
+                                                                        disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 disabled:opacity-50"
+                                                                    >
+                                                                        شحنة
+                                                                    </button>
+                                                                )}
+                                                                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setOpenRowDropdownId(null);
+                                                                        const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                        const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, order.referenceNumber || '');
+                                                                        if (next === null) return;
+                                                                        updatePurchaseOrderInvoiceNumber(order.id, next).catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
+                                                                    }}
+                                                                    disabled={order.status === 'cancelled'}
+                                                                    className="w-full text-right px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50"
+                                                                >
+                                                                    تعديل رقم الفاتورة
+                                                                </button>
+                                                                {canCancelOrder && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                            const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
+                                                                            if (!window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`)) return;
+                                                                            cancelPurchaseOrder(order.id, reason).catch((e) => alert(getErrorMessage(e, 'فشل إلغاء أمر الشراء.')));
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                                    >
+                                                                        إلغاء الأمر
+                                                                    </button>
+                                                                )}
+                                                                {canPurge && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOpenRowDropdownId(null);
+                                                                            const ref = order.poNumber || order.referenceNumber || order.id;
+                                                                            if (!window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`)) return;
+                                                                            deletePurchaseOrder(order.id).catch((e) => alert(getErrorMessage(e, 'فشل حذف أمر الشراء.')));
+                                                                        }}
+                                                                        className="w-full text-right px-4 py-2 text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                                                                    >
+                                                                        حذف نهائي
+                                                                    </button>
+                                                                )}
+                                                                {canRepairReceipt && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { setOpenRowDropdownId(null); handleRepairPurchaseOrder(order); }}
+                                                                        disabled={order.status === 'cancelled'}
+                                                                        className="w-full text-right px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 border-t border-gray-100 dark:border-gray-700"
+                                                                    >
+                                                                        إصلاح الاستلام
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
                                     );
                                 })()
                             ))
@@ -2492,6 +3122,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                             value={supplierInvoiceNumber}
                                             placeholder="يمكن إدخاله لاحقًا"
                                             onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">ملاحظات / بيان الفاتورة (اختياري)</label>
+                                        <textarea
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-none"
+                                            rows={2}
+                                            value={poNotes}
+                                            placeholder="أضف ملاحظات أو بيان يظهر في الفاتورة المطبوعة..."
+                                            onChange={(e) => setPoNotes(e.target.value)}
                                         />
                                     </div>
                                 </div>
@@ -2733,167 +3373,167 @@ const PurchaseOrderScreen: React.FC = () => {
                                     </div>
                                     <div className="border rounded-lg overflow-hidden dark:border-gray-700">
                                         <div className="overflow-x-auto">
-                                        <table className="min-w-[720px] w-full text-right text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700">
-                                                <tr>
-                                                    <th className="p-2 sm:p-3 w-1/2">الصنف</th>
-                                                    <th className="p-2 sm:p-3 w-24">الكمية</th>
-                                                    <th className="p-2 sm:p-3 w-40">الوحدة</th>
-                                                    <th className="p-2 sm:p-3 w-32">{`سعر الشراء (للوحدة)${poCurrency ? ` (${poCurrency})` : ''}`}</th>
-                                                    <th className="p-2 sm:p-3 w-32">الإجمالي</th>
-                                                    {showCreateDates ? (
-                                                        <>
-                                                            <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
-                                                            <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
-                                                        </>
-                                                    ) : null}
-                                                    <th className="p-2 sm:p-3 w-10"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                                {orderItems.map((row, index) => (
-                                                    <tr key={index}>
-                                                        <td className="p-2 sm:p-2">
-                                                            <select
-                                                                className="w-full p-1 border rounded"
-                                                                value={row.itemId}
-                                                                required
-                                                                onChange={(e) => updateRow(index, 'itemId', e.target.value)}
-                                                            >
-                                                                <option value="">اختر صنف...</option>
-                                                                {activeMenuItems.map((item: MenuItem) => (
-                                                                    <option key={item.id} value={item.id}>{item.name.ar} (الحالي: {item.availableStock})</option>
-                                                                ))}
-                                                            </select>
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min={getQuantityStep(row.itemId)}
-                                                                step={getQuantityStep(row.itemId)}
-                                                                required
-                                                                className="w-full p-1 border rounded text-center font-mono"
-                                                                value={row.quantity}
-                                                                onChange={(e) => updateRow(index, 'quantity', e.target.value)}
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            {(() => {
-                                                                const it = row.itemId ? getItemById(row.itemId) : undefined;
-                                                                const baseUom = String(it?.unitType || 'piece');
-                                                                const baseLabel = (() => {
-                                                                    try {
-                                                                        const lbl = getUnitLabel(baseUom as any, language as any);
-                                                                        return String(lbl || baseUom);
-                                                                    } catch {
-                                                                        return baseUom;
-                                                                    }
-                                                                })();
-                                                                const baseLower = baseUom.toLowerCase();
-                                                                const options: Array<{ code: string; label: string; qtyInBase: number }> = [
-                                                                    { code: baseUom, label: baseLabel, qtyInBase: 1 },
-                                                                ];
-                                                                const uomRows = row.itemId ? (itemUomRowsByItemId[String(row.itemId)] || []) : [];
-                                                                for (const u of uomRows) {
-                                                                    const code = String((u as any)?.code || '').trim();
-                                                                    const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
-                                                                    if (!code || qtyInBase <= 0) continue;
-                                                                    const codeLower = code.toLowerCase();
-                                                                    if (codeLower === baseLower) continue;
-                                                                    const nameRaw = String((u as any)?.name || '').trim();
-                                                                    const displayName = codeLower === 'pack'
-                                                                        ? 'باكت'
-                                                                        : codeLower === 'carton'
-                                                                            ? 'كرتون'
-                                                                            : (nameRaw || code);
-                                                                    const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
-                                                                    options.push({ code, label, qtyInBase });
-                                                                }
-                                                                if (options.length === 1) {
-                                                                    const packSize = Number((it as any)?.packSize || 0);
-                                                                    const cartonSize = Number((it as any)?.cartonSize || 0);
-                                                                    if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
-                                                                    if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
-                                                                }
-                                                                const current = String((row as any).uomCode || baseUom);
-                                                                const safeCurrent = options.some((o) => String(o.code) === current) ? current : baseUom;
-                                                                return (
-                                                                    <select
-                                                                        className="w-full p-1 border rounded font-mono"
-                                                                        value={safeCurrent}
-                                                                        disabled={!row.itemId}
-                                                                        onChange={(e) => {
-                                                                            const code = String(e.target.value || '').trim();
-                                                                            const found = options.find(o => o.code === code) || options[0];
-                                                                            const next = [...orderItems];
-                                                                            next[index] = { ...next[index], uomCode: found.code, uomQtyInBase: found.qtyInBase };
-                                                                            setOrderItems(next);
-                                                                        }}
-                                                                    >
-                                                                        {options.map((o) => (
-                                                                            <option key={o.code} value={o.code}>{o.label}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                );
-                                                            })()}
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                required
-                                                                className="w-full p-1 border rounded text-center font-mono"
-                                                                value={row.unitCost}
-                                                                onChange={(e) => updateRow(index, 'unitCost', e.target.value)}
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 sm:p-2 font-mono font-bold text-gray-700">
-                                                            <CurrencyDualAmount amount={Number(Number(row.quantity) * Number(row.unitCost)) || 0} currencyCode={poCurrency} compact />
-                                                        </td>
+                                            <table className="min-w-[720px] w-full text-right text-sm">
+                                                <thead className="bg-gray-50 dark:bg-gray-700">
+                                                    <tr>
+                                                        <th className="p-2 sm:p-3 w-1/2">الصنف</th>
+                                                        <th className="p-2 sm:p-3 w-24">الكمية</th>
+                                                        <th className="p-2 sm:p-3 w-40">الوحدة</th>
+                                                        <th className="p-2 sm:p-3 w-32">{`سعر الشراء (للوحدة)${poCurrency ? ` (${poCurrency})` : ''}`}</th>
+                                                        <th className="p-2 sm:p-3 w-32">الإجمالي</th>
                                                         {showCreateDates ? (
                                                             <>
-                                                                {isFoodItem(row.itemId) ? (
-                                                                    <>
-                                                                        <td className="p-2 sm:p-2">
-                                                                            <input
-                                                                                type="date"
-                                                                                value={row.productionDate || ''}
-                                                                                onChange={(e) => updateRow(index, 'productionDate', e.target.value)}
-                                                                                className="w-full p-1 border rounded"
-                                                                            />
-                                                                        </td>
-                                                                        <td className="p-2 sm:p-2">
-                                                                            <input
-                                                                                type="date"
-                                                                                value={row.expiryDate || ''}
-                                                                                onChange={(e) => updateRow(index, 'expiryDate', e.target.value)}
-                                                                                className="w-full p-1 border rounded"
-                                                                                required
-                                                                            />
-                                                                        </td>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
-                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
-                                                                    </>
-                                                                )}
+                                                                <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
+                                                                <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
                                                             </>
                                                         ) : null}
-                                                        <td className="p-2 sm:p-2 text-center">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeRow(index)}
-                                                                className="text-red-500 hover:text-red-700"
-                                                            >
-                                                                <Icons.TrashIcon className="w-4 h-4" />
-                                                            </button>
-                                                        </td>
+                                                        <th className="p-2 sm:p-3 w-10"></th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                    {orderItems.map((row, index) => (
+                                                        <tr key={index}>
+                                                            <td className="p-2 sm:p-2">
+                                                                <select
+                                                                    className="w-full p-1 border rounded"
+                                                                    value={row.itemId}
+                                                                    required
+                                                                    onChange={(e) => updateRow(index, 'itemId', e.target.value)}
+                                                                >
+                                                                    <option value="">اختر صنف...</option>
+                                                                    {activeMenuItems.map((item: MenuItem) => (
+                                                                        <option key={item.id} value={item.id}>{item.name.ar} (الحالي: {item.availableStock})</option>
+                                                                    ))}
+                                                                </select>
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={getQuantityStep(row.itemId)}
+                                                                    step={getQuantityStep(row.itemId)}
+                                                                    required
+                                                                    className="w-full p-1 border rounded text-center font-mono"
+                                                                    value={row.quantity}
+                                                                    onChange={(e) => updateRow(index, 'quantity', e.target.value)}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                {(() => {
+                                                                    const it = row.itemId ? getItemById(row.itemId) : undefined;
+                                                                    const baseUom = String(it?.unitType || 'piece');
+                                                                    const baseLabel = (() => {
+                                                                        try {
+                                                                            const lbl = getUnitLabel(baseUom as any, language as any);
+                                                                            return String(lbl || baseUom);
+                                                                        } catch {
+                                                                            return baseUom;
+                                                                        }
+                                                                    })();
+                                                                    const baseLower = baseUom.toLowerCase();
+                                                                    const options: Array<{ code: string; label: string; qtyInBase: number }> = [
+                                                                        { code: baseUom, label: baseLabel, qtyInBase: 1 },
+                                                                    ];
+                                                                    const uomRows = row.itemId ? (itemUomRowsByItemId[String(row.itemId)] || []) : [];
+                                                                    for (const u of uomRows) {
+                                                                        const code = String((u as any)?.code || '').trim();
+                                                                        const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
+                                                                        if (!code || qtyInBase <= 0) continue;
+                                                                        const codeLower = code.toLowerCase();
+                                                                        if (codeLower === baseLower) continue;
+                                                                        const nameRaw = String((u as any)?.name || '').trim();
+                                                                        const displayName = codeLower === 'pack'
+                                                                            ? 'باكت'
+                                                                            : codeLower === 'carton'
+                                                                                ? 'كرتون'
+                                                                                : (nameRaw || code);
+                                                                        const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
+                                                                        options.push({ code, label, qtyInBase });
+                                                                    }
+                                                                    if (options.length === 1) {
+                                                                        const packSize = Number((it as any)?.packSize || 0);
+                                                                        const cartonSize = Number((it as any)?.cartonSize || 0);
+                                                                        if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
+                                                                        if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+                                                                    }
+                                                                    const current = String((row as any).uomCode || baseUom);
+                                                                    const safeCurrent = options.some((o) => String(o.code) === current) ? current : baseUom;
+                                                                    return (
+                                                                        <select
+                                                                            className="w-full p-1 border rounded font-mono"
+                                                                            value={safeCurrent}
+                                                                            disabled={!row.itemId}
+                                                                            onChange={(e) => {
+                                                                                const code = String(e.target.value || '').trim();
+                                                                                const found = options.find(o => o.code === code) || options[0];
+                                                                                const next = [...orderItems];
+                                                                                next[index] = { ...next[index], uomCode: found.code, uomQtyInBase: found.qtyInBase };
+                                                                                setOrderItems(next);
+                                                                            }}
+                                                                        >
+                                                                            {options.map((o) => (
+                                                                                <option key={o.code} value={o.code}>{o.label}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    required
+                                                                    className="w-full p-1 border rounded text-center font-mono"
+                                                                    value={row.unitCost}
+                                                                    onChange={(e) => updateRow(index, 'unitCost', e.target.value)}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 sm:p-2 font-mono font-bold text-gray-700">
+                                                                <CurrencyDualAmount amount={Number(Number(row.quantity) * Number(row.unitCost)) || 0} currencyCode={poCurrency} compact />
+                                                            </td>
+                                                            {showCreateDates ? (
+                                                                <>
+                                                                    {isFoodItem(row.itemId) ? (
+                                                                        <>
+                                                                            <td className="p-2 sm:p-2">
+                                                                                <input
+                                                                                    type="date"
+                                                                                    value={row.productionDate || ''}
+                                                                                    onChange={(e) => updateRow(index, 'productionDate', e.target.value)}
+                                                                                    className="w-full p-1 border rounded"
+                                                                                />
+                                                                            </td>
+                                                                            <td className="p-2 sm:p-2">
+                                                                                <input
+                                                                                    type="date"
+                                                                                    value={row.expiryDate || ''}
+                                                                                    onChange={(e) => updateRow(index, 'expiryDate', e.target.value)}
+                                                                                    className="w-full p-1 border rounded"
+                                                                                    required
+                                                                                />
+                                                                            </td>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                            <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                        </>
+                                                                    )}
+                                                                </>
+                                                            ) : null}
+                                                            <td className="p-2 sm:p-2 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeRow(index)}
+                                                                    className="text-red-500 hover:text-red-700"
+                                                                >
+                                                                    <Icons.TrashIcon className="w-4 h-4" />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>
@@ -2919,7 +3559,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     </div>
                 </div>
             )}
-            
+
             {/* Reorder Suggestions */}
             {isModalOpen && (
                 <div className="fixed inset-x-0 top-[5rem] z-40 mx-auto max-w-4xl px-4">
@@ -2996,12 +3636,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 setPaymentSenderPhone('');
                                                 setPaymentDeclaredAmount(0);
                                                 setPaymentAmountConfirmed(false);
+                                                setPaymentDestinationAccountId('');
                                             } else {
                                                 setPaymentReferenceNumber('');
                                                 setPaymentSenderName('');
                                                 setPaymentSenderPhone('');
                                                 setPaymentDeclaredAmount(Number(paymentAmount) || 0);
                                                 setPaymentAmountConfirmed(false);
+                                                const parentCodeFilter = next === 'kuraimi' ? '1020' : next === 'network' ? '1030' : '';
+                                                const defaultDest = parentCodeFilter ? availablePurchaseDestinations.find(a => a.parentCode === parentCodeFilter)?.id : '';
+                                                setPaymentDestinationAccountId(defaultDest || '');
                                             }
                                         }}
                                         className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
@@ -3022,6 +3666,23 @@ const PurchaseOrderScreen: React.FC = () => {
                                         {paymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
                                     </div>
                                     <div className="grid grid-cols-1 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب المالي الوجهة</label>
+                                            <select
+                                                value={paymentDestinationAccountId}
+                                                onChange={(e) => setPaymentDestinationAccountId(e.target.value)}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                required={availablePurchaseDestinations.some(a => a.parentCode === (paymentMethod === 'kuraimi' ? '1020' : '1030'))}
+                                            >
+                                                <option value="">(افتراضي)</option>
+                                                {availablePurchaseDestinations
+                                                    .filter(a => paymentMethod === 'kuraimi' ? a.parentCode === '1020' : a.parentCode === '1030')
+                                                    .map(a => {
+                                                        const dispName = a.nameAr !== a.name ? `${a.nameAr} (${a.name})` : a.nameAr;
+                                                        return <option key={a.id} value={a.id}>{a.code} - {dispName}</option>;
+                                                    })}
+                                            </select>
+                                        </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1 dark:text-gray-300">
                                                 {paymentMethod === 'kuraimi' ? 'رقم الإيداع' : 'رقم الحوالة'}
@@ -3115,10 +3776,13 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 disabled={!canManageAccounting}
                                                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-60"
                                             >
-                                                <option value="">-- بدون --</option>
-                                                {accounts.map(a => (
-                                                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-                                                ))}
+                                                <option value="">-- اختياري (الحساب المعياري) --</option>
+                                                {accounts.map(acc => {
+                                                    const dispName = acc.nameAr !== acc.name ? `${acc.nameAr} (${acc.name})` : acc.nameAr;
+                                                    return (
+                                                        <option key={acc.id} value={acc.id}>{acc.code} - {dispName}</option>
+                                                    );
+                                                })}
                                             </select>
                                             {accountsError && (
                                                 <div className="mt-1 text-xs text-red-600">{accountsError}</div>
@@ -3144,151 +3808,15 @@ const PurchaseOrderScreen: React.FC = () => {
                             </div>
                         </form>
                     </div>
-                </div>
+                </div >
             )}
 
-            {isReceiveModalOpen && receiveOrder && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
-                        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center flex-shrink-0">
-                            <h2 className="text-xl font-bold dark:text-white">استلام مخزون (جزئي)</h2>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (isReceivingPartial) return;
-                                    setIsReceiveModalOpen(false);
-                                    setReceiveOrder(null);
-                                    setReceiveRows([]);
-                                }}
-                                disabled={isReceivingPartial}
-                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
-                            >
-                                <Icons.XIcon className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleReceivePartial} className="flex-1 flex flex-col overflow-hidden">
-                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                                <div className="text-sm dark:text-gray-300">
-                                    {receiveOrder.supplierName} — {receiveOrder.referenceNumber || receiveOrder.id}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت الاستلام</label>
-                                    <input
-                                        type="datetime-local"
-                                        value={receiveOccurredAt}
-                                        onChange={(e) => setReceiveOccurredAt(e.target.value)}
-                                        className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">الشحنة (اختياري)</label>
-                                    <select
-                                        value={receiveShipmentId}
-                                        onChange={(e) => setReceiveShipmentId(e.target.value)}
-                                        disabled={receiveShipmentsLoading || receiveShipments.length === 0}
-                                        className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                    >
-                                        <option value="">بدون شحنة</option>
-                                        {receiveShipments.map((s) => (
-                                            <option key={s.id} value={s.id}>
-                                                {s.referenceNumber}{s.status ? ` — ${s.status}` : ''}{typeof (s as any).poLinked === 'boolean' ? ((s as any).poLinked ? ' — مرتبط بهذا الأمر' : ' — غير مرتبط بهذا الأمر') : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="border rounded-lg overflow-hidden dark:border-gray-700">
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-[1200px] w-full text-right text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700">
-                                                <tr>
-                                                    <th className="p-2 sm:p-3">الصنف</th>
-                                                    <th className="p-2 sm:p-3 w-24">المطلوب</th>
-                                                    <th className="p-2 sm:p-3 w-24">المستلم</th>
-                                                    <th className="p-2 sm:p-3 w-24">المتبقي</th>
-                                                    <th className="p-2 sm:p-3 w-32">استلام الآن</th>
-                                                    {showReceiveDates ? (
-                                                        <>
-                                                            <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
-                                                            <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
-                                                        </>
-                                                    ) : null}
-                                                    <th className="p-2 sm:p-3 w-32">تكلفة النقل/وحدة</th>
-                                                    <th className="p-2 sm:p-3 w-32">ضريبة المورد/وحدة</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                                {receiveRows.map((r, idx) => (
-                                                    <tr key={r.itemId}>
-                                                        <td className="p-2 sm:p-2 dark:text-gray-200">{r.itemName}</td>
-                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.ordered}</td>
-                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.received}</td>
-                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.remaining}</td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min={0}
-                                                                step={getQuantityStep(r.itemId)}
-                                                                value={r.receiveNow}
-                                                                onChange={(e) => updateReceiveRow(idx, e.target.value)}
-                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
-                                                            />
-                                                        </td>
-                                                        {showReceiveDates ? (
-                                                            isFoodItem(r.itemId) ? (
-                                                                <>
-                                                                    <td className="p-2 sm:p-2">
-                                                                        <input
-                                                                            type="date"
-                                                                            value={r.productionDate || ''}
-                                                                            onChange={(e) => updateReceiveProduction(idx, e.target.value)}
-                                                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                                                        />
-                                                                    </td>
-                                                                    <td className="p-2 sm:p-2">
-                                                                        <input
-                                                                            type="date"
-                                                                            value={r.expiryDate || ''}
-                                                                            onChange={(e) => updateReceiveExpiry(idx, e.target.value)}
-                                                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                                                            required={Boolean(r.receiveNow) && Number(r.receiveNow) > 0}
-                                                                        />
-                                                                    </td>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
-                                                                    <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
-                                                                </>
-                                                            )
-                                                        ) : null}
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min={0}
-                                                                step="0.01"
-                                                                value={r.transportCost || 0}
-                                                                onChange={(e) => updateReceiveTransport(idx, e.target.value)}
-                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min={0}
-                                                                step="0.01"
-                                                                value={r.supplyTaxCost || 0}
-                                                                onChange={(e) => updateReceiveSupplyTax(idx, e.target.value)}
-                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
-                                                            />
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="p-6 pt-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-end gap-2 flex-shrink-0">
+            {
+                isReceiveModalOpen && receiveOrder && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                            <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center flex-shrink-0">
+                                <h2 className="text-xl font-bold dark:text-white">استلام مخزون (جزئي)</h2>
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -3298,106 +3826,167 @@ const PurchaseOrderScreen: React.FC = () => {
                                         setReceiveRows([]);
                                     }}
                                     disabled={isReceivingPartial}
-                                    className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800"
+                                    className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
                                 >
-                                    إلغاء
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isReceivingPartial}
-                                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                                >
-                                    {isReceivingPartial ? 'جاري الاستلام...' : 'تأكيد الاستلام'}
+                                    <Icons.XIcon className="w-6 h-6" />
                                 </button>
                             </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {isReturnModalOpen && returnOrder && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
-                        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center flex-shrink-0">
-                            <h2 className="text-xl font-bold dark:text-white">مرتجع إلى المورد</h2>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (isCreatingReturn) return;
-                                    setIsReturnModalOpen(false);
-                                    setReturnOrder(null);
-                                    setReturnRows([]);
-                                }}
-                                disabled={isCreatingReturn}
-                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <Icons.XIcon className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleCreateReturn} className="flex-1 flex flex-col overflow-hidden">
-                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                                <div className="text-sm dark:text-gray-300">
-                                    {returnOrder.supplierName} — {returnOrder.referenceNumber || returnOrder.id.slice(-6)}
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <form onSubmit={handleReceivePartial} className="flex-1 flex flex-col overflow-hidden">
+                                <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                                    <div className="text-sm dark:text-gray-300">
+                                        {receiveOrder.supplierName} — {receiveOrder.referenceNumber || receiveOrder.id}
+                                    </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت المرتجع</label>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت الاستلام</label>
                                         <input
                                             type="datetime-local"
-                                            value={returnOccurredAt}
-                                            onChange={(e) => setReturnOccurredAt(e.target.value)}
+                                            value={receiveOccurredAt}
+                                            onChange={(e) => setReceiveOccurredAt(e.target.value)}
                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">سبب المرتجع</label>
-                                        <input
-                                            type="text"
-                                            value={returnReason}
-                                            onChange={(e) => setReturnReason(e.target.value)}
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">الشحنة (اختياري)</label>
+                                        <select
+                                            value={receiveShipmentId}
+                                            onChange={(e) => setReceiveShipmentId(e.target.value)}
+                                            disabled={receiveShipmentsLoading || receiveShipments.length === 0}
                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                        />
+                                        >
+                                            <option value="">بدون شحنة</option>
+                                            {receiveShipments.map((s) => (
+                                                <option key={s.id} value={s.id}>
+                                                    {s.referenceNumber}{s.status ? ` — ${s.status}` : ''}{typeof (s as any).poLinked === 'boolean' ? ((s as any).poLinked ? ' — مرتبط بهذا الأمر' : ' — غير مرتبط بهذا الأمر') : ''}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
-                                </div>
-                                <div className="border rounded-lg overflow-hidden dark:border-gray-700">
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-[720px] w-full text-right text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700">
-                                                <tr>
-                                                    <th className="p-2 sm:p-3">الصنف</th>
-                                                    <th className="p-2 sm:p-3 w-24">المستلم</th>
-                                                    <th className="p-2 sm:p-3 w-24">مرتجع سابق</th>
-                                                    <th className="p-2 sm:p-3 w-24">المتبقي</th>
-                                                    <th className="p-2 sm:p-3 w-24">المتاح حالياً</th>
-                                                    <th className="p-2 sm:p-3 w-24">مرتجع الآن</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                                {returnRows.map((r, idx) => (
-                                                    <tr key={r.itemId}>
-                                                        <td className="p-2 sm:p-2 dark:text-gray-200">{r.itemName}</td>
-                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.received}</td>
-                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.previousReturned || 0}</td>
-                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.remaining}</td>
-                                                        <td className="p-2 sm:p-2 text-center font-mono">{Number(r.available || 0)}</td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="number"
-                                                                min={0}
-                                                                step={getQuantityStep(r.itemId)}
-                                                                value={r.receiveNow}
-                                                                onChange={(e) => updateReturnRow(idx, e.target.value)}
-                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
-                                                            />
-                                                        </td>
+                                    <div className="border rounded-lg overflow-hidden dark:border-gray-700">
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-[1200px] w-full text-right text-sm">
+                                                <thead className="bg-gray-50 dark:bg-gray-700">
+                                                    <tr>
+                                                        <th className="p-2 sm:p-3">الصنف</th>
+                                                        <th className="p-2 sm:p-3 w-24">المطلوب</th>
+                                                        <th className="p-2 sm:p-3 w-24">المستلم</th>
+                                                        <th className="p-2 sm:p-3 w-24">المتبقي</th>
+                                                        <th className="p-2 sm:p-3 w-32">استلام الآن</th>
+                                                        {showReceiveDates ? (
+                                                            <>
+                                                                <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
+                                                                <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
+                                                            </>
+                                                        ) : null}
+                                                        <th className="p-2 sm:p-3 w-32">تكلفة النقل/وحدة</th>
+                                                        <th className="p-2 sm:p-3 w-32">ضريبة المورد/وحدة</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                    {receiveRows.map((r, idx) => (
+                                                        <tr key={r.itemId}>
+                                                            <td className="p-2 sm:p-2 dark:text-gray-200">{r.itemName}</td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">{r.ordered}</td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">{r.received}</td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">{r.remaining}</td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step={getQuantityStep(r.itemId)}
+                                                                    value={r.receiveNow}
+                                                                    onChange={(e) => updateReceiveRow(idx, e.target.value)}
+                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                                />
+                                                            </td>
+                                                            {showReceiveDates ? (
+                                                                isFoodItem(r.itemId) ? (
+                                                                    <>
+                                                                        <td className="p-2 sm:p-2">
+                                                                            <input
+                                                                                type="date"
+                                                                                value={r.productionDate || ''}
+                                                                                onChange={(e) => updateReceiveProduction(idx, e.target.value)}
+                                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="p-2 sm:p-2">
+                                                                            <input
+                                                                                type="date"
+                                                                                value={r.expiryDate || ''}
+                                                                                onChange={(e) => updateReceiveExpiry(idx, e.target.value)}
+                                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                                required={Boolean(r.receiveNow) && Number(r.receiveNow) > 0}
+                                                                            />
+                                                                        </td>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                    </>
+                                                                )
+                                                            ) : null}
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step="0.01"
+                                                                    value={r.transportCost || 0}
+                                                                    onChange={(e) => updateReceiveTransport(idx, e.target.value)}
+                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step="0.01"
+                                                                    value={r.supplyTaxCost || 0}
+                                                                    onChange={(e) => updateReceiveSupplyTax(idx, e.target.value)}
+                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="p-6 pt-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-end gap-2 flex-shrink-0">
+                                <div className="p-6 pt-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-end gap-2 flex-shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (isReceivingPartial) return;
+                                            setIsReceiveModalOpen(false);
+                                            setReceiveOrder(null);
+                                            setReceiveRows([]);
+                                        }}
+                                        disabled={isReceivingPartial}
+                                        className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800"
+                                    >
+                                        إلغاء
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isReceivingPartial}
+                                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                                    >
+                                        {isReceivingPartial ? 'جاري الاستلام...' : 'تأكيد الاستلام'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )
+            }
+
+            {
+                isReturnModalOpen && returnOrder && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                            <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center flex-shrink-0">
+                                <h2 className="text-xl font-bold dark:text-white">مرتجع إلى المورد</h2>
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -3407,23 +3996,182 @@ const PurchaseOrderScreen: React.FC = () => {
                                         setReturnRows([]);
                                     }}
                                     disabled={isCreatingReturn}
-                                    className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    إلغاء
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isCreatingReturn}
-                                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isCreatingReturn ? 'جاري تسجيل المرتجع...' : 'تسجيل المرتجع'}
+                                    <Icons.XIcon className="w-6 h-6" />
                                 </button>
                             </div>
-                        </form>
+                            <form onSubmit={handleCreateReturn} className="flex-1 flex flex-col overflow-hidden">
+                                <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                                    <div className="text-sm dark:text-gray-300">
+                                        {returnOrder.supplierName} — {returnOrder.referenceNumber || returnOrder.id.slice(-6)}
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت المرتجع</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={returnOccurredAt}
+                                                onChange={(e) => setReturnOccurredAt(e.target.value)}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">سبب المرتجع</label>
+                                            <input
+                                                type="text"
+                                                value={returnReason}
+                                                onChange={(e) => setReturnReason(e.target.value)}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="border rounded-lg overflow-hidden dark:border-gray-700">
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-[720px] w-full text-right text-sm">
+                                                <thead className="bg-gray-50 dark:bg-gray-700">
+                                                    <tr>
+                                                        <th className="p-2 sm:p-3">الصنف</th>
+                                                        <th className="p-2 sm:p-3 w-24">المستلم</th>
+                                                        <th className="p-2 sm:p-3 w-24">مرتجع سابق</th>
+                                                        <th className="p-2 sm:p-3 w-24">المتبقي</th>
+                                                        <th className="p-2 sm:p-3 w-24">المتاح حالياً</th>
+                                                        <th className="p-2 sm:p-3 w-40">الوحدة</th>
+                                                        <th className="p-2 sm:p-3 w-24">مرتجع الآن</th>
+                                                        <th className="p-2 sm:p-3 w-24">يعادل</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                    {returnRows.map((r, idx) => (
+                                                        <tr key={r.itemId}>
+                                                            <td className="p-2 sm:p-2 dark:text-gray-200">{r.itemName}</td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">{r.received}</td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">{r.previousReturned || 0}</td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">{r.remaining}</td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">{Number(r.available || 0)}</td>
+                                                            <td className="p-2 sm:p-2">
+                                                                {(() => {
+                                                                    const options = getUomOptionsForItem(r.itemId);
+                                                                    const current = String((r as any).uomCode || options[0]?.code || '');
+                                                                    const safeCurrent = options.some((o) => String(o.code) === current) ? current : String(options[0]?.code || '');
+                                                                    return (
+                                                                        <select
+                                                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                                            value={safeCurrent}
+                                                                            disabled={!r.itemId}
+                                                                            onChange={(e) => updateReturnUom(idx, String(e.target.value || ''))}
+                                                                        >
+                                                                            {options.map((o) => (
+                                                                                <option key={o.code} value={o.code}>{o.label}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step={(Number((r as any).uomQtyInBase || 1) || 1) > 1 ? 1 : getQuantityStep(r.itemId)}
+                                                                    value={r.receiveNow}
+                                                                    onChange={(e) => updateReturnRow(idx, e.target.value)}
+                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 sm:p-2 text-center font-mono">
+                                                                {(() => {
+                                                                    const qtyInBase = Math.max(1, Number((r as any).uomQtyInBase || 1) || 1);
+                                                                    const qty = Number(r.receiveNow) || 0;
+                                                                    const baseQty = qtyInBase > 0 ? (qty * qtyInBase) : 0;
+                                                                    return Number.isFinite(baseQty) ? baseQty : 0;
+                                                                })()}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="p-6 pt-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-end gap-2 flex-shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (isCreatingReturn) return;
+                                            setIsReturnModalOpen(false);
+                                            setReturnOrder(null);
+                                            setReturnRows([]);
+                                        }}
+                                        disabled={isCreatingReturn}
+                                        className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        إلغاء
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isCreatingReturn}
+                                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isCreatingReturn ? 'جاري تسجيل المرتجع...' : 'تسجيل المرتجع'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )
+            }
+            {/* ▬▬▬ RETURN PRINT PICKER MODAL ▬▬▬ */}
+            {returnPickerOrder && returnPickerList.length > 1 && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => { setReturnPickerOrder(null); setReturnPickerList([]); }}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">اختر سند مرتجع للطباعة</h3>
+                            <button type="button" onClick={() => { setReturnPickerOrder(null); setReturnPickerList([]); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl font-bold">✕</button>
+                        </div>
+                        <div className="px-6 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                            أمر الشراء: <span className="font-mono font-bold text-gray-700 dark:text-gray-300">{String(returnPickerOrder.id || '').slice(-8).toUpperCase()}</span>
+                            {' • '}{returnPickerList.length} مرتجع
+                        </div>
+                        <div className="overflow-y-auto max-h-[55vh] divide-y divide-gray-100 dark:divide-gray-700">
+                            {returnPickerList.map((ret, idx) => (
+                                <div key={ret.id} className="px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-between gap-4 transition-colors">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-xs font-bold px-2 py-0.5 rounded-full">#{idx + 1}</span>
+                                            <span className="font-mono text-xs text-gray-500 dark:text-gray-400" dir="ltr">{String(ret.id).slice(-8).toUpperCase()}</span>
+                                        </div>
+                                        <div className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-3 flex-wrap">
+                                            <span className="flex items-center gap-1">
+                                                <span className="text-gray-400">📅</span>
+                                                <span dir="ltr" className="font-mono text-xs">{new Date(ret.returnedAt).toLocaleDateString('en-GB')} {new Date(ret.returnedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                                            </span>
+                                            <span className="text-gray-400 text-xs">{ret.itemCount} صنف</span>
+                                        </div>
+                                        {ret.reason && <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">السبب: {ret.reason}</div>}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                await handlePrintSelectedReturn(returnPickerOrder!, ret.id);
+                                            } catch (e) {
+                                                alert(getErrorMessage(e, 'تعذر الطباعة'));
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-blue-950 text-white rounded-lg hover:bg-blue-900 text-sm font-bold whitespace-nowrap flex-shrink-0 transition-colors"
+                                    >
+                                        🖨️ طباعة
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                            <button type="button" onClick={() => { setReturnPickerOrder(null); setReturnPickerList([]); }} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">إغلاق</button>
+                        </div>
                     </div>
                 </div>
             )}
-        </div>
+        </div >
     );
 };
 

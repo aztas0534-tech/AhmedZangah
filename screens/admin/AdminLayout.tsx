@@ -14,6 +14,8 @@ import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
 import AdminCommandPalette from './AdminCommandPalette';
+import { getSupabaseClient } from '../../supabase';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 const AdminNotificationMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -110,6 +112,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'workspace', label: 'مركز العمل', icon: <Icons.Search />, permission: 'dashboard.view' },
   { to: 'dashboard', label: 'لوحة التحكم', icon: <Icons.DashboardIcon />, permission: 'dashboard.view' },
   { to: 'stock', label: 'إدارة المخزون', icon: <Icons.ListIcon />, permission: 'inventory.view' },
+  { to: 'stocktaking', label: 'جرد المخزون', icon: <Icons.Package />, permission: 'stock.manage' },
   { to: 'wastage', label: 'تسجيل هدر', icon: <Icons.ReportIcon />, permission: 'stock.manage' },
   { to: 'expiry-batches', label: 'دفعات منتهية', icon: <Icons.ClockIcon />, permission: 'stock.manage' },
   { to: 'wastage-expiry-reports', label: 'تقارير الهدر/الانتهاء', icon: <Icons.ReportIcon />, permission: 'inventory.movements.view' },
@@ -121,7 +124,6 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'warehouses', label: 'المستودعات', icon: <Icons.Package />, permission: 'stock.manage' },
   { to: 'warehouse-transfers', label: 'تحويلات المستودعات', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
   { to: 'orders', label: 'إدارة الطلبات', icon: <Icons.OrdersIcon />, permission: 'orders.view' },
-  { to: 'quotations', label: 'عروض الأسعار', icon: <Icons.FileText />, permission: 'orders.view' },
   { to: 'cod-settlements', label: 'تسوية COD', icon: <Icons.MoneyIcon />, permission: 'accounting.manage' },
   { to: 'supplier-credit-notes', label: 'خصومات الموردين', icon: <Icons.MoneyIcon />, permission: 'accounting.manage' },
   { to: '/pos', label: 'نقطة البيع (POS)', icon: <Icons.CartIcon />, permission: 'orders.createInStore' },
@@ -133,6 +135,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'customers', label: 'إدارة العملاء', icon: <Icons.CustomersIcon />, permission: 'customers.manage' },
   { to: 'financial-parties', label: 'الأطراف المالية', icon: <Icons.CustomersIcon />, permission: 'accounting.view' },
   { to: 'party-documents', label: 'مستندات الأطراف', icon: <Icons.FileText />, permission: 'accounting.manage' },
+  { to: 'vouchers', label: 'سند قبض/صرف', icon: <Icons.MoneyIcon />, permission: 'accounting.manage' },
   { to: 'settlements', label: 'التسويات (Settlement)', icon: <Icons.ReportIcon />, permission: 'accounting.manage' },
   { to: 'advances', label: 'إدارة الدفعات المسبقة', icon: <Icons.MoneyIcon />, permission: 'accounting.manage' },
   { to: 'challenges', label: 'إدارة التحديات', icon: <Icons.StarIcon />, permission: 'challenges.manage' },
@@ -145,7 +148,8 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'expenses', label: 'إدارة المصاريف', icon: <Icons.ReportIcon />, permission: 'expenses.manage' },
   { to: 'accounting', label: 'المحاسبة', icon: <Icons.ReportIcon />, permission: 'accounting.view' },
   { to: 'payroll', label: 'الرواتب', icon: <Icons.ListIcon />, permission: 'expenses.manage' },
-  { to: 'employee-hr', label: 'عقود وضمانات الموظفين', icon: <Icons.FileText />, permission: 'expenses.manage' },
+  { to: 'attendance', label: 'الحضور والغياب', icon: <Icons.ClockIcon />, permission: 'expenses.manage' },
+  { to: 'leave-management', label: 'إدارة الإجازات', icon: <Icons.FileText />, permission: 'expenses.manage' },
   { to: 'printed-documents', label: 'المستندات المطبوعة', icon: <Icons.ListIcon />, permission: 'accounting.view' },
   { to: 'chart-of-accounts', label: 'دليل الحسابات', icon: <Icons.ListIcon />, permission: 'settings.manage' },
   { to: 'journals', label: 'دفاتر اليومية', icon: <Icons.ListIcon />, permission: 'accounting.manage' },
@@ -153,8 +157,10 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'bank-reconciliation', label: 'التسويات البنكية', icon: <Icons.MoneyIcon />, permission: 'accounting.manage' },
   { to: 'payroll-config', label: 'إعدادات الرواتب', icon: <Icons.ListIcon />, permission: 'accounting.manage' },
   { to: 'financial-dimensions', label: 'الأبعاد المالية', icon: <Icons.ListIcon />, permission: 'accounting.manage' },
+  { to: 'fixed-assets', label: 'الأصول الثابتة', icon: <Icons.Package />, permission: 'accounting.manage' },
   { to: 'reports', label: 'التقارير', icon: <Icons.ReportIcon />, permission: 'reports.view' },
   { to: 'shift-reports', label: 'تقارير الورديات', icon: <Icons.ClockIcon />, permission: 'reports.view' },
+  { to: 'shift-reconciliation', label: 'لوحة المحاسب', icon: <Icons.ReportIcon />, permission: 'accounting.view' },
   { to: 'profile', label: 'الملف الشخصي', icon: <Icons.ProfileIcon />, permission: 'profile.view' },
   { to: 'settings', label: 'الإعدادات', icon: <Icons.SettingsIcon />, permission: 'settings.manage' },
   { to: 'approvals', label: 'الموافقات', icon: <Icons.ListIcon />, permission: 'approvals.manage' },
@@ -167,6 +173,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'workspace': 'dashboard.view',
   'dashboard': 'dashboard.view',
   'stock': 'inventory.view',
+  'stocktaking': 'stock.manage',
   'wastage': 'stock.manage',
   'expiry-batches': 'stock.manage',
   'wastage-expiry-reports': 'inventory.movements.view',
@@ -178,7 +185,6 @@ const routePermissions: Record<string, AdminPermission> = {
   'warehouses': 'stock.manage',
   'warehouse-transfers': 'stock.manage',
   'orders': 'orders.view',
-  'quotations': 'orders.view',
   'cod-settlements': 'accounting.manage',
   'supplier-credit-notes': 'accounting.manage',
   'my-shift': 'cashShifts.viewOwn',
@@ -189,6 +195,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'customers': 'customers.manage',
   'financial-parties': 'accounting.view',
   'party-documents': 'accounting.manage',
+  'vouchers': 'accounting.manage',
   'settlements': 'accounting.manage',
   'advances': 'accounting.manage',
   'challenges': 'challenges.manage',
@@ -201,7 +208,8 @@ const routePermissions: Record<string, AdminPermission> = {
   'expenses': 'expenses.manage',
   'accounting': 'accounting.view',
   'payroll': 'expenses.manage',
-  'employee-hr': 'expenses.manage',
+  'attendance': 'expenses.manage',
+  'leave-management': 'expenses.manage',
   'printed-documents': 'accounting.view',
   'chart-of-accounts': 'settings.manage',
   'journals': 'accounting.manage',
@@ -209,8 +217,10 @@ const routePermissions: Record<string, AdminPermission> = {
   'bank-reconciliation': 'accounting.manage',
   'payroll-config': 'accounting.manage',
   'financial-dimensions': 'accounting.manage',
+  'fixed-assets': 'accounting.manage',
   'reports': 'reports.view',
   'shift-reports': 'reports.view',
+  'shift-reconciliation': 'accounting.view',
   'profile': 'profile.view',
   'settings': 'settings.manage',
   'approvals': 'approvals.manage',
@@ -231,6 +241,8 @@ const AdminLayout: React.FC = () => {
   const { settings } = useSettings();
   const sessionScope = useSessionScope();
   const { warehouses } = useWarehouses();
+  const [schemaCheck, setSchemaCheck] = useState<{ ok: boolean; appliedVersion: string; missing: string[] } | null>(null);
+  const schemaCheckedRef = useRef(false);
   const activeWarehouses = (warehouses || []).filter((w: any) => Boolean((w as any)?.isActive ?? (w as any)?.is_active ?? true));
   const currentWarehouseName = (() => {
     const wid = sessionScope.scope?.warehouseId || '';
@@ -238,6 +250,32 @@ const AdminLayout: React.FC = () => {
     const w = activeWarehouses.find((x: any) => String(x.id) === String(wid));
     return String((w as any)?.name || (w as any)?.code || '—');
   })();
+
+  useEffect(() => {
+    if (!isAuthenticated || loading) return;
+    if (schemaCheckedRef.current) return;
+    schemaCheckedRef.current = true;
+    (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { data, error } = await supabase.rpc('app_schema_healthcheck');
+        if (error) {
+          const msg = localizeSupabaseError(error);
+          if (msg && !/not allowed/i.test(String((error as any)?.message || ''))) {
+            console.warn('Schema healthcheck failed:', error);
+          }
+          return;
+        }
+        const d: any = data || {};
+        const ok = Boolean(d?.ok);
+        const appliedVersion = String(d?.appliedVersion || '');
+        const missing = Array.isArray(d?.missing) ? d.missing.map((x: any) => String(x)) : [];
+        setSchemaCheck({ ok, appliedVersion, missing });
+      } catch {
+      }
+    })();
+  }, [isAuthenticated, loading]);
 
   const canAccessLink = (link: (typeof navLinks)[number]) => {
     if (link.to === 'chart-of-accounts') {
@@ -315,7 +353,7 @@ const AdminLayout: React.FC = () => {
   // Route Protection Logic
   useEffect(() => {
     if (loading) return;
-    
+
     if (!isAuthenticated) {
       navigate('/admin/login', { replace: true });
       return;
@@ -327,24 +365,24 @@ const AdminLayout: React.FC = () => {
     const currentRoute = pathSegments[1];
 
     if (currentRoute && routePermissions[currentRoute]) {
-        const requiredPermission = routePermissions[currentRoute];
-        const ok =
-          currentRoute === 'my-shift'
-            ? hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage')
-            : currentRoute === 'stock'
-              ? (hasPermission('inventory.view') || hasPermission('stock.manage'))
-              : currentRoute === 'import-shipments'
-                ? (hasPermission('shipments.view') || hasPermission('stock.manage'))
-                : currentRoute === 'wastage-expiry-reports'
-                  ? (hasPermission('inventory.movements.view') || hasPermission('reports.view') || hasPermission('stock.manage'))
-                  : hasPermission(requiredPermission);
-        if (!ok) {
-            // Redirect to dashboard or show unauthorized if already on dashboard (to avoid loop)
-            if (currentRoute !== 'dashboard') {
-                navigate('/admin/dashboard', { replace: true });
-                // Optional: Show notification "Access Denied"
-            }
+      const requiredPermission = routePermissions[currentRoute];
+      const ok =
+        currentRoute === 'my-shift'
+          ? hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage')
+          : currentRoute === 'stock'
+            ? (hasPermission('inventory.view') || hasPermission('stock.manage'))
+            : currentRoute === 'import-shipments'
+              ? (hasPermission('shipments.view') || hasPermission('stock.manage'))
+              : currentRoute === 'wastage-expiry-reports'
+                ? (hasPermission('inventory.movements.view') || hasPermission('reports.view') || hasPermission('stock.manage'))
+                : hasPermission(requiredPermission);
+      if (!ok) {
+        // Redirect to dashboard or show unauthorized if already on dashboard (to avoid loop)
+        if (currentRoute !== 'dashboard') {
+          navigate('/admin/dashboard', { replace: true });
+          // Optional: Show notification "Access Denied"
         }
+      }
     }
   }, [isAuthenticated, loading, navigate, location.pathname, hasPermission]);
 
@@ -463,11 +501,10 @@ const AdminLayout: React.FC = () => {
           <div className="flex-1" />
           <Link
             to="/admin/settings"
-            className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${
-              settings.maintenanceEnabled
-                ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
-                : 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800'
-            }`}
+            className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${settings.maintenanceEnabled
+              ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+              : 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800'
+              }`}
             title={settings.maintenanceEnabled ? (settings.maintenanceMessage || 'وضع الصيانة مفعل') : 'النظام يعمل بشكل طبيعي'}
           >
             {settings.maintenanceEnabled ? 'الصيانة: مفعّلة' : 'الصيانة: موقفة'}
@@ -519,6 +556,34 @@ const AdminLayout: React.FC = () => {
           </button>
         </header>
         <ConnectivityBanner />
+        {schemaCheck && !schemaCheck.ok && (
+          <div className="bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 px-4 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-red-800 dark:text-red-200 font-semibold">
+                قاعدة البيانات غير محدثة أو لا تطابق الواجهة الحالية. يلزم تطبيق الهجرات الأخيرة.
+              </div>
+              <div className="text-xs text-red-700 dark:text-red-200 font-mono" dir="ltr">
+                {schemaCheck.appliedVersion ? `db:${schemaCheck.appliedVersion}` : 'db:unknown'}
+              </div>
+            </div>
+            {schemaCheck.missing.length > 0 && (
+              <div className="mt-2 text-xs text-red-800 dark:text-red-200">
+                <div className="font-mono" dir="ltr">{schemaCheck.missing.slice(0, 12).join(' • ')}{schemaCheck.missing.length > 12 ? ' • ...' : ''}</div>
+              </div>
+            )}
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  showNotification('افتح الطرفية وشغّل: npm run db:push:remote', 'info');
+                }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700 transition"
+              >
+                طريقة الإصلاح
+              </button>
+            </div>
+          </div>
+        )}
         <Notification />
         <main className="flex-1 min-h-0 overflow-x-auto overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
           <Outlet />

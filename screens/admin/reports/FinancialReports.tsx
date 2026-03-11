@@ -7,6 +7,7 @@ import { sharePdf, exportToXlsx, printPdfFromElement } from '../../../utils/expo
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import { printContent } from '../../../utils/printUtils';
 import { printJournalVoucherByEntryId } from '../../../utils/vouchers';
+import { translateAccountName } from '../../../utils/accountUtils';
 import { CostCenter } from '../../../types';
 import { useSettings } from '../../../contexts/SettingsContext';
 import LineChart from '../../../components/admin/charts/LineChart';
@@ -23,6 +24,20 @@ type TrialBalanceRow = {
   debit: number;
   credit: number;
   balance: number;
+};
+
+type CurrencyBalanceRow = {
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  normal_balance: string;
+  currency_code: string;
+  total_debit: number;
+  total_credit: number;
+  balance: number;
+  base_total_debit: number;
+  base_total_credit: number;
+  base_balance: number;
 };
 
 type IncomeStatementRow = {
@@ -525,6 +540,7 @@ const FinancialReports: React.FC = () => {
   }, [appliedFilters]);
 
   const [trialBalance, setTrialBalance] = useState<TrialBalanceRow[]>([]);
+  const [currencyBalances, setCurrencyBalances] = useState<CurrencyBalanceRow[]>([]);
   const [trialBalanceAsOf, setTrialBalanceAsOf] = useState<TrialBalanceRow[]>([]);
   const [trialBalanceAsOfDate, setTrialBalanceAsOfDate] = useState<string>('');
   const [incomeStatement, setIncomeStatement] = useState<IncomeStatementRow | null>(null);
@@ -729,6 +745,24 @@ const FinancialReports: React.FC = () => {
     return { p_start, p_end, p_cost_center_id, p_journal_id };
   }, [appliedFilters.endDate, appliedFilters.startDate, appliedFilters.costCenterId, appliedFilters.journalId]);
 
+  const callTrialBalanceCompat = useCallback(async (args: { p_start: string | null; p_end: string | null; p_cost_center_id: string | null; p_journal_id: string | null; }) => {
+    if (!supabase) return { data: null as any, error: new Error('supabase_unavailable') as any };
+    const isMissing = (err: any) => /could not find the function|pgrst202|schema cache/i.test(String(err?.message || err?.details || err || '').toLowerCase());
+    const tries = [
+      { p_start: args.p_start, p_end: args.p_end, p_cost_center_id: args.p_cost_center_id, p_journal_id: args.p_journal_id },
+      { p_start: args.p_start, p_end: args.p_end, p_cost_center_id: args.p_cost_center_id },
+      { p_start: args.p_start, p_end: args.p_end },
+    ];
+    let lastErr: any = null;
+    for (const payload of tries) {
+      const res = await supabase.rpc('trial_balance', payload as any);
+      if (!res.error) return res;
+      lastErr = res.error;
+      if (!isMissing(res.error)) return res;
+    }
+    return { data: null as any, error: lastErr };
+  }, [supabase]);
+
   const loadAccounts = useCallback(async () => {
     if (!supabase) return;
     try {
@@ -845,8 +879,8 @@ const FinancialReports: React.FC = () => {
     if (!supabase) return;
     setLoadingKey('statements', true);
     try {
-      const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }] = await Promise.all([
-        supabase.rpc('trial_balance', periodRangeParams),
+      const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }, { data: cbData, error: cbError }] = await Promise.all([
+        callTrialBalanceCompat(periodRangeParams),
         supabase.rpc('income_statement', periodRangeParams),
         supabase.rpc('balance_sheet', {
           p_as_of: appliedFilters.asOfDate || null,
@@ -864,22 +898,70 @@ const FinancialReports: React.FC = () => {
           p_currency_view: 'base',
           p_rollup: 'account',
         }),
+        supabase.rpc('currency_balances', periodRangeParams),
       ]);
 
-      if (tbError) throw tbError;
       if (isError) throw isError;
       if (bsError) throw bsError;
       if (tbEntErr) throw tbEntErr;
+      if (cbError) throw cbError;
 
-      setTrialBalance(((tbData as any[]) || []).map((r) => ({
-        account_code: String(r.account_code),
-        account_name: String(r.account_name),
-        account_type: String(r.account_type),
-        normal_balance: String(r.normal_balance),
-        debit: Number(r.debit) || 0,
-        credit: Number(r.credit) || 0,
-        balance: Number(r.balance) || 0,
-      })));
+      const mapTrial = (rows: any[]) => rows.map((r) => {
+        const trName = translateAccountName(String(r.account_name));
+        return {
+          account_code: String(r.account_code),
+          account_name: trName !== String(r.account_name) ? `${trName} (${String(r.account_name)})` : trName,
+          account_type: String(r.account_type),
+          normal_balance: String(r.normal_balance),
+          debit: Number(r.debit) || 0,
+          credit: Number(r.credit) || 0,
+          balance: Number(r.balance) || 0,
+        };
+      });
+      const mapTrialFromEnterprise = (rows: any[]) => rows.map((r) => {
+        const debit = Number(r.total_debits_base ?? r.debit_base ?? r.debit ?? 0) || 0;
+        const credit = Number(r.total_credits_base ?? r.credit_base ?? r.credit ?? 0) || 0;
+        const balance = Number(r.view_balance_base ?? r.balance_base ?? r.balance ?? (debit - credit)) || 0;
+        const accountNameRaw = String(r.account_name || r.name || '');
+        const trName = translateAccountName(accountNameRaw);
+        return {
+          account_code: String(r.account_code || r.code || ''),
+          account_name: trName !== accountNameRaw ? `${trName} (${accountNameRaw})` : trName,
+          account_type: String(r.account_type || ''),
+          normal_balance: String(r.normal_balance || (balance >= 0 ? 'debit' : 'credit')),
+          debit,
+          credit,
+          balance,
+        };
+      }).filter((r) => Boolean(r.account_code));
+
+      if (!tbError) {
+        setTrialBalance(mapTrial((tbData as any[]) || []));
+      } else {
+        const entRows = mapTrialFromEnterprise((tbEnt as any[]) || []);
+        if (entRows.length > 0) {
+          setTrialBalance(entRows);
+        } else {
+          throw tbError;
+        }
+      }
+
+      setCurrencyBalances(((cbData as any[]) || []).map((r) => {
+        const trName = translateAccountName(String(r.account_name));
+        return {
+          account_code: String(r.account_code),
+          account_name: trName !== String(r.account_name) ? `${trName} (${String(r.account_name)})` : trName,
+          account_type: String(r.account_type),
+          normal_balance: String(r.normal_balance),
+          currency_code: String(r.currency_code).trim().toUpperCase(),
+          total_debit: Number(r.total_debit) || 0,
+          total_credit: Number(r.total_credit) || 0,
+          balance: Number(r.balance) || 0,
+          base_total_debit: Number(r.base_total_debit) || 0,
+          base_total_credit: Number(r.base_total_credit) || 0,
+          base_balance: Number(r.base_balance) || 0,
+        };
+      }));
 
       const isRow = ((isData as any[]) || [])[0];
       setIncomeStatement(isRow ? { income: Number(isRow.income) || 0, expenses: Number(isRow.expenses) || 0, net_profit: Number(isRow.net_profit) || 0 } : null);
@@ -894,6 +976,7 @@ const FinancialReports: React.FC = () => {
     } catch (err: any) {
       showNotification(err?.message || 'تعذر تحميل القوائم المالية', 'error');
       setTrialBalance([]);
+      setCurrencyBalances([]);
       setTrialBalanceAsOf([]);
       setTrialBalanceAsOfDate('');
       setIncomeStatement(null);
@@ -901,7 +984,7 @@ const FinancialReports: React.FC = () => {
     } finally {
       setLoadingKey('statements', false);
     }
-  }, [appliedFilters.asOfDate, periodRangeParams, setLoadingKey, showNotification, supabase]);
+  }, [appliedFilters.asOfDate, callTrialBalanceCompat, periodRangeParams, setLoadingKey, showNotification, supabase]);
 
   const getEffectiveStartEnd = useCallback(() => {
     if (appliedFilters.startDate && appliedFilters.endDate) {
@@ -1342,22 +1425,51 @@ const FinancialReports: React.FC = () => {
     if (!supabase) return;
     setLoadingKey('drilldown', true);
     try {
-      const { data, error } = await supabase.rpc('trial_balance', {
+      const { data, error } = await callTrialBalanceCompat({
         p_start: null,
         p_end: asOfDate || null,
         p_cost_center_id: appliedFilters.costCenterId || null,
         p_journal_id: appliedFilters.journalId || null,
       });
-      if (error) throw error;
-      const rows = ((data as any[]) || []).map((r) => ({
-        account_code: String(r.account_code),
-        account_name: String(r.account_name),
-        account_type: String(r.account_type),
-        normal_balance: String(r.normal_balance),
-        debit: Number(r.debit) || 0,
-        credit: Number(r.credit) || 0,
-        balance: Number(r.balance) || 0,
-      })) as TrialBalanceRow[];
+      let rows: TrialBalanceRow[] = [];
+      if (!error) {
+        rows = ((data as any[]) || []).map((r) => ({
+          account_code: String(r.account_code),
+          account_name: String(r.account_name),
+          account_type: String(r.account_type),
+          normal_balance: String(r.normal_balance),
+          debit: Number(r.debit) || 0,
+          credit: Number(r.credit) || 0,
+          balance: Number(r.balance) || 0,
+        })) as TrialBalanceRow[];
+      } else {
+        const { data: entData, error: entErr } = await supabase.rpc('enterprise_trial_balance', {
+          p_start: null,
+          p_end: asOfDate || null,
+          p_company_id: null,
+          p_branch_id: null,
+          p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+          p_dept_id: null,
+          p_project_id: null,
+          p_currency_view: 'base',
+          p_rollup: 'account',
+        });
+        if (entErr) throw error;
+        rows = ((entData as any[]) || []).map((r) => {
+          const debit = Number(r.total_debits_base ?? r.debit_base ?? r.debit ?? 0) || 0;
+          const credit = Number(r.total_credits_base ?? r.credit_base ?? r.credit ?? 0) || 0;
+          const balance = Number(r.view_balance_base ?? r.balance_base ?? r.balance ?? (debit - credit)) || 0;
+          return {
+            account_code: String(r.account_code || r.code || ''),
+            account_name: String(r.account_name || r.name || ''),
+            account_type: String(r.account_type || ''),
+            normal_balance: String(r.normal_balance || (balance >= 0 ? 'debit' : 'credit')),
+            debit,
+            credit,
+            balance,
+          };
+        }).filter((r) => Boolean(r.account_code)) as TrialBalanceRow[];
+      }
       setTrialBalanceAsOf(rows);
       setTrialBalanceAsOfDate(asOfDate);
     } catch (err: any) {
@@ -1367,7 +1479,7 @@ const FinancialReports: React.FC = () => {
     } finally {
       setLoadingKey('drilldown', false);
     }
-  }, [appliedFilters.costCenterId, appliedFilters.journalId, setLoadingKey, showNotification, supabase]);
+  }, [appliedFilters.costCenterId, appliedFilters.journalId, callTrialBalanceCompat, setLoadingKey, showNotification, supabase]);
 
   const loadBalanceSheetComparison = useCallback(async () => {
     if (!supabase) return;
@@ -3020,6 +3132,13 @@ const FinancialReports: React.FC = () => {
         </button>
         <button
           type="button"
+          onClick={() => document.getElementById('currency-balances-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          أرصدة حسابات العملات
+        </button>
+        <button
+          type="button"
           onClick={() => ledgerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
         >
@@ -3882,6 +4001,55 @@ const FinancialReports: React.FC = () => {
               ))}
               {trialBalance.length === 0 && (
                 <tr><td colSpan={5} className="py-6 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="currency-balances-section" className="bg-white dark:bg-gray-800 rounded-xl shadow p-4 mt-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold dark:text-white">أرصدة حسابات العملات</h2>
+            <div className="text-sm text-gray-500 dark:text-gray-400">حسب العملة والفترة المحددة</div>
+          </div>
+        </div>
+        <div className="mt-4 overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-gray-500 dark:text-gray-400">
+              <tr className="border-b dark:border-gray-700">
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الكود</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الحساب</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">العملة</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">مدين (عملة)</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">دائن (عملة)</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700 font-semibold bg-gray-50 dark:bg-gray-900/50">الرصيد (عملة)</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الرصيد المُقوّم ({baseCode})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currencyBalances.map((r, i) => (
+                <tr
+                  key={`${r.account_code}-${r.currency_code}-${i}`}
+                  className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
+                  onClick={() => {
+                    const code = r.account_code;
+                    setAccountCode(code);
+                    void loadLedgerFor(code).then(() => ledgerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }}
+                  title="عرض دفتر الأستاذ لهذا الحساب"
+                >
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.account_code}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.account_name}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-bold" dir="ltr">{r.currency_code}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatAmountWithCode(r.total_debit, r.currency_code)}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatAmountWithCode(r.total_credit, r.currency_code)}</td>
+                  <td className="py-2 px-3 font-bold text-primary-600 dark:text-primary-400 border-l dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50" dir="ltr">{formatAmountWithCode(r.balance, r.currency_code)}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.base_balance)}</td>
+                </tr>
+              ))}
+              {currencyBalances.length === 0 && (
+                <tr><td colSpan={7} className="py-6 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات تخص العملات</td></tr>
               )}
             </tbody>
           </table>

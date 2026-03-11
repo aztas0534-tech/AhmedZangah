@@ -5,7 +5,7 @@ import { useDeliveryZones } from '../../../contexts/DeliveryZoneContext';
 import { exportToXlsx, sharePdf } from '../../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
-import { getBaseCurrencyCode, getSupabaseClient } from '../../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient, rpcHasFunction } from '../../../supabase';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
 import { useSessionScope } from '../../../contexts/SessionScopeContext';
@@ -49,10 +49,12 @@ const ProductReports: React.FC = () => {
     const [endDate, setEndDate] = useState('');
     const [selectedZoneId, setSelectedZoneId] = useState<string>('');
     const [rangePreset, setRangePreset] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
+    const [invoiceOnly, setInvoiceOnly] = useState(false);
     const [productSearch, setProductSearch] = useState('');
     const [showAllProducts, setShowAllProducts] = useState(false);
 
     const [reportData, setReportData] = useState<ProductSalesRow[]>([]);
+    const [unifiedSummary, setUnifiedSummary] = useState<{ sales: number; orders: number } | null>(null);
     const [quantitySourceFromMovements, setQuantitySourceFromMovements] = useState(false);
     const [allStockInventoryValue, setAllStockInventoryValue] = useState(0);
     const [recallBatchId, setRecallBatchId] = useState('');
@@ -60,6 +62,36 @@ const ProductReports: React.FC = () => {
     const [recallRows, setRecallRows] = useState<RecallRow[]>([]);
 
     const language = 'ar'; // Fixed for now or get from context if available
+
+    // Unit type to human-readable label mapping
+    const unitLabel = (unitType: string): string => {
+        if (!unitType) return '-';
+        const u = unitType.toLowerCase().trim();
+        // Standard types
+        if (u === 'piece' || u === 'pcs' || u === 'unit') return 'قطعة';
+        if (u === 'kg' || u === 'kilogram') return 'كيلو';
+        if (u === 'gram' || u === 'g' || u === 'gm') return 'جرام';
+        if (u === 'box') return 'صندوق';
+        if (u === 'pack' || u === 'packet') return 'عبوة';
+        if (u === 'carton') return 'كرتون';
+        if (u === 'liter' || u === 'litre' || u === 'l') return 'لتر';
+        if (u === 'ml' || u === 'milliliter') return 'مل';
+        if (u === 'bag') return 'كيس';
+        if (u === 'bottle') return 'زجاجة';
+        if (u === 'can') return 'علبة';
+        if (u === 'roll') return 'لفة';
+        if (u === 'meter' || u === 'm') return 'متر';
+        if (u === 'dozen') return 'درزن';
+        if (u === 'pair') return 'زوج';
+        if (u === 'set') return 'طقم';
+        if (u === 'bundle') return 'رزمة';
+        if (u === 'ton' || u === 'tonne') return 'طن';
+        if (u === 'gallon') return 'جالون';
+        if (u === 'sheet') return 'ورقة';
+        // UUID-based custom unit — extract the last part or show generic
+        if (/^unit_/i.test(u) || /^[0-9a-f]{8}-/i.test(u)) return 'وحدة';
+        return unitType;
+    };
 
     const applyPreset = (preset: typeof rangePreset) => {
         setRangePreset(preset);
@@ -71,19 +103,25 @@ const ProductReports: React.FC = () => {
         const now = new Date();
         const start = new Date(now);
         const end = new Date(now);
-
         if (preset === 'today') {
-            // Start and End are already 'now'
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
         } else if (preset === 'week') {
             const day = now.getDay();
-            const diff = (day + 6) % 7; // Adjust if week starts on Monday
+            const diff = (day + 6) % 7;
             start.setDate(now.getDate() - diff);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
         } else if (preset === 'month') {
             start.setDate(1);
+            start.setHours(0, 0, 0, 0);
             end.setMonth(now.getMonth() + 1, 0);
+            end.setHours(23, 59, 59, 999);
         } else if (preset === 'year') {
             start.setMonth(0, 1);
+            start.setHours(0, 0, 0, 0);
             end.setMonth(11, 31);
+            end.setHours(23, 59, 59, 999);
         }
         setStartDate(toYmdLocal(start));
         setEndDate(toYmdLocal(end));
@@ -152,46 +190,141 @@ const ProductReports: React.FC = () => {
                 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
                 const zoneArg = (selectedZoneId && uuidRegex.test(selectedZoneId)) ? selectedZoneId : null;
 
+                try {
+                    const hasSummary = await rpcHasFunction('public.get_sales_report_summary');
+                    if (hasSummary) {
+                        const { data: summaryData, error: summaryErr } = await supabase.rpc('get_sales_report_summary', {
+                            p_start_date: p_start,
+                            p_end_date: p_end,
+                            p_zone_id: zoneArg ?? undefined,
+                            p_invoice_only: invoiceOnly,
+                        } as any);
+                        if (!summaryErr && summaryData && typeof summaryData === 'object') {
+                            const summaryGross = Number((summaryData as any)?.total_sales_accrual) || 0;
+                            const summaryReturns = Number((summaryData as any)?.returns_total) || 0;
+                            const summaryOrders = Number((summaryData as any)?.total_orders) || 0;
+                            if (active) {
+                                setUnifiedSummary({
+                                    sales: summaryGross - summaryReturns,
+                                    orders: summaryOrders,
+                                });
+                            }
+                        } else if (active) {
+                            setUnifiedSummary(null);
+                        }
+                    } else if (active) {
+                        setUnifiedSummary(null);
+                    }
+                } catch (_) {
+                    if (active) setUnifiedSummary(null);
+                }
+
                 const warehouseId = sessionScope.scope?.warehouseId;
                 const stockById = new Map<string, { current_stock: number; reserved_stock: number; current_cost_price: number }>();
                 {
                     let stockQuery = supabase
                         .from('stock_management')
                         .select('item_id,available_quantity,reserved_quantity,avg_cost');
-                    if (warehouseId) {
+                    if (!zoneArg && warehouseId) {
                         stockQuery = stockQuery.eq('warehouse_id', warehouseId);
                     }
                     const { data: stocks, error: smErr } = await stockQuery;
                     if (smErr) throw smErr;
                     let inventoryTotal = 0;
+                    const stockAgg = new Map<string, { qty: number; reserved: number; costValue: number }>();
                     for (const s of stocks || []) {
                         const id = String((s as any)?.item_id || '');
                         if (!id) continue;
                         const qty = parseNumber((s as any)?.available_quantity);
                         const reserved = parseNumber((s as any)?.reserved_quantity);
                         const cost = parseNumber((s as any)?.avg_cost);
-                        stockById.set(id, {
-                            current_stock: qty,
-                            reserved_stock: reserved,
-                            current_cost_price: cost,
-                        });
+                        const prev = stockAgg.get(id) || { qty: 0, reserved: 0, costValue: 0 };
+                        prev.qty += qty;
+                        prev.reserved += reserved;
+                        prev.costValue += (qty + reserved) * cost;
+                        stockAgg.set(id, prev);
                         inventoryTotal += (qty + reserved) * cost;
+                    }
+                    for (const [id, agg] of stockAgg.entries()) {
+                        const totalQty = agg.qty + agg.reserved;
+                        stockById.set(id, {
+                            current_stock: agg.qty,
+                            reserved_stock: agg.reserved,
+                            current_cost_price: totalQty > 0 ? (agg.costValue / totalQty) : 0,
+                        });
                     }
                     if (active) setAllStockInventoryValue(inventoryTotal);
                 }
 
                 let rpcRows: ProductSalesRow[] | null = null;
-                try {
-                    const { data: rpcData, error: rpcErr } = await supabase.rpc('get_product_sales_report_v9', {
-                        p_start_date: p_start,
-                        p_end_date: p_end,
-                        p_zone_id: zoneArg || undefined,
-                        p_invoice_only: false,
-                    } as any);
-                    if (!rpcErr && Array.isArray(rpcData)) {
-                        rpcRows = (rpcData as any[]).map(normalizeRpcRow);
+                {
+                    const candidates: Array<{
+                        name: string;
+                        has: () => Promise<boolean>;
+                        args: () => any;
+                    }> = [
+                            {
+                                name: 'get_product_sales_report_v10',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_v10'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || undefined,
+                                    p_invoice_only: invoiceOnly,
+                                }),
+                            },
+                            {
+                                name: 'get_product_sales_report_v9',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_v9'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || undefined,
+                                    p_invoice_only: invoiceOnly,
+                                }),
+                            },
+                            {
+                                name: 'get_product_sales_report_unified',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_unified'),
+                                args: () => ({
+                                    p_start_date: String(p_start || ''),
+                                    p_end_date: String(p_end || ''),
+                                    p_zone_id_text: zoneArg || null,
+                                    p_invoice_only: invoiceOnly,
+                                }),
+                            },
+                            {
+                                name: 'get_product_sales_report_v3',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_v3'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || null,
+                                }),
+                            },
+                            {
+                                name: 'get_product_sales_report',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || null,
+                                }),
+                            },
+                        ];
+
+                    for (const c of candidates) {
+                        try {
+                            const ok = await c.has();
+                            if (!ok) continue;
+                            const { data: rpcData, error: rpcErr } = await supabase.rpc(c.name, c.args() as any);
+                            if (!rpcErr && Array.isArray(rpcData)) {
+                                rpcRows = (rpcData as any[]).map(normalizeRpcRow);
+                                break;
+                            }
+                        } catch (_) { }
                     }
-                } catch (_) { }
+                }
 
                 const quantityFromMovements = new Map<string, number>();
                 try {
@@ -227,6 +360,13 @@ const ProductReports: React.FC = () => {
                     return;
                 }
 
+                const allowLegacyFallback = Boolean((window as any)?.__ALLOW_LEGACY_PRODUCT_REPORT_FALLBACK__);
+                if (!allowLegacyFallback) {
+                    showNotification('تعذر تحميل دوال تقرير المنتجات من الخادم. طبّق آخر تحديثات قاعدة البيانات ثم أعد المحاولة.', 'error');
+                    if (active) setReportData([]);
+                    return;
+                }
+
                 const orderIds: string[] = [];
                 const limit = 20000;
                 let offset = 0;
@@ -251,6 +391,7 @@ const ProductReports: React.FC = () => {
                 }
 
                 const ordersById = new Map<string, any>();
+                const reportAllowedStatuses = new Set(['delivered', 'completed', 'paid', 'invoiced']);
                 for (const ids of chunk(orderIds, 200)) {
                     const { data: orders, error: oErr } = await supabase
                         .from('orders')
@@ -258,6 +399,8 @@ const ProductReports: React.FC = () => {
                         .in('id', ids);
                     if (oErr) throw oErr;
                     for (const o of orders || []) {
+                        const st = String((o as any)?.status || '').toLowerCase();
+                        if (!reportAllowedStatuses.has(st)) continue;
                         ordersById.set(String((o as any).id), o);
                     }
                 }
@@ -545,10 +688,11 @@ const ProductReports: React.FC = () => {
                 if (active) setLoading(false);
             }
         };
-        load();
-        return () => { active = false; };
-    }, [range, selectedZoneId]);
-
+        void load();
+        return () => {
+            active = false;
+        };
+    }, [range, selectedZoneId, sessionScope.scope?.warehouseId, invoiceOnly]);
     const processedData = useMemo(() => {
         return reportData.map(row => {
             // Name resolution
@@ -668,7 +812,7 @@ const ProductReports: React.FC = () => {
         const rows = exportProducts.map(p => [
             p.name,
             Number(p.quantity_sold.toFixed(3)),
-            p.unit_type,
+            unitLabel(p.unit_type),
             Number(p.total_sales || 0).toFixed(2),
             Number(p.total_cost || 0).toFixed(2),
             Number(p.total_profit || 0).toFixed(2),
@@ -814,6 +958,18 @@ const ProductReports: React.FC = () => {
                         ))}
                     </select>
                 </div>
+                <div className="flex items-center gap-2 mr-4 ml-4">
+                    <label className="relative inline-flex items-center cursor-pointer" title="إظهار الطلبات المفوترة ضريبياً فقط">
+                        <input
+                            type="checkbox"
+                            checked={invoiceOnly}
+                            onChange={(e) => setInvoiceOnly(e.target.checked)}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 dark:peer-focus:ring-orange-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-orange-600"></div>
+                        <span className="ml-3 mr-3 text-sm font-medium text-gray-900 dark:text-gray-300">مفوتر فقط</span>
+                    </label>
+                </div>
                 <div className="flex gap-2 flex-wrap justify-center">
                     <button type="button" onClick={() => applyPreset('today')} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${rangePreset === 'today' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'}`}>اليوم</button>
                     <button type="button" onClick={() => applyPreset('week')} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${rangePreset === 'week' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'}`}>هذا الأسبوع</button>
@@ -899,8 +1055,9 @@ const ProductReports: React.FC = () => {
                             <div>
                                 <h3 className="text-gray-500 dark:text-gray-400">ملخص الفترة</h3>
                                 <p className="text-sm dark:text-gray-300">
+                                    الطلبات: <span className="font-bold">{Number(unifiedSummary?.orders || 0).toLocaleString('en-US')}</span> •
                                     كمية مباعة: <span className="font-bold">{totals.qty.toLocaleString('en-US')}</span> •
-                                    صافي المبيعات: <span className="font-bold text-orange-600">{totals.sales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
+                                    صافي المبيعات (موحد): <span className="font-bold text-orange-600">{Number((unifiedSummary?.sales ?? totals.sales) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
                                     صافي التكلفة: <span className="font-bold text-red-600">{totals.cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
                                     صافي الربح: <span className={`font-bold ${totals.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{totals.profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
                                     معدل الدوران: <span className="font-bold">{totals.turnover.toFixed(2)}×</span>
@@ -985,7 +1142,7 @@ const ProductReports: React.FC = () => {
                                             <tr key={product.item_id}>
                                                 <td className="px-6 py-4 whitespace-nowrap font-medium border-r dark:border-gray-700">{product.name}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-lg font-bold border-r dark:border-gray-700">{product.quantity_sold.toFixed(3).replace(/\.?0+$/, '')}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{product.unit_type}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{unitLabel(product.unit_type)}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap font-semibold text-orange-500 border-r dark:border-gray-700">{Number(product.total_sales || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-red-600 dark:text-red-400 border-r dark:border-gray-700">{Number(product.total_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>
                                                 <td className={`px-6 py-4 whitespace-nowrap font-bold border-r dark:border-gray-700 ${product.total_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
