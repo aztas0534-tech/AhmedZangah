@@ -2945,8 +2945,8 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Purge Payment — owner only */}
-                    {order.status === 'delivered' && (paid > tol || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && (isOwner || isManager) && !isVoided && (
+                    {/* Purge Payment — owner / manager */}
+                    {order.status === 'delivered' && (paid > tol || isCreditSale || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && (isOwner || isManager) && !isVoided && (
                         <div className="col-span-2">
                             <button
                                 onClick={() => handlePurgePayment(order.id)}
@@ -3593,8 +3593,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                     ) : null;
 
                                                     const hasPaidAtTbl = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
-                                                    const { paid: paidTbl, tol: tolTbl } = getOrderPaymentSnapshot(order);
-                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || hasPaidAtTbl) && (isOwner || isManager) && !isVoidedTbl ? (
+                                                    const { paid: paidTbl, tol: tolTbl, isCreditSale: isCreditSaleTbl } = getOrderPaymentSnapshot(order);
+                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || isCreditSaleTbl || hasPaidAtTbl) && (isOwner || isManager) && !isVoidedTbl ? (
                                                         <button
                                                             onClick={() => handlePurgePayment(order.id)}
                                                             disabled={isPurgingPayment}
