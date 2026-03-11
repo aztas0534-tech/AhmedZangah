@@ -156,6 +156,7 @@ const ProductReports: React.FC = () => {
             try {
                 let p_start = '2000-01-01T00:00:00Z';
                 let p_end = '2100-01-01T23:59:59Z';
+                const allowMovementQtyOverride = Boolean((window as any)?.__PRODUCT_REPORT_USE_MOVEMENT_QTY__ === true);
 
                 if (range) {
                     p_start = range.start.toISOString();
@@ -327,19 +328,21 @@ const ProductReports: React.FC = () => {
                 }
 
                 const quantityFromMovements = new Map<string, number>();
-                try {
-                    const { data: movData, error: movErr } = await supabase.rpc('get_product_sales_quantity_from_movements', {
-                        p_start_date: p_start,
-                        p_end_date: p_end,
-                        p_zone_id: zoneArg ?? null,
-                    });
-                    if (!movErr && Array.isArray(movData)) {
-                        for (const row of movData as any[]) {
-                            const id = String(row?.item_id ?? '');
-                            if (id) quantityFromMovements.set(id, parseNumber(row?.quantity_sold));
+                if (allowMovementQtyOverride) {
+                    try {
+                        const { data: movData, error: movErr } = await supabase.rpc('get_product_sales_quantity_from_movements', {
+                            p_start_date: p_start,
+                            p_end_date: p_end,
+                            p_zone_id: zoneArg ?? null,
+                        });
+                        if (!movErr && Array.isArray(movData)) {
+                            for (const row of movData as any[]) {
+                                const id = String(row?.item_id ?? '');
+                                if (id) quantityFromMovements.set(id, parseNumber(row?.quantity_sold));
+                            }
                         }
-                    }
-                } catch (_) { }
+                    } catch (_) { }
+                }
 
                 if (rpcRows) {
                     const merged = rpcRows.map((r) => {
@@ -349,13 +352,13 @@ const ProductReports: React.FC = () => {
                         const base = s
                             ? { ...r, current_stock: s.current_stock, reserved_stock: s.reserved_stock, current_cost_price: s.current_cost_price }
                             : r;
-                        return qtyFromMov !== undefined
+                        return allowMovementQtyOverride && qtyFromMov !== undefined
                             ? { ...base, quantity_sold: qtyFromMov }
                             : base;
                     });
                     if (active) {
                         setReportData(merged);
-                        setQuantitySourceFromMovements(quantityFromMovements.size > 0);
+                        setQuantitySourceFromMovements(allowMovementQtyOverride && quantityFromMovements.size > 0);
                     }
                     return;
                 }

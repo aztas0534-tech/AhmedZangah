@@ -44,7 +44,9 @@
     "test:regression:v2": "npm run smoke:regression:v2 && npm run test:ui:regression",
     "smoke:modern:db": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_modern_core.sql --report SMOKE_MODERN_REPORT.md --ok-token MODERN_SMOKE_OK",
     "smoke:modern:ui": "playwright test tests/e2e/modern-smoke.spec.ts --headed",
-    "smoke:modern": "npm run smoke:modern:db && npm run smoke:modern:ui"
+    "smoke:modern": "npm run smoke:modern:db && npm run smoke:modern:ui",
+    "stock:health:check": "node scripts/run-stock-health-check-prod.mjs",
+    "stock:health:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-stock-health-task.ps1"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",
