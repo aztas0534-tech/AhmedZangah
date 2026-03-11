@@ -17,7 +17,7 @@ type Brand = {
 };
 
 export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; brand?: Brand; language?: 'ar' | 'en'; documentStatus?: string; referenceId?: string; audit?: DocumentAuditInfo | null; printNumber?: number | null }) {
-  const { order, brand, language = 'ar', documentStatus, referenceId, audit, printNumber } = props;
+  const { order, brand, documentStatus, referenceId, audit, printNumber } = props;
   const docNo = order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`;
   const currency = String(order.currency || '').toUpperCase() || '—';
   const fx = Number(order.fxRate || 0);
@@ -83,12 +83,14 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
             * { box-sizing: border-box; }
 
             .po-container { 
-                width: 100% !important; 
-                padding: 3mm 3mm 2mm 3mm !important;
+                width: 148mm !important; max-width: 148mm !important;
+                min-height: 210mm !important;
+                padding: 4mm 4mm 3mm 4mm !important;
                 display: flex !important; flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important; line-height: 1.2 !important;
                 position: relative !important; background-color: #FAFAFA !important;
+                overflow: hidden !important; box-sizing: border-box !important;
             }
 
             .luxury-watermark {
@@ -112,16 +114,16 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
                 pointer-events: none !important; z-index: 50 !important;
             }
 
-            .font-thin-label { font-weight: 800 !important; font-size: 10px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
-            .font-bold-value { font-weight: 900 !important; font-size: 12px !important; color: #000000 !important; }
+            .font-thin-label { font-weight: 800 !important; font-size: 7px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.2px !important; }
+            .font-bold-value { font-weight: 900 !important; font-size: 9px !important; color: #000000 !important; }
 
             .luxury-header {
                 display: flex !important; justify-content: space-between !important;
                 align-items: center !important; border-bottom: 1.5pt solid #1E3A8A !important;
-                padding-bottom: 2px !important; margin-bottom: 4px !important;
+                padding-bottom: 2px !important; margin-bottom: 3px !important;
             }
-            .brand-name { font-size: 18px !important; font-weight: 900 !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
-            .po-title { font-size: 26px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #1E3A8A !important; line-height: 0.9 !important; }
+            .brand-name { font-size: 13px !important; font-weight: 900 !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+            .po-title { font-size: 20px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #1E3A8A !important; line-height: 0.9 !important; }
             .title-sub { font-size: 8px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #1E3A8A !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
 
             .info-grid {
@@ -132,16 +134,18 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
             .info-group { display: flex !important; flex-direction: column !important; gap: 1px !important; }
             .info-item { display: flex !important; flex-direction: column !important; }
 
-            .luxury-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 3px !important; }
+            .luxury-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 3px !important; table-layout: fixed !important; }
             .luxury-table thead { display: table-header-group !important; }
             .luxury-table th {
                 background-color: #0F172A !important; color: #FFFFFF !important;
-                padding: 1.5px 2px !important; font-weight: 700 !important;
-                font-size: 10px !important; text-transform: uppercase !important; border: none !important;
+                padding: 1px 1px !important; font-weight: 700 !important;
+                font-size: 7px !important; text-transform: uppercase !important; border: none !important;
+                overflow: hidden !important; word-break: break-all !important;
             }
             .luxury-table td {
-                padding: 1.5px 2px !important; font-size: 11px !important; font-weight: 700 !important;
-                line-height: 1 !important; border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
+                padding: 1px 1px !important; font-size: 8px !important; font-weight: 700 !important;
+                line-height: 1.1 !important; border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
+                overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
             }
             .luxury-table tr { page-break-inside: avoid !important; }
             .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
@@ -150,10 +154,10 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
             .grand-total-row {
                 display: flex !important; justify-content: space-between !important; align-items: center !important;
                 background-color: #0F172A !important; color: white !important;
-                padding: 3px 6px !important; margin-top: 2px !important; border-radius: 2px !important;
+                padding: 2px 4px !important; margin-top: 2px !important; border-radius: 2px !important;
             }
-            .grand-total-label { font-size: 13px !important; font-weight: 800 !important; color: #FFFFFF !important; }
-            .grand-total-value { font-size: 18px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
+            .grand-total-label { font-size: 10px !important; font-weight: 800 !important; color: #FFFFFF !important; }
+            .grand-total-value { font-size: 14px !important; font-weight: 900 !important; color: #D4AF37 !important; font-family: monospace !important; }
 
             .luxury-footer {
                 margin-top: auto !important; text-align: center !important;

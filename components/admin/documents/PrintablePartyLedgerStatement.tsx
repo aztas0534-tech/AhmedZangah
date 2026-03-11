@@ -113,12 +113,14 @@ export default function PrintablePartyLedgerStatement(props: {
             * { box-sizing: border-box; }
 
             .stmt-container { 
-                width: 100% !important; 
-                padding: 3mm 3mm 2mm 3mm !important;
+                width: 148mm !important; max-width: 148mm !important;
+                min-height: 210mm !important;
+                padding: 4mm 4mm 3mm 4mm !important;
                 display: flex !important; flex-direction: column !important;
                 font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif !important;
                 color: #0F172A !important; line-height: 1.2 !important;
                 position: relative !important; background-color: #FAFAFA !important;
+                overflow: hidden !important; box-sizing: border-box !important;
             }
 
             .luxury-watermark {
@@ -142,16 +144,16 @@ export default function PrintablePartyLedgerStatement(props: {
                 pointer-events: none !important; z-index: 50 !important;
             }
 
-            .font-thin-label { font-weight: 800 !important; font-size: 10px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
-            .font-bold-value { font-weight: 900 !important; font-size: 12px !important; color: #000000 !important; }
+            .font-thin-label { font-weight: 800 !important; font-size: 7px !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.2px !important; }
+            .font-bold-value { font-weight: 900 !important; font-size: 9px !important; color: #000000 !important; }
 
             .luxury-header {
                 display: flex !important; justify-content: space-between !important;
                 align-items: center !important; border-bottom: 1.5pt solid #1E3A8A !important;
-                padding-bottom: 2px !important; margin-bottom: 4px !important;
+                padding-bottom: 2px !important; margin-bottom: 3px !important;
             }
-            .brand-name { font-size: 18px !important; font-weight: 900 !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
-            .stmt-title { font-size: 22px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
+            .brand-name { font-size: 13px !important; font-weight: 900 !important; line-height: 1 !important; color: #0F172A !important; margin-bottom: 1px !important; }
+            .stmt-title { font-size: 18px !important; font-weight: 800 !important; letter-spacing: -1px !important; color: #D4AF37 !important; line-height: 0.9 !important; }
             .title-sub { font-size: 8px !important; font-weight: 800 !important; letter-spacing: 1.5px !important; color: #0F172A !important; text-transform: uppercase !important; border-top: 0.5pt solid #D4AF37 !important; padding-top: 1px !important; margin-top: 1px !important; text-align: center !important; }
 
             .info-grid {
@@ -171,16 +173,18 @@ export default function PrintablePartyLedgerStatement(props: {
                 padding: 3px !important; text-align: center !important; background: white !important;
             }
 
-            .luxury-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 3px !important; }
+            .luxury-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 3px !important; table-layout: fixed !important; }
             .luxury-table thead { display: table-header-group !important; }
             .luxury-table th {
                 background-color: #0F172A !important; color: #FFFFFF !important;
-                padding: 1.5px 2px !important; font-weight: 700 !important;
-                font-size: 9px !important; text-transform: uppercase !important; border: none !important;
+                padding: 1px 1px !important; font-weight: 700 !important;
+                font-size: 6px !important; text-transform: uppercase !important; border: none !important;
+                overflow: hidden !important;
             }
             .luxury-table td {
-                padding: 1px 2px !important; font-size: 9px !important; font-weight: 700 !important;
-                line-height: 1 !important; border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
+                padding: 1px 1px !important; font-size: 7px !important; font-weight: 700 !important;
+                line-height: 1.1 !important; border-bottom: 0.5pt solid #E5E7EB !important; color: #0F172A !important;
+                overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
             }
             .luxury-table tr { page-break-inside: avoid !important; }
             .luxury-table tr:nth-child(even) td { background-color: #F9FAFB !important; }
