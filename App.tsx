@@ -112,6 +112,7 @@ const VoucherEntryScreen = lazy(() => import('./screens/admin/VoucherEntryScreen
 const AttendanceScreen = lazy(() => import('./screens/admin/AttendanceScreen'));
 const AttendancePunchScreen = lazy(() => import('./screens/admin/AttendancePunchScreen'));
 const LeaveManagementScreen = lazy(() => import('./screens/admin/LeaveManagementScreen'));
+const FixedAssetsScreen = lazy(() => import('./screens/admin/FixedAssetsScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -412,6 +413,7 @@ const App: React.FC = () => {
                     <Route path="vouchers" element={<AdminProtectedRoute permissions={['accounting.manage']}><VoucherEntryScreen /></AdminProtectedRoute>} />
                     <Route path="settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><SettlementWorkspaceScreen /></AdminProtectedRoute>} />
                     <Route path="advances" element={<AdminProtectedRoute permissions={['accounting.manage']}><AdvanceManagementScreen /></AdminProtectedRoute>} />
+                    <Route path="fixed-assets" element={<AdminProtectedRoute permissions={['accounting.manage']}><FixedAssetsScreen /></AdminProtectedRoute>} />
                     <Route
                       path="reports/party-aging"
                       element={
