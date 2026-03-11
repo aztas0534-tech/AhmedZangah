@@ -415,7 +415,7 @@ const App: React.FC = () => {
                     <Route path="settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><SettlementWorkspaceScreen /></AdminProtectedRoute>} />
                     <Route path="advances" element={<AdminProtectedRoute permissions={['accounting.manage']}><AdvanceManagementScreen /></AdminProtectedRoute>} />
                     <Route path="fixed-assets" element={<AdminProtectedRoute permissions={['accounting.manage']}><FixedAssetsScreen /></AdminProtectedRoute>} />
-                    <Route path="quotations" element={<AdminProtectedRoute permissions={['orders.view']}><QuotationsScreen /></AdminProtectedRoute>} />
+                    <Route path="quotations" element={<AdminProtectedRoute permissions={['quotations.view', 'orders.view']} requireAllPermissions={false}><QuotationsScreen /></AdminProtectedRoute>} />
                     <Route
                       path="reports/party-aging"
                       element={

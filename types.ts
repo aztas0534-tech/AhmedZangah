@@ -922,6 +922,8 @@ export type AdminPermission =
   | 'dashboard.view'
   | 'profile.view'
   | 'orders.view'
+  | 'quotations.view'
+  | 'quotations.manage'
   | 'orders.cancel'
   | 'orders.markPaid'
   | 'orders.createInStore'
@@ -967,6 +969,8 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'dashboard.view', labelAr: 'عرض لوحة المعلومات' },
   { key: 'profile.view', labelAr: 'عرض الملف الشخصي' },
   { key: 'orders.view', labelAr: 'عرض الطلبات' },
+  { key: 'quotations.view', labelAr: 'عرض عروض الأسعار' },
+  { key: 'quotations.manage', labelAr: 'إدارة عروض الأسعار' },
   { key: 'orders.cancel', labelAr: 'إلغاء الطلبات' },
   { key: 'orders.markPaid', labelAr: 'تأكيد الدفع/التحصيل' },
   { key: 'orders.createInStore', labelAr: 'إضافة بيع حضوري' },

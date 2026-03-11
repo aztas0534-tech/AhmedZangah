@@ -624,16 +624,18 @@ const QuotationsScreen: React.FC = () => {
                         })),
                         discountType: q.discount_type,
                         discountValue: q.discount_value,
+                        currency: q.currency,
                         notes: q.notes,
                     }
                 }
             });
 
-            // Update quotation status to 'accepted'
-            await supabase
-                .from('price_quotations')
-                .update({ status: 'accepted' })
-                .eq('id', q.id);
+            if (q.status === 'draft') {
+                await supabase
+                    .from('price_quotations')
+                    .update({ status: 'sent' })
+                    .eq('id', q.id);
+            }
 
             showNotification('تم تحويل العرض إلى طلب — اختر العميل وأكمل البيع', 'success');
         } catch (err) {

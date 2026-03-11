@@ -254,6 +254,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
     const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }>>([]);
+    const [sourceQuotation, setSourceQuotation] = useState<{ id: string; number: string } | null>(null);
     const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing' | 'party'>('walk_in');
     const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
     const [inStoreCustomerMatches, setInStoreCustomerMatches] = useState<Array<{ id: string; fullName?: string; phoneNumber?: string }>>([]);
@@ -1177,6 +1178,45 @@ const ManageOrdersScreen: React.FC = () => {
     }, [location.key]);
 
     useEffect(() => {
+        const state = location.state as any;
+        const q = state?.fromQuotation;
+        const quotationId = typeof q?.quotationId === 'string' ? q.quotationId.trim() : '';
+        if (!quotationId) return;
+        const quotationNumber = typeof q?.quotationNumber === 'string' ? q.quotationNumber.trim() : '';
+        const customerName = typeof q?.customerName === 'string' ? q.customerName : '';
+        const customerPhone = typeof q?.customerPhone === 'string' ? q.customerPhone : '';
+        const discountType = String(q?.discountType || '').toLowerCase();
+        const discountValue = Number(q?.discountValue || 0) || 0;
+        const notes = typeof q?.notes === 'string' ? q.notes : '';
+        const currency = String(q?.currency || '').trim().toUpperCase();
+        const items = Array.isArray(q?.items) ? q.items : [];
+        const lines = items
+            .map((it: any) => ({
+                menuItemId: String(it?.itemId || '').trim(),
+                quantity: Number(it?.quantity || 0) || 0,
+                warehouseId: sessionScope.scope?.warehouseId || '',
+            }))
+            .filter((x: any) => x.menuItemId && x.quantity > 0);
+        if (!lines.length) {
+            showNotification('لا يمكن تحويل العرض لأن بنوده لا تحتوي أصنافًا قابلة للبيع.', 'error');
+            navigate(location.pathname + location.search, { replace: true, state: {} });
+            return;
+        }
+        setInStoreLines(lines);
+        setInStoreCustomerName(customerName);
+        setInStorePhoneNumber(customerPhone);
+        setInStoreDiscountType(discountType === 'percentage' ? 'percent' : 'amount');
+        setInStoreDiscountValue(discountType === 'none' ? 0 : discountValue);
+        setInStoreNotes(`محول من عرض السعر ${quotationNumber || quotationId}\n${notes}`.trim());
+        if (currency && operationalCurrencies.includes(currency)) {
+            setInStoreTransactionCurrency(currency);
+        }
+        setSourceQuotation({ id: quotationId, number: quotationNumber || quotationId });
+        setIsInStoreSaleOpen(true);
+        navigate(location.pathname + location.search, { replace: true, state: {} });
+    }, [location.key]);
+
+    useEffect(() => {
         let isMounted = true;
         const load = async () => {
             try {
@@ -1804,6 +1844,30 @@ const ManageOrdersScreen: React.FC = () => {
             if (inStoreAutoOpenInvoice && !isQueued) {
                 navigate(`/admin/invoice/${order.id}`);
             }
+            const sourceQuotationId = String((payload as any)?.sourceQuotationId || sourceQuotation?.id || '').trim();
+            if (sourceQuotationId) {
+                const supabase = getSupabaseClient();
+                if (supabase) {
+                    try {
+                        const { error } = await supabase
+                            .from('price_quotations')
+                            .update({
+                                status: 'accepted',
+                                converted_to_order_id: String(order.id),
+                                converted_at: new Date().toISOString(),
+                            } as any)
+                            .eq('id', sourceQuotationId);
+                        if (error) throw error;
+                    } catch {
+                        try {
+                            await supabase
+                                .from('price_quotations')
+                                .update({ status: 'accepted' } as any)
+                                .eq('id', sourceQuotationId);
+                        } catch {}
+                    }
+                }
+            }
             setIsInStoreSaleOpen(false);
             setInStoreCustomerName('');
             setInStorePhoneNumber('');
@@ -1827,6 +1891,7 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreCustomerSearchResult(null);
             setInStoreCustomerPhoneSearch('');
             setInStoreSelectedPartyId('');
+            setSourceQuotation(null);
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
             const upper = raw.trim().toUpperCase();
@@ -1972,6 +2037,7 @@ const ManageOrdersScreen: React.FC = () => {
         }
         const payload: any = {
             lines: inStoreLines,
+            sourceQuotationId: sourceQuotation?.id || undefined,
             currency: inStoreTransactionCurrency,
             paymentMethod: primaryPaymentMethod,
             customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
