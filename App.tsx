@@ -105,6 +105,8 @@ const PartyAgingReportsScreen = lazy(() => import('./screens/admin/reports/Party
 const PartyDocumentsScreen = lazy(() => import('./screens/admin/PartyDocumentsScreen'));
 const SettlementWorkspaceScreen = lazy(() => import('./screens/admin/SettlementWorkspaceScreen'));
 const AdvanceManagementScreen = lazy(() => import('./screens/admin/AdvanceManagementScreen'));
+const EmployeeHRScreen = lazy(() => import('./screens/admin/EmployeeHRScreen'));
+const QuotationsScreen = lazy(() => import('./screens/admin/QuotationsScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -389,6 +391,8 @@ const App: React.FC = () => {
                     <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
                     <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
                     <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
+                    <Route path="employee-hr" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><EmployeeHRScreen /></AdminProtectedRoute>} />
+                    <Route path="quotations" element={<AdminProtectedRoute permissions={['orders.view']}><QuotationsScreen /></AdminProtectedRoute>} />
                     <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                     <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
                     <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
