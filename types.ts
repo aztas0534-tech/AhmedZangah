@@ -921,6 +921,9 @@ export type AdminRole = 'owner' | 'manager' | 'employee' | 'cashier' | 'delivery
 export type AdminPermission =
   | 'dashboard.view'
   | 'profile.view'
+  | 'hr.contracts.view'
+  | 'hr.contracts.manage'
+  | 'hr.contracts.approve'
   | 'orders.view'
   | 'quotations.view'
   | 'quotations.manage'
@@ -968,6 +971,9 @@ export type AdminPermission =
 export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: string }> = [
   { key: 'dashboard.view', labelAr: 'عرض لوحة المعلومات' },
   { key: 'profile.view', labelAr: 'عرض الملف الشخصي' },
+  { key: 'hr.contracts.view', labelAr: 'عرض عقود وضمانات الموظفين' },
+  { key: 'hr.contracts.manage', labelAr: 'إدارة عقود وضمانات الموظفين' },
+  { key: 'hr.contracts.approve', labelAr: 'اعتماد عقود وضمانات الموظفين' },
   { key: 'orders.view', labelAr: 'عرض الطلبات' },
   { key: 'quotations.view', labelAr: 'عرض عروض الأسعار' },
   { key: 'quotations.manage', labelAr: 'إدارة عروض الأسعار' },

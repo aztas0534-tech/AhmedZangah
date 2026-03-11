@@ -112,6 +112,7 @@ const VoucherEntryScreen = lazy(() => import('./screens/admin/VoucherEntryScreen
 const AttendanceScreen = lazy(() => import('./screens/admin/AttendanceScreen'));
 const AttendancePunchScreen = lazy(() => import('./screens/admin/AttendancePunchScreen'));
 const LeaveManagementScreen = lazy(() => import('./screens/admin/LeaveManagementScreen'));
+const EmployeeHRScreen = lazy(() => import('./screens/admin/EmployeeHRScreen'));
 const FixedAssetsScreen = lazy(() => import('./screens/admin/FixedAssetsScreen'));
 const QuotationsScreen = lazy(() => import('./screens/admin/QuotationsScreen'));
 
@@ -402,6 +403,7 @@ const App: React.FC = () => {
                     <Route path="attendance" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendanceScreen /></AdminProtectedRoute>} />
                     <Route path="attendance-punch" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendancePunchScreen /></AdminProtectedRoute>} />
                     <Route path="leave-management" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><LeaveManagementScreen /></AdminProtectedRoute>} />
+                    <Route path="employee-hr" element={<AdminProtectedRoute permissions={['hr.contracts.view', 'hr.contracts.manage', 'hr.contracts.approve', 'expenses.manage']} requireAllPermissions={false}><EmployeeHRScreen /></AdminProtectedRoute>} />
                     <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                     <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
                     <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />

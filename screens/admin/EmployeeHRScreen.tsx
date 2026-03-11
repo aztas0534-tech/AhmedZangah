@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useAuth } from '../../contexts/AuthContext';
 import PageLoader from '../../components/PageLoader';
 import { printContent } from '../../utils/printUtils';
 
@@ -29,10 +30,40 @@ type Guarantee = {
   special_terms?: string | null; status: string; notes?: string | null; created_at: string;
 };
 
-const STATUS_LABELS: Record<string, string> = { active: 'نشط', expired: 'منتهي', terminated: 'مُنهى', draft: 'مسودة', released: 'مُحرَّر' };
+type HrApprovalRow = {
+  id: string;
+  document_type: 'contract' | 'guarantee';
+  document_id: string;
+  action: string;
+  from_status?: string | null;
+  to_status?: string | null;
+  comment?: string | null;
+  signature_name?: string | null;
+  performed_at: string;
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'مسودة',
+  under_review: 'قيد المراجعة',
+  approved: 'معتمد',
+  signed: 'موقّع',
+  active: 'نشط',
+  expired: 'منتهي',
+  terminated: 'مُنهى',
+  released: 'مُحرَّر',
+  archived: 'مؤرشف',
+};
 const CONTRACT_TYPES: Record<string, string> = { definite: 'محدد المدة', indefinite: 'غير محدد المدة', probation: 'تحت التجربة', part_time: 'دوام جزئي' };
 const GUARANTEE_TYPES: Record<string, string> = { personal: 'شخصي', financial: 'مالي', property: 'عيني' };
-const statusColor = (s: string) => s === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : s === 'draft' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+const statusColor = (s: string) => {
+  if (s === 'draft') return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+  if (s === 'under_review') return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300';
+  if (s === 'approved') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
+  if (s === 'signed' || s === 'active') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
+  if (s === 'archived' || s === 'released') return 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+  if (s === 'expired' || s === 'terminated') return 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300';
+  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+};
 const fmtDate = (d?: string | null) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('ar-EG-u-nu-latn'); } catch { return d; } };
 const fmtMoney = (n: number) => { try { return Number(n || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); } catch { return String(n); } };
 const ymd = (d?: Date) => { const x = d || new Date(); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
@@ -244,6 +275,7 @@ ${g.special_terms ? `<h3 style="color:${GUARANTEE_COLOR};font-size:15px;font-wei
 export default function EmployeeHRScreen() {
   const { showNotification } = useToast();
   const { settings } = useSettings();
+  const { hasPermission } = useAuth();
   const [tab, setTab] = useState<'contracts' | 'guarantees'>('contracts');
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -264,6 +296,11 @@ export default function EmployeeHRScreen() {
   const [editingGuarantee, setEditingGuarantee] = useState<Guarantee | null>(null);
   const emptyGuarantee = (): Partial<Guarantee> => ({ guarantee_type: 'personal', guarantor_name: '', guarantee_amount: 0, currency: 'YER', valid_from: ymd(), status: 'active' });
   const [gForm, setGForm] = useState<Record<string, any>>(emptyGuarantee());
+  const [historyOpenKey, setHistoryOpenKey] = useState<string>('');
+  const [approvalsByKey, setApprovalsByKey] = useState<Record<string, HrApprovalRow[]>>({});
+  const canManageHr = hasPermission('hr.contracts.manage') || hasPermission('expenses.manage') || hasPermission('accounting.manage');
+  const canApproveHr = hasPermission('hr.contracts.approve') || hasPermission('accounting.approve');
+  const canViewHr = hasPermission('hr.contracts.view') || canManageHr || canApproveHr;
 
   const brand = useMemo(() => ({
     name: (settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
@@ -291,6 +328,62 @@ export default function EmployeeHRScreen() {
   useEffect(() => { void loadAll(); }, [loadAll]);
 
   const empName = (id: string) => employees.find(e => e.id === id)?.full_name || '—';
+  const statusOptionsContracts = ['draft', 'under_review', 'approved', 'signed', 'active', 'expired', 'terminated', 'archived'];
+  const statusOptionsGuarantees = ['draft', 'under_review', 'approved', 'signed', 'active', 'expired', 'released', 'archived'];
+
+  const openApprovalHistory = async (documentType: 'contract' | 'guarantee', documentId: string) => {
+    const key = `${documentType}:${documentId}`;
+    if (historyOpenKey === key) {
+      setHistoryOpenKey('');
+      return;
+    }
+    setHistoryOpenKey(key);
+    if (approvalsByKey[key]) return;
+    const s = getSupabaseClient(); if (!s) return;
+    try {
+      const { data, error } = await s
+        .from('hr_document_approvals')
+        .select('id,document_type,document_id,action,from_status,to_status,comment,signature_name,performed_at')
+        .eq('document_type', documentType)
+        .eq('document_id', documentId)
+        .order('performed_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      setApprovalsByKey(prev => ({ ...prev, [key]: Array.isArray(data) ? data as HrApprovalRow[] : [] }));
+    } catch (e: any) {
+      showNotification(e?.message || 'تعذر تحميل سجل الاعتماد', 'error');
+    }
+  };
+
+  const transitionDocument = async (documentType: 'contract' | 'guarantee', documentId: string, action: string) => {
+    const s = getSupabaseClient(); if (!s) return;
+    const requiresSignature = action === 'sign';
+    const signatureName = requiresSignature ? (window.prompt('أدخل اسم الموقّع') || '').trim() : '';
+    if (requiresSignature && !signatureName) {
+      showNotification('الاسم التوقيعي مطلوب لإتمام التوقيع', 'error');
+      return;
+    }
+    const comment = (window.prompt('ملاحظة الإجراء (اختياري)') || '').trim();
+    try {
+      const { error } = await s.rpc('hr_transition_employee_document', {
+        p_document_type: documentType,
+        p_document_id: documentId,
+        p_action: action,
+        p_comment: comment || null,
+        p_signature_name: signatureName || null,
+      });
+      if (error) throw error;
+      await loadAll();
+      setApprovalsByKey(prev => {
+        const next = { ...prev };
+        delete next[`${documentType}:${documentId}`];
+        return next;
+      });
+      showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+    } catch (e: any) {
+      showNotification(e?.message || 'فشل تنفيذ الإجراء', 'error');
+    }
+  };
 
   /* ── Contract CRUD ── */
   const openCModal = (c?: Contract) => {
@@ -298,9 +391,34 @@ export default function EmployeeHRScreen() {
     setCModalOpen(true);
   };
   const saveContract = async () => {
+    if (!canManageHr) { showNotification('ليس لديك صلاحية إدارة العقود.', 'error'); return; }
     const s = getSupabaseClient(); if (!s) return;
     const p: any = { ...cForm }; delete p.id; delete p.created_at;
     if (!p.employee_id) { showNotification('اختر الموظف', 'error'); return; }
+    if (!p.start_date) { showNotification('أدخل تاريخ بداية العقد', 'error'); return; }
+    if (p.end_date && p.end_date < p.start_date) { showNotification('تاريخ انتهاء العقد يجب أن يكون بعد تاريخ البداية', 'error'); return; }
+    if ((Number(p.salary) || 0) < 0) { showNotification('الراتب لا يمكن أن يكون سالبًا', 'error'); return; }
+    if ((Number(p.working_hours_per_day) || 0) <= 0) { showNotification('ساعات العمل اليومية يجب أن تكون أكبر من صفر', 'error'); return; }
+    const wd = Number(p.working_days_per_week) || 0;
+    if (wd <= 0 || wd > 7) { showNotification('أيام العمل الأسبوعية يجب أن تكون بين 1 و 7', 'error'); return; }
+    if ((Number(p.vacation_days_annual) || 0) < 0) { showNotification('الإجازة السنوية لا يمكن أن تكون سالبة', 'error'); return; }
+    if ((Number(p.probation_days) || 0) < 0) { showNotification('فترة التجربة لا يمكن أن تكون سالبة', 'error'); return; }
+    const salaryBreakdown = Object.entries(p.salary_breakdown || {}).reduce((acc: Record<string, number>, [k, v]) => {
+      const key = String(k || '').trim();
+      const val = Number(v || 0);
+      if (!key) return acc;
+      if (val < 0) return acc;
+      acc[key] = val;
+      return acc;
+    }, {});
+    p.salary_breakdown = salaryBreakdown;
+    p.currency = String(p.currency || 'YER').trim().toUpperCase() || 'YER';
+    p.contract_number = String(p.contract_number || '').trim().toUpperCase() || null;
+    p.job_title = String(p.job_title || '').trim() || null;
+    p.department = String(p.department || '').trim() || null;
+    p.work_location = String(p.work_location || '').trim() || null;
+    p.special_terms = String(p.special_terms || '').trim() || null;
+    p.notes = String(p.notes || '').trim() || null;
     try {
       if (editingContract) { const { error } = await s.from('employee_contracts').update(p).eq('id', editingContract.id); if (error) throw error; }
       else { const { error } = await s.from('employee_contracts').insert(p); if (error) throw error; }
@@ -308,6 +426,7 @@ export default function EmployeeHRScreen() {
     } catch (e: any) { showNotification(e?.message || 'خطأ', 'error'); }
   };
   const deleteContract = async (id: string) => {
+    if (!canManageHr) { showNotification('ليس لديك صلاحية حذف العقود.', 'error'); return; }
     if (!window.confirm('حذف هذا العقد؟')) return;
     const s = getSupabaseClient(); if (!s) return;
     try { const { error } = await s.from('employee_contracts').delete().eq('id', id); if (error) throw error; await loadAll(); showNotification('تم الحذف', 'success'); }
@@ -320,10 +439,23 @@ export default function EmployeeHRScreen() {
     setGModalOpen(true);
   };
   const saveGuarantee = async () => {
+    if (!canManageHr) { showNotification('ليس لديك صلاحية إدارة الضمانات.', 'error'); return; }
     const s = getSupabaseClient(); if (!s) return;
     const p: any = { ...gForm }; delete p.id; delete p.created_at;
     if (!p.employee_id) { showNotification('اختر الموظف', 'error'); return; }
     if (!p.guarantor_name?.trim()) { showNotification('أدخل اسم الكفيل', 'error'); return; }
+    if (!p.valid_from) { showNotification('أدخل تاريخ بداية الضمان', 'error'); return; }
+    if (p.valid_until && p.valid_until < p.valid_from) { showNotification('تاريخ نهاية الضمان يجب أن يكون بعد تاريخ البداية', 'error'); return; }
+    if ((Number(p.guarantee_amount) || 0) < 0) { showNotification('مبلغ الضمان لا يمكن أن يكون سالبًا', 'error'); return; }
+    p.currency = String(p.currency || 'YER').trim().toUpperCase() || 'YER';
+    p.guarantee_number = String(p.guarantee_number || '').trim().toUpperCase() || null;
+    p.guarantor_name = String(p.guarantor_name || '').trim();
+    p.guarantor_id_number = String(p.guarantor_id_number || '').trim() || null;
+    p.guarantor_phone = String(p.guarantor_phone || '').trim() || null;
+    p.guarantor_address = String(p.guarantor_address || '').trim() || null;
+    p.guarantor_relationship = String(p.guarantor_relationship || '').trim() || null;
+    p.special_terms = String(p.special_terms || '').trim() || null;
+    p.notes = String(p.notes || '').trim() || null;
     try {
       if (editingGuarantee) { const { error } = await s.from('employee_guarantees').update(p).eq('id', editingGuarantee.id); if (error) throw error; }
       else { const { error } = await s.from('employee_guarantees').insert(p); if (error) throw error; }
@@ -331,6 +463,7 @@ export default function EmployeeHRScreen() {
     } catch (e: any) { showNotification(e?.message || 'خطأ', 'error'); }
   };
   const deleteGuarantee = async (id: string) => {
+    if (!canManageHr) { showNotification('ليس لديك صلاحية حذف الضمانات.', 'error'); return; }
     if (!window.confirm('حذف هذا الضمان؟')) return;
     const s = getSupabaseClient(); if (!s) return;
     try { const { error } = await s.from('employee_guarantees').delete().eq('id', id); if (error) throw error; await loadAll(); showNotification('تم الحذف', 'success'); }
@@ -355,6 +488,7 @@ export default function EmployeeHRScreen() {
   /* ── Salary breakdown helpers ── */
   const addBdEntry = () => {
     if (!bdKey.trim()) return;
+    if ((Number(bdVal) || 0) < 0) return;
     setCForm(prev => ({ ...prev, salary_breakdown: { ...(prev.salary_breakdown || {}), [bdKey.trim()]: bdVal } }));
     setBdKey(''); setBdVal(0);
   };
@@ -394,11 +528,12 @@ export default function EmployeeHRScreen() {
         </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={INPUT + ' md:max-w-[180px]'}>
           <option value="all">كل الحالات</option>
-          {(tab === 'contracts' ? ['active', 'draft', 'expired', 'terminated'] : ['active', 'expired', 'released']).map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+          {(tab === 'contracts' ? statusOptionsContracts : statusOptionsGuarantees).map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
         </select>
         <div className="flex-1" />
-        <button type="button" onClick={() => tab === 'contracts' ? openCModal() : openGModal()} className={`${BTN} bg-emerald-600 text-white`}>{tab === 'contracts' ? '+ عقد جديد' : '+ ضمان جديد'}</button>
+        <button type="button" disabled={!canManageHr} onClick={() => tab === 'contracts' ? openCModal() : openGModal()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>{tab === 'contracts' ? '+ عقد جديد' : '+ ضمان جديد'}</button>
       </div>
+      {!canManageHr && canViewHr && <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">وضع قراءة فقط: صلاحية الإدارة غير متاحة لهذا الحساب.</div>}
 
       {/* ═══ CONTRACTS TAB ═══ */}
       {tab === 'contracts' && (
@@ -422,8 +557,32 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm border-r dark:border-gray-700"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(c.status)}`}>{STATUS_LABELS[c.status] || c.status}</span></td>
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
                       <button onClick={() => printContractForm(c, employees.find(e => e.id === c.employee_id), brand)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
-                      <button onClick={() => openCModal(c)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold">تعديل</button>
-                      <button onClick={() => deleteContract(c.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold">حذف</button>
+                      <button disabled={!canManageHr} onClick={() => openCModal(c)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
+                      <button disabled={!canManageHr} onClick={() => deleteContract(c.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
+                      {canManageHr && c.status === 'draft' && <button onClick={() => void transitionDocument('contract', c.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}
+                      {canApproveHr && c.status === 'under_review' && <button onClick={() => void transitionDocument('contract', c.id, 'approve')} className="px-2 py-1 rounded bg-emerald-600 text-white text-xs font-semibold">اعتماد</button>}
+                      {canApproveHr && (c.status === 'under_review' || c.status === 'approved') && <button onClick={() => void transitionDocument('contract', c.id, 'return_draft')} className="px-2 py-1 rounded bg-amber-600 text-white text-xs font-semibold">إرجاع لمسودة</button>}
+                      {canApproveHr && c.status === 'approved' && <button onClick={() => void transitionDocument('contract', c.id, 'sign')} className="px-2 py-1 rounded bg-fuchsia-700 text-white text-xs font-semibold">توقيع</button>}
+                      {canManageHr && c.status === 'signed' && <button onClick={() => void transitionDocument('contract', c.id, 'activate')} className="px-2 py-1 rounded bg-green-700 text-white text-xs font-semibold">تفعيل</button>}
+                      {canManageHr && (c.status === 'active' || c.status === 'signed') && <button onClick={() => void transitionDocument('contract', c.id, 'expire')} className="px-2 py-1 rounded bg-slate-700 text-white text-xs font-semibold">إنهاء تلقائي</button>}
+                      {canManageHr && c.status === 'active' && <button onClick={() => void transitionDocument('contract', c.id, 'terminate')} className="px-2 py-1 rounded bg-orange-700 text-white text-xs font-semibold">إنهاء تعاقد</button>}
+                      {canManageHr && ['signed', 'active', 'expired', 'terminated'].includes(c.status) && <button onClick={() => void transitionDocument('contract', c.id, 'archive')} className="px-2 py-1 rounded bg-zinc-700 text-white text-xs font-semibold">أرشفة</button>}
+                      <button onClick={() => void openApprovalHistory('contract', c.id)} className="px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 text-xs font-semibold">سجل الاعتماد</button>
+                      {historyOpenKey === `contract:${c.id}` && (
+                        <div className="mt-2 p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-1">
+                          {(approvalsByKey[`contract:${c.id}`] || []).length === 0 ? (
+                            <div className="text-[11px] text-gray-500">لا توجد إجراءات بعد.</div>
+                          ) : (
+                            (approvalsByKey[`contract:${c.id}`] || []).map(a => (
+                              <div key={a.id} className="text-[11px] text-gray-700 dark:text-gray-300">
+                                <span className="font-semibold">{a.action}</span>
+                                <span> — {STATUS_LABELS[a.from_status || ''] || (a.from_status || '—')} → {STATUS_LABELS[a.to_status || ''] || (a.to_status || '—')}</span>
+                                <span> — {fmtDate(a.performed_at)}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -454,8 +613,32 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm border-r dark:border-gray-700"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(g.status)}`}>{STATUS_LABELS[g.status] || g.status}</span></td>
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
                       <button onClick={() => printGuaranteeForm(g, employees.find(e => e.id === g.employee_id), brand)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
-                      <button onClick={() => openGModal(g)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold">تعديل</button>
-                      <button onClick={() => deleteGuarantee(g.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold">حذف</button>
+                      <button disabled={!canManageHr} onClick={() => openGModal(g)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
+                      <button disabled={!canManageHr} onClick={() => deleteGuarantee(g.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
+                      {canManageHr && g.status === 'draft' && <button onClick={() => void transitionDocument('guarantee', g.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}
+                      {canApproveHr && g.status === 'under_review' && <button onClick={() => void transitionDocument('guarantee', g.id, 'approve')} className="px-2 py-1 rounded bg-emerald-600 text-white text-xs font-semibold">اعتماد</button>}
+                      {canApproveHr && (g.status === 'under_review' || g.status === 'approved') && <button onClick={() => void transitionDocument('guarantee', g.id, 'return_draft')} className="px-2 py-1 rounded bg-amber-600 text-white text-xs font-semibold">إرجاع لمسودة</button>}
+                      {canApproveHr && g.status === 'approved' && <button onClick={() => void transitionDocument('guarantee', g.id, 'sign')} className="px-2 py-1 rounded bg-fuchsia-700 text-white text-xs font-semibold">توقيع</button>}
+                      {canManageHr && g.status === 'signed' && <button onClick={() => void transitionDocument('guarantee', g.id, 'activate')} className="px-2 py-1 rounded bg-green-700 text-white text-xs font-semibold">تفعيل</button>}
+                      {canManageHr && (g.status === 'active' || g.status === 'signed') && <button onClick={() => void transitionDocument('guarantee', g.id, 'expire')} className="px-2 py-1 rounded bg-slate-700 text-white text-xs font-semibold">إنهاء تلقائي</button>}
+                      {canManageHr && g.status === 'active' && <button onClick={() => void transitionDocument('guarantee', g.id, 'release')} className="px-2 py-1 rounded bg-orange-700 text-white text-xs font-semibold">إخلاء الضمان</button>}
+                      {canManageHr && ['signed', 'active', 'expired', 'released'].includes(g.status) && <button onClick={() => void transitionDocument('guarantee', g.id, 'archive')} className="px-2 py-1 rounded bg-zinc-700 text-white text-xs font-semibold">أرشفة</button>}
+                      <button onClick={() => void openApprovalHistory('guarantee', g.id)} className="px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 text-xs font-semibold">سجل الاعتماد</button>
+                      {historyOpenKey === `guarantee:${g.id}` && (
+                        <div className="mt-2 p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-1">
+                          {(approvalsByKey[`guarantee:${g.id}`] || []).length === 0 ? (
+                            <div className="text-[11px] text-gray-500">لا توجد إجراءات بعد.</div>
+                          ) : (
+                            (approvalsByKey[`guarantee:${g.id}`] || []).map(a => (
+                              <div key={a.id} className="text-[11px] text-gray-700 dark:text-gray-300">
+                                <span className="font-semibold">{a.action}</span>
+                                <span> — {STATUS_LABELS[a.from_status || ''] || (a.from_status || '—')} → {STATUS_LABELS[a.to_status || ''] || (a.to_status || '—')}</span>
+                                <span> — {fmtDate(a.performed_at)}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -488,7 +671,7 @@ export default function EmployeeHRScreen() {
                 </div>
                 <div><label className="text-xs text-gray-500 mb-1 block">الحالة</label>
                   <select value={cForm.status || 'draft'} onChange={e => setCForm(p => ({ ...p, status: e.target.value }))} className={INPUT}>
-                    {['draft', 'active', 'expired', 'terminated'].map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                    {statusOptionsContracts.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
                   </select>
                 </div>
                 <div><label className="text-xs text-gray-500 mb-1 block">تاريخ البداية *</label><input type="date" value={cForm.start_date || ''} onChange={e => setCForm(p => ({ ...p, start_date: e.target.value }))} className={INPUT} /></div>
@@ -524,7 +707,7 @@ export default function EmployeeHRScreen() {
 
               <div className="flex justify-end gap-3 pt-2 border-t dark:border-gray-700">
                 <button type="button" onClick={() => setCModalOpen(false)} className={`${BTN} border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300`}>إلغاء</button>
-                <button type="button" onClick={() => void saveContract()} className={`${BTN} bg-emerald-600 text-white`}>حفظ العقد</button>
+                <button type="button" disabled={!canManageHr} onClick={() => void saveContract()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>حفظ العقد</button>
               </div>
             </div>
           </div>
@@ -555,7 +738,7 @@ export default function EmployeeHRScreen() {
                 </div>
                 <div><label className="text-xs text-gray-500 mb-1 block">الحالة</label>
                   <select value={gForm.status || 'active'} onChange={e => setGForm(p => ({ ...p, status: e.target.value }))} className={INPUT}>
-                    {['active', 'expired', 'released'].map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                    {statusOptionsGuarantees.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
                   </select>
                 </div>
               </div>
@@ -578,7 +761,7 @@ export default function EmployeeHRScreen() {
 
               <div className="flex justify-end gap-3 pt-2 border-t dark:border-gray-700">
                 <button type="button" onClick={() => setGModalOpen(false)} className={`${BTN} border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300`}>إلغاء</button>
-                <button type="button" onClick={() => void saveGuarantee()} className={`${BTN} bg-emerald-600 text-white`}>حفظ الضمان</button>
+                <button type="button" disabled={!canManageHr} onClick={() => void saveGuarantee()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>حفظ الضمان</button>
               </div>
             </div>
           </div>

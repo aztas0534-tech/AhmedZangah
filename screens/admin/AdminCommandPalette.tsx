@@ -59,6 +59,7 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         const canCustomers = hasPermission('customers.manage') || hasPermission('orders.view');
         const canPos = hasPermission('orders.createInStore') || hasPermission('orders.updateStatus.all');
         const canAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
+        const canHrContracts = hasPermission('hr.contracts.view') || hasPermission('hr.contracts.manage') || hasPermission('expenses.manage');
 
         return [
             { kind: 'nav', id: 'nav-workspace', label: 'مركز العمل', to: '/admin/workspace', keywords: ['workspace', 'home', 'مركز', 'عمل'] },
@@ -69,6 +70,7 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
             { kind: 'nav', id: 'nav-stock', label: 'المخزون', to: '/admin/stock', enabled: canStock, keywords: ['stock', 'inventory', 'مخزون'] },
             { kind: 'nav', id: 'nav-customers', label: 'العملاء', to: '/admin/customers', enabled: canCustomers, keywords: ['customers', 'clients', 'عملاء', 'زبائن'] },
             { kind: 'nav', id: 'nav-reports', label: 'التقارير', to: '/admin/reports', enabled: canReports, keywords: ['reports', 'تقارير'] },
+            { kind: 'nav', id: 'nav-employee-hr', label: 'عقود وضمانات الموظفين', to: '/admin/employee-hr', enabled: canHrContracts, keywords: ['hr', 'contracts', 'guarantees', 'موظفين', 'عقود', 'ضمانات'] },
             { kind: 'nav', id: 'nav-help', label: 'دليل الاستخدام', to: '/help', keywords: ['help', 'guide', 'مساعدة', 'دليل'] },
             { kind: 'searchShipment', id: 'search-shipment', label: 'بحث عن شحنة بالمرجع', enabled: canShipments, keywords: ['shipment', 'search', 'شحنة', 'مرجع'] },
             { kind: 'searchPurchaseOrder', id: 'search-po', label: 'بحث عن أمر شراء (PO) بالرقم/الفاتورة', enabled: canPurchases, keywords: ['po', 'purchase', 'order', 'مشتريات', 'أمر شراء', 'فاتورة المورد'] },

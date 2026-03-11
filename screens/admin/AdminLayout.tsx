@@ -151,6 +151,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'payroll', label: 'الرواتب', icon: <Icons.ListIcon />, permission: 'expenses.manage' },
   { to: 'attendance', label: 'الحضور والغياب', icon: <Icons.ClockIcon />, permission: 'expenses.manage' },
   { to: 'leave-management', label: 'إدارة الإجازات', icon: <Icons.FileText />, permission: 'expenses.manage' },
+  { to: 'employee-hr', label: 'عقود وضمانات الموظفين', icon: <Icons.FileText />, permission: 'hr.contracts.view' },
   { to: 'printed-documents', label: 'المستندات المطبوعة', icon: <Icons.ListIcon />, permission: 'accounting.view' },
   { to: 'chart-of-accounts', label: 'دليل الحسابات', icon: <Icons.ListIcon />, permission: 'settings.manage' },
   { to: 'journals', label: 'دفاتر اليومية', icon: <Icons.ListIcon />, permission: 'accounting.manage' },
@@ -212,6 +213,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'payroll': 'expenses.manage',
   'attendance': 'expenses.manage',
   'leave-management': 'expenses.manage',
+  'employee-hr': 'hr.contracts.view',
   'printed-documents': 'accounting.view',
   'chart-of-accounts': 'settings.manage',
   'journals': 'accounting.manage',
@@ -377,6 +379,8 @@ const AdminLayout: React.FC = () => {
               ? (hasPermission('shipments.view') || hasPermission('stock.manage'))
               : currentRoute === 'wastage-expiry-reports'
                 ? (hasPermission('inventory.movements.view') || hasPermission('reports.view') || hasPermission('stock.manage'))
+                  : currentRoute === 'employee-hr'
+                    ? (hasPermission('hr.contracts.view') || hasPermission('hr.contracts.manage') || hasPermission('hr.contracts.approve') || hasPermission('expenses.manage'))
                 : hasPermission(requiredPermission);
       if (!ok) {
         // Redirect to dashboard or show unauthorized if already on dashboard (to avoid loop)

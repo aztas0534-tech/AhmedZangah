@@ -293,6 +293,8 @@ export const importSystemBackup = async (
             'employee_allowances',
             'employee_deductions',
             'attendance_records',
+            'employee_contracts',
+            'employee_guarantees',
             // ── Tier 11: Other ──
             'supplier_contracts',
             'supplier_evaluations',
