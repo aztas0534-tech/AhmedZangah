@@ -737,6 +737,7 @@ const ManageOrdersScreen: React.FC = () => {
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
     const isOwner = adminUser?.role === 'owner';
+    const isManager = adminUser?.role === 'manager';
     const canVoidDelivered = hasPermission('accounting.void');
 
     const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
@@ -2945,7 +2946,7 @@ const ManageOrdersScreen: React.FC = () => {
                     )}
 
                     {/* Purge Payment — owner only */}
-                    {order.status === 'delivered' && (paid > tol || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && isOwner && !isVoided && (
+                    {order.status === 'delivered' && (paid > tol || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && (isOwner || isManager) && !isVoided && (
                         <div className="col-span-2">
                             <button
                                 onClick={() => handlePurgePayment(order.id)}
@@ -3593,7 +3594,7 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                     const hasPaidAtTbl = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
                                                     const { paid: paidTbl, tol: tolTbl } = getOrderPaymentSnapshot(order);
-                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || hasPaidAtTbl) && isOwner && !isVoidedTbl ? (
+                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || hasPaidAtTbl) && (isOwner || isManager) && !isVoidedTbl ? (
                                                         <button
                                                             onClick={() => handlePurgePayment(order.id)}
                                                             disabled={isPurgingPayment}
