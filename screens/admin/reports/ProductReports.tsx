@@ -54,6 +54,7 @@ const ProductReports: React.FC = () => {
     const [showAllProducts, setShowAllProducts] = useState(false);
 
     const [reportData, setReportData] = useState<ProductSalesRow[]>([]);
+    const [unifiedSummary, setUnifiedSummary] = useState<{ sales: number; orders: number } | null>(null);
     const [quantitySourceFromMovements, setQuantitySourceFromMovements] = useState(false);
     const [allStockInventoryValue, setAllStockInventoryValue] = useState(0);
     const [recallBatchId, setRecallBatchId] = useState('');
@@ -188,6 +189,35 @@ const ProductReports: React.FC = () => {
 
                 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
                 const zoneArg = (selectedZoneId && uuidRegex.test(selectedZoneId)) ? selectedZoneId : null;
+
+                try {
+                    const hasSummary = await rpcHasFunction('public.get_sales_report_summary');
+                    if (hasSummary) {
+                        const { data: summaryData, error: summaryErr } = await supabase.rpc('get_sales_report_summary', {
+                            p_start_date: p_start,
+                            p_end_date: p_end,
+                            p_zone_id: zoneArg ?? undefined,
+                            p_invoice_only: invoiceOnly,
+                        } as any);
+                        if (!summaryErr && summaryData && typeof summaryData === 'object') {
+                            const summaryGross = Number((summaryData as any)?.total_sales_accrual) || 0;
+                            const summaryReturns = Number((summaryData as any)?.returns_total) || 0;
+                            const summaryOrders = Number((summaryData as any)?.total_orders) || 0;
+                            if (active) {
+                                setUnifiedSummary({
+                                    sales: summaryGross - summaryReturns,
+                                    orders: summaryOrders,
+                                });
+                            }
+                        } else if (active) {
+                            setUnifiedSummary(null);
+                        }
+                    } else if (active) {
+                        setUnifiedSummary(null);
+                    }
+                } catch (_) {
+                    if (active) setUnifiedSummary(null);
+                }
 
                 const warehouseId = sessionScope.scope?.warehouseId;
                 const stockById = new Map<string, { current_stock: number; reserved_stock: number; current_cost_price: number }>();
@@ -1025,8 +1055,9 @@ const ProductReports: React.FC = () => {
                             <div>
                                 <h3 className="text-gray-500 dark:text-gray-400">ملخص الفترة</h3>
                                 <p className="text-sm dark:text-gray-300">
+                                    الطلبات: <span className="font-bold">{Number(unifiedSummary?.orders || 0).toLocaleString('en-US')}</span> •
                                     كمية مباعة: <span className="font-bold">{totals.qty.toLocaleString('en-US')}</span> •
-                                    صافي المبيعات: <span className="font-bold text-orange-600">{totals.sales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
+                                    صافي المبيعات (موحد): <span className="font-bold text-orange-600">{Number((unifiedSummary?.sales ?? totals.sales) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
                                     صافي التكلفة: <span className="font-bold text-red-600">{totals.cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
                                     صافي الربح: <span className={`font-bold ${totals.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{totals.profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
                                     معدل الدوران: <span className="font-bold">{totals.turnover.toFixed(2)}×</span>

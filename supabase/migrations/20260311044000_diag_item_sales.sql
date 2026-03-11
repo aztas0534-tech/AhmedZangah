@@ -7,9 +7,10 @@ begin
   -- 1. Item pricing info
   select jsonb_build_object(
     'name', mi.data->'name', 'base_unit', mi.base_unit, 'unit_type', mi.unit_type,
-    'selling_price', mi.selling_price, 'buying_price', mi.buying_price,
+    'buying_price', mi.buying_price,
     'cost_price', mi.cost_price, 'category', mi.category,
-    'data_price', mi.data->'price', 'data_prices', mi.data->'prices'
+    'data_price', mi.data->'price', 'data_prices', mi.data->'prices',
+    'data_all', mi.data
   ) into v from public.menu_items mi where mi.id::text = p_item_id;
 
   -- 2. All orders containing this item (from order_items table)

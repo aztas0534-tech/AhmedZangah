@@ -244,12 +244,8 @@ begin
   end if;
 
   insert into public.journal_entries(entry_date, memo, source_table, source_id, source_event, created_by, status)
-  values (p_acquisition_date, concat('تسجيل أصل ثابت: ', btrim(p_name_ar)), 'fixed_assets', v_asset_id::text, 'acquisition', auth.uid(), 'posted')
-  on conflict (source_table, source_id, source_event)
-  do update set entry_date = excluded.entry_date, memo = excluded.memo
+  values (p_acquisition_date, concat('تسجيل أصل ثابت: ', btrim(p_name_ar)), 'fixed_assets', v_asset_id::text || ':acquisition', 'acquisition', auth.uid(), 'posted')
   returning id into v_entry_id;
-
-  delete from public.journal_lines jl where jl.journal_entry_id = v_entry_id;
 
   insert into public.journal_lines(journal_entry_id, account_id, debit, credit, line_memo)
   values
@@ -292,6 +288,7 @@ declare
   v_asset_account uuid;
   v_credit_account uuid;
   v_entry_id uuid;
+  v_cap_uid text;
 begin
   perform public._require_staff('capitalize_asset_cost');
   if not (auth.role() = 'service_role' or public.is_owner_or_manager()) then
@@ -325,9 +322,11 @@ begin
     v_credit_account := public.get_account_id_by_code('1010');
   end if;
 
+  v_cap_uid := gen_random_uuid()::text;
+
   insert into public.journal_entries(entry_date, memo, source_table, source_id, source_event, created_by, status)
   values (current_date, concat('رسملة تكلفة على أصل: ', v_asset.name_ar, ' - ', coalesce(p_description, '')),
-    'fixed_assets', p_asset_id::text, concat('capitalize_', gen_random_uuid()::text), auth.uid(), 'posted')
+    'fixed_assets', p_asset_id::text || ':capitalize_' || v_cap_uid, concat('capitalize_', v_cap_uid), auth.uid(), 'posted')
   returning id into v_entry_id;
 
   insert into public.journal_lines(journal_entry_id, account_id, debit, credit, line_memo)
@@ -454,16 +453,12 @@ begin
       v_period_end,
       concat('إهلاك شهري: ', v_asset.name_ar, ' (', v_asset.asset_code, ')'),
       'fixed_assets',
-      v_asset.id::text,
+      v_asset.id::text || ':depreciation_' || to_char(v_period_start, 'YYYY-MM'),
       concat('depreciation_', to_char(v_period_start, 'YYYY-MM')),
       auth.uid(),
       'posted'
     )
-    on conflict (source_table, source_id, source_event)
-    do update set entry_date = excluded.entry_date, memo = excluded.memo
     returning id into v_entry_id;
-
-    delete from public.journal_lines jl where jl.journal_entry_id = v_entry_id;
 
     insert into public.journal_lines(journal_entry_id, account_id, debit, credit, line_memo)
     values
@@ -569,12 +564,8 @@ begin
 
   insert into public.journal_entries(entry_date, memo, source_table, source_id, source_event, created_by, status)
   values (current_date, concat('استبعاد أصل: ', v_asset.name_ar, ' (', v_asset.asset_code, ')'),
-    'fixed_assets', p_asset_id::text, 'disposal', auth.uid(), 'posted')
-  on conflict (source_table, source_id, source_event)
-  do update set entry_date = excluded.entry_date, memo = excluded.memo
+    'fixed_assets', p_asset_id::text || ':disposal', 'disposal', auth.uid(), 'posted')
   returning id into v_entry_id;
-
-  delete from public.journal_lines jl where jl.journal_entry_id = v_entry_id;
 
   -- Dr Accumulated Depreciation (remove)
   if v_accumulated > 0 then

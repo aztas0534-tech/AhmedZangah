@@ -389,6 +389,39 @@ export const KPIBar: React.FC = () => {
                 } as any);
                 if (prevErr) throw prevErr;
 
+                let unifiedSales = 0;
+                let unifiedOrders = 0;
+                let prevUnifiedSales = 0;
+                let prevUnifiedOrders = 0;
+                const hasSalesSummary = await rpcHasFunction('public.get_sales_report_summary');
+                if (hasSalesSummary) {
+                    const summaryPayload = {
+                        p_start_date: dateRange.start.toISOString(),
+                        p_end_date: dateRange.end.toISOString(),
+                        p_zone_id: null,
+                        p_invoice_only: false,
+                    };
+                    const { data: summaryData, error: summaryErr }: any = await supabase.rpc('get_sales_report_summary', summaryPayload as any);
+                    if (summaryErr) throw summaryErr;
+                    const summary = summaryData && typeof summaryData === 'object' ? summaryData : {};
+                    const summaryGross = Number(summary?.total_sales_accrual) || 0;
+                    const summaryReturns = Number(summary?.returns_total) || 0;
+                    unifiedSales = summaryGross - summaryReturns;
+                    unifiedOrders = Number(summary?.total_orders) || 0;
+
+                    const { data: prevSummaryData, error: prevSummaryErr }: any = await supabase.rpc('get_sales_report_summary', {
+                        ...summaryPayload,
+                        p_start_date: prev.start.toISOString(),
+                        p_end_date: prev.end.toISOString(),
+                    } as any);
+                    if (prevSummaryErr) throw prevSummaryErr;
+                    const prevSummary = prevSummaryData && typeof prevSummaryData === 'object' ? prevSummaryData : {};
+                    const prevSummaryGross = Number(prevSummary?.total_sales_accrual) || 0;
+                    const prevSummaryReturns = Number(prevSummary?.returns_total) || 0;
+                    prevUnifiedSales = prevSummaryGross - prevSummaryReturns;
+                    prevUnifiedOrders = Number(prevSummary?.total_orders) || 0;
+                }
+
                 const salesData = (kpi && typeof kpi === 'object') ? (kpi.sales || {}) : {};
                 const prevSalesData = (prevKpi && typeof prevKpi === 'object') ? (prevKpi.sales || {}) : {};
 
@@ -412,11 +445,11 @@ export const KPIBar: React.FC = () => {
                     const prevNetProfit = prevGrossProfit - (Number(prevSalesData?.expenses) || 0) - (Number(prevSalesData?.wastage) || 0) - (Number(prevSalesData?.delivery_cost) || 0);
 
                     const newStats = {
-                        sales: netSales,
+                        sales: hasSalesSummary ? unifiedSales : netSales,
                         grossSales,
                         returns: returnsAmount,
                         taxRefunds: Number((salesData as any)?.tax_refunds) || 0,
-                        orders: Number(salesData?.total_orders_accrual) || 0,
+                        orders: hasSalesSummary ? unifiedOrders : (Number(salesData?.total_orders_accrual) || 0),
                         margin: netSales > 0 ? (grossProfit / netSales * 100) : 0,
                         grossProfit,
                         netProfit,
@@ -425,7 +458,9 @@ export const KPIBar: React.FC = () => {
                         ar: Number((kpi as any)?.arTotal) || 0,
                         ap: Number((kpi as any)?.apTotal) || 0,
                         statusCounts: Object.entries(((kpi as any)?.orderStatusCounts || {}) as Record<string, number>).map(([status, cnt]) => ({ status, cnt })),
-                        avgOrderValue: (Number(salesData?.total_orders_accrual) || 0) > 0 ? netSales / (Number(salesData?.total_orders_accrual) || 1) : 0,
+                        avgOrderValue: (hasSalesSummary ? unifiedOrders : (Number(salesData?.total_orders_accrual) || 0)) > 0
+                            ? (hasSalesSummary ? unifiedSales : netSales) / ((hasSalesSummary ? unifiedOrders : (Number(salesData?.total_orders_accrual) || 1)) || 1)
+                            : 0,
                         transit: Number((kpi as any)?.poInTransit) || 0,
                         poStatusCounts: (kpi as any)?.poStatusCounts || {},
                         inventoryValue: Number((kpi as any)?.inventoryValue) || 0,
@@ -438,17 +473,19 @@ export const KPIBar: React.FC = () => {
                     setKpiData(newStats);
 
                     setPrevStats({
-                        sales: prevNetSales,
+                        sales: hasSalesSummary ? prevUnifiedSales : prevNetSales,
                         grossSales: prevGrossSales,
                         returns: prevReturnsAmount,
                         taxRefunds: Number((prevSalesData as any)?.tax_refunds) || 0,
-                        orders: Number(prevSalesData?.total_orders_accrual) || 0,
+                        orders: hasSalesSummary ? prevUnifiedOrders : (Number(prevSalesData?.total_orders_accrual) || 0),
                         margin: prevNetSales > 0 ? (prevGrossProfit / prevNetSales * 100) : 0,
                         grossProfit: prevGrossProfit,
                         netProfit: prevNetProfit,
                         cogs: prevCogs,
                         collected: Number(prevSalesData?.total_collected) || 0,
-                        avgOrderValue: (Number(prevSalesData?.total_orders_accrual) || 0) > 0 ? prevNetSales / (Number(prevSalesData?.total_orders_accrual) || 1) : 0,
+                        avgOrderValue: (hasSalesSummary ? prevUnifiedOrders : (Number(prevSalesData?.total_orders_accrual) || 0)) > 0
+                            ? (hasSalesSummary ? prevUnifiedSales : prevNetSales) / ((hasSalesSummary ? prevUnifiedOrders : (Number(prevSalesData?.total_orders_accrual) || 1)) || 1)
+                            : 0,
                     });
                 }
             } catch (err) {
@@ -470,7 +507,7 @@ export const KPIBar: React.FC = () => {
 
     const cards = [
         {
-            title: 'إجمالي المبيعات',
+            title: 'صافي المبيعات',
             value: stats?.sales ?? 0,
             prevValue: prevStats?.sales ?? 0,
             format: 'currency' as const,
