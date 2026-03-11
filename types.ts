@@ -1294,6 +1294,10 @@ export interface WarehouseTransfer {
   status: 'pending' | 'in_transit' | 'completed' | 'cancelled';
   notes?: string;
   shippingCost?: number;
+  shippingCostForeign?: number;
+  shippingCostCurrency?: string;
+  shippingCostFxRate?: number;
+  shippingCostBase?: number;
   createdBy?: string;
   approvedBy?: string;
   completedAt?: string;
@@ -1310,6 +1314,9 @@ export interface WarehouseTransferItem {
   transferId: string;
   itemId: string;
   quantity: number;
+  qtyBase?: number;
+  qtyTrx?: number;
+  uomId?: string;
   transferredQuantity: number;
   notes?: string;
   // For display

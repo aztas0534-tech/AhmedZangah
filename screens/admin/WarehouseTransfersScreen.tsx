@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,7 +14,7 @@ import type { WarehouseTransfer } from '../../types';
 import { toYmdLocal } from '../../utils/dateUtils';
 
 const WarehouseTransfersScreen: React.FC = () => {
-    const { warehouses, transfers, createTransfer, completeTransfer, cancelTransfer } = useWarehouses();
+    const { warehouses, transfers, createTransfer, completeTransfer, cancelTransfer, getWarehouseStock } = useWarehouses();
     const { menuItems } = useMenu();
     const { hasPermission, user } = useAuth();
     const { showNotification } = useToast();
@@ -24,6 +24,18 @@ const WarehouseTransfersScreen: React.FC = () => {
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('all');
+    const [itemSearchTerm, setItemSearchTerm] = useState('');
+    const [warehouseStockByItem, setWarehouseStockByItem] = useState<Record<string, { available: number; avgCost: number }>>({});
+    const [itemUomUnits, setItemUomUnits] = useState<Record<string, Array<{ uomId: string; uomCode: string; uomName: string; qtyInBase: number }>>>({});
+    const [loadingWarehouseStock, setLoadingWarehouseStock] = useState(false);
+    const baseCurrencyCode = String((settings as any)?.baseCurrency || 'SAR').toUpperCase();
+    const operationalCurrencies = useMemo(() => {
+        const list = Array.isArray((settings as any)?.operationalCurrencies) ? (settings as any).operationalCurrencies : [];
+        const set = new Set<string>([baseCurrencyCode, ...list.map((c: any) => String(c || '').toUpperCase()).filter(Boolean)]);
+        return [...set];
+    }, [settings, baseCurrencyCode]);
+    const [costViewCurrency, setCostViewCurrency] = useState(baseCurrencyCode);
+    const [costViewRate, setCostViewRate] = useState(1);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -32,10 +44,46 @@ const WarehouseTransfersScreen: React.FC = () => {
         transfer_date: toYmdLocal(new Date()),
         shipping_cost: 0,
         notes: '',
-        items: [] as Array<{ itemId: string; quantity: number; notes: string }>,
+        items: [] as Array<{ itemId: string; quantity: number; notes: string; uomId?: string }>,
     });
 
     const canManage = hasPermission('stock.manage');
+
+    useEffect(() => {
+        setCostViewCurrency(baseCurrencyCode);
+        setCostViewRate(1);
+    }, [baseCurrencyCode, showModal]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const run = async () => {
+            if (!showModal || !formData.from_warehouse_id) {
+                setWarehouseStockByItem({});
+                return;
+            }
+            setLoadingWarehouseStock(true);
+            try {
+                const rows = await getWarehouseStock(formData.from_warehouse_id);
+                if (cancelled) return;
+                const next: Record<string, { available: number; avgCost: number }> = {};
+                for (const row of (Array.isArray(rows) ? rows : [])) {
+                    const itemId = String((row as any)?.item_id || (row as any)?.menu_items?.id || '').trim();
+                    if (!itemId) continue;
+                    next[itemId] = {
+                        available: Number((row as any)?.available_quantity ?? 0) || 0,
+                        avgCost: Number((row as any)?.avg_cost ?? 0) || 0,
+                    };
+                }
+                setWarehouseStockByItem(next);
+            } catch {
+                if (!cancelled) setWarehouseStockByItem({});
+            } finally {
+                if (!cancelled) setLoadingWarehouseStock(false);
+            }
+        };
+        void run();
+        return () => { cancelled = true; };
+    }, [showModal, formData.from_warehouse_id, getWarehouseStock]);
 
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const companyName = (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '';
@@ -170,20 +218,109 @@ const WarehouseTransfersScreen: React.FC = () => {
             notes: '',
             items: [],
         });
+        setItemSearchTerm('');
+        setWarehouseStockByItem({});
+        setItemUomUnits({});
         setShowModal(true);
+    };
+
+    const loadItemUoms = async (itemId: string) => {
+        const id = String(itemId || '').trim();
+        if (!id || itemUomUnits[id]) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        try {
+            const { data, error } = await supabase.rpc('list_item_uom_units', { p_item_id: id });
+            if (error) throw error;
+            const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+                uomId: String(r?.uom_id || ''),
+                uomCode: String(r?.uom_code || ''),
+                uomName: String(r?.uom_name || ''),
+                qtyInBase: Number(r?.qty_in_base || 1) || 1,
+            })).filter((x: any) => x.uomId);
+            setItemUomUnits((prev) => ({ ...prev, [id]: rows.length ? rows : [{ uomId: '', uomCode: 'base', uomName: 'Base', qtyInBase: 1 }] }));
+        } catch {
+            setItemUomUnits((prev) => ({ ...prev, [id]: [{ uomId: '', uomCode: 'base', uomName: 'Base', qtyInBase: 1 }] }));
+        }
+    };
+
+    const selectedItemIds = useMemo(() => new Set(formData.items.map(i => i.itemId).filter(Boolean)), [formData.items]);
+    const normalizedItemSearch = itemSearchTerm.trim().toLowerCase();
+    const searchableItems = useMemo(() => {
+        return menuItems.filter(mi => {
+            if ((mi as any)?.status && String((mi as any)?.status) !== 'active') return false;
+            const id = String(mi.id || '');
+            const nameAr = String(mi?.name?.ar || '');
+            const nameEn = String(mi?.name?.en || '');
+            const barcode = String((mi as any)?.barcode || '');
+            const sku = String((mi as any)?.sku || (mi as any)?.code || '');
+            const hay = `${id} ${nameAr} ${nameEn} ${barcode} ${sku}`.toLowerCase();
+            const matchesSearch = !normalizedItemSearch || hay.includes(normalizedItemSearch);
+            if (!matchesSearch) return false;
+            if (!formData.from_warehouse_id) return true;
+            const available = Number(warehouseStockByItem[id]?.available || 0);
+            return available > 0 || selectedItemIds.has(id);
+        });
+    }, [menuItems, normalizedItemSearch, formData.from_warehouse_id, warehouseStockByItem, selectedItemIds]);
+
+    const getItemLabel = (itemId: string) => {
+        const found = menuItems.find(mi => String(mi.id) === String(itemId));
+        if (!found) return itemId;
+        return String(found?.name?.ar || found?.name?.en || found?.id || itemId);
     };
 
     const addItem = () => {
         setFormData({
             ...formData,
-            items: [...formData.items, { itemId: '', quantity: 0, notes: '' }],
+            items: [...formData.items, { itemId: '', quantity: 0, notes: '', uomId: '' }],
         });
     };
 
+    const addFirstSearchResult = () => {
+        const first = searchableItems[0];
+        if (!first) {
+            showNotification('لا توجد نتيجة مطابقة للبحث', 'error');
+            return;
+        }
+        if (selectedItemIds.has(String(first.id))) {
+            showNotification('الصنف مضاف مسبقًا في القائمة', 'error');
+            return;
+        }
+        setFormData({
+            ...formData,
+            items: [...formData.items, { itemId: String(first.id), quantity: 1, notes: '', uomId: '' }],
+        });
+        void loadItemUoms(String(first.id));
+    };
+
     const updateItem = (index: number, field: string, value: any) => {
+        if (field === 'itemId') {
+            const duplicateAt = formData.items.findIndex((x, i) => i !== index && String(x.itemId) === String(value));
+            if (duplicateAt >= 0) {
+                showNotification('الصنف موجود مسبقًا في سطر آخر', 'error');
+                return;
+            }
+        }
         const newItems = [...formData.items];
         newItems[index] = { ...newItems[index], [field]: value };
+        if (field === 'itemId') {
+            newItems[index].uomId = '';
+            void loadItemUoms(String(value || ''));
+        }
         setFormData({ ...formData, items: newItems });
+    };
+
+    const getUomFactor = (itemId: string, uomId?: string) => {
+        const list = itemUomUnits[String(itemId)] || [];
+        if (!uomId) {
+            const base = list.find((u) => Math.abs(Number(u.qtyInBase || 1) - 1) < 1e-9);
+            return Number(base?.qtyInBase || 1) || 1;
+        }
+        const found = list.find((u) => String(u.uomId) === String(uomId));
+        return Number(found?.qtyInBase || 1) || 1;
+    };
+    const getQtyBase = (item: { itemId: string; quantity: number; uomId?: string }) => {
+        return Number(item.quantity || 0) * getUomFactor(item.itemId, item.uomId);
     };
 
     const removeItem = (index: number) => {
@@ -217,14 +354,27 @@ const WarehouseTransfersScreen: React.FC = () => {
             return;
         }
 
+        const unique = new Set(formData.items.map(x => String(x.itemId)));
+        if (unique.size !== formData.items.length) {
+            showNotification('يوجد صنف مكرر، يرجى دمج الكميات في سطر واحد', 'error');
+            return;
+        }
+
+        if (costViewCurrency !== baseCurrencyCode && Number(costViewRate || 0) <= 0) {
+            showNotification('يرجى إدخال معامل تحويل صحيح لعملة تكلفة النقل', 'error');
+            return;
+        }
+
         try {
             await createTransfer(
                 formData.from_warehouse_id,
                 formData.to_warehouse_id,
                 formData.transfer_date,
-                formData.items,
+                formData.items.map((x) => ({ itemId: x.itemId, quantity: x.quantity, notes: x.notes, uomId: x.uomId })),
                 formData.notes,
-                formData.shipping_cost > 0 ? formData.shipping_cost : undefined
+                formData.shipping_cost > 0 ? formData.shipping_cost : undefined,
+                costViewCurrency,
+                costViewCurrency === baseCurrencyCode ? 1 : Number(costViewRate || 0)
             );
             showNotification('تم إنشاء عملية النقل بنجاح', 'success');
             setShowModal(false);
@@ -277,6 +427,20 @@ const WarehouseTransfersScreen: React.FC = () => {
         };
         return colors[status] || 'bg-gray-100 text-gray-800';
     };
+
+    const estimatedBaseCost = useMemo(() => {
+        const itemsCost = formData.items.reduce((sum, item) => {
+            const avg = Number(warehouseStockByItem[item.itemId]?.avgCost || 0);
+            const qty = getQtyBase(item);
+            return sum + (avg * qty);
+        }, 0);
+        return itemsCost + Number(formData.shipping_cost || 0);
+    }, [formData.items, formData.shipping_cost, warehouseStockByItem, itemUomUnits]);
+
+    const estimatedDisplayCost = useMemo(() => {
+        const rate = costViewCurrency === baseCurrencyCode ? 1 : Math.max(0, Number(costViewRate || 0));
+        return estimatedBaseCost * rate;
+    }, [estimatedBaseCost, costViewCurrency, costViewRate, baseCurrencyCode]);
 
     return (
         <div className="p-6">
@@ -414,7 +578,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                                 <div className="mb-4">
                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded text-sm font-medium">
                                         <Icons.DollarSign className="w-4 h-4" />
-                                        تكلفة الشحن/النقل: {Number(transfer.shippingCost).toLocaleString('en-US')}
+                                        تكلفة الشحن/النقل: {Number(transfer.shippingCostForeign || transfer.shippingCost || 0).toLocaleString('en-US')} {String(transfer.shippingCostCurrency || baseCurrencyCode)} ({Number(transfer.shippingCostBase || transfer.shippingCost || 0).toLocaleString('en-US')} {baseCurrencyCode})
                                     </span>
                                 </div>
                             )}
@@ -514,7 +678,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                                 {/* Shipping Cost & Notes */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">تكلفة الشحن/النقل (اختياري)</label>
+                                        <label className="block text-sm font-medium mb-1">تكلفة الشحن/النقل (اختياري) — {costViewCurrency}</label>
                                         <input
                                             type="number"
                                             value={formData.shipping_cost || ''}
@@ -524,6 +688,9 @@ const WarehouseTransfersScreen: React.FC = () => {
                                             step="0.01"
                                             placeholder="0.00"
                                         />
+                                        <div className="mt-1 text-xs text-gray-500">
+                                            سيتم حفظ تكلفة النقل بعملة {costViewCurrency} مع تحويل تلقائي لعملة الأساس {baseCurrencyCode}.
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium mb-1">ملاحظات</label>
@@ -542,49 +709,136 @@ const WarehouseTransfersScreen: React.FC = () => {
                                         <label className="block text-sm font-medium">
                                             الأصناف <span className="text-red-500">*</span>
                                         </label>
+                                        <div className="flex items-center gap-3">
+                                            {loadingWarehouseStock && (
+                                                <span className="text-xs text-gray-500">جاري تحميل رصيد المخزن المصدر...</span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={addItem}
+                                                className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                            >
+                                                <Icons.Plus className="w-4 h-4" />
+                                                إضافة صنف
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+                                        <div className="md:col-span-2 relative">
+                                            <Icons.Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                value={itemSearchTerm}
+                                                onChange={(e) => setItemSearchTerm(e.target.value)}
+                                                className="w-full pr-9 pl-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                                placeholder="بحث سريع عن الصنف (الاسم/الباركود/المعرف)"
+                                            />
+                                        </div>
                                         <button
                                             type="button"
-                                            onClick={addItem}
-                                            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                            onClick={addFirstSearchResult}
+                                            className="px-3 py-2 border border-blue-200 text-blue-700 dark:border-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                         >
-                                            <Icons.Plus className="w-4 h-4" />
-                                            إضافة صنف
+                                            إضافة أول نتيجة
                                         </button>
                                     </div>
 
                                     <div className="space-y-2">
                                         {formData.items.map((item, index) => (
-                                            <div key={index} className="flex gap-2">
-                                                <select
-                                                    value={item.itemId}
-                                                    onChange={(e) => updateItem(index, 'itemId', e.target.value)}
-                                                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                                    required
-                                                >
-                                                    <option value="">اختر الصنف</option>
-                                                    {menuItems.map(mi => (
-                                                        <option key={mi.id} value={mi.id}>{mi.name.ar}</option>
-                                                    ))}
-                                                </select>
-                                                <input
-                                                    type="number"
-                                                    value={item.quantity}
-                                                    onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value))}
-                                                    placeholder="الكمية"
-                                                    className="w-32 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                                    min="0.01"
-                                                    step="0.01"
-                                                    required
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeItem(index)}
-                                                    className="px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30"
-                                                >
-                                                    <Icons.Trash className="w-4 h-4" />
-                                                </button>
+                                            <div key={index} className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                                <div className="flex gap-2">
+                                                    <select
+                                                        value={item.itemId}
+                                                        onChange={(e) => updateItem(index, 'itemId', e.target.value)}
+                                                        className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                                        required
+                                                    >
+                                                        <option value="">اختر الصنف</option>
+                                                        {searchableItems.map(mi => (
+                                                            <option key={mi.id} value={mi.id}>{String(mi?.name?.ar || mi?.name?.en || mi.id)}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select
+                                                        value={item.uomId || ''}
+                                                        onChange={(e) => updateItem(index, 'uomId', e.target.value)}
+                                                        className="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                                        disabled={!item.itemId}
+                                                    >
+                                                        <option value="">الوحدة</option>
+                                                        {(itemUomUnits[item.itemId] || []).map((u) => (
+                                                            <option key={u.uomId || `${item.itemId}-${u.uomCode}`} value={u.uomId}>{u.uomCode || u.uomName}</option>
+                                                        ))}
+                                                    </select>
+                                                    <input
+                                                        type="number"
+                                                        value={item.quantity}
+                                                        onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value))}
+                                                        placeholder="الكمية (بوحدة الإدخال)"
+                                                        className="w-32 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                                        min="0.01"
+                                                        step="0.01"
+                                                        required
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeItem(index)}
+                                                        className="px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30"
+                                                    >
+                                                        <Icons.Trash className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                {item.itemId && (
+                                                    <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-3">
+                                                        <span>الرصيد المتاح: {Number(warehouseStockByItem[item.itemId]?.available || 0).toLocaleString('en-US')}</span>
+                                                        <span>متوسط التكلفة: {Number(warehouseStockByItem[item.itemId]?.avgCost || 0).toLocaleString('en-US')} {baseCurrencyCode}</span>
+                                                        <span>كمية الأساس: {getQtyBase(item).toLocaleString('en-US')}</span>
+                                                        <span>تكلفة تقديرية للسطر: {(getQtyBase(item) * Number(warehouseStockByItem[item.itemId]?.avgCost || 0)).toLocaleString('en-US')} {baseCurrencyCode}</span>
+                                                        <span className="text-gray-500">الصنف: {getItemLabel(item.itemId)}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+
+                                <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/20">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold">ملخص تكلفة النقل (تقديري)</div>
+                                        <div className="text-xs text-gray-500">المرجع: متوسط تكلفة المخزن المصدر + تكلفة الشحن</div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                                        <div>
+                                            <label className="block text-xs text-gray-600 mb-1">عملة العرض</label>
+                                            <select
+                                                value={costViewCurrency}
+                                                onChange={(e) => {
+                                                    const v = String(e.target.value || '').toUpperCase();
+                                                    setCostViewCurrency(v || baseCurrencyCode);
+                                                    if (v === baseCurrencyCode) setCostViewRate(1);
+                                                }}
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                            >
+                                                {operationalCurrencies.map((c) => (
+                                                    <option key={c} value={c}>{c}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 mb-1">معامل التحويل (1 {baseCurrencyCode} = ? {costViewCurrency})</label>
+                                            <input
+                                                type="number"
+                                                value={costViewCurrency === baseCurrencyCode ? 1 : costViewRate}
+                                                onChange={(e) => setCostViewRate(parseFloat(e.target.value) || 0)}
+                                                min="0.000001"
+                                                step="0.000001"
+                                                disabled={costViewCurrency === baseCurrencyCode}
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 disabled:opacity-60"
+                                            />
+                                        </div>
+                                        <div className="text-sm">
+                                            <div>الإجمالي التقديري ({baseCurrencyCode}): <span className="font-bold">{estimatedBaseCost.toLocaleString('en-US')}</span></div>
+                                            <div>الإجمالي التقديري ({costViewCurrency}): <span className="font-bold">{estimatedDisplayCost.toLocaleString('en-US')}</span></div>
+                                        </div>
                                     </div>
                                 </div>
 

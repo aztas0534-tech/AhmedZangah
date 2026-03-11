@@ -20,9 +20,11 @@ interface WarehouseContextType {
     fromWarehouseId: string,
     toWarehouseId: string,
     transferDate: string,
-    items: Array<{ itemId: string; quantity: number; notes?: string }>,
+    items: Array<{ itemId: string; quantity: number; notes?: string; uomId?: string }>,
     notes?: string,
-    shippingCost?: number
+    shippingCost?: number,
+    shippingCostCurrency?: string,
+    shippingCostFxRate?: number
   ) => Promise<void>;
   completeTransfer: (transferId: string) => Promise<void>;
   cancelTransfer: (transferId: string, reason?: string) => Promise<void>;
@@ -67,6 +69,9 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     transferId: String(row.transfer_id),
     itemId: String(row.item_id),
     quantity: Number(row.quantity ?? 0),
+    qtyBase: Number(row.qty_base ?? 0),
+    qtyTrx: Number(row.qty_trx ?? 0),
+    uomId: row.uom_id ? String(row.uom_id) : undefined,
     transferredQuantity: Number(row.transferred_quantity ?? 0),
     notes: row.notes ?? undefined,
     itemName: row.item_name ?? undefined,
@@ -81,6 +86,10 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     status: row.status,
     notes: row.notes ?? undefined,
     shippingCost: Number(row.shipping_cost ?? 0),
+    shippingCostForeign: Number(row.shipping_cost_foreign ?? 0),
+    shippingCostCurrency: String(row.shipping_cost_currency || ''),
+    shippingCostFxRate: Number(row.shipping_cost_fx_rate ?? 0),
+    shippingCostBase: Number(row.shipping_cost_base ?? 0),
     createdBy: row.created_by ?? undefined,
     approvedBy: row.approved_by ?? undefined,
     completedAt: row.completed_at ?? undefined,
@@ -242,9 +251,11 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fromWarehouseId: string,
     toWarehouseId: string,
     transferDate: string,
-    items: Array<{ itemId: string; quantity: number; notes?: string }>,
+    items: Array<{ itemId: string; quantity: number; notes?: string; uomId?: string }>,
     notes?: string,
-    shippingCost?: number
+    shippingCost?: number,
+    shippingCostCurrency?: string,
+    shippingCostFxRate?: number
   ) => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('قاعدة البيانات غير متاحة');
@@ -262,6 +273,8 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         status: 'pending',
         notes,
         shipping_cost: shippingCost ?? 0,
+        shipping_cost_currency: shippingCostCurrency || null,
+        shipping_cost_fx_rate: shippingCostFxRate || null,
       })
       .select()
       .single();
@@ -274,6 +287,7 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       transfer_id: transferData.id,
       item_id: item.itemId,
       quantity: item.quantity,
+      uom_id: item.uomId || null,
       notes: item.notes,
     }));
 
