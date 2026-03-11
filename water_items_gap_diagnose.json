@@ -1,0 +1,186 @@
+{
+  "items": [
+    {
+      "item_id": "5c707654-c562-4bdf-9db7-0758df9548fc",
+      "name_ar": "ماء طيبة جرعه 24حبة"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي"
+    },
+    {
+      "item_id": "2f3a651d-3368-4db3-941f-94f219cc554d",
+      "name_ar": "ماء طيبة كبير"
+    }
+  ],
+  "by_order_status": [
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "status": "cancelled",
+      "orders_count": "30",
+      "qty_sale": "58",
+      "qty_ret_in": "0",
+      "net_qty": "58",
+      "net_cost": "392.990658"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "status": "delivered",
+      "orders_count": "10",
+      "qty_sale": "10",
+      "qty_ret_in": "0",
+      "net_qty": "10",
+      "net_cost": "67.757010"
+    },
+    {
+      "item_id": "2f3a651d-3368-4db3-941f-94f219cc554d",
+      "name_ar": "ماء طيبة كبير",
+      "status": "cancelled",
+      "orders_count": "7",
+      "qty_sale": "35",
+      "qty_ret_in": "0",
+      "net_qty": "35",
+      "net_cost": "237.149535"
+    },
+    {
+      "item_id": "2f3a651d-3368-4db3-941f-94f219cc554d",
+      "name_ar": "ماء طيبة كبير",
+      "status": "delivered",
+      "orders_count": "2",
+      "qty_sale": "2",
+      "qty_ret_in": "0",
+      "net_qty": "2",
+      "net_cost": "13.551402"
+    }
+  ],
+  "batches": [
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "batch_short": "9c35b7c0",
+      "quantity_received": "100",
+      "quantity_consumed": "68",
+      "remaining": "32",
+      "unit_cost": "6.775701",
+      "sale_out": "68",
+      "ret_in": "0",
+      "ret_out": "0",
+      "qc_status": "released",
+      "status": "active"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "batch_short": "36d60fe3",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "2900.0000000000000000",
+      "sale_out": "0",
+      "ret_in": "1",
+      "ret_out": "0",
+      "qc_status": "released",
+      "status": "inactive"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "batch_short": "06de5453",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "ret_in": "1",
+      "ret_out": "0",
+      "qc_status": "inspected",
+      "status": "inactive"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "batch_short": "687ffd79",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "ret_in": "1",
+      "ret_out": "0",
+      "qc_status": "pending",
+      "status": "inactive"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "batch_short": "72b69a5a",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "ret_in": "1",
+      "ret_out": "0",
+      "qc_status": "pending",
+      "status": "inactive"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "name_ar": "ماء طيبة صغير صغير12*750ملي",
+      "batch_short": "f81cd057",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "ret_in": "1",
+      "ret_out": "0",
+      "qc_status": "pending",
+      "status": "inactive"
+    },
+    {
+      "item_id": "2f3a651d-3368-4db3-941f-94f219cc554d",
+      "name_ar": "ماء طيبة كبير",
+      "batch_short": "3802d66b",
+      "quantity_received": "50",
+      "quantity_consumed": "37",
+      "remaining": "13",
+      "unit_cost": "6.775701",
+      "sale_out": "37",
+      "ret_in": "0",
+      "ret_out": "0",
+      "qc_status": "released",
+      "status": "active"
+    },
+    {
+      "item_id": "2f3a651d-3368-4db3-941f-94f219cc554d",
+      "name_ar": "ماء طيبة كبير",
+      "batch_short": "e4995176",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "2900.0000000000000000",
+      "sale_out": "0",
+      "ret_in": "1",
+      "ret_out": "0",
+      "qc_status": "released",
+      "status": "inactive"
+    },
+    {
+      "item_id": "2f3a651d-3368-4db3-941f-94f219cc554d",
+      "name_ar": "ماء طيبة كبير",
+      "batch_short": "9877bda5",
+      "quantity_received": "0",
+      "quantity_consumed": "0",
+      "remaining": "0",
+      "unit_cost": "6.775701",
+      "sale_out": "0",
+      "ret_in": "1",
+      "ret_out": "0",
+      "qc_status": "pending",
+      "status": "inactive"
+    }
+  ]
+}

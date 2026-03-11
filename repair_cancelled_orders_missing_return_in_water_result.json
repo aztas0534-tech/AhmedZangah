@@ -1,0 +1,419 @@
+{
+  "generated_at": "2026-03-10T23:49:38.689Z",
+  "before": [
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "994c261a-68d4-4abe-9d9a-648a11f84e5c",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "a1baa402-5253-4ebb-b4ad-c4c006ba99d3",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "a6a08da7-5833-4a43-bf61-92748cce38c1",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "a6a87aff-abb6-4ce8-99b4-f99e867855ed",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "a72c25d5-d9ce-4abc-b89b-9638736875c5",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "a9532d79-66e0-4981-b277-520c972e148c",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "b9edc75e-631f-4f67-be06-0432088e63ec",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "be9f6c06-2d7c-4e17-9639-e4422c872f12",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "c438f287-f79e-4fda-97a5-8e3e00744316",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "c74f6882-4517-456e-8f3a-b6fc562da4db",
+      "qty_sale": "5",
+      "qty_ret_in": "0",
+      "qty_missing": "5",
+      "cost_sale": "33.878505",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "cb8070ee-a900-4129-9836-b815662ad699",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "ed4cf19d-5c5a-4f58-aead-86f1fcc49454",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "ef8d2056-4f2e-4298-a253-5305a3fa135e",
+      "qty_sale": "5",
+      "qty_ret_in": "0",
+      "qty_missing": "5",
+      "cost_sale": "33.878505",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "f12d8c4e-b4d5-49e1-831f-9764b4b4ab94",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "f3b9706c-365e-4f32-899a-1eccda4cdb76",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "fa7fb2ad-2612-4d51-baca-72324990b609",
+      "qty_sale": "1",
+      "qty_ret_in": "0",
+      "qty_missing": "1",
+      "cost_sale": "6.775701",
+      "cost_ret_in": "0"
+    },
+    {
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "order_id": "fd4df06a-db51-40d8-bcdc-a62f125bfdbb",
+      "qty_sale": "5",
+      "qty_ret_in": "0",
+      "qty_missing": "5",
+      "cost_sale": "33.878505",
+      "cost_ret_in": "0"
+    }
+  ],
+  "inserted_batches": [
+    {
+      "batch_id": "7591f7f5-aafa-4888-ba2b-9b7579c60b2a",
+      "order_id": "994c261a-68d4-4abe-9d9a-648a11f84e5c",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "7817f39f-79c8-4661-9d3b-716b7033309a",
+      "order_id": "a1baa402-5253-4ebb-b4ad-c4c006ba99d3",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "95c0bf2f-0472-4ecf-8ff4-976cafd5b173",
+      "order_id": "a6a08da7-5833-4a43-bf61-92748cce38c1",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "6a596f3c-2be5-430f-9db5-29727e9c0448",
+      "order_id": "a6a87aff-abb6-4ce8-99b4-f99e867855ed",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "2fc7b71f-9568-455d-9df8-4aa8858b956b",
+      "order_id": "a72c25d5-d9ce-4abc-b89b-9638736875c5",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "b6affbd5-3939-461c-b717-422d9f059294",
+      "order_id": "a9532d79-66e0-4981-b277-520c972e148c",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "ce648711-db2f-4829-b30e-be522605c8cb",
+      "order_id": "b9edc75e-631f-4f67-be06-0432088e63ec",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "8660cb06-dcef-4ae2-9875-dc9e9a56e519",
+      "order_id": "be9f6c06-2d7c-4e17-9639-e4422c872f12",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "b3e33d75-7683-459e-ab9b-46d8640ce9a2",
+      "order_id": "c438f287-f79e-4fda-97a5-8e3e00744316",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "dd492100-937f-4913-ba89-8e6fabd75534",
+      "order_id": "c74f6882-4517-456e-8f3a-b6fc562da4db",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 5,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "3a70f595-6042-435a-aaab-8a3433997773",
+      "order_id": "cb8070ee-a900-4129-9836-b815662ad699",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "6eaf4fb6-ab5b-4130-84a1-b2338ef4fdd2",
+      "order_id": "ed4cf19d-5c5a-4f58-aead-86f1fcc49454",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "29324218-0e46-43bc-beea-b0578798ed5a",
+      "order_id": "ef8d2056-4f2e-4298-a253-5305a3fa135e",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 5,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "644dc1f9-79f8-41f5-a2b7-2e900f764057",
+      "order_id": "f12d8c4e-b4d5-49e1-831f-9764b4b4ab94",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "8c872d32-b2b3-4030-82ca-c9a7277e778f",
+      "order_id": "f3b9706c-365e-4f32-899a-1eccda4cdb76",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "b6a49a09-2e9c-474e-a201-2cbabbe08eb6",
+      "order_id": "fa7fb2ad-2612-4d51-baca-72324990b609",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "batch_id": "648ffa3d-3f08-4f81-b5d1-f4c768c1edcf",
+      "order_id": "fd4df06a-db51-40d8-bcdc-a62f125bfdbb",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+      "qty": 5,
+      "unit_cost": 6.775701
+    }
+  ],
+  "inserted_movements": [
+    {
+      "movement_id": "0ad1a48a-9ab1-4f2b-8031-ca59a82c5252",
+      "order_id": "994c261a-68d4-4abe-9d9a-648a11f84e5c",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "61bd8690-628a-4154-bab0-c0a2780d3882",
+      "order_id": "a1baa402-5253-4ebb-b4ad-c4c006ba99d3",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "14df5d56-a5ef-4b94-8c52-1548425255a6",
+      "order_id": "a6a08da7-5833-4a43-bf61-92748cce38c1",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "fd11a435-c66c-4e87-8880-5f27602c1249",
+      "order_id": "a6a87aff-abb6-4ce8-99b4-f99e867855ed",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "e1efdf17-6765-451d-b74e-d881138e1b86",
+      "order_id": "a72c25d5-d9ce-4abc-b89b-9638736875c5",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "e42cae1d-ed96-47e5-bed8-d6a054cb8aa1",
+      "order_id": "a9532d79-66e0-4981-b277-520c972e148c",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "5e4376de-8e60-4b4e-b104-b2134601bc74",
+      "order_id": "b9edc75e-631f-4f67-be06-0432088e63ec",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "a36acd49-dd6c-4f66-bba6-873d01e81faa",
+      "order_id": "be9f6c06-2d7c-4e17-9639-e4422c872f12",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "c7663e47-9ea1-445c-8661-2fd43cb5564e",
+      "order_id": "c438f287-f79e-4fda-97a5-8e3e00744316",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "88f14384-38fc-4ef2-89ef-c03e8a0d6ddc",
+      "order_id": "c74f6882-4517-456e-8f3a-b6fc562da4db",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 5,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "f15cebf3-49e3-4fce-a844-e49486a276d4",
+      "order_id": "cb8070ee-a900-4129-9836-b815662ad699",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "9ee29895-a93a-4cc2-8fb5-3ae85c4cbf6d",
+      "order_id": "ed4cf19d-5c5a-4f58-aead-86f1fcc49454",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "9012858a-bd10-4d27-9977-1398fcfa9b8f",
+      "order_id": "ef8d2056-4f2e-4298-a253-5305a3fa135e",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 5,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "4ea9210f-493d-411f-a136-2a11066b93c0",
+      "order_id": "f12d8c4e-b4d5-49e1-831f-9764b4b4ab94",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "3f3968d2-7dfb-429e-afa2-e3e587408819",
+      "order_id": "f3b9706c-365e-4f32-899a-1eccda4cdb76",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "bf4b0a88-e030-418b-94c4-3b695047fabc",
+      "order_id": "fa7fb2ad-2612-4d51-baca-72324990b609",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 1,
+      "unit_cost": 6.775701
+    },
+    {
+      "movement_id": "cc288b8a-4f49-4a20-9e49-9a98e1f11723",
+      "order_id": "fd4df06a-db51-40d8-bcdc-a62f125bfdbb",
+      "item_id": "efa91e13-9cb2-4fb1-b3f0-4f711c22e59a",
+      "qty": 5,
+      "unit_cost": 6.775701
+    }
+  ],
+  "after": [],
+  "failures": []
+}

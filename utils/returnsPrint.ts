@@ -205,6 +205,41 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     }
   }
 
+  // ── Fetch purchase_items UOM for each item (the actual purchase UOM, not base unit) ──
+  const purchaseUomMap = new Map<string, string>();
+  try {
+    const { data: piRows } = await supabase
+      .from('purchase_items')
+      .select('item_id,uom_id')
+      .eq('purchase_order_id', poId);
+    if (Array.isArray(piRows)) {
+      const uomIds = [...new Set((piRows as any[]).map((r: any) => r?.uom_id).filter(Boolean))];
+      if (uomIds.length > 0) {
+        const { data: uomRows } = await supabase
+          .from('uom_units')
+          .select('id,code,data')
+          .in('id', uomIds);
+        const uomCodeMap = new Map<string, string>();
+        for (const u of (uomRows || []) as any[]) {
+          const uid = String(u?.id || '');
+          // Prefer Arabic label from data, fallback to code
+          const d: any = u?.data || {};
+          const labelObj: any = d?.label && typeof d.label === 'object' ? d.label : (d?.name && typeof d.name === 'object' ? d.name : {});
+          const ar = typeof labelObj?.ar === 'string' ? labelObj.ar.trim() : '';
+          const code = String(u?.code || '').trim();
+          if (uid) uomCodeMap.set(uid, ar || code);
+        }
+        for (const pi of (piRows as any[])) {
+          const itemId = String(pi?.item_id || '');
+          const uomId = String(pi?.uom_id || '');
+          if (itemId && uomId && uomCodeMap.has(uomId)) {
+            purchaseUomMap.set(itemId, uomCodeMap.get(uomId)!);
+          }
+        }
+      }
+    }
+  } catch { /* non-critical */ }
+
   const { data: mv, error: mvErr } = await supabase
     .from('inventory_movements')
     .select('total_cost')
@@ -216,7 +251,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
   const totalBase = (Array.isArray(mv) ? mv : []).reduce((s: number, r: any) => s + Number(r?.total_cost || 0), 0);
   const totalForeign = currency && currency !== baseCurrency ? (safeFx > 0 ? totalBase / safeFx : 0) : totalBase;
 
-  // Build unit_type key → Arabic label lookup
+  // Build unit_type key → Arabic label lookup (fallback for items without purchase UOM)
   const unitLabelMap = new Map<string, string>();
   try {
     const { data: utRows } = await supabase.from('unit_types').select('key,data');
@@ -230,7 +265,11 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     }
   } catch { /* non-critical */ }
 
-  const resolveUnitLabel = (unitTypeKey?: string | null): string | undefined => {
+  const resolveUnitLabel = (itemId: string, unitTypeKey?: string | null): string | undefined => {
+    // Priority 1: purchase order UOM (the actual return/purchase unit)
+    const purchaseUom = purchaseUomMap.get(itemId);
+    if (purchaseUom) return purchaseUom;
+    // Priority 2: unit_type from menu_items (base unit fallback)
     if (!unitTypeKey) return undefined;
     const raw = String(unitTypeKey).trim();
     if (!raw) return undefined;
@@ -262,7 +301,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
       quantity: Number(it?.quantity || 0) || 0,
       unitCost: Number(it?.unit_cost || 0) || 0,
       totalCost: Number(it?.total_cost || 0) || 0,
-      uomCode: resolveUnitLabel(it?.menu_items?.unit_type),
+      uomCode: resolveUnitLabel(String(it?.item_id || ''), it?.menu_items?.unit_type),
     })),
   };
 

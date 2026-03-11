@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-03-11T00:01:36.181Z",
+  "before_open_rows": 0,
+  "before_missing_qty": 0,
+  "before_excess_qty": 0,
+  "inserted_batches": 0,
+  "inserted_return_in": 0,
+  "inserted_sale_out_reversal": 0,
+  "impacted_items": [],
+  "failures": [],
+  "after_open_rows": 0,
+  "after_missing_qty": 0,
+  "after_excess_qty": 0
+}
