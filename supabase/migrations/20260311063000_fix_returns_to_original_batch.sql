@@ -467,8 +467,18 @@ begin
     'SALES_RETURN_PROCESS'
   );
 end;
+<<<<<<< HEAD
 $$
 revoke all on function public.process_sales_return(uuid) from public
 revoke execute on function public.process_sales_return(uuid) from anon
 grant execute on function public.process_sales_return(uuid) to authenticated
 notify pgrst, 'reload schema'
+=======
+$$;
+
+revoke all on function public.process_sales_return(uuid) from public;
+revoke execute on function public.process_sales_return(uuid) from anon;
+grant execute on function public.process_sales_return(uuid) to authenticated;
+
+notify pgrst, 'reload schema';
+>>>>>>> 08c571d75d7ee9a6ad9bb1f7d6fa9268d94cae2a

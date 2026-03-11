@@ -11,7 +11,12 @@ begin
   drop function if exists public.get_product_sales_report(timestamptz, timestamptz, uuid);
   drop function if exists public.get_product_sales_report(timestamptz, timestamptz, text);
 exception when others then null;
+<<<<<<< HEAD
 end $$
+=======
+end $$;
+
+>>>>>>> 08c571d75d7ee9a6ad9bb1f7d6fa9268d94cae2a
 create or replace function public.get_product_sales_report(
   p_start_date timestamptz,
   p_end_date timestamptz,
@@ -63,8 +68,18 @@ as $$
     false
   ) v
   order by v.total_sales desc;
+<<<<<<< HEAD
 $$
 revoke all on function public.get_product_sales_report(timestamptz, timestamptz, uuid) from public
 revoke execute on function public.get_product_sales_report(timestamptz, timestamptz, uuid) from anon
 grant execute on function public.get_product_sales_report(timestamptz, timestamptz, uuid) to authenticated
 notify pgrst, 'reload schema'
+=======
+$$;
+
+revoke all on function public.get_product_sales_report(timestamptz, timestamptz, uuid) from public;
+revoke execute on function public.get_product_sales_report(timestamptz, timestamptz, uuid) from anon;
+grant execute on function public.get_product_sales_report(timestamptz, timestamptz, uuid) to authenticated;
+
+notify pgrst, 'reload schema';
+>>>>>>> 08c571d75d7ee9a6ad9bb1f7d6fa9268d94cae2a

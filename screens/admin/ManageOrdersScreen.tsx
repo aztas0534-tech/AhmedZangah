@@ -12,6 +12,8 @@ import Spinner from '../../components/Spinner';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import PrintableOrder from '../../components/admin/PrintableOrder';
 import PrintableQuotation from '../../components/admin/documents/PrintableQuotation';
+import StandaloneQuotationPrint from '../../components/admin/PrintableQuotation';
+import type { QuotationPrintData } from '../../components/admin/PrintableQuotation';
 import { useDeliveryZones } from '../../contexts/DeliveryZoneContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
@@ -64,7 +66,7 @@ const unitTranslations: Record<string, string> = {
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders } = useOrders();
+    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders } = useOrders();
     const { createReturn, processReturn, getReturnsByOrder } = useSalesReturn();
     const { showNotification } = useToast();
     const language = 'ar';
@@ -2037,45 +2039,104 @@ const ManageOrdersScreen: React.FC = () => {
         inStoreCreationLock.current = true;
         setIsInStoreCreating(true);
         try {
-            const order = await createInStoreDraftQuotation({
-                lines: inStoreLines,
-                customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
-                partyId: inStoreCustomerMode === 'party' && inStoreSelectedPartyId ? inStoreSelectedPartyId : undefined,
-                customerName: inStoreCustomerName,
-                phoneNumber: inStorePhoneNumber,
-                notes: inStoreNotes,
-                invoiceStatement: inStoreInvoiceStatement,
-                discountType: inStoreDiscountType,
-                discountValue: Number(inStoreDiscountValue) || 0,
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('Supabase غير مهيأ.');
+
+            // Build items for price_quotation_items
+            const roundMoney = (v: number) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0; };
+            const qtItems = inStoreLines.map((line: any, idx: number) => {
+                const qty = Number(line.quantity || 1);
+                const price = Number(line.price || line.unitPrice || 0);
+                const name = line.menuItem?.name?.[language] || line.menuItem?.name?.ar || line.menuItem?.name?.en || line.menuItemName || line.name || 'صنف';
+                return {
+                    item_id: line.menuItemId || line.itemId || null,
+                    item_name: name,
+                    unit: 'piece',
+                    quantity: qty,
+                    unit_price: roundMoney(price),
+                    total: roundMoney(qty * price),
+                    notes: '',
+                    sort_order: idx,
+                };
             });
+            const subtotal = roundMoney(qtItems.reduce((s: number, i: any) => s + i.total, 0));
+            const discType = inStoreDiscountType === 'percent' ? 'percentage' : (Number(inStoreDiscountValue) > 0 ? 'fixed' : 'none');
+            const discVal = Number(inStoreDiscountValue) || 0;
+            const discAmt = discType === 'percentage' ? roundMoney(subtotal * discVal / 100) : (discType === 'fixed' ? roundMoney(Math.min(discVal, subtotal)) : 0);
+            const total = roundMoney(subtotal - discAmt);
+
+            // Insert quotation header
+            const { data: qtRow, error: qtErr } = await supabase
+                .from('price_quotations')
+                .insert({
+                    customer_name: inStoreCustomerName || 'عميل حضوري',
+                    customer_phone: inStorePhoneNumber || '',
+                    currency: (settings as any).currency || 'YER',
+                    discount_type: discType,
+                    discount_value: discVal,
+                    subtotal,
+                    discount_amount: discAmt,
+                    total,
+                    notes: inStoreNotes || '',
+                })
+                .select('id, quotation_number')
+                .single();
+            if (qtErr) throw qtErr;
+            const quotationId = (qtRow as any).id;
+            const quotationNumber = (qtRow as any).quotation_number;
+
+            // Insert items
+            const { error: itemsErr } = await supabase
+                .from('price_quotation_items')
+                .insert(qtItems.map(it => ({ ...it, quotation_id: quotationId })));
+            if (itemsErr) throw itemsErr;
+
+            // Print using A5 luxury template
+            let printNumber = 1;
+            try {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'price_quotations', p_source_id: quotationId, p_template: 'PrintableQuotation' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
 
             const fallbackBrand = {
                 name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
                 address: (settings.address || '').trim(),
                 contactNumber: (settings.contactNumber || '').trim(),
                 logoUrl: (settings.logoUrl || '').trim(),
+                vatNumber: ((settings as any).vatNumber || '').trim(),
             };
-            let printNumber = 1;
-            try {
-                const supabase = getSupabaseClient();
-                if (!supabase) throw new Error('Supabase غير مهيأ.');
-                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'orders', p_source_id: order.id, p_template: 'PrintableQuotation' });
-                printNumber = Number(pn) || 1;
-            } catch { /* fallback */ }
+            const printData: QuotationPrintData = {
+                quotationNumber,
+                createdAt: new Date().toISOString(),
+                validUntil: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
+                customerName: inStoreCustomerName || 'عميل حضوري',
+                customerPhone: inStorePhoneNumber || '',
+                currency: (settings as any).currency || 'YER',
+                items: qtItems.map(it => ({ itemName: it.item_name, unit: it.unit, quantity: it.quantity, unitPrice: it.unit_price, total: it.total })),
+                subtotal,
+                discountType: discType,
+                discountValue: discVal,
+                discountAmount: discAmt,
+                taxRate: 0,
+                taxAmount: 0,
+                total,
+                notes: inStoreNotes || '',
+            };
             const printHtml = renderToString(
-                <PrintableQuotation
-                    order={order}
-                    brand={fallbackBrand}
+                <StandaloneQuotationPrint
+                    data={printData}
                     language={language as 'ar' | 'en'}
-                    inStoreLines={inStoreLines}
-                    externalCustomerName={inStoreCustomerName}
-                    externalCustomerPhone={inStorePhoneNumber}
+                    companyName={fallbackBrand.name}
+                    companyAddress={fallbackBrand.address}
+                    companyPhone={fallbackBrand.contactNumber}
+                    logoUrl={fallbackBrand.logoUrl}
+                    vatNumber={fallbackBrand.vatNumber}
                     printNumber={printNumber}
                 />
             );
-            printContent(printHtml, `Quotation - ${order.id.slice(-6).toUpperCase()}`);
+            printContent(printHtml, `عرض سعر #${quotationNumber}`);
 
-            showNotification(`تم حفظ عرض السعر #${order.id.slice(-6).toUpperCase()}`, 'success');
+            showNotification(`تم حفظ عرض السعر #${quotationNumber}`, 'success');
             setIsInStoreSaleOpen(false);
             setInStoreCustomerName('');
             setInStorePhoneNumber('');
@@ -2093,7 +2154,7 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreSelectedPartyId('');
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
-            showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل حفظ المسودة.', 'error');
+            showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل حفظ عرض السعر.', 'error');
         } finally {
             inStoreCreationLock.current = false;
             setIsInStoreCreating(false);

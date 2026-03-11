@@ -2,10 +2,35 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Client } from 'pg';
 
+const loadEnv = (filePath) => {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const i = t.indexOf('=');
+      if (i <= 0) continue;
+      const k = t.slice(0, i).trim();
+      let v = t.slice(i + 1).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (!process.env[k]) process.env[k] = v;
+    }
+  } catch {}
+};
+
+loadEnv(path.join(process.cwd(), '.env.production'));
+loadEnv(path.join(process.cwd(), '.env.local'));
+
 const password = String(process.env.DBPW || process.env.SUPABASE_DB_PASSWORD || '').trim();
 if (!password) throw new Error('Missing DBPW or SUPABASE_DB_PASSWORD');
 
-const refs = ['PO-MAIN-2026-000002', 'PO-MAIN-2026-000003'];
+const refs = String(process.env.PO_REFS || '')
+  .split(',')
+  .map((x) => x.trim())
+  .filter(Boolean);
+if (refs.length === 0) {
+  refs.push('PO-MAIN-2026-000002', 'PO-MAIN-2026-000003');
+}
 
 const client = new Client({
   host: process.env.DB_HOST || 'aws-1-ap-south-1.pooler.supabase.com',
@@ -46,18 +71,12 @@ try {
     `
     select to_jsonb(po) as row
     from public.purchase_orders po
-    where po.created_at >= '2026-01-01'::timestamptz
-      and (
-        po.reference_number ilike '%000002%'
-        or po.reference_number ilike '%000003%'
-        or abs(coalesce(po.total_amount,0) - 70515) < 0.01
-        or abs(coalesce(po.base_total,0) - 70515) < 0.01
-        or abs(coalesce(po.total_amount,0) - 164.75) < 0.01
-        or abs(coalesce(po.base_total,0) - 164.75) < 0.01
-      )
+    where po.reference_number = any($1::text[])
+       or po.po_number = any($1::text[])
     order by po.created_at desc
     limit 30
-    `
+    `,
+    [refs]
   );
 
   const orders = await qJsonRows(
@@ -66,8 +85,6 @@ try {
     from public.purchase_orders po
     where po.reference_number = any($1::text[])
        or po.po_number = any($1::text[])
-       or po.reference_number ilike any(array['%000002%','%000003%'])
-       or po.po_number ilike any(array['%000002%','%000003%'])
     order by po.created_at asc
     `,
     [refs]
@@ -81,6 +98,7 @@ try {
     const items = await qJsonRows(`select to_jsonb(pi) as row from public.purchase_items pi where pi.purchase_order_id = $1 order by pi.created_at asc nulls last`, [poId]);
     const receipts = await qJsonRows(`select to_jsonb(pr) as row from public.purchase_receipts pr where pr.purchase_order_id = $1 order by pr.created_at asc nulls last`, [poId]);
     const receiptIds = uniq(receipts.map((r) => r.id));
+    const shipmentIds = uniq(receipts.map((r) => String(r.import_shipment_id || '')).filter(Boolean));
     const receiptItems = receiptIds.length
       ? await qJsonRows(`select to_jsonb(pri) as row from public.purchase_receipt_items pri where pri.receipt_id = any($1::uuid[]) order by pri.created_at asc nulls last`, [receiptIds])
       : [];
@@ -95,13 +113,19 @@ try {
       `select to_jsonb(im) as row from public.inventory_movements im where im.reference_table='purchase_orders' and im.reference_id::text = $1 order by im.occurred_at asc nulls last, im.created_at asc nulls last`,
       [poId]
     );
+    const movementsReceipt = receiptIds.length
+      ? await qJsonRows(
+        `select to_jsonb(im) as row from public.inventory_movements im where im.reference_table='purchase_receipts' and im.reference_id::text = any($1::text[]) order by im.occurred_at asc nulls last, im.created_at asc nulls last`,
+        [receiptIds.map(String)]
+      )
+      : [];
     const movementsRet = returnIds.length
       ? await qJsonRows(
         `select to_jsonb(im) as row from public.inventory_movements im where im.reference_table='purchase_returns' and im.reference_id::text = any($1::text[]) order by im.occurred_at asc nulls last, im.created_at asc nulls last`,
         [returnIds.map(String)]
       )
       : [];
-    const movementIds = uniq([...movementsPo, ...movementsRet].map((m) => m.id));
+    const movementIds = uniq([...movementsPo, ...movementsReceipt, ...movementsRet].map((m) => m.id));
 
     const jePo = await qJsonRows(`select to_jsonb(je) as row from public.journal_entries je where je.source_table='purchase_orders' and je.source_id = $1 order by je.entry_date asc, je.created_at asc`, [poId]);
     const jeIm = movementIds.length
@@ -132,8 +156,20 @@ try {
       : [];
 
     const itemIds = uniq(items.map((i) => String(i.item_id || '')));
+    const itemDefs = itemIds.length
+      ? await qJsonRows(`select to_jsonb(mi) as row from public.menu_items mi where mi.id::text = any($1::text[])`, [itemIds])
+      : [];
     const stockRows = itemIds.length
       ? await qJsonRows(`select to_jsonb(sm) as row from public.stock_management sm where sm.item_id::text = any($1::text[]) order by sm.item_id::text, sm.warehouse_id::text`, [itemIds])
+      : [];
+    const shipments = shipmentIds.length
+      ? await qJsonRows(`select to_jsonb(s) as row from public.import_shipments s where s.id::text = any($1::text[])`, [shipmentIds])
+      : [];
+    const shipmentExpenses = shipmentIds.length
+      ? await qJsonRows(`select to_jsonb(se) as row from public.import_shipment_expenses se where se.import_shipment_id::text = any($1::text[]) order by se.created_at asc nulls last`, [shipmentIds])
+      : [];
+    const batches = receiptIds.length
+      ? await qJsonRows(`select to_jsonb(b) as row from public.batches b where b.receipt_id = any($1::uuid[]) order by b.created_at asc nulls last`, [receiptIds])
       : [];
 
     const qtyOrdered = sum(items, (x) => x.qty_base ?? x.quantity);
@@ -141,7 +177,7 @@ try {
     const qtyReceivedOnReceipts = sum(receiptItems, (x) => x.quantity ?? x.qty_base);
     const qtyReturnedByDocs = sum(returnItems, (x) => x.quantity ?? x.qty_base);
     const qtyReturnOutMovements = sum(movementsRet.filter((m) => String(m.movement_type) === 'return_out'), (x) => x.quantity ?? x.qty_base);
-    const qtyPurchaseInMovements = sum(movementsPo.filter((m) => String(m.movement_type) === 'purchase_in'), (x) => x.quantity ?? x.qty_base);
+    const qtyPurchaseInMovements = sum(movementsReceipt.filter((m) => String(m.movement_type) === 'purchase_in'), (x) => x.quantity ?? x.qty_base);
 
     const returnExecution = returns.map((r) => {
       const rid = String(r.id);
@@ -195,14 +231,19 @@ try {
       returns,
       return_items: returnItems,
       movements_purchase_orders: movementsPo,
+      movements_purchase_receipts: movementsReceipt,
       movements_purchase_returns: movementsRet,
+      batches_for_receipts: batches,
       payments,
       journal_entries_po: jePo,
       journal_entries_inventory_movements: jeIm,
       journal_entries_payments: jePay,
       journal_lines: jl,
       party_ledger_entries: partyLedger,
+      item_definitions: itemDefs,
       stock_rows_for_items: stockRows,
+      import_shipments: shipments,
+      import_shipment_expenses: shipmentExpenses,
       accounting_signals: {
         ap_lines_count: apImpactLines.length,
         inventory_lines_count: inventoryLines.length,

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMenu } from '../../contexts/MenuContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import { localizeSupabaseError } from '../../utils/errorUtils';
@@ -90,6 +92,9 @@ const QuotationsScreen: React.FC = () => {
     const { showNotification } = useToast();
     const { settings } = useSettings();
     const { menuItems: allMenuItems } = useMenu();
+    const sessionScope = useSessionScope();
+    const navigate = useNavigate();
+    const fefoCache = useRef<Map<string, number>>(new Map());
 
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
@@ -307,13 +312,41 @@ const QuotationsScreen: React.FC = () => {
         setIsModalOpen(true);
     }, []);
 
-    // Add item from menu
-    const addItemFromMenu = useCallback((menuItemId: string) => {
+    // Add item from menu with FEFO pricing
+    const addItemFromMenu = useCallback(async (menuItemId: string) => {
         const mi = menuItems.find(m => m.id === menuItemId);
         if (!mi) return;
         const name = mi.name?.['ar'] || mi.name?.en || mi.id;
-        const price = Number(mi.price) || 0;
+        let price = Number(mi.price) || 0;
         const unit = mi.unitType === 'kg' || mi.unitType === 'gram' ? mi.unitType : 'piece';
+
+        // Try FEFO pricing for dynamic batch price
+        const warehouseId = sessionScope.scope?.warehouseId;
+        const cacheKey = `${menuItemId}_${warehouseId}_${formCurrency}`;
+        if (fefoCache.current.has(cacheKey)) {
+            price = fefoCache.current.get(cacheKey) || price;
+        } else if (warehouseId) {
+            try {
+                const supabase = getSupabaseClient();
+                if (supabase) {
+                    const { data: fefoData } = await supabase.rpc('get_fefo_pricing', {
+                        p_item_id: menuItemId,
+                        p_warehouse_id: warehouseId,
+                        p_quantity: 1,
+                        p_customer_id: null,
+                        p_currency_code: formCurrency || 'YER',
+                        p_batch_id: null,
+                    });
+                    if (fefoData && Number(fefoData.suggested_price) > 0) {
+                        price = Number(fefoData.suggested_price);
+                        fefoCache.current.set(cacheKey, price);
+                    }
+                }
+            } catch {
+                // fallback to menu price
+            }
+        }
+
         setFormItems(prev => [...prev, {
             item_id: mi.id,
             item_name: name,
@@ -323,7 +356,7 @@ const QuotationsScreen: React.FC = () => {
             notes: '',
         }]);
         setItemSearch('');
-    }, [menuItems]);
+    }, [menuItems, sessionScope.scope?.warehouseId, formCurrency]);
 
     // Add custom item
     const addCustomItem = useCallback(() => {
@@ -486,7 +519,7 @@ const QuotationsScreen: React.FC = () => {
         }
     }, [deleteId, fetchQuotations, showNotification]);
 
-    // Print quotation
+    // Print quotation with print number tracking
     const handlePrint = useCallback(async (q: Quotation) => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
@@ -499,6 +532,13 @@ const QuotationsScreen: React.FC = () => {
                 .order('sort_order', { ascending: true });
             if (error) throw error;
             const items: QuotationItem[] = Array.isArray(data) ? data as QuotationItem[] : [];
+
+            // Track print number
+            let printNumber = 1;
+            try {
+                const { data: pn } = await supabase.rpc('track_document_print', { p_source_table: 'price_quotations', p_source_id: q.id, p_template: 'PrintableQuotation' });
+                printNumber = Number(pn) || 1;
+            } catch { /* fallback */ }
 
             const fallback = {
                 name: (settings.cafeteriaName?.['ar'] || settings.cafeteriaName?.en || '').trim(),
@@ -545,6 +585,7 @@ const QuotationsScreen: React.FC = () => {
                     companyPhone={fallback.contactNumber}
                     logoUrl={fallback.logoUrl}
                     vatNumber={fallback.vatNumber}
+                    printNumber={printNumber}
                 />
             );
             printContent(content, `عرض سعر #${q.quotation_number}`);
@@ -552,6 +593,53 @@ const QuotationsScreen: React.FC = () => {
             showNotification(localizeSupabaseError(err) || 'فشل طباعة عرض السعر', 'error');
         }
     }, [settings, showNotification]);
+
+    // Convert quotation to order
+    const handleConvertToOrder = useCallback(async (q: Quotation) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        try {
+            const { data, error } = await supabase
+                .from('price_quotation_items')
+                .select('*')
+                .eq('quotation_id', q.id)
+                .order('sort_order', { ascending: true });
+            if (error) throw error;
+            const items: QuotationItem[] = Array.isArray(data) ? data as QuotationItem[] : [];
+
+            // Navigate to orders with quotation data pre-filled
+            navigate('/admin/orders', {
+                state: {
+                    fromQuotation: {
+                        quotationId: q.id,
+                        quotationNumber: q.quotation_number,
+                        customerName: q.customer_name,
+                        customerPhone: q.customer_phone,
+                        items: items.map(it => ({
+                            itemId: it.item_id,
+                            itemName: it.item_name,
+                            unit: it.unit,
+                            quantity: it.quantity,
+                            unitPrice: it.unit_price,
+                        })),
+                        discountType: q.discount_type,
+                        discountValue: q.discount_value,
+                        notes: q.notes,
+                    }
+                }
+            });
+
+            // Update quotation status to 'accepted'
+            await supabase
+                .from('price_quotations')
+                .update({ status: 'accepted' })
+                .eq('id', q.id);
+
+            showNotification('تم تحويل العرض إلى طلب — اختر العميل وأكمل البيع', 'success');
+        } catch (err) {
+            showNotification(localizeSupabaseError(err) || 'فشل تحويل العرض', 'error');
+        }
+    }, [navigate, showNotification]);
 
     const formatDate = (dateStr: string) => {
         try {
@@ -742,6 +830,9 @@ const QuotationsScreen: React.FC = () => {
                                     <td className="px-4 py-3 text-center">
                                         <div className="flex items-center justify-center gap-1 flex-wrap">
                                             <button onClick={() => handlePrint(q)} title="طباعة" className="p-1.5 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors">🖨️</button>
+                                            {(q.status === 'draft' || q.status === 'sent') && (
+                                                <button onClick={() => handleConvertToOrder(q)} title="تحويل إلى طلب" className="p-1.5 text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 transition-colors">🛒</button>
+                                            )}
                                             <button onClick={() => openEdit(q)} title="تعديل" className="p-1.5 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors">✏️</button>
                                             <button onClick={() => handleDuplicate(q)} title="نسخ" className="p-1.5 text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-400 transition-colors">📋</button>
                                             {q.status === 'draft' && (
