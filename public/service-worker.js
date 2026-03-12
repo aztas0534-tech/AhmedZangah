@@ -61,16 +61,25 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache)).catch(() => {});
           return networkResponse;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(event.request).then(cached => cached || Response.error()))
     );
     return;
   }
   if (url.pathname.endsWith('/version.json') || url.pathname.endsWith('version.json')) {
-    event.respondWith(fetch(new Request(event.request, { cache: 'no-store' })));
+    event.respondWith(
+      fetch(new Request(event.request, { cache: 'no-store' }))
+        .catch(() => new Response(JSON.stringify({ version: 'offline' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }))
+    );
     return;
   }
   if (url.pathname.endsWith('.apk') || url.pathname.includes('/downloads/')) {
-    event.respondWith(fetch(new Request(event.request, { cache: 'no-store' })));
+    event.respondWith(
+      fetch(new Request(event.request, { cache: 'no-store' }))
+        .catch(() => Response.error())
+    );
     return;
   }
   
