@@ -359,6 +359,11 @@ const ManageOrdersScreen: React.FC = () => {
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
+    const inStoreAlertsDebounceTimerRef = useRef<number | null>(null);
+    const inStoreAlertsSignatureRef = useRef<Record<number, string>>({});
+    const inStoreAlertsRequestRef = useRef<Record<number, string>>({});
+    const inStorePricingDebounceTimerRef = useRef<number | null>(null);
+    const inStorePricingRunIdRef = useRef(0);
 
     // ── Warehouse FEFO alerts for In-Store Sale ──
     type WarehouseAlert = { type: string; severity: 'error' | 'warning' | 'info' | 'success'; message: string; other_warehouse_id?: string; other_warehouse?: string;[k: string]: any };
@@ -367,25 +372,54 @@ const ManageOrdersScreen: React.FC = () => {
 
 
 
-    const fetchInStoreAlerts = useCallback(async (index: number, itemId: string, whId: string, qty: number) => {
+    const runTasksWithConcurrency = useCallback(async <R,>(tasks: Array<() => Promise<R>>, limit = 4): Promise<R[]> => {
+        const safeLimit = Math.max(1, Number(limit) || 1);
+        const results: R[] = new Array(tasks.length);
+        let cursor = 0;
+        const workers = Array.from({ length: Math.min(safeLimit, tasks.length) }, async () => {
+            while (true) {
+                const idx = cursor;
+                cursor += 1;
+                if (idx >= tasks.length) return;
+                results[idx] = await tasks[idx]();
+            }
+        });
+        await Promise.all(workers);
+        return results;
+    }, []);
+    const fetchInStoreAlerts = useCallback(async (index: number, itemId: string, whId: string, qty: number, requestKey: string) => {
         const supabase = getSupabaseClient();
         if (!supabase || !itemId || !whId) return;
+        inStoreAlertsRequestRef.current[index] = requestKey;
         setInStoreAlertsLoadingByIndex(prev => ({ ...prev, [index]: true }));
         try {
             const { data, error } = await supabase.rpc('get_warehouse_item_alerts', {
                 p_item_id: itemId, p_warehouse_id: whId, p_requested_qty: qty,
             } as any);
             if (error) throw error;
+            if (inStoreAlertsRequestRef.current[index] !== requestKey) return;
             setInStoreAlertsByIndex(prev => ({ ...prev, [index]: Array.isArray(data) ? data : [] }));
         } catch {
+            if (inStoreAlertsRequestRef.current[index] !== requestKey) return;
             setInStoreAlertsByIndex(prev => ({ ...prev, [index]: [] }));
         } finally {
+            if (inStoreAlertsRequestRef.current[index] !== requestKey) return;
             setInStoreAlertsLoadingByIndex(prev => ({ ...prev, [index]: false }));
         }
     }, [getSupabaseClient]);
 
     useEffect(() => {
-        if (!isInStoreSaleOpen) return;
+        if (inStoreAlertsDebounceTimerRef.current != null) {
+            window.clearTimeout(inStoreAlertsDebounceTimerRef.current);
+            inStoreAlertsDebounceTimerRef.current = null;
+        }
+        if (!isInStoreSaleOpen) {
+            inStoreAlertsSignatureRef.current = {};
+            inStoreAlertsRequestRef.current = {};
+            return;
+        }
+        const nextSignatures: Record<number, string> = {};
+        const tasks: Array<() => Promise<void>> = [];
         inStoreLines.forEach((line, index) => {
             const iid = String(line.menuItemId || '').trim();
             const wh = String(line.warehouseId || sessionScope.scope?.warehouseId || '').trim();
@@ -396,9 +430,43 @@ const ManageOrdersScreen: React.FC = () => {
             const rawQty = isWeight ? Number(line.weight || 0) : Number(line.quantity || 0);
             const factor = Number(line.uomQtyInBase || 1) || 1;
             const qty = rawQty * factor;
-            void fetchInStoreAlerts(index, iid, wh, qty);
+            const signature = `${iid}|${wh}|${qty}`;
+            nextSignatures[index] = signature;
+            if (inStoreAlertsSignatureRef.current[index] === signature) return;
+            const requestKey = `${signature}|${Date.now()}|${Math.random()}`;
+            tasks.push(async () => {
+                await fetchInStoreAlerts(index, iid, wh, qty, requestKey);
+            });
         });
-    }, [inStoreLines, sessionScope.scope?.warehouseId, isInStoreSaleOpen, fetchInStoreAlerts, allMenuItems]);
+        const currentIndexes = new Set(Object.keys(nextSignatures).map((k) => Number(k)));
+        setInStoreAlertsByIndex(prev => {
+            const cleaned: Record<number, WarehouseAlert[]> = {};
+            Object.entries(prev).forEach(([k, v]) => {
+                const idx = Number(k);
+                if (currentIndexes.has(idx)) cleaned[idx] = v;
+            });
+            return cleaned;
+        });
+        setInStoreAlertsLoadingByIndex(prev => {
+            const cleaned: Record<number, boolean> = {};
+            Object.entries(prev).forEach(([k, v]) => {
+                const idx = Number(k);
+                if (currentIndexes.has(idx)) cleaned[idx] = v;
+            });
+            return cleaned;
+        });
+        inStoreAlertsSignatureRef.current = nextSignatures;
+        if (!tasks.length) return;
+        inStoreAlertsDebounceTimerRef.current = window.setTimeout(() => {
+            void runTasksWithConcurrency(tasks, 3);
+        }, 180);
+        return () => {
+            if (inStoreAlertsDebounceTimerRef.current != null) {
+                window.clearTimeout(inStoreAlertsDebounceTimerRef.current);
+                inStoreAlertsDebounceTimerRef.current = null;
+            }
+        };
+    }, [inStoreLines, sessionScope.scope?.warehouseId, isInStoreSaleOpen, fetchInStoreAlerts, allMenuItems, runTasksWithConcurrency]);
 
     useEffect(() => {
         let active = true;
@@ -954,7 +1022,12 @@ const ManageOrdersScreen: React.FC = () => {
     }, [inStoreLines, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId, inStoreTransactionCurrency]);
 
     useEffect(() => {
+        if (inStorePricingDebounceTimerRef.current != null) {
+            window.clearTimeout(inStorePricingDebounceTimerRef.current);
+            inStorePricingDebounceTimerRef.current = null;
+        }
         if (!isInStoreSaleOpen || !inStoreLines.length) {
+            inStorePricingRunIdRef.current += 1;
             setInStorePricingBusy(false);
             setInStorePricingMap({});
             return;
@@ -963,16 +1036,19 @@ const ManageOrdersScreen: React.FC = () => {
         const isOnline = typeof navigator !== 'undefined' && navigator.onLine !== false;
         const supabase = isOnline ? getSupabaseClient() : null;
         if (!supabase) {
+            inStorePricingRunIdRef.current += 1;
             setInStorePricingBusy(false);
             setInStorePricingMap({});
             return;
         }
 
         const warehouseId = sessionScope.scope?.warehouseId || '';
-        let cancelled = false;
+        const runId = inStorePricingRunIdRef.current + 1;
+        inStorePricingRunIdRef.current = runId;
+        let disposed = false;
+        setInStorePricingBusy(true);
 
         const run = async () => {
-            setInStorePricingBusy(true);
             try {
                 const requests = inStoreLines.map((l) => {
                     const mi = menuItems.find(m => m.id === l.menuItemId);
@@ -991,7 +1067,7 @@ const ManageOrdersScreen: React.FC = () => {
                     if (!uniq.has(compact)) uniq.set(compact, r);
                 }
 
-                const results = await Promise.all(Array.from(uniq.values()).map(async (r) => {
+                const tasks = Array.from(uniq.values()).map((r) => async () => {
                         const fallback = async () => {
                         const mi = menuItems.find(m => m.id === r.itemId);
                         if (!mi) return { key: r.key, unitPrice: 0, unitType: r.unitType };
@@ -1028,9 +1104,10 @@ const ManageOrdersScreen: React.FC = () => {
                     }
 
                     return await fallback();
-                }));
+                });
+                const results = await runTasksWithConcurrency(tasks, 4);
 
-                if (cancelled) return;
+                if (disposed || runId !== inStorePricingRunIdRef.current) return;
                 const next: Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean }> = {};
                 for (const row of results) {
                     if (!row?.key) continue;
@@ -1042,20 +1119,26 @@ const ManageOrdersScreen: React.FC = () => {
                 }
                 setInStorePricingMap(next);
             } catch (err) {
-                if (cancelled) return;
+                if (disposed || runId !== inStorePricingRunIdRef.current) return;
                 const msg = localizeSupabaseError(err) || 'تعذر تسعير الأصناف من الخادم.';
                 showNotification(msg, 'error');
                 setInStorePricingMap({});
             } finally {
-                if (!cancelled) setInStorePricingBusy(false);
+                if (!disposed && runId === inStorePricingRunIdRef.current) setInStorePricingBusy(false);
             }
         };
 
-        void run();
+        inStorePricingDebounceTimerRef.current = window.setTimeout(() => {
+            void run();
+        }, 220);
         return () => {
-            cancelled = true;
+            disposed = true;
+            if (inStorePricingDebounceTimerRef.current != null) {
+                window.clearTimeout(inStorePricingDebounceTimerRef.current);
+                inStorePricingDebounceTimerRef.current = null;
+            }
         };
-    }, [inStorePricingSignature]);
+    }, [inStorePricingSignature, runTasksWithConcurrency]);
 
     const inStoreMissingServerPricing = useMemo(() => {
         if (!isInStoreSaleOpen || !inStoreLines.length) return false;

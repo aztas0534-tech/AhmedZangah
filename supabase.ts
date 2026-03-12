@@ -326,9 +326,10 @@ export const getSupabaseClient = (): SupabaseClient | null => {
   const timeoutMs = Number((import.meta.env.VITE_SUPABASE_REQUEST_TIMEOUT_MS as any) || 45_000);
   const retryCount = Number((import.meta.env.VITE_SUPABASE_REQUEST_RETRIES as any) || 2);
   const maxConcurrent = Number((import.meta.env.VITE_SUPABASE_MAX_CONCURRENT_REQUESTS as any) || 20);
+  const maxQueue = Number((import.meta.env.VITE_SUPABASE_MAX_PENDING_REQUESTS as any) || 2000);
   const baseFetch = createConcurrencyFetch(
     createRetryFetch(createTimeoutFetch(timeoutMs), { retries: retryCount, baseDelayMs: 250 }),
-    { maxConcurrent }
+    { maxConcurrent, maxQueue }
   );
 
   client = createClient(url, anonKey, {
