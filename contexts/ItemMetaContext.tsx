@@ -502,6 +502,10 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     return map;
   }, [groups]);
   const unitMap = useMemo(() => new Map(unitTypes.map(u => [String(u.key), u])), [unitTypes]);
+  const unitMapNormalized = useMemo(
+    () => new Map(unitTypes.map(u => [normalizeLookupKey(String(u.key)), u])),
+    [unitTypes]
+  );
   const freshnessMap = useMemo(() => new Map(freshnessLevels.map(f => [String(f.key), f])), [freshnessLevels]);
 
   const getCategoryLabel = (categoryKey: string, language: 'ar' | 'en') => {
@@ -530,9 +534,45 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const getUnitLabel = (unitKey: UnitType | undefined, language: 'ar' | 'en') => {
     if (!unitKey) return '';
-    const def = unitMap.get(String(unitKey));
-    if (def) return def.label[language] || def.label.ar || def.label.en || String(unitKey);
-    return String(unitKey);
+    const raw = String(unitKey).trim();
+    if (!raw) return '';
+    if (/[\u0600-\u06FF]/.test(raw)) return raw;
+    const normalized = normalizeLookupKey(raw);
+    const aliasMap: Record<string, string> = {
+      pcs: 'piece',
+      pc: 'piece',
+      unit: 'piece',
+      kilogram: 'kg',
+      gm: 'gram',
+      g: 'gram',
+      litre: 'liter',
+      l: 'liter',
+      milliliter: 'ml',
+      packet: 'pack',
+      pkt: 'pack',
+      ctn: 'carton',
+    };
+    const alias = aliasMap[normalized] || normalized;
+    const def = unitMap.get(raw) || unitMap.get(alias) || unitMapNormalized.get(normalized) || unitMapNormalized.get(alias);
+    if (def) return def.label[language] || def.label.ar || def.label.en || raw;
+    const fallbackAr: Record<string, string> = {
+      piece: 'قطعة',
+      kg: 'كيلو',
+      gram: 'جرام',
+      liter: 'لتر',
+      ml: 'مل',
+      pack: 'باكت',
+      carton: 'كرتون',
+      box: 'صندوق',
+      bag: 'كيس',
+      bottle: 'زجاجة',
+      can: 'علبة',
+      tray: 'صينية',
+      dozen: 'درزن',
+    };
+    if (language === 'ar' && fallbackAr[alias]) return fallbackAr[alias];
+    if (/^unit_/i.test(raw) || /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(raw)) return language === 'ar' ? 'وحدة' : 'Unit';
+    return raw;
   };
 
   const getFreshnessLabel = (freshnessKey: FreshnessLevel | undefined, language: 'ar' | 'en') => {

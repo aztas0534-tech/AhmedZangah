@@ -35,14 +35,22 @@ export const localizeUomCodeAr = (code: string | null | undefined, name?: string
   if (rawName) return rawName;
   const s = String(code || '').trim().toLowerCase();
   if (!s) return '—';
+  if (/^unit_/i.test(s) || /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s)) return 'وحدة';
   if (s === 'piece') return 'قطعة';
+  if (s === 'pcs' || s === 'pc' || s === 'unit') return 'قطعة';
   if (s === 'pack') return 'باكت';
+  if (s === 'packet' || s === 'pkt') return 'باكت';
   if (s === 'carton') return 'كرتون';
+  if (s === 'ctn') return 'كرتون';
   if (s === 'box') return 'صندوق';
   if (s === 'bottle') return 'قارورة';
+  if (s === 'bag') return 'كيس';
+  if (s === 'liter' || s === 'litre' || s === 'l') return 'لتر';
+  if (s === 'ml' || s === 'milliliter') return 'مل';
   if (s === 'kg') return 'كغ';
+  if (s === 'kilogram') return 'كغ';
   if (s === 'gram' || s === 'g') return 'غ';
-  return code || '—';
+  return 'وحدة';
 };
 
 export const localizeMovementTypeAr = (movementType: string | null | undefined) => {
