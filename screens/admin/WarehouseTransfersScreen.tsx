@@ -36,6 +36,19 @@ const WarehouseTransfersScreen: React.FC = () => {
     }, [settings, baseCurrencyCode]);
     const [costViewCurrency, setCostViewCurrency] = useState(baseCurrencyCode);
     const [costViewRate, setCostViewRate] = useState(1);
+    const [verifyingTransferId, setVerifyingTransferId] = useState<string | null>(null);
+    const [verificationByTransferId, setVerificationByTransferId] = useState<Record<string, {
+        checkedAt: string;
+        allOk: boolean;
+        rows: Array<{
+            itemId: string;
+            requestedQty: number;
+            transferredQty: number;
+            movedOut: number;
+            movedIn: number;
+            ok: boolean;
+        }>;
+    }>>({});
 
     // Form state
     const [formData, setFormData] = useState({
@@ -425,6 +438,70 @@ const WarehouseTransfersScreen: React.FC = () => {
         }
     };
 
+    const handleVerifyTransfer = async (transfer: WarehouseTransfer) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة', 'error');
+            return;
+        }
+        setVerifyingTransferId(transfer.id);
+        try {
+            const { data: itemRows, error: itemErr } = await supabase
+                .from('warehouse_transfer_items')
+                .select('item_id,quantity,transferred_quantity')
+                .eq('transfer_id', transfer.id);
+            if (itemErr) throw itemErr;
+
+            const { data: movementRows, error: movementErr } = await supabase
+                .from('inventory_movements')
+                .select('item_id,movement_type,quantity')
+                .eq('reference_table', 'warehouse_transfers')
+                .eq('reference_id', transfer.id)
+                .in('movement_type', ['transfer_out', 'transfer_in']);
+            if (movementErr) throw movementErr;
+
+            const movementByItem: Record<string, { movedOut: number; movedIn: number }> = {};
+            for (const row of (Array.isArray(movementRows) ? movementRows : [])) {
+                const itemId = String((row as any)?.item_id || '').trim();
+                if (!itemId) continue;
+                if (!movementByItem[itemId]) movementByItem[itemId] = { movedOut: 0, movedIn: 0 };
+                const qty = Number((row as any)?.quantity || 0) || 0;
+                const type = String((row as any)?.movement_type || '');
+                if (type === 'transfer_out') movementByItem[itemId].movedOut += qty;
+                if (type === 'transfer_in') movementByItem[itemId].movedIn += qty;
+            }
+
+            const rows = (Array.isArray(itemRows) ? itemRows : []).map((r: any) => {
+                const itemId = String(r?.item_id || '');
+                const requestedQty = Number(r?.quantity || 0) || 0;
+                const transferredQty = Number(r?.transferred_quantity || 0) || 0;
+                const movedOut = Number(movementByItem[itemId]?.movedOut || 0);
+                const movedIn = Number(movementByItem[itemId]?.movedIn || 0);
+                const ok = Math.abs(movedOut - transferredQty) < 1e-6 && Math.abs(movedIn - transferredQty) < 1e-6;
+                return { itemId, requestedQty, transferredQty, movedOut, movedIn, ok };
+            });
+
+            const allOk = rows.length > 0 && rows.every((r) => r.ok);
+            setVerificationByTransferId((prev) => ({
+                ...prev,
+                [transfer.id]: {
+                    checkedAt: new Date().toISOString(),
+                    allOk,
+                    rows,
+                },
+            }));
+            if (allOk) {
+                showNotification('تم التحقق بنجاح: كميات الأصناف متطابقة', 'success');
+            } else {
+                showNotification('نتيجة التحقق: توجد فروقات في بعض الأصناف', 'error');
+            }
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر التحقق من النقل'), 'error');
+        } finally {
+            setVerifyingTransferId(null);
+        }
+    };
+
     const getStatusLabel = (status: string) => {
         const labels: Record<string, string> = {
             pending: 'قيد الانتظار',
@@ -570,6 +647,14 @@ const WarehouseTransfersScreen: React.FC = () => {
                                     >
                                         طباعة
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { void handleVerifyTransfer(transfer); }}
+                                        disabled={verifyingTransferId === transfer.id || transfer.status !== 'completed'}
+                                        className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {verifyingTransferId === transfer.id ? 'جاري التحقق...' : 'تحقق من النقل'}
+                                    </button>
                                 </div>
                             </div>
 
@@ -605,6 +690,45 @@ const WarehouseTransfersScreen: React.FC = () => {
                                 <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                                     <div className="text-xs text-gray-500 mb-1">ملاحظات</div>
                                     <div className="text-sm">{transfer.notes}</div>
+                                </div>
+                            )}
+
+                            {verificationByTransferId[transfer.id] && (
+                                <div className={`mb-4 p-3 rounded-lg border ${verificationByTransferId[transfer.id].allOk ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800'}`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold">
+                                            {verificationByTransferId[transfer.id].allOk ? 'نتيجة التحقق: متطابق' : 'نتيجة التحقق: يوجد فروقات'}
+                                        </div>
+                                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                                            {new Date(verificationByTransferId[transfer.id].checkedAt).toLocaleString('ar-EG-u-nu-latn')}
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs">
+                                            <thead>
+                                                <tr className="text-right text-gray-600 dark:text-gray-300">
+                                                    <th className="py-1">الصنف</th>
+                                                    <th className="py-1">الكمية المطلوبة</th>
+                                                    <th className="py-1">الكمية المنقولة</th>
+                                                    <th className="py-1">حركة خروج</th>
+                                                    <th className="py-1">حركة دخول</th>
+                                                    <th className="py-1">الحالة</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {verificationByTransferId[transfer.id].rows.map((row, idx) => (
+                                                    <tr key={`${transfer.id}-${row.itemId}-${idx}`} className="border-t border-gray-200 dark:border-gray-700">
+                                                        <td className="py-1">{getItemLabel(row.itemId)}</td>
+                                                        <td className="py-1">{row.requestedQty.toLocaleString('en-US')}</td>
+                                                        <td className="py-1">{row.transferredQty.toLocaleString('en-US')}</td>
+                                                        <td className="py-1">{row.movedOut.toLocaleString('en-US')}</td>
+                                                        <td className="py-1">{row.movedIn.toLocaleString('en-US')}</td>
+                                                        <td className={`py-1 font-semibold ${row.ok ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{row.ok ? 'مطابق' : 'غير مطابق'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             )}
 
