@@ -41,6 +41,7 @@ const SystemAuditScreen: React.FC = () => {
         menu_items: 'المنتجات',
         addons: 'الإضافات',
         delivery_zones: 'مناطق التوصيل',
+        orders_ux: 'أداء تجربة البيع الحضوري',
     }), []);
 
     const actionLabels: Record<string, string> = useMemo(() => ({
@@ -61,6 +62,7 @@ const SystemAuditScreen: React.FC = () => {
         permission_change: 'تغيير الصلاحيات',
         permissions_changed: 'تغيير الصلاحيات',
         permission_changed: 'تغيير الصلاحيات',
+        in_store_sale_ux_metric: 'مؤشر أداء البيع الحضوري',
     }), []);
 
     const safeString = (value: unknown) => (typeof value === 'string' ? value : String(value ?? ''));
@@ -337,6 +339,7 @@ const SystemAuditScreen: React.FC = () => {
                         <option value="accounting">المحاسبة</option>
                         <option value="shifts">الورديات</option>
                         <option value="shift_reviews">مراجعات الورديات</option>
+                        <option value="orders_ux">أداء البيع الحضوري</option>
                     </select>
                     <input
                         type="date"

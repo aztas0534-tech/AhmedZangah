@@ -75,6 +75,13 @@ type PurgeDashboardRow = {
     reason_category: string;
     status: string;
 };
+type InStoreSaleUxMetric = {
+    opId: string;
+    elapsedMs: number;
+    slowPath: boolean;
+    detached: boolean;
+    createdAt: string;
+};
 
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
@@ -248,6 +255,13 @@ const ManageOrdersScreen: React.FC = () => {
     const [isInStoreCreating, setIsInStoreCreating] = useState(false);
     const [inStoreCreatingSlow, setInStoreCreatingSlow] = useState(false);
     const inStoreCreatingSlowTimerRef = useRef<number | null>(null);
+    const [inStoreCreateOpId, setInStoreCreateOpId] = useState('');
+    const inStoreCreateOpIdRef = useRef('');
+    const [inStoreCreateStartedAt, setInStoreCreateStartedAt] = useState<number>(0);
+    const inStoreCreateDetachedRef = useRef(false);
+    const [inStoreUxMetrics, setInStoreUxMetrics] = useState<InStoreSaleUxMetric[]>([]);
+    const inStoreUxPersistBusyRef = useRef(false);
+    const inStoreUxPersistQueueRef = useRef<InStoreSaleUxMetric[]>([]);
     const [inStoreIsCredit, setInStoreIsCredit] = useState(false); // NEW: Credit Sale State
     const [inStoreCreditDays, setInStoreCreditDays] = useState<number>(30);
     const [inStoreCreditDueDate, setInStoreCreditDueDate] = useState<string>('');
@@ -297,6 +311,83 @@ const ManageOrdersScreen: React.FC = () => {
     const [destinationAccounts, setDestinationAccounts] = useState<{id: string, name: string, code: string, parentCode: string}[]>([]);
     const [inStorePaymentDestinationAccountId, setInStorePaymentDestinationAccountId] = useState<string>('');
     const [partialPaymentDestinationAccountId, setPartialPaymentDestinationAccountId] = useState<string>('');
+
+    const closeInStoreAndContinueInBackground = useCallback(() => {
+        if (!isInStoreCreating) {
+            setIsInStoreSaleOpen(false);
+            return;
+        }
+        inStoreCreateDetachedRef.current = true;
+        setIsInStoreSaleOpen(false);
+        const opId = inStoreCreateOpIdRef.current || inStoreCreateOpId || 'N/A';
+        showNotification(`تم إغلاق النافذة ومتابعة تسجيل البيع بالخلفية. رقم التتبع: ${opId}`, 'info');
+    }, [inStoreCreateOpId, isInStoreCreating, showNotification]);
+    const flushInStoreUxMetricQueue = useCallback(async () => {
+        if (inStoreUxPersistBusyRef.current) return;
+        const supabase = getSupabaseClient();
+        if (!supabase || !adminUser?.id) return;
+        inStoreUxPersistBusyRef.current = true;
+        try {
+            while (inStoreUxPersistQueueRef.current.length > 0) {
+                const batch = inStoreUxPersistQueueRef.current.splice(0, 10);
+                const rows = batch.map((m) => ({
+                    action: 'in_store_sale_ux_metric',
+                    module: 'orders_ux',
+                    details: `op:${m.opId} elapsed:${m.elapsedMs}ms slow:${m.slowPath ? 1 : 0} detached:${m.detached ? 1 : 0}`,
+                    performed_by: adminUser.id,
+                    performed_at: m.createdAt,
+                    metadata: {
+                        opId: m.opId,
+                        elapsedMs: m.elapsedMs,
+                        slowPath: m.slowPath,
+                        detached: m.detached,
+                    },
+                    risk_level: m.slowPath ? 'MEDIUM' : 'LOW',
+                    reason_code: m.slowPath ? 'UX_SLOW_PATH' : 'UX_OK',
+                }));
+                try {
+                    await supabase.from('system_audit_logs').insert(rows as any);
+                } catch {}
+            }
+        } finally {
+            inStoreUxPersistBusyRef.current = false;
+        }
+    }, [adminUser?.id]);
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<any>)?.detail || {};
+            const opId = String(detail?.opId || '').trim();
+            const elapsedMsRaw = Number(detail?.elapsedMs);
+            const elapsedMs = Number.isFinite(elapsedMsRaw) ? Math.max(0, Math.round(elapsedMsRaw)) : 0;
+            const metric: InStoreSaleUxMetric = {
+                opId: opId || `unknown-${Date.now()}`,
+                elapsedMs,
+                slowPath: Boolean(detail?.slowPath) || elapsedMs >= 15000,
+                detached: Boolean(detail?.detached),
+                createdAt: new Date().toISOString(),
+            };
+            setInStoreUxMetrics((prev) => [metric, ...prev].slice(0, 80));
+            inStoreUxPersistQueueRef.current.push(metric);
+            void flushInStoreUxMetricQueue();
+        };
+        window.addEventListener('in_store_sale_ux_metric', handler as EventListener);
+        return () => {
+            window.removeEventListener('in_store_sale_ux_metric', handler as EventListener);
+        };
+    }, [flushInStoreUxMetricQueue]);
+    const inStoreUxStats = useMemo(() => {
+        if (!inStoreUxMetrics.length) {
+            return { total: 0, slowCount: 0, detachedCount: 0, p95Ms: 0, lastMs: 0 };
+        }
+        const durations = inStoreUxMetrics.map((m) => Number(m.elapsedMs) || 0).sort((a, b) => a - b);
+        const idx = Math.max(0, Math.min(durations.length - 1, Math.ceil(durations.length * 0.95) - 1));
+        const p95Ms = durations[idx] || 0;
+        const slowCount = inStoreUxMetrics.filter((m) => m.slowPath).length;
+        const detachedCount = inStoreUxMetrics.filter((m) => m.detached).length;
+        const lastMs = Number(inStoreUxMetrics[0]?.elapsedMs || 0);
+        return { total: inStoreUxMetrics.length, slowCount, detachedCount, p95Ms, lastMs };
+    }, [inStoreUxMetrics]);
 
     // ── Keyboard shortcut: Ctrl+Enter to submit in-store sale ──
     const confirmInStoreSaleRef = useRef<(() => void) | null>(null);
@@ -2220,6 +2311,12 @@ const ManageOrdersScreen: React.FC = () => {
     const runCreateInStoreSale = async (payload: any, creditOverrideReason?: string) => {
         if (inStoreCreationLock.current) return;
         inStoreCreationLock.current = true;
+        const opId = `POS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        const startedAt = Date.now();
+        inStoreCreateOpIdRef.current = opId;
+        setInStoreCreateOpId(opId);
+        setInStoreCreateStartedAt(startedAt);
+        inStoreCreateDetachedRef.current = false;
         setIsInStoreCreating(true);
         setInStoreCreatingSlow(false);
         if (inStoreCreatingSlowTimerRef.current != null) {
@@ -2228,7 +2325,7 @@ const ManageOrdersScreen: React.FC = () => {
         }
         inStoreCreatingSlowTimerRef.current = window.setTimeout(() => {
             setInStoreCreatingSlow(true);
-            showNotification('عملية البيع تستغرق وقتًا أطول من المعتاد. يمكنك الإغلاق والمتابعة بالخلفية دون تكرار الضغط.', 'info');
+            showNotification(`عملية البيع تستغرق وقتًا أطول من المعتاد. رقم التتبع: ${opId}`, 'info');
         }, 15000);
         try {
             const belowCostOverrideReason = String((payload as any)?.belowCostOverrideReason || '').trim();
@@ -2244,8 +2341,8 @@ const ManageOrdersScreen: React.FC = () => {
             } else {
                 showNotification(
                     language === 'ar'
-                        ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
-                        : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
+                        ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()} | تتبع ${opId}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()} | تتبع ${opId}`)
+                        : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()} | Trace ${opId}` : `In-store sale created #${order.id.slice(-6).toUpperCase()} | Trace ${opId}`),
                     isQueued ? 'info' : 'success'
                 );
             }
@@ -2314,15 +2411,32 @@ const ManageOrdersScreen: React.FC = () => {
             }
             const localized = localizeSupabaseError(error);
             const message = language === 'ar'
-                ? (localized ? `فشل تسجيل البيع الحضوري: ${localized}` : (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.'))
-                : (localized ? `Failed to create in-store sale: ${localized}` : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.'));
+                ? (localized ? `فشل تسجيل البيع الحضوري: ${localized} | تتبع ${opId}` : (raw ? `فشل تسجيل البيع الحضوري: ${raw} | تتبع ${opId}` : `فشل تسجيل البيع الحضوري. | تتبع ${opId}`))
+                : (localized ? `Failed to create in-store sale: ${localized} | Trace ${opId}` : (raw ? `Failed to create in-store sale: ${raw} | Trace ${opId}` : `Failed to create in-store sale. | Trace ${opId}`));
             showNotification(message, 'error');
         } finally {
+            const elapsedMs = Math.max(0, Date.now() - startedAt);
+            try {
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('in_store_sale_ux_metric', {
+                        detail: {
+                            opId,
+                            elapsedMs,
+                            slowPath: elapsedMs >= 15000,
+                            detached: inStoreCreateDetachedRef.current,
+                        }
+                    }));
+                }
+            } catch {}
             if (inStoreCreatingSlowTimerRef.current != null) {
                 window.clearTimeout(inStoreCreatingSlowTimerRef.current);
                 inStoreCreatingSlowTimerRef.current = null;
             }
             setInStoreCreatingSlow(false);
+            inStoreCreateOpIdRef.current = '';
+            setInStoreCreateOpId('');
+            setInStoreCreateStartedAt(0);
+            inStoreCreateDetachedRef.current = false;
             inStoreCreationLock.current = false;
             setIsInStoreCreating(false);
         }
@@ -4865,6 +4979,10 @@ const ManageOrdersScreen: React.FC = () => {
                 isOpen={isInStoreSaleOpen}
                 onClose={() => {
                     if (isInStoreCreating && !inStoreCreatingSlow) return;
+                    if (isInStoreCreating) {
+                        closeInStoreAndContinueInBackground();
+                        return;
+                    }
                     setIsInStoreSaleOpen(false);
                 }}
                 onConfirm={confirmInStoreSale}
@@ -4888,10 +5006,29 @@ const ManageOrdersScreen: React.FC = () => {
                             <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                 {inStoreCreatingSlow ? 'يمكنك إغلاق النافذة والمتابعة بالخلفية دون تكرار التسجيل.' : 'لا تغلق الصفحة'}
                             </div>
+                            {inStoreCreateOpId && (
+                                <div className="text-xs text-gray-500 dark:text-gray-300 mt-1 font-mono" dir="ltr">
+                                    {`Trace: ${inStoreCreateOpId}`}
+                                </div>
+                            )}
+                            {inStoreCreateStartedAt > 0 && (
+                                <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">
+                                    {`المدة: ${Math.floor((Date.now() - inStoreCreateStartedAt) / 1000)} ثانية`}
+                                </div>
+                            )}
+                            {!inStoreCreatingSlow && (
+                                <button
+                                    type="button"
+                                    onClick={closeInStoreAndContinueInBackground}
+                                    className="mt-3 px-3 py-1.5 rounded-md bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 text-xs font-medium"
+                                >
+                                    إغلاق ومتابعة بالخلفية
+                                </button>
+                            )}
                             {inStoreCreatingSlow && (
                                 <button
                                     type="button"
-                                    onClick={() => setIsInStoreSaleOpen(false)}
+                                    onClick={closeInStoreAndContinueInBackground}
                                     className="mt-3 px-3 py-1.5 rounded-md bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 text-xs font-medium"
                                 >
                                     إغلاق ومتابعة بالخلفية
@@ -4910,6 +5047,15 @@ const ManageOrdersScreen: React.FC = () => {
                             compact
                         />
                     </div>
+                    {inStoreUxStats.total > 0 && (
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px]">
+                            <div className="px-2 py-1 rounded bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600">عمليات: <span className="font-mono" dir="ltr">{inStoreUxStats.total}</span></div>
+                            <div className="px-2 py-1 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">بطيئة: <span className="font-mono" dir="ltr">{inStoreUxStats.slowCount}</span></div>
+                            <div className="px-2 py-1 rounded bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-700">خلفية: <span className="font-mono" dir="ltr">{inStoreUxStats.detachedCount}</span></div>
+                            <div className="px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700">P95: <span className="font-mono" dir="ltr">{`${inStoreUxStats.p95Ms}ms`}</span></div>
+                            <div className="px-2 py-1 rounded bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700">آخر زمن: <span className="font-mono" dir="ltr">{`${inStoreUxStats.lastMs}ms`}</span></div>
+                        </div>
+                    )}
                     <div className="flex items-center gap-3 text-xs">
                         <div className="flex items-center gap-2">
                             <label className="text-gray-600 dark:text-gray-300">عملة المعاملة</label>
