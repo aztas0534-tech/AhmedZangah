@@ -122,8 +122,8 @@ const createConcurrencyFetch = (
   baseFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
   options?: { maxConcurrent?: number; maxQueue?: number }
 ) => {
-  const maxConcurrent = Number.isFinite(options?.maxConcurrent) ? Math.max(1, Number(options?.maxConcurrent)) : 6;
-  const maxQueue = Number.isFinite(options?.maxQueue) ? Math.max(0, Number(options?.maxQueue)) : 250;
+  const maxConcurrent = Number.isFinite(options?.maxConcurrent) ? Math.max(1, Number(options?.maxConcurrent)) : 16;
+  const maxQueue = Number.isFinite(options?.maxQueue) ? Math.max(0, Number(options?.maxQueue)) : 1000;
 
   let active = 0;
   const queue: Array<{

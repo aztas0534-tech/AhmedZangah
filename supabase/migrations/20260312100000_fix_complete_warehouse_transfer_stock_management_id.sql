@@ -284,10 +284,11 @@ begin
           where b.item_id::text = v_item.item_id
             and b.warehouse_id = v_from_warehouse
             and b.batch_id is not null
-            and b.expiry_date is not null
-            and b.expiry_date >= current_date
+            -- Allow NULL expiry (non-perishable) and non-expired batches
+            and (b.expiry_date is null or b.expiry_date >= current_date)
             and coalesce(b.remaining_qty, 0) > 0
-          order by b.expiry_date asc, b.batch_id asc
+          -- FEFO: earliest expiry first, NULL expiry last (never expires)
+          order by (b.expiry_date is null) asc, b.expiry_date asc, b.batch_id asc
         loop
           if v_remaining <= 0 then
             exit;
