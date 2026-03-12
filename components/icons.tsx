@@ -95,3 +95,4 @@ export const TrendingUpIcon = createIcon(<path strokeLinecap="round" strokeLinej
 export const PercentIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M19 5L5 19M6.5 6.5a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0M14.5 17.5a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0" />);
 export const BankIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10zM8 14v3m4-3v3m4-3v3" />);
 export const DatabaseIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />);
+export const ActivityIcon = createIcon(<path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />);
