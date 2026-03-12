@@ -88,6 +88,8 @@ select
   s.created_at,
   s.updated_at,
   coalesce(nullif(s.data->>'paymentMethod',''), '') as payment_method,
+  lower(coalesce(nullif(s.data->>'invoiceTerms',''), '')) as invoice_terms,
+  lower(coalesce(nullif(s.data->>'isCreditSale',''), '')) as is_credit_sale,
   coalesce(nullif(s.data->>'currency',''), public.get_base_currency()) as currency,
   coalesce(nullif((s.data->>'fxRate')::numeric, null), 1) as fx_rate,
   coalesce(nullif((s.data->>'total')::numeric, null), 0) as amount_foreign,
@@ -101,6 +103,10 @@ select
 from scoped s
 where s.status = 'delivered'
   and coalesce(nullif(trim(coalesce(s.data->>'voidedAt','')), ''), '') = ''
+  and lower(coalesce(nullif(s.data->>'paymentMethod',''), '')) in ('cash','network','kuraimi','bank','bank_transfer','card','online')
+  and lower(coalesce(nullif(s.data->>'paymentMethod',''), '')) <> 'ar'
+  and lower(coalesce(nullif(s.data->>'invoiceTerms',''), '')) <> 'credit'
+  and lower(coalesce(nullif(s.data->>'isCreditSale',''), '')) <> 'true'
   and not exists (
     select 1
     from public.payments p

@@ -56,6 +56,8 @@ with scoped_orders as (
     o.updated_at,
     coalesce(nullif(o.data->>'orderSource',''), '') as order_source,
     coalesce(nullif(o.data->>'paymentMethod',''), '') as payment_method,
+    lower(coalesce(nullif(o.data->>'invoiceTerms',''), '')) as invoice_terms,
+    lower(coalesce(nullif(o.data->>'isCreditSale',''), '')) as is_credit_sale,
     nullif(o.data->>'voidedAt','') as voided_at,
     case when coalesce(nullif(o.data->>'deliveredAt',''),'') <> '' then (o.data->>'deliveredAt')::timestamptz else null end as delivered_at,
     case when coalesce(nullif(o.data->>'paidAt',''),'') <> '' then (o.data->>'paidAt')::timestamptz else null end as paid_at
@@ -119,6 +121,9 @@ select json_build_object(
     left join pay on pay.reference_table='orders' and pay.reference_id=so.id::text
     where so.status='delivered'
       and coalesce(so.voided_at,'')=''
+      and so.payment_method <> 'ar'
+      and so.invoice_terms <> 'credit'
+      and so.is_credit_sale <> 'true'
       and (
         so.payment_method in ('cash','network','kuraimi','bank','bank_transfer','card','online')
         or so.paid_at is not null
@@ -184,7 +189,16 @@ from scoped_orders so
 left join pay on pay.reference_table='orders' and pay.reference_id=so.id::text
 left join mv on mv.reference_table='orders' and mv.reference_id=so.id::text
 where
-  (so.status='delivered' and coalesce(so.voided_at,'')='' and (coalesce(pay.in_count,0)=0 or coalesce(mv.sale_out_count,0)=0))
+  (so.status='delivered' and coalesce(so.voided_at,'')='' and (
+    coalesce(mv.sale_out_count,0)=0
+    or (
+      so.payment_method <> 'ar'
+      and so.invoice_terms <> 'credit'
+      and so.is_credit_sale <> 'true'
+      and (so.payment_method in ('cash','network','kuraimi','bank','bank_transfer','card','online') or so.paid_at is not null)
+      and coalesce(pay.in_count,0)=0
+    )
+  ))
   or (so.status='cancelled' and (coalesce(pay.in_base,0)-coalesce(pay.out_base,0)) > 0.01)
   or (coalesce(so.voided_at,'')<>'' and (coalesce(mv.return_in_voided_count,0)=0 or (coalesce(pay.in_base,0)-coalesce(pay.out_base,0)) > 0.01))
 order by so.created_at desc

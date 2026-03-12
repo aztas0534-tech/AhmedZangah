@@ -26,6 +26,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
   const [selectedIndex, setSelectedIndex] = useState(0);
   const qtyRef = useRef<HTMLInputElement | null>(null);
   const weightRef = useRef<HTMLInputElement | null>(null);
+  const fetchSeqRef = useRef(0);
 
   const normalize = (value: unknown) => String(value || '')
     .toLowerCase()
@@ -35,20 +36,35 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    let mounted = true;
+    const toNum = (v: any) => {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const esc = (v: string) => v.replace(/[%_,()]/g, '').trim();
     const run = async () => {
-      const { data, error } = await supabase
+      const seq = ++fetchSeqRef.current;
+      const qRaw = debouncedQuery.trim();
+      const q = esc(qRaw);
+      let req = supabase
         .from('v_sellable_products')
-        .select('id, name, barcode, price, base_unit, data, available_quantity');
-      if (!mounted) return;
+        .select('id, name, barcode, price, base_unit, data, available_quantity')
+        .limit(q ? 120 : 300);
+      if (q) {
+        const pattern = `%${q}%`;
+        req = req.or([
+          `barcode.ilike.${pattern}`,
+          `name->>ar.ilike.${pattern}`,
+          `name->>en.ilike.${pattern}`,
+          `data->>sku.ilike.${pattern}`,
+          `data->>barcode.ilike.${pattern}`,
+        ].join(','));
+      }
+      const { data, error } = await req;
+      if (seq !== fetchSeqRef.current) return;
       if (error) {
         setBaseItems([]);
         return;
       }
-      const toNum = (v: any) => {
-        const n = typeof v === 'number' ? v : Number(v);
-        return Number.isFinite(n) ? n : 0;
-      };
       const items = (data || []).map((row: any) => {
         const raw = row?.data && typeof row.data === 'object' ? row.data : {};
         const nameObj = row?.name && typeof row.name === 'object' ? row.name : (raw as any).name;
@@ -80,10 +96,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
       setBaseItems(items.filter(i => i && i.id));
     };
     void run();
-    return () => {
-      mounted = false;
-    };
-  }, [sessionScope.scope?.warehouseId]);
+  }, [debouncedQuery, sessionScope.scope?.warehouseId]);
 
   useEffect(() => {
     const h = window.setTimeout(() => setDebouncedQuery(query), 120);
