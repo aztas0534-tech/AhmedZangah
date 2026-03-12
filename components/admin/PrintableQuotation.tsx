@@ -80,12 +80,14 @@ const PrintableQuotation: React.FC<PrintableQuotationProps> = ({
     };
 
     return (
-        <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir={isArabic ? 'rtl' : 'ltr'}>
+        <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-visible" dir={isArabic ? 'rtl' : 'ltr'}>
             <style>{`
         @media print {
             @page { size: A5 portrait; margin: 0; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
             * { box-sizing: border-box; }
+            .qt-doc { max-height: none !important; overflow: visible !important; min-height: auto !important; }
+            .qt-table-wrap { overflow: visible !important; }
         }
         .qt-doc {
             width: 100%; padding: 3mm 3mm 2mm 3mm;
@@ -93,7 +95,7 @@ const PrintableQuotation: React.FC<PrintableQuotationProps> = ({
             font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif;
             color: #0F172A; line-height: 1.2;
             position: relative;
-            max-height: 210mm; overflow: hidden;
+            max-height: none; overflow: visible;
             background-color: #FAFAFA;
         }
         .qt-doc::before {
@@ -243,7 +245,7 @@ const PrintableQuotation: React.FC<PrintableQuotationProps> = ({
                 </div>
 
                 {/* ▬▬▬ TABLE ▬▬▬ */}
-                <div style={{ position: 'relative', zIndex: 10, width: '100%', overflow: 'hidden', minHeight: '80px' }}>
+                <div className="qt-table-wrap" style={{ position: 'relative', zIndex: 10, width: '100%', overflow: 'visible', minHeight: '80px' }}>
                     <table className={`qt-table ${isArabic ? 'text-right' : 'text-left'}`}>
                         <thead>
                             <tr>
