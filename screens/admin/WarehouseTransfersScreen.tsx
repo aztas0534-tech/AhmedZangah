@@ -477,7 +477,7 @@ const WarehouseTransfersScreen: React.FC = () => {
         try {
             const { data: itemRows, error: itemErr } = await supabase
                 .from('warehouse_transfer_items')
-                .select('item_id,quantity,transferred_quantity')
+                .select('item_id,quantity,transferred_quantity,menu_items(unit_type,base_unit,data)')
                 .eq('transfer_id', transfer.id);
             if (itemErr) throw itemErr;
 
@@ -502,7 +502,15 @@ const WarehouseTransfersScreen: React.FC = () => {
 
             const rows = (Array.isArray(itemRows) ? itemRows : []).map((r: any) => {
                 const itemId = String(r?.item_id || '');
-                const unit = String((menuItems.find((mi) => String(mi.id) === itemId) as any)?.unitType || '').trim() || 'piece';
+                const itemFromContext = menuItems.find((mi) => String(mi.id) === itemId) as any;
+                const unit = String(
+                    r?.menu_items?.unit_type
+                    || r?.menu_items?.base_unit
+                    || r?.menu_items?.data?.unitType
+                    || itemFromContext?.unitType
+                    || itemFromContext?.baseUnit
+                    || 'piece'
+                ).trim();
                 const requestedQty = Number(r?.quantity || 0) || 0;
                 const transferredQty = Number(r?.transferred_quantity || 0) || 0;
                 const movedOut = Number(movementByItem[itemId]?.movedOut || 0);
