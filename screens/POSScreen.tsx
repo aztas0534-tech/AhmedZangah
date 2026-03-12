@@ -1027,6 +1027,9 @@ const POSScreen: React.FC = () => {
         if (item.unitType === 'gram' && item.pricePerUnit) {
           itemPrice = item.pricePerUnit / 1000;
         }
+      } else {
+        const uomQtyInBase = Number((item as any).uomQtyInBase) || 1;
+        itemQuantity = (Number(item.quantity) || 0) * uomQtyInBase;
       }
       return total + (itemPrice + addonsPrice) * itemQuantity;
     }, 0);
@@ -1323,6 +1326,8 @@ const POSScreen: React.FC = () => {
           weight: isWeight ? (i.weight || 0) : undefined,
           selectedAddons: addons,
           warehouseId: (i as any).warehouseId || undefined,
+          uomCode: (i as any).uomCode || undefined,
+          uomQtyInBase: Number((i as any).uomQtyInBase) || 1,
         };
       });
 
@@ -1399,6 +1404,8 @@ const POSScreen: React.FC = () => {
         selectedAddons: addons,
         batchId: (i as any).forcedBatchId || undefined,
         warehouseId: (i as any).warehouseId || undefined,
+        uomCode: (i as any).uomCode || undefined,
+        uomQtyInBase: Number((i as any).uomQtyInBase) || 1,
         ...(i._pricedByRpc ? {
           _pricedByRpc: i._pricedByRpc,
           price: i.price,
