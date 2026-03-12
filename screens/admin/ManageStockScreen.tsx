@@ -643,7 +643,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
 
 const ManageStockScreen: React.FC = () => {
     const { menuItems } = useMenu();
-    const { updateStock, getStockByItemId } = useStock();
+    const { stockItems, updateStock, getStockByItemId } = useStock();
     // const { language } = useSettings();
     const { categories: categoryDefs, getCategoryLabel, getGroupLabel, getUnitLabel } = useItemMeta();
     const { showNotification } = useToast();
@@ -684,18 +684,18 @@ const ManageStockScreen: React.FC = () => {
         return String((activeWarehouses.find((w: any) => String(w.id) === String(warehouseId)) as any)?.name || '—');
     }, [activeWarehouses, warehouseId]);
 
-    const saveActiveWarehouse = async () => {
+    const saveActiveWarehouse = async (targetWarehouseId?: string, silent = false) => {
         try {
             const supabase = getSupabaseClient();
             if (!supabase || !userId) return;
-            const wid = String(pendingWarehouseId || '').trim();
+            const wid = String(targetWarehouseId ?? pendingWarehouseId ?? '').trim();
             if (!wid) {
-                showNotification('اختر مستودعًا أولاً.', 'error');
+                if (!silent) showNotification('اختر مستودعًا أولاً.', 'error');
                 return;
             }
             const exists = activeWarehouses.some((w: any) => String(w.id) === wid);
             if (!exists) {
-                showNotification('المستودع المحدد غير نشط.', 'error');
+                if (!silent) showNotification('المستودع المحدد غير نشط.', 'error');
                 return;
             }
             const { error } = await supabase
@@ -704,9 +704,10 @@ const ManageStockScreen: React.FC = () => {
                 .eq('auth_user_id', userId);
             if (error) throw error;
             await sessionScope.refreshScope();
-            showNotification('تم تغيير المستودع النشط للجلسة.', 'success');
+            setPendingWarehouseId(wid);
+            if (!silent) showNotification('تم تغيير المستودع النشط للجلسة.', 'success');
         } catch (e: any) {
-            showNotification(String(e?.message || 'تعذر تحديث المستودع النشط'), 'error');
+            if (!silent) showNotification(String(e?.message || 'تعذر تحديث المستودع النشط'), 'error');
         }
     };
 
@@ -805,7 +806,13 @@ const ManageStockScreen: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <select
                                 value={pendingWarehouseId || ''}
-                                onChange={(e) => setPendingWarehouseId(e.target.value)}
+                                onChange={(e) => {
+                                    const wid = String(e.target.value || '');
+                                    setPendingWarehouseId(wid);
+                                    if (wid && wid !== warehouseId) {
+                                        void saveActiveWarehouse(wid, true);
+                                    }
+                                }}
                                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             >
                                 <option value="" disabled>اختر المستودع</option>
@@ -816,7 +823,7 @@ const ManageStockScreen: React.FC = () => {
                                 ))}
                             </select>
                             <button
-                                onClick={saveActiveWarehouse}
+                                onClick={() => { void saveActiveWarehouse(); }}
                                 className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-60"
                                 disabled={!pendingWarehouseId || pendingWarehouseId === warehouseId}
                             >
@@ -896,6 +903,11 @@ const ManageStockScreen: React.FC = () => {
 
             {/* Stock Table */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+                {warehouseId && stockItems.length === 0 && (
+                    <div className="px-6 py-3 text-sm bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 border-b border-amber-200 dark:border-amber-800">
+                        لا توجد سجلات مخزون مرتبطة بهذا المستودع حالياً. تأكد أنك اخترت المستودع الصحيح وأن الأصناف نُقلت/استُلمت عليه.
+                    </div>
+                )}
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-900">
