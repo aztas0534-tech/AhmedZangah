@@ -1352,19 +1352,15 @@ const PurchaseOrderScreen: React.FC = () => {
             const codeLower = code.toLowerCase();
             if (codeLower === baseLower) continue;
             const nameRaw = String((u as any)?.name || '').trim();
-            const displayName = codeLower === 'pack'
-                ? 'باكت'
-                : codeLower === 'carton'
-                    ? 'كرتون'
-                    : (nameRaw || code);
+            const displayName = nameRaw || String(getUnitLabel(code as any, language as any) || code);
             const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
             options.push({ code, label, qtyInBase });
         }
         if (options.length === 1) {
             const packSize = Number((it as any)?.packSize || 0);
             const cartonSize = Number((it as any)?.cartonSize || 0);
-            if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
-            if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+            if (packSize > 0) options.push({ code: 'pack', label: `${getUnitLabel('pack' as any, language as any) || 'pack'} (${packSize} ${baseLabel})`, qtyInBase: packSize });
+            if (cartonSize > 0) options.push({ code: 'carton', label: `${getUnitLabel('carton' as any, language as any) || 'carton'} (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
         }
         return options;
     };
@@ -3441,19 +3437,15 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                         const codeLower = code.toLowerCase();
                                                                         if (codeLower === baseLower) continue;
                                                                         const nameRaw = String((u as any)?.name || '').trim();
-                                                                        const displayName = codeLower === 'pack'
-                                                                            ? 'باكت'
-                                                                            : codeLower === 'carton'
-                                                                                ? 'كرتون'
-                                                                                : (nameRaw || code);
+                                                                        const displayName = nameRaw || String(getUnitLabel(code as any, language as any) || code);
                                                                         const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
                                                                         options.push({ code, label, qtyInBase });
                                                                     }
                                                                     if (options.length === 1) {
                                                                         const packSize = Number((it as any)?.packSize || 0);
                                                                         const cartonSize = Number((it as any)?.cartonSize || 0);
-                                                                        if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
-                                                                        if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+                                                                        if (packSize > 0) options.push({ code: 'pack', label: `${getUnitLabel('pack' as any, language as any) || 'pack'} (${packSize} ${baseLabel})`, qtyInBase: packSize });
+                                                                        if (cartonSize > 0) options.push({ code: 'carton', label: `${getUnitLabel('carton' as any, language as any) || 'carton'} (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
                                                                     }
                                                                     const current = String((row as any).uomCode || baseUom);
                                                                     const safeCurrent = options.some((o) => String(o.code) === current) ? current : baseUom;

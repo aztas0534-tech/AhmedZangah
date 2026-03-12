@@ -4,6 +4,7 @@ import NumericKeypadModal from './NumericKeypadModal';
 import { useStock } from '../../contexts/StockContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { localizeUomCodeAr } from '../../utils/displayLabels';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { getSupabaseClient } from '../../supabase';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
@@ -38,6 +39,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
   const [keypadTarget, setKeypadTarget] = useState<{ id: string; kind: 'qty' | 'weight' } | null>(null);
   const { getStockByItemId } = useStock();
   const { language } = useSettings();
+  const { getUnitLabel } = useItemMeta();
   const sessionScope = useSessionScope();
   const [openBreakdownFor, setOpenBreakdownFor] = useState<string>('');
   const [batchRowsByItemId, setBatchRowsByItemId] = useState<Record<string, Array<{ batchId: string; remaining: number; unitCost: number; occurredAt?: string }>>>({});
@@ -248,9 +250,8 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
         const lineTotal = (unitPrice + addonsPrice) * (Number(effectiveQty) || 0);
         const unitLabel = (() => {
           if (isPromotionLine) return 'باقة';
-          if (item.unitType === 'kg') return 'كغ';
-          if (item.unitType === 'gram') return 'غ';
-          return localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
+          const resolved = String((item as any)?.uomCode || item.unitType || 'piece');
+          return getUnitLabel(resolved as any, 'ar') || localizeUomCodeAr(resolved);
         })();
         const rowNo = index + 1;
         return (
@@ -288,7 +289,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   const reservedBase = Math.max(0, Number(reserved || 0));
                   const availUom = (f > 0 && item.unitType !== 'kg' && item.unitType !== 'gram') ? Math.floor((availBase / f) + 1e-9) : availBase;
                   const reservedUom = (f > 0 && item.unitType !== 'kg' && item.unitType !== 'gram') ? Math.floor((reservedBase / f) + 1e-9) : reservedBase;
-                  const baseLabel = item.unitType === 'piece' ? 'قطعة' : item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : item.unitType;
+                  const baseLabel = getUnitLabel(String(item.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(item.unitType || 'piece'));
                   const uomLabel = localizeUomCodeAr(String((item as any).uomCode || item.unitType || 'piece'));
                   const id = String((item as any)?.id || (item as any)?.itemId || '').trim();
                   const expanded = openBreakdownFor === id;
@@ -502,19 +503,14 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                         ? (uomOptionsByItemId || {})[String((item as any)?.id || (item as any)?.itemId || '')]
                         : (Array.isArray((item as any)?.uomUnits) ? (item as any).uomUnits : [])) || [];
                       const baseLabel = (item.unitType || 'piece');
-                      const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                      const baseDisplay = getUnitLabel(String(baseLabel || 'piece') as any, 'ar') || localizeUomCodeAr(String(baseLabel || 'piece'));
                       const baseOpt = [{ code: baseLabel, name: baseDisplay, qtyInBase: 1 }];
                       const merged = [...baseOpt, ...opts.filter((o: any) => String(o?.code || '') !== baseLabel)];
                       return merged.map((o: any) => {
-                        const codeLower = String(o.code || '').trim().toLowerCase();
                         const raw = o.name;
                         const nameObj = (raw && typeof raw === 'object') ? raw : null;
                         const nameRaw = nameObj ? String(nameObj?.[language] || nameObj?.ar || nameObj?.en || '').trim() : String(raw || '').trim();
-                        const displayName = codeLower === 'pack'
-                          ? 'باكت'
-                          : codeLower === 'carton'
-                            ? 'كرتون'
-                            : (nameRaw || o.code);
+                        const displayName = nameRaw || getUnitLabel(String(o.code || '') as any, 'ar') || localizeUomCodeAr(String(o.code || ''));
                         const qtyText = Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseDisplay})` : '';
                         return (
                           <option key={o.code} value={o.code}>

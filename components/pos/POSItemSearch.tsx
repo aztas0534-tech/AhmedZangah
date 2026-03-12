@@ -3,6 +3,7 @@ import type { MenuItem } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useStock } from '../../contexts/StockContext';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { getSupabaseClient } from '../../supabase';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 
 const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMode }) => {
   const { settings } = useSettings();
+  const { getUnitLabel } = useItemMeta();
   const sessionScope = useSessionScope();
   const { getStockByItemId } = useStock();
   const [baseItems, setBaseItems] = useState<MenuItem[]>([]);
@@ -326,7 +328,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
                     {isWeight ? 'وزن' : 'كمية'} • سعر حسب العملة المختارة
                   </div>
                   <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                    متاح: {Number(item.availableStock || 0)} {item.unitType === 'gram' ? 'غ' : item.unitType === 'kg' ? 'كغ' : 'ق'} • محجوز: {Number((item as any).reservedQuantity || 0)}
+                    متاح: {Number(item.availableStock || 0)} {getUnitLabel(String(item.unitType || 'piece') as any, 'ar') || 'وحدة'} • محجوز: {Number((item as any).reservedQuantity || 0)}
                   </div>
                 </div>
                 <div className="text-xs font-mono text-gray-400 shrink-0">#{shortId}</div>

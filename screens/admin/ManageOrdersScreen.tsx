@@ -6165,17 +6165,12 @@ const ManageOrdersScreen: React.FC = () => {
                                                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                                 >
                                                     {(() => {
-                                                        const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                                                        const baseDisplay = getUnitLabel(baseLabel as any, 'ar') || localizeUomCodeAr(baseLabel);
                                                         const baseOpt = [{ code: baseLabel, name: baseDisplay, qtyInBase: 1 }];
                                                         const merged = [...baseOpt, ...(uoms || []).filter((o: any) => String(o?.code || '') !== baseLabel)];
                                                         return merged.map((o: any) => {
-                                                            const codeLower = String(o.code || '').trim().toLowerCase();
                                                             const nameRaw = String(o.name || '').trim();
-                                                            const displayName = codeLower === 'pack'
-                                                                ? 'باكت'
-                                                                : codeLower === 'carton'
-                                                                    ? 'كرتون'
-                                                                    : (nameRaw || o.code);
+                                                            const displayName = nameRaw || getUnitLabel(String(o.code || '') as any, 'ar') || localizeUomCodeAr(String(o.code || ''));
                                                             const qtyText = Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseDisplay})` : '';
                                                             return (
                                                                 <option key={o.code} value={o.code}>

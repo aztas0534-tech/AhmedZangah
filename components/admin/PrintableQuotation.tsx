@@ -1,5 +1,6 @@
 import React from 'react';
 import { AZTA_IDENTITY } from '../../config/identity';
+import { localizeUomCodeAr } from '../../utils/displayLabels';
 
 export interface QuotationPrintData {
     quotationNumber: string;
@@ -39,17 +40,6 @@ interface PrintableQuotationProps {
     vatNumber?: string;
     printNumber?: number | null;
 }
-
-const unitLabels: Record<string, string> = {
-    piece: 'قطعة',
-    kg: 'كجم',
-    gram: 'جرام',
-    liter: 'لتر',
-    box: 'كرتون',
-    pack: 'عبوة',
-    meter: 'متر',
-    ton: 'طن',
-};
 
 const PrintableQuotation: React.FC<PrintableQuotationProps> = ({
     data,
@@ -276,7 +266,7 @@ const PrintableQuotation: React.FC<PrintableQuotationProps> = ({
                                             <div className="qt-bold-value" style={{ color: '#0F172A' }}>{item.itemName}</div>
                                             {item.notes && <div style={{ fontSize: '7px', color: '#6B7280' }}>{item.notes}</div>}
                                         </td>
-                                        <td style={{ textAlign: 'center', fontSize: '8px' }}>{unitLabels[item.unit] || item.unit}</td>
+                                        <td style={{ textAlign: 'center', fontSize: '8px' }}>{localizeUomCodeAr(String(item.unit || ''))}</td>
                                         <td className="qt-tabular" style={{ textAlign: 'center' }} dir="ltr">{item.quantity}</td>
                                         <td className="qt-tabular" style={{ textAlign: 'center' }} dir="ltr">{fmt(item.unitPrice)}</td>
                                         <td className="qt-tabular qt-bold-value" style={{ textAlign: 'center' }} dir="ltr">{fmt(item.total)}</td>

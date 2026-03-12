@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMenu } from '../../contexts/MenuContext';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
@@ -64,17 +65,6 @@ const statusColors: Record<string, string> = {
     cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
 
-const unitOptions = [
-    { value: 'piece', label: 'قطعة' },
-    { value: 'kg', label: 'كجم' },
-    { value: 'gram', label: 'جرام' },
-    { value: 'liter', label: 'لتر' },
-    { value: 'box', label: 'كرتون' },
-    { value: 'pack', label: 'عبوة' },
-    { value: 'meter', label: 'متر' },
-    { value: 'ton', label: 'طن' },
-];
-
 const roundMoney = (v: number) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return 0;
@@ -92,6 +82,7 @@ const QuotationsScreen: React.FC = () => {
     const { showNotification } = useToast();
     const { settings } = useSettings();
     const { menuItems: allMenuItems } = useMenu();
+    const { unitTypes, getUnitLabel } = useItemMeta();
     const sessionScope = useSessionScope();
     const navigate = useNavigate();
     const fefoCache = useRef<Map<string, number>>(new Map());
@@ -105,6 +96,19 @@ const QuotationsScreen: React.FC = () => {
         });
         return items;
     }, [allMenuItems]);
+
+    const unitOptions = useMemo(() => {
+        const active = unitTypes.filter(u => u.isActive).map(u => ({
+            value: String(u.key),
+            label: getUnitLabel(String(u.key) as any, 'ar') || String(u.key),
+        }));
+        if (active.length > 0) return active;
+        return [
+            { value: 'piece', label: 'قطعة' },
+            { value: 'kg', label: 'كجم' },
+            { value: 'gram', label: 'جرام' },
+        ];
+    }, [unitTypes, getUnitLabel]);
 
     // State
     const [quotations, setQuotations] = useState<Quotation[]>([]);
@@ -318,7 +322,7 @@ const QuotationsScreen: React.FC = () => {
         if (!mi) return;
         const name = mi.name?.['ar'] || mi.name?.en || mi.id;
         let price = Number(mi.price) || 0;
-        const unit = mi.unitType === 'kg' || mi.unitType === 'gram' ? mi.unitType : 'piece';
+        const unit = String(mi.unitType || 'piece');
 
         // Try FEFO pricing for dynamic batch price
         const warehouseId = sessionScope.scope?.warehouseId;
@@ -677,7 +681,7 @@ const QuotationsScreen: React.FC = () => {
         const newItems = menuItems.map(mi => ({
             item_id: mi.id,
             item_name: mi.name?.['ar'] || mi.name?.en || mi.id,
-            unit: mi.unitType === 'kg' || mi.unitType === 'gram' ? mi.unitType : 'piece' as string,
+            unit: String(mi.unitType || 'piece'),
             quantity: 1,
             unit_price: Number(mi.price) || 0,
             notes: '',
@@ -695,7 +699,7 @@ const QuotationsScreen: React.FC = () => {
 
         const allItems = menuItems.map(mi => ({
             itemName: mi.name?.['ar'] || mi.name?.en || mi.id,
-            unit: mi.unitType === 'kg' || mi.unitType === 'gram' ? mi.unitType : 'piece',
+            unit: String(mi.unitType || 'piece'),
             quantity: 1,
             unitPrice: Number(mi.price) || 0,
             total: Number(mi.price) || 0,
