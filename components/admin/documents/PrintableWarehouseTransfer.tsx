@@ -22,7 +22,7 @@ export type PrintableWarehouseTransferData = {
   fromWarehouseName: string;
   toWarehouseName: string;
   notes?: string | null;
-  items: Array<{ itemName: string; itemId: string; quantity: number; notes?: string | null }>;
+  items: Array<{ itemName: string; itemId: string; quantity: number; unit?: string | null; notes?: string | null }>;
 };
 
 export default function PrintableWarehouseTransfer(props: { data: PrintableWarehouseTransferData; brand?: Brand; language?: 'ar' | 'en'; audit?: DocumentAuditInfo | null; printNumber?: number | null }) {
@@ -200,13 +200,14 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
                 <th className="w-8 text-center">م</th>
                 <th className={isArabic ? 'text-right' : 'text-left'}>{isArabic ? 'الصنف | Item Description' : 'Item Description'}</th>
                 <th className="text-center w-24">الكمية QTY</th>
+                <th className="text-center w-20">{isArabic ? 'الوحدة | Unit' : 'Unit'}</th>
                 <th className={isArabic ? 'text-right' : 'text-left'}>{isArabic ? 'ملاحظات | Notes' : 'Notes'}</th>
               </tr>
             </thead>
             <tbody>
               {data.items.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
+                  <td colSpan={5} className="py-4 text-center text-slate-400">{isArabic ? 'لا توجد أصناف' : 'No items'}</td>
                 </tr>
               ) : (
                 data.items.map((it, idx) => {
@@ -217,6 +218,7 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
                         <div className="font-bold-value text-blue-950">{it.itemName || it.itemId}</div>
                       </td>
                       <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{Number(it.quantity || 0)}</td>
+                      <td className="text-center font-bold-value text-slate-600">{it.unit || '—'}</td>
                       <td className="text-slate-500 font-thin-label text-[10px]">{it.notes || '—'}</td>
                     </tr>
                   );
@@ -224,7 +226,7 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
               )}
               {Array.from({ length: Math.max(0, 5 - data.items.length) }).map((_, idx) => (
                 <tr key={`fill-${idx}`}>
-                  <td></td><td></td><td></td><td></td>
+                  <td></td><td></td><td></td><td></td><td></td>
                 </tr>
               ))}
             </tbody>

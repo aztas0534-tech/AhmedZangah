@@ -130,14 +130,24 @@ const WarehouseTransfersScreen: React.FC = () => {
         try {
             const { data: items, error } = await supabase
                 .from('warehouse_transfer_items')
-                .select('item_id,quantity,notes,menu_items(name)')
+                .select('item_id,quantity,notes,menu_items(name,unit)')
                 .eq('transfer_id', transfer.id)
                 .order('created_at', { ascending: true });
             if (error) throw error;
+
+            // Resolve unit: prefer stock_management.unit, fallback menu_items.unit, fallback menuItems context
+            const resolveUnit = (r: any) => {
+                const miUnit = String(r?.menu_items?.unit || '').trim();
+                if (miUnit) return miUnit;
+                const ctxItem = menuItems.find(mi => String(mi.id) === String(r.item_id));
+                return String((ctxItem as any)?.unit || '').trim() || null;
+            };
+
             const list = (Array.isArray(items) ? items : []).map((r: any) => ({
                 itemId: String(r.item_id),
                 itemName: String(r?.menu_items?.name?.ar || r?.menu_items?.name?.en || r.item_id),
                 quantity: Number(r.quantity || 0),
+                unit: resolveUnit(r),
                 notes: r.notes ?? null,
             })).filter((x: any) => x.quantity > 0);
 

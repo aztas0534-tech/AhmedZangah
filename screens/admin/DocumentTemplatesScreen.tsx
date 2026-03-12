@@ -206,8 +206,8 @@ const buildMockWarehouseTransfer = (): PrintableWarehouseTransferData => {
     toWarehouseName: 'فرع 2',
     notes: 'تحويل تجريبي لمعاينة القالب',
     items: [
-      { itemId: 'item-1', itemName: 'شاورما دجاج', quantity: 5, notes: null },
-      { itemId: 'item-2', itemName: 'عصير مانجو', quantity: 6, notes: 'عاجل' },
+      { itemId: 'item-1', itemName: 'شاورما دجاج', quantity: 5, unit: 'كرتون', notes: null },
+      { itemId: 'item-2', itemName: 'عصير مانجو', quantity: 6, unit: 'علبة', notes: 'عاجل' },
     ],
   };
 };

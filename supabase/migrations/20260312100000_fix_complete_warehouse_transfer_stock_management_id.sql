@@ -1,3 +1,9 @@
+-- Fix: non-food items in complete_warehouse_transfer must include batch_id
+-- The non-food branch was missing batch_id when inserting into inventory_movements.
+-- Since batch_id is NOT NULL, this caused:
+--   "null value in column batch_id of relation inventory_movements violates not-null constraint"
+-- Solution: for non-food items, find the latest batch or create a virtual one.
+
 create or replace function public.complete_warehouse_transfer(
   p_transfer_id uuid
 )
@@ -25,6 +31,7 @@ declare
   v_unit_cost numeric;
   v_movement_out uuid;
   v_movement_in uuid;
+  v_nonfood_batch_id uuid;
 begin
   perform public._require_stock_manager('complete_warehouse_transfer');
 
@@ -102,9 +109,47 @@ begin
       updated_at = now();
 
     if not v_is_food then
+      -- For non-food items: find the most recent batch for this item+warehouse
+      -- If no batch exists, create a virtual one
+      v_nonfood_batch_id := null;
+
+      select b.id
+      into v_nonfood_batch_id
+      from public.batches b
+      where b.item_id = v_item.item_id
+        and b.warehouse_id = v_from_warehouse
+        and (b.quantity_received - b.quantity_consumed) > 0
+      order by b.created_at desc
+      limit 1;
+
+      if v_nonfood_batch_id is null then
+        -- Fallback: find any batch for this item (any warehouse)
+        select b.id
+        into v_nonfood_batch_id
+        from public.batches b
+        where b.item_id = v_item.item_id
+          and (b.quantity_received - b.quantity_consumed) > 0
+        order by b.created_at desc
+        limit 1;
+      end if;
+
+      if v_nonfood_batch_id is null then
+        -- Last resort: create a virtual batch for this transfer
+        v_nonfood_batch_id := gen_random_uuid();
+        insert into public.batches (
+          id, item_id, warehouse_id, batch_code,
+          quantity_received, quantity_consumed, unit_cost, data
+        ) values (
+          v_nonfood_batch_id, v_item.item_id, v_from_warehouse,
+          'TRF-' || left(p_transfer_id::text, 8),
+          v_item.quantity, 0, coalesce(v_sm_from.avg_cost, 0),
+          jsonb_build_object('source', 'warehouse_transfer', 'transferId', p_transfer_id)
+        );
+      end if;
+
       insert into public.inventory_movements (
         id, item_id, movement_type, quantity, unit_cost, total_cost,
-        reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data
+        reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data, batch_id
       )
       values (
         gen_random_uuid(),
@@ -119,13 +164,14 @@ begin
         auth.uid(),
         now(),
         v_from_warehouse,
-        jsonb_build_object('warehouseId', v_from_warehouse, 'toWarehouseId', v_to_warehouse)
+        jsonb_build_object('warehouseId', v_from_warehouse, 'toWarehouseId', v_to_warehouse),
+        v_nonfood_batch_id
       )
       returning id into v_movement_out;
 
       insert into public.inventory_movements (
         id, item_id, movement_type, quantity, unit_cost, total_cost,
-        reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data
+        reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data, batch_id
       )
       values (
         gen_random_uuid(),
@@ -140,7 +186,8 @@ begin
         auth.uid(),
         now(),
         v_to_warehouse,
-        jsonb_build_object('warehouseId', v_to_warehouse, 'fromWarehouseId', v_from_warehouse, 'shippingCostApplied', v_unit_shipping_cost * v_item.quantity)
+        jsonb_build_object('warehouseId', v_to_warehouse, 'fromWarehouseId', v_from_warehouse, 'shippingCostApplied', v_unit_shipping_cost * v_item.quantity),
+        v_nonfood_batch_id
       )
       returning id into v_movement_in;
 
