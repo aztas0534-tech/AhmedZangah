@@ -1830,12 +1830,38 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification('لا تملك صلاحية إنشاء طلبات عكس جماعية.', 'error');
             return;
         }
-        const ids = bulkOrderIdsInput
+        const rawTokens = bulkOrderIdsInput
             .split(/[\s,;\n\r\t]+/)
-            .map(x => x.trim())
+            .map(x => x.trim().replace(/^#/, '').toUpperCase())
             .filter(Boolean);
+        if (rawTokens.length === 0) {
+            showNotification('أدخل أرقام الطلبات أولاً.', 'error');
+            return;
+        }
+        // Resolve short order IDs (e.g. A1B2C3) to full UUIDs
+        const allOrders = [...orders];
+        const ids: string[] = [];
+        const notFound: string[] = [];
+        for (const token of rawTokens) {
+            // Already a full UUID?
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
+                ids.push(token.toLowerCase());
+            } else {
+                // Match last 6 chars of order.id
+                const match = allOrders.find(o => o.id.slice(-6).toUpperCase() === token.toUpperCase());
+                if (match) {
+                    ids.push(match.id);
+                } else {
+                    notFound.push(token);
+                }
+            }
+        }
+        if (notFound.length > 0) {
+            showNotification(`لم يتم العثور على الطلبات: ${notFound.join(', ')}. تأكد أن الطلبات ظاهرة في الجدول الحالي.`, 'error');
+            return;
+        }
         if (ids.length === 0) {
-            showNotification('أدخل معرفات الطلبات أولاً.', 'error');
+            showNotification('لم يتم التعرف على أي طلب.', 'error');
             return;
         }
         const reason = bulkRequestReason.trim();
@@ -1904,7 +1930,8 @@ const ManageOrdersScreen: React.FC = () => {
                 return;
             }
 
-            setBulkOrderIdsInput(unique.join('\n'));
+            // Show short readable IDs in the textarea (the handler resolves them back)
+            setBulkOrderIdsInput(unique.map(id => id.slice(-6).toUpperCase()).join('\n'));
             showNotification(
                 `تم تجهيز ${unique.length} طلب مرشح (زيادة تحصيل: ${overpaidCount}، paidAt غير متطابق: ${stalePaidAtCount}، آجل مع تحصيل: ${creditWithPaidCount}).`,
                 'success'
@@ -3928,15 +3955,15 @@ const ManageOrdersScreen: React.FC = () => {
                     </div>
                     <div className="border-t border-gray-200 dark:border-gray-700 pt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
                         <div className="md:col-span-2">
-                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">معرفات طلبات جماعية (UUID مفصولة بمسافة/فاصلة)</label>
+                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">أرقام الطلبات (مفصولة بمسافة أو فاصلة)</label>
                             <textarea
                                 value={bulkOrderIdsInput}
                                 onChange={(e) => setBulkOrderIdsInput(e.target.value)}
                                 className="w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs font-mono"
-                                placeholder="uuid1, uuid2, uuid3"
+                                placeholder="A1B2C3, D4E5F6, G7H8I9"
                             />
                             <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                زر "إحضار الطلبات المرشحة تلقائياً" يملأ هذه الخانة بناءً على مؤشرات أخطاء التحصيل الشائعة ضمن الفلاتر الحالية.
+                                أدخل أرقام الطلبات المختصرة (مثل A1B2C3) كما تظهر في الجدول، أو استخدم زر "إحضار الطلبات المرشحة تلقائياً".
                             </div>
                         </div>
                         <div>
@@ -4655,7 +4682,7 @@ const ManageOrdersScreen: React.FC = () => {
                 cancelText={language === 'ar' ? 'رجوع' : 'Back'}
                 confirmButtonClassName="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400"
                 maxWidthClassName="max-w-5xl"
-                hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod || inStorePricingBusy || inStoreMissingServerPricing}
+                hideConfirmButton={true}
             >
                 <div className="space-y-4 relative">
                     {/* ── Loading Overlay ── */}
@@ -5873,11 +5900,19 @@ const ManageOrdersScreen: React.FC = () => {
                                         type="button"
                                         onClick={saveInStoreDraftQuotation}
                                         disabled={isInStoreCreating || inStoreLines.length === 0}
-                                        className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition text-sm font-semibold disabled:opacity-50"
+                                        className="px-3 py-2 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition text-xs font-medium disabled:opacity-50"
                                     >
                                         📋 عرض سعر
                                     </button>
-                                    <div className="text-[10px] text-gray-400 dark:text-gray-500 hidden md:block">Ctrl+Enter للتسجيل</div>
+                                    <button
+                                        type="button"
+                                        onClick={confirmInStoreSale}
+                                        disabled={isInStoreCreating || inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod || inStorePricingBusy || inStoreMissingServerPricing}
+                                        className="px-5 py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 transition-all text-sm font-bold shadow-lg shadow-emerald-600/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2"
+                                    >
+                                        ✅ تسجيل البيع
+                                        <kbd className="hidden md:inline-block text-[10px] font-mono bg-emerald-700/50 px-1.5 py-0.5 rounded">⏎</kbd>
+                                    </button>
                                 </div>
                             </div>
                         </div>
