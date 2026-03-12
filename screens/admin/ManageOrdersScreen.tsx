@@ -86,7 +86,7 @@ type InStoreSaleUxMetric = {
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders } = useOrders();
+    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders, fetchRemoteOrderById } = useOrders();
     const { createReturn, processReturn, getReturnsByOrder } = useSalesReturn();
     const { showNotification } = useToast();
     const language = 'ar';
@@ -259,6 +259,9 @@ const ManageOrdersScreen: React.FC = () => {
     const inStoreCreateOpIdRef = useRef('');
     const [inStoreCreateStartedAt, setInStoreCreateStartedAt] = useState<number>(0);
     const inStoreCreateDetachedRef = useRef(false);
+    const inStorePendingOrderIdRef = useRef('');
+    const inStoreBackgroundProbeTimerRef = useRef<number | null>(null);
+    const inStoreBackgroundProbeBusyRef = useRef(false);
     const [inStoreUxMetrics, setInStoreUxMetrics] = useState<InStoreSaleUxMetric[]>([]);
     const inStoreUxPersistBusyRef = useRef(false);
     const inStoreUxPersistQueueRef = useRef<InStoreSaleUxMetric[]>([]);
@@ -353,6 +356,67 @@ const ManageOrdersScreen: React.FC = () => {
             inStoreUxPersistBusyRef.current = false;
         }
     }, [adminUser?.id]);
+    const withTimeout = useCallback(async <T,>(promise: Promise<T>, timeoutMs: number, code: string) => {
+        let timer: number | null = null;
+        try {
+            return await Promise.race([
+                promise,
+                new Promise<T>((_, reject) => {
+                    timer = window.setTimeout(() => {
+                        const err: any = new Error(code);
+                        err.code = code;
+                        reject(err);
+                    }, timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timer != null) window.clearTimeout(timer);
+        }
+    }, []);
+    const stopInStoreBackgroundProbe = useCallback(() => {
+        if (inStoreBackgroundProbeTimerRef.current != null) {
+            window.clearInterval(inStoreBackgroundProbeTimerRef.current);
+            inStoreBackgroundProbeTimerRef.current = null;
+        }
+        inStoreBackgroundProbeBusyRef.current = false;
+    }, []);
+    const startInStoreBackgroundProbe = useCallback((orderId: string, opId: string) => {
+        stopInStoreBackgroundProbe();
+        let ticks = 0;
+        inStoreBackgroundProbeTimerRef.current = window.setInterval(async () => {
+            if (inStoreBackgroundProbeBusyRef.current) return;
+            inStoreBackgroundProbeBusyRef.current = true;
+            try {
+                ticks += 1;
+                const order = await fetchRemoteOrderById(orderId);
+                if (order) {
+                    stopInStoreBackgroundProbe();
+                    const shortId = String(order.id || '').slice(-6).toUpperCase();
+                    const statusKey = (String(order.status || '').trim() as OrderStatus) || 'pending';
+                    const statusLabel = statusTranslations[statusKey] || String(order.status || 'pending');
+                    showNotification(`اكتمل التحقق من عملية الخلفية #${shortId} (الحالة: ${statusLabel}) | تتبع ${opId}`, order.status === 'delivered' ? 'success' : 'info');
+                    inStorePendingOrderIdRef.current = '';
+                    void fetchOrders();
+                    return;
+                }
+                if (ticks >= 40) {
+                    stopInStoreBackgroundProbe();
+                    showNotification(`تعذر تأكيد نتيجة العملية تلقائيًا. تتبع: ${opId} | رقم الطلب: ${orderId.slice(-6).toUpperCase()}`, 'error');
+                }
+            } catch {
+                if (ticks >= 40) {
+                    stopInStoreBackgroundProbe();
+                }
+            } finally {
+                inStoreBackgroundProbeBusyRef.current = false;
+            }
+        }, 15000);
+    }, [fetchOrders, fetchRemoteOrderById, showNotification, stopInStoreBackgroundProbe]);
+    useEffect(() => {
+        return () => {
+            stopInStoreBackgroundProbe();
+        };
+    }, [stopInStoreBackgroundProbe]);
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const handler = (event: Event) => {
@@ -2312,6 +2376,8 @@ const ManageOrdersScreen: React.FC = () => {
         if (inStoreCreationLock.current) return;
         inStoreCreationLock.current = true;
         const opId = `POS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        const existingOrderId = String((payload as any)?.existingOrderId || inStorePendingOrderIdRef.current || crypto.randomUUID()).trim();
+        inStorePendingOrderIdRef.current = existingOrderId;
         const startedAt = Date.now();
         inStoreCreateOpIdRef.current = opId;
         setInStoreCreateOpId(opId);
@@ -2329,11 +2395,12 @@ const ManageOrdersScreen: React.FC = () => {
         }, 15000);
         try {
             const belowCostOverrideReason = String((payload as any)?.belowCostOverrideReason || '').trim();
-            const order = await createInStoreSale({
+            const order = await withTimeout(createInStoreSale({
                 ...payload,
+                existingOrderId,
                 creditOverrideReason: creditOverrideReason ? String(creditOverrideReason).trim() : undefined,
                 belowCostOverrideReason: belowCostOverrideReason || undefined,
-            });
+            }), 120000, 'IN_STORE_CREATE_TIMEOUT');
             const awaitingPayment = order.status === 'pending';
             const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
             if (awaitingPayment) {
@@ -2373,6 +2440,7 @@ const ManageOrdersScreen: React.FC = () => {
                     }
                 }
             }
+            inStorePendingOrderIdRef.current = '';
             setIsInStoreSaleOpen(false);
             setInStoreCustomerName('');
             setInStorePhoneNumber('');
@@ -2398,6 +2466,15 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreSelectedPartyId('');
             setSourceQuotation(null);
         } catch (error) {
+            const code = String((error as any)?.code || '').trim().toUpperCase();
+            const isCreateTimeout = code === 'IN_STORE_CREATE_TIMEOUT';
+            if (isCreateTimeout) {
+                inStoreCreateDetachedRef.current = true;
+                setIsInStoreSaleOpen(false);
+                showNotification(`تجاوزت العملية الحد الآمن للانتظار، وتم تحويلها للمتابعة بالخلفية. تتبع: ${opId}`, 'info');
+                startInStoreBackgroundProbe(existingOrderId, opId);
+                return;
+            }
             const raw = error instanceof Error ? error.message : '';
             const upper = raw.trim().toUpperCase();
             const isBelowCostReason = upper === 'BELOW_COST_REASON_REQUIRED' || /BELOW_COST_REASON_REQUIRED/i.test(raw);
@@ -2414,6 +2491,7 @@ const ManageOrdersScreen: React.FC = () => {
                 ? (localized ? `فشل تسجيل البيع الحضوري: ${localized} | تتبع ${opId}` : (raw ? `فشل تسجيل البيع الحضوري: ${raw} | تتبع ${opId}` : `فشل تسجيل البيع الحضوري. | تتبع ${opId}`))
                 : (localized ? `Failed to create in-store sale: ${localized} | Trace ${opId}` : (raw ? `Failed to create in-store sale: ${raw} | Trace ${opId}` : `Failed to create in-store sale. | Trace ${opId}`));
             showNotification(message, 'error');
+            inStorePendingOrderIdRef.current = '';
         } finally {
             const elapsedMs = Math.max(0, Date.now() - startedAt);
             try {

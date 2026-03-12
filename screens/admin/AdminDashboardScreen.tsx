@@ -14,6 +14,7 @@ import {
     FinancialPositionCard,
     SalesStatusRow,
 } from '../../components/dashboard/WorldClassWidgets';
+import { InStoreUxWidget } from '../../components/dashboard/InStoreUxWidget';
 import type { Order, OrderStatus } from '../../types';
 import { adminStatusColors } from '../../utils/orderUtils';
 
@@ -136,10 +137,11 @@ const AdminDashboardScreen: React.FC = () => {
                 </div>
 
                 {/* 4. Financial & Insights Row */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
                     <FinancialPositionCard />
                     <RevenueByChannelChart />
                     <TopDebtorsSection />
+                    <InStoreUxWidget />
                 </div>
 
                 {/* 5. Recent Orders Table */}
