@@ -83,11 +83,13 @@ const PrintableQuotation: React.FC<PrintableQuotationProps> = ({
         <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-visible" dir={isArabic ? 'rtl' : 'ltr'}>
             <style>{`
         @media print {
-            @page { size: A5 portrait; margin: 0; }
+            @page { size: auto; margin: 6mm; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
             * { box-sizing: border-box; }
-            .qt-doc { max-height: none !important; overflow: visible !important; min-height: auto !important; }
+            .qt-doc { max-height: none !important; overflow: visible !important; min-height: auto !important; padding: 0 !important; display: block !important; background: white !important; }
             .qt-table-wrap { overflow: visible !important; }
+            .qt-doc::before, .qt-doc::after, .qt-watermark { display: none !important; }
+            .qt-footer { margin-top: 8px !important; }
         }
         .qt-doc {
             width: 100%; padding: 3mm 3mm 2mm 3mm;
@@ -155,7 +157,7 @@ const PrintableQuotation: React.FC<PrintableQuotationProps> = ({
         .qt-totals-row.grand { margin-top: 2px; padding-top: 2px; border-top: 0.5pt solid #D1D5DB; font-size: 10px; font-weight: 900; color: #1E3A8A; }
         .qt-conditions { border: 0.5pt dashed #9CA3AF; background: #FFFFFF; padding: 3px; margin-top: 4px; font-size: 7px; color: #4B5563; }
         .qt-conditions-title { font-weight: 800; color: #0F172A; margin-bottom: 2px; }
-        .qt-footer { margin-top: auto; text-align: center; font-size: 7px; color: #4B5563; padding-top: 2px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+        .qt-footer { margin-top: 8px; text-align: center; font-size: 7px; color: #4B5563; padding-top: 2px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
         .qt-footer-line { width: 40px; height: 0.5pt; background-color: #D4AF37; margin: 1px 0; }
         .qt-copy-badge {
             position: absolute; top: 3mm; ${isArabic ? 'left' : 'right'}: 3mm;
