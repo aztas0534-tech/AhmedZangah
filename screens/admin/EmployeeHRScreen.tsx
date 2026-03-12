@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { renderToString } from 'react-dom/server';
 import { getSupabaseClient } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import PageLoader from '../../components/PageLoader';
 import { printContent } from '../../utils/printUtils';
+import PrintableContract, { ContractPrintData } from '../../components/admin/documents/PrintableContract';
+import PrintableGuarantee, { GuaranteePrintData } from '../../components/admin/documents/PrintableGuarantee';
 
 /* ── types ── */
 type Employee = { id: string; full_name: string; employee_code?: string | null; monthly_salary: number; currency: string };
@@ -68,208 +71,7 @@ const fmtDate = (d?: string | null) => { if (!d) return '—'; try { return new 
 const fmtMoney = (n: number) => { try { return Number(n || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); } catch { return String(n); } };
 const ymd = (d?: Date) => { const x = d || new Date(); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
-/* ── Print helpers ── */
-const BRAND_COLOR = '#2F2B7C';
-const BRAND_LIGHT = '#EEEDF8';
-const GUARANTEE_COLOR = '#7C1D1D';
-const GUARANTEE_LIGHT = '#FDF2F2';
-
-function buildHeader(brand: { name: string; address: string; contactNumber: string; logoUrl: string }, accentColor: string) {
-  return `<div style="background:linear-gradient(135deg,${accentColor} 0%,${accentColor}DD 100%);color:#fff;padding:20px 24px;border-radius:12px 12px 0 0;text-align:center;position:relative">
-  <div style="position:absolute;top:0;left:0;right:0;bottom:0;opacity:0.04;background:repeating-linear-gradient(45deg,transparent,transparent 10px,rgba(255,255,255,0.1) 10px,rgba(255,255,255,0.1) 20px);border-radius:12px 12px 0 0"></div>
-  <div style="position:relative;z-index:1">
-    ${brand.logoUrl ? `<img src="${brand.logoUrl}" alt="" style="height:70px;margin:0 auto 10px;display:block;border-radius:8px;background:#fff;padding:4px"/>` : ''}
-    <h1 style="margin:0 0 4px;font-size:22px;font-weight:800;letter-spacing:0.5px">${brand.name || 'اسم المنشأة'}</h1>
-    <div style="font-size:13px;opacity:0.9;font-weight:300">Ahmed Zenkah Trading & Agencies Est.</div>
-    <div style="font-size:11px;opacity:0.7;margin-top:6px">${[brand.address, brand.contactNumber].filter(Boolean).join('  |  ')}</div>
-  </div>
-</div>`;
-}
-
-function buildRow(label: string, value: string, bg: string) {
-  return `<tr><td style="padding:10px 14px;border:1px solid #e5e7eb;background:${bg};width:38%;font-weight:600;font-size:13px;color:#374151">${label}</td><td style="padding:10px 14px;border:1px solid #e5e7eb;font-size:13px;color:#111827">${value}</td></tr>`;
-}
-
-function printContractForm(c: Contract, emp: Employee | undefined, brand: { name: string; address: string; contactNumber: string; logoUrl: string }) {
-  const bd = c.salary_breakdown || {};
-  const totalSalary = c.salary + Object.values(bd).reduce((s, v) => s + Number(v || 0), 0);
-  const today = new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
-
-  const html = `<div dir="rtl" style="font-family:'Segoe UI',Tahoma,sans-serif;max-width:720px;margin:0 auto;color:#1a1a1a;border:2px solid ${BRAND_COLOR};border-radius:12px;overflow:hidden">
-${buildHeader(brand, BRAND_COLOR)}
-
-<div style="padding:24px 28px">
-<div style="text-align:center;margin-bottom:20px">
-  <h2 style="margin:0;font-size:22px;color:${BRAND_COLOR};font-weight:800">عقد عمل / توظيف</h2>
-  <div style="font-size:12px;color:#6b7280;margin-top:4px">Employment Contract</div>
-  <div style="width:60px;height:3px;background:${BRAND_COLOR};margin:10px auto 0;border-radius:2px"></div>
-</div>
-
-<div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-bottom:16px">
-  <span>رقم العقد: <strong style="color:#111">${c.contract_number || '____________'}</strong></span>
-  <span>التاريخ: <strong style="color:#111">${today}</strong></span>
-</div>
-
-<div style="background:${BRAND_LIGHT};border:1px solid ${BRAND_COLOR}33;border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.8;color:#374151">
-  تمّ الاتفاق بين <strong style="color:${BRAND_COLOR}">${brand.name || '_______________'}</strong> (ويُشار إليه فيما بعد بـ<strong>الطرف الأول / صاحب العمل</strong>) وبين السيد/ة <strong style="color:${BRAND_COLOR}">${emp?.full_name || '_______________'}</strong> (ويُشار إليه فيما بعد بـ<strong>الطرف الثاني / الموظف</strong>) على الشروط والأحكام التالية:
-</div>
-
-<h3 style="color:${BRAND_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${BRAND_COLOR}33">البند الأول: بيانات التعيين</h3>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;border-radius:8px;overflow:hidden">
-${buildRow('المسمى الوظيفي', c.job_title || '________________________', BRAND_LIGHT)}
-${buildRow('القسم / الإدارة', c.department || '________________________', '#fff')}
-${buildRow('موقع العمل', c.work_location || '________________________', BRAND_LIGHT)}
-${buildRow('نوع العقد', CONTRACT_TYPES[c.contract_type] || c.contract_type, '#fff')}
-${buildRow('تاريخ المباشرة', fmtDate(c.start_date), BRAND_LIGHT)}
-${buildRow('تاريخ انتهاء العقد', c.end_date ? fmtDate(c.end_date) : 'غير محدد المدة', '#fff')}
-${buildRow('فترة التجربة', c.probation_days + ' يوم', BRAND_LIGHT)}
-</table>
-
-<h3 style="color:${BRAND_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${BRAND_COLOR}33">البند الثاني: المقابل المالي</h3>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;border-radius:8px;overflow:hidden">
-${buildRow('الراتب الأساسي', fmtMoney(c.salary) + ' ' + c.currency, BRAND_LIGHT)}
-${Object.entries(bd).map(([k, v], i) => buildRow(k, fmtMoney(Number(v)) + ' ' + c.currency, i % 2 === 0 ? '#fff' : BRAND_LIGHT)).join('')}
-<tr style="background:${BRAND_COLOR}"><td style="padding:10px 14px;border:1px solid ${BRAND_COLOR};font-weight:700;font-size:14px;color:#fff;width:38%">إجمالي الراتب الشهري</td><td style="padding:10px 14px;border:1px solid ${BRAND_COLOR};font-weight:700;font-size:14px;color:#fff">${fmtMoney(totalSalary)} ${c.currency}</td></tr>
-</table>
-
-<h3 style="color:${BRAND_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${BRAND_COLOR}33">البند الثالث: ساعات العمل والإجازات</h3>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;border-radius:8px;overflow:hidden">
-${buildRow('ساعات العمل اليومية', c.working_hours_per_day + ' ساعة', BRAND_LIGHT)}
-${buildRow('أيام العمل الأسبوعية', c.working_days_per_week + ' أيام', '#fff')}
-${buildRow('الإجازة السنوية', c.vacation_days_annual + ' يوماً مدفوعة الأجر', BRAND_LIGHT)}
-</table>
-
-<h3 style="color:${BRAND_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${BRAND_COLOR}33">البند الرابع: الالتزامات العامة</h3>
-<div style="font-size:13px;line-height:2;color:#374151;padding:0 8px">
-  <div style="margin-bottom:6px">1. يلتزم الطرف الثاني بأداء العمل المكلف به بأمانة وإخلاص والمحافظة على أسرار العمل.</div>
-  <div style="margin-bottom:6px">2. يلتزم الطرف الثاني بالحضور والانصراف في المواعيد المحددة والالتزام بلوائح وأنظمة العمل.</div>
-  <div style="margin-bottom:6px">3. يلتزم الطرف الأول بدفع الراتب في نهاية كل شهر ميلادي وتوفير بيئة عمل آمنة.</div>
-  <div style="margin-bottom:6px">4. يحق لأي من الطرفين إنهاء العقد بموجب إشعار خطي مدته 30 يوماً.</div>
-  <div style="margin-bottom:6px">5. في حال العقد محدد المدة، يتجدد تلقائياً لمدة مماثلة ما لم يُخطر أحد الطرفين الآخر.</div>
-  <div>6. تُطبق أحكام قانون العمل اليمني فيما لم يرد بشأنه نص في هذا العقد.</div>
-</div>
-
-${c.special_terms ? `<h3 style="color:${BRAND_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${BRAND_COLOR}33">البند الخامس: شروط وأحكام خاصة</h3>
-<div style="padding:14px;border:1px solid ${BRAND_COLOR}33;border-radius:8px;font-size:13px;white-space:pre-wrap;line-height:1.9;background:${BRAND_LIGHT};color:#374151">${c.special_terms}</div>` : ''}
-
-<div style="margin-top:24px;padding:14px;background:#F0FFF4;border:1px solid #86EFAC;border-radius:8px;font-size:12px;color:#166534;line-height:1.8;text-align:center">
-  حُرر هذا العقد من نسختين أصليتين لكل طرف نسخة للعمل بموجبها.
-</div>
-
-<div style="margin-top:28px;padding-top:20px;border-top:2px solid ${BRAND_COLOR}33">
-  <h3 style="font-size:15px;color:${BRAND_COLOR};margin-bottom:8px;text-align:center;font-weight:700">التوقيعات</h3>
-  <div style="display:flex;justify-content:space-between;margin-top:36px">
-    <div style="text-align:center;width:45%;border:1px solid #e5e7eb;border-radius:8px;padding:16px 12px">
-      <div style="font-weight:700;font-size:13px;color:${BRAND_COLOR};margin-bottom:6px">الطرف الأول (صاحب العمل)</div>
-      <div style="border-bottom:1px dashed #9ca3af;margin:30px 0 10px"></div>
-      <div style="font-size:11px;color:#6b7280">الاسم: ________________________</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:6px">التوقيع والختم</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:6px">التاريخ: ___ / ___ / ______</div>
-    </div>
-    <div style="text-align:center;width:45%;border:1px solid #e5e7eb;border-radius:8px;padding:16px 12px">
-      <div style="font-weight:700;font-size:13px;color:${BRAND_COLOR};margin-bottom:6px">الطرف الثاني (الموظف)</div>
-      <div style="border-bottom:1px dashed #9ca3af;margin:30px 0 10px"></div>
-      <div style="font-size:11px;color:#6b7280">الاسم: ________________________</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:6px">رقم الهوية: ____________________</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:6px">التاريخ: ___ / ___ / ______</div>
-    </div>
-  </div>
-</div>
-
-</div><!-- end padding -->
-<div style="background:${BRAND_COLOR};color:#fff;text-align:center;padding:10px;font-size:11px;opacity:0.9;border-radius:0 0 10px 10px">
-  ${[brand.name, brand.address, brand.contactNumber].filter(Boolean).join('  •  ')}
-</div>
-</div>`;
-  printContent(html, `عقد عمل — ${emp?.full_name || ''}`);
-}
-
-function printGuaranteeForm(g: Guarantee, emp: Employee | undefined, brand: { name: string; address: string; contactNumber: string; logoUrl: string }) {
-  const today = new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
-
-  const html = `<div dir="rtl" style="font-family:'Segoe UI',Tahoma,sans-serif;max-width:720px;margin:0 auto;color:#1a1a1a;border:2px solid ${GUARANTEE_COLOR};border-radius:12px;overflow:hidden">
-${buildHeader(brand, GUARANTEE_COLOR)}
-
-<div style="padding:24px 28px">
-<div style="text-align:center;margin-bottom:20px">
-  <h2 style="margin:0;font-size:22px;color:${GUARANTEE_COLOR};font-weight:800">نموذج ضمان / كفالة موظف</h2>
-  <div style="font-size:12px;color:#6b7280;margin-top:4px">Employee Guarantee Form</div>
-  <div style="width:60px;height:3px;background:${GUARANTEE_COLOR};margin:10px auto 0;border-radius:2px"></div>
-</div>
-
-<div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-bottom:16px">
-  <span>رقم الضمان: <strong style="color:#111">${g.guarantee_number || '____________'}</strong></span>
-  <span>التاريخ: <strong style="color:#111">${today}</strong></span>
-</div>
-
-<h3 style="color:${GUARANTEE_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${GUARANTEE_COLOR}33">أولاً: بيانات الموظف (المكفول)</h3>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;border-radius:8px;overflow:hidden">
-${buildRow('اسم الموظف', emp?.full_name || '________________________', GUARANTEE_LIGHT)}
-${buildRow('رقم الموظف', emp?.employee_code || '________', '#fff')}
-</table>
-
-<h3 style="color:${GUARANTEE_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${GUARANTEE_COLOR}33">ثانياً: بيانات الكفيل / الضامن</h3>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;border-radius:8px;overflow:hidden">
-${buildRow('الاسم الكامل', g.guarantor_name || '________________________', GUARANTEE_LIGHT)}
-${buildRow('رقم الهوية / الجواز', g.guarantor_id_number || '________________________', '#fff')}
-${buildRow('رقم الهاتف', g.guarantor_phone || '________________________', GUARANTEE_LIGHT)}
-${buildRow('العنوان الدائم', g.guarantor_address || '________________________', '#fff')}
-${buildRow('صلة القرابة بالموظف', g.guarantor_relationship || '________________________', GUARANTEE_LIGHT)}
-</table>
-
-<h3 style="color:${GUARANTEE_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${GUARANTEE_COLOR}33">ثالثاً: تفاصيل الضمان</h3>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;border-radius:8px;overflow:hidden">
-${buildRow('نوع الضمان', GUARANTEE_TYPES[g.guarantee_type] || g.guarantee_type, GUARANTEE_LIGHT)}
-${buildRow('مبلغ الضمان', fmtMoney(g.guarantee_amount) + ' ' + g.currency, '#fff')}
-${buildRow('ساري من تاريخ', fmtDate(g.valid_from), GUARANTEE_LIGHT)}
-${buildRow('ساري حتى تاريخ', g.valid_until ? fmtDate(g.valid_until) : 'غير محدد المدة', '#fff')}
-</table>
-
-${g.special_terms ? `<h3 style="color:${GUARANTEE_COLOR};font-size:15px;font-weight:700;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid ${GUARANTEE_COLOR}33">رابعاً: شروط خاصة</h3>
-<div style="padding:14px;border:1px solid ${GUARANTEE_COLOR}33;border-radius:8px;font-size:13px;white-space:pre-wrap;line-height:1.9;background:${GUARANTEE_LIGHT};color:#374151">${g.special_terms}</div>` : ''}
-
-<div style="margin-top:16px;padding:16px;background:${GUARANTEE_LIGHT};border:2px solid ${GUARANTEE_COLOR}33;border-radius:8px;font-size:13px;line-height:2;color:#374151">
-  <div style="font-weight:700;color:${GUARANTEE_COLOR};margin-bottom:8px;font-size:14px">📋 إقرار وتعهد الكفيل:</div>
-  <div>أقر أنا الموقع أدناه بأنني أتعهد بكفالة الموظف المذكور أعلاه كفالة كاملة غير مشروطة، وأقر بالآتي:</div>
-  <div style="margin-top:6px;padding-right:12px">
-    1. أنني مسؤول مسؤولية كاملة عن أي التزامات مالية تترتب على الموظف تجاه المنشأة.<br/>
-    2. أنني أتعهد بإحضار الموظف في حال تغيبه عن العمل دون إذن مسبق.<br/>
-    3. أنني مسؤول عن تعويض المنشأة عن أي ضرر أو خسارة يسببها الموظف.<br/>
-    4. أن هذا الضمان ساري المفعول طوال مدة عمل الموظف لدى المنشأة ما لم يُلغَ خطياً.
-  </div>
-</div>
-
-<div style="margin-top:28px;padding-top:20px;border-top:2px solid ${GUARANTEE_COLOR}33">
-  <h3 style="font-size:15px;color:${GUARANTEE_COLOR};margin-bottom:8px;text-align:center;font-weight:700">التوقيعات</h3>
-  <div style="display:flex;justify-content:space-between;margin-top:24px;flex-wrap:wrap;gap:12px">
-    <div style="text-align:center;width:30%;border:1px solid #e5e7eb;border-radius:8px;padding:14px 8px">
-      <div style="font-weight:700;font-size:12px;color:${GUARANTEE_COLOR};margin-bottom:4px">صاحب العمل</div>
-      <div style="border-bottom:1px dashed #9ca3af;margin:28px 0 8px"></div>
-      <div style="font-size:11px;color:#6b7280">التوقيع والختم</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:4px">___ / ___ / ______</div>
-    </div>
-    <div style="text-align:center;width:30%;border:1px solid #e5e7eb;border-radius:8px;padding:14px 8px">
-      <div style="font-weight:700;font-size:12px;color:${GUARANTEE_COLOR};margin-bottom:4px">الموظف (المكفول)</div>
-      <div style="border-bottom:1px dashed #9ca3af;margin:28px 0 8px"></div>
-      <div style="font-size:11px;color:#6b7280">التوقيع</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:4px">___ / ___ / ______</div>
-    </div>
-    <div style="text-align:center;width:30%;border:1px solid #e5e7eb;border-radius:8px;padding:14px 8px">
-      <div style="font-weight:700;font-size:12px;color:${GUARANTEE_COLOR};margin-bottom:4px">الكفيل / الضامن</div>
-      <div style="border-bottom:1px dashed #9ca3af;margin:28px 0 8px"></div>
-      <div style="font-size:11px;color:#6b7280">التوقيع وبصمة الإبهام</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:4px">___ / ___ / ______</div>
-    </div>
-  </div>
-</div>
-
-</div><!-- end padding -->
-<div style="background:${GUARANTEE_COLOR};color:#fff;text-align:center;padding:10px;font-size:11px;opacity:0.9;border-radius:0 0 10px 10px">
-  ${[brand.name, brand.address, brand.contactNumber].filter(Boolean).join('  •  ')}
-</div>
-</div>`;
-  printContent(html, `ضمان موظف — ${emp?.full_name || ''}`);
-}
+/* ── Print helpers (async with tracking) ── */
 
 /* ── Main Screen ── */
 export default function EmployeeHRScreen() {
@@ -308,6 +110,75 @@ export default function EmployeeHRScreen() {
     contactNumber: (settings.contactNumber || '').trim(),
     logoUrl: (settings.logoUrl || '').trim(),
   }), [settings]);
+
+  /* ── Async print: contract ── */
+  const handlePrintContract = async (c: Contract) => {
+    const s = getSupabaseClient();
+    const emp = employees.find(e => e.id === c.employee_id);
+    let pn: number | null = null;
+    if (s) {
+      try {
+        const { data } = await s.rpc('track_document_print', { p_source_table: 'employee_contracts', p_source_id: c.id, p_template: 'PrintableContract' });
+        pn = typeof data === 'number' ? data : null;
+      } catch { /* ignore tracking errors */ }
+    }
+    const contractData: ContractPrintData = {
+      contractNumber: c.contract_number || '',
+      contractType: c.contract_type,
+      startDate: c.start_date,
+      endDate: c.end_date,
+      jobTitle: c.job_title,
+      department: c.department,
+      workLocation: c.work_location,
+      salary: c.salary,
+      currency: c.currency,
+      salaryBreakdown: c.salary_breakdown || {},
+      probationDays: c.probation_days,
+      workingHoursPerDay: c.working_hours_per_day,
+      workingDaysPerWeek: c.working_days_per_week,
+      vacationDaysAnnual: c.vacation_days_annual,
+      specialTerms: c.special_terms,
+      employeeName: emp?.full_name || '',
+      employeeCode: emp?.employee_code,
+    };
+    const html = renderToString(
+      <PrintableContract data={contractData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
+    );
+    printContent(html, `عقد عمل — ${emp?.full_name || ''}`);
+  };
+
+  /* ── Async print: guarantee ── */
+  const handlePrintGuarantee = async (g: Guarantee) => {
+    const s = getSupabaseClient();
+    const emp = employees.find(e => e.id === g.employee_id);
+    let pn: number | null = null;
+    if (s) {
+      try {
+        const { data } = await s.rpc('track_document_print', { p_source_table: 'employee_guarantees', p_source_id: g.id, p_template: 'PrintableGuarantee' });
+        pn = typeof data === 'number' ? data : null;
+      } catch { /* ignore tracking errors */ }
+    }
+    const guaranteeData: GuaranteePrintData = {
+      guaranteeNumber: g.guarantee_number || '',
+      guaranteeType: g.guarantee_type,
+      guarantorName: g.guarantor_name,
+      guarantorIdNumber: g.guarantor_id_number,
+      guarantorPhone: g.guarantor_phone,
+      guarantorAddress: g.guarantor_address,
+      guarantorRelationship: g.guarantor_relationship,
+      guaranteeAmount: g.guarantee_amount,
+      currency: g.currency,
+      validFrom: g.valid_from,
+      validUntil: g.valid_until,
+      specialTerms: g.special_terms,
+      employeeName: emp?.full_name || '',
+      employeeCode: emp?.employee_code,
+    };
+    const html = renderToString(
+      <PrintableGuarantee data={guaranteeData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
+    );
+    printContent(html, `ضمان موظف — ${emp?.full_name || ''}`);
+  };
 
   const loadAll = useCallback(async () => {
     const s = getSupabaseClient(); if (!s) { setLoading(false); return; }
@@ -556,7 +427,7 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{fmtMoney(c.salary)} {c.currency}</td>
                     <td className="p-3 text-sm border-r dark:border-gray-700"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(c.status)}`}>{STATUS_LABELS[c.status] || c.status}</span></td>
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
-                      <button onClick={() => printContractForm(c, employees.find(e => e.id === c.employee_id), brand)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
+                      <button onClick={() => void handlePrintContract(c)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
                       <button disabled={!canManageHr} onClick={() => openCModal(c)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
                       <button disabled={!canManageHr} onClick={() => deleteContract(c.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
                       {canManageHr && c.status === 'draft' && <button onClick={() => void transitionDocument('contract', c.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}
@@ -612,7 +483,7 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{fmtDate(g.valid_until)}</td>
                     <td className="p-3 text-sm border-r dark:border-gray-700"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(g.status)}`}>{STATUS_LABELS[g.status] || g.status}</span></td>
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
-                      <button onClick={() => printGuaranteeForm(g, employees.find(e => e.id === g.employee_id), brand)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
+                      <button onClick={() => void handlePrintGuarantee(g)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
                       <button disabled={!canManageHr} onClick={() => openGModal(g)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
                       <button disabled={!canManageHr} onClick={() => deleteGuarantee(g.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
                       {canManageHr && g.status === 'draft' && <button onClick={() => void transitionDocument('guarantee', g.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}
