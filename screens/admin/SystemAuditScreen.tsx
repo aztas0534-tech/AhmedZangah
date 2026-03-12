@@ -238,6 +238,36 @@ const SystemAuditScreen: React.FC = () => {
         });
     }, [logs, riskFilter, reviewOutcomeFilter, criticalOnly]);
 
+    const counters = useMemo(() => {
+        let approved = 0;
+        let rejected = 0;
+        let pending = 0;
+        let critical = 0;
+        for (const l of filteredLogs as any[]) {
+            const code = safeString(l?.reasonCode).trim().toUpperCase();
+            const action = safeString(l?.action).trim();
+            const metadataStatus = safeString(l?.metadata?.newReviewStatus).trim().toLowerCase();
+            let outcome = '';
+            if (code === 'SHIFT_REJECTED') outcome = 'rejected';
+            else if (code === 'SHIFT_APPROVED') outcome = 'approved';
+            else if (action === 'cash_shift_reviewed' && (metadataStatus === 'approved' || metadataStatus === 'rejected' || metadataStatus === 'pending')) outcome = metadataStatus;
+
+            if (outcome === 'approved') approved += 1;
+            else if (outcome === 'rejected') rejected += 1;
+            else if (outcome === 'pending') pending += 1;
+
+            const isHighRisk = safeString(l?.riskLevel).toUpperCase() === 'HIGH';
+            if (isHighRisk || outcome === 'rejected') critical += 1;
+        }
+        return {
+            total: filteredLogs.length,
+            approved,
+            rejected,
+            pending,
+            critical,
+        };
+    }, [filteredLogs]);
+
     useEffect(() => {
         if (actorIds.length === 0) return;
         const supabase = getSupabaseClient();
@@ -347,6 +377,29 @@ const SystemAuditScreen: React.FC = () => {
                     >
                         تحديث
                     </button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 border border-gray-100 dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">إجمالي السجلات (بعد الفلترة)</div>
+                    <div className="text-xl font-bold dark:text-white mt-1" dir="ltr">{counters.total}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 border border-green-100 dark:border-green-900/40">
+                    <div className="text-xs text-green-700 dark:text-green-300">اعتماد الوردية</div>
+                    <div className="text-xl font-bold text-green-700 dark:text-green-300 mt-1" dir="ltr">{counters.approved}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 border border-red-100 dark:border-red-900/40">
+                    <div className="text-xs text-red-700 dark:text-red-300">رفض الوردية</div>
+                    <div className="text-xl font-bold text-red-700 dark:text-red-300 mt-1" dir="ltr">{counters.rejected}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 border border-amber-100 dark:border-amber-900/40">
+                    <div className="text-xs text-amber-700 dark:text-amber-300">مراجعة بانتظار</div>
+                    <div className="text-xl font-bold text-amber-700 dark:text-amber-300 mt-1" dir="ltr">{counters.pending}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 border border-red-200 dark:border-red-900/60">
+                    <div className="text-xs text-red-800 dark:text-red-300">سجلات حرجة</div>
+                    <div className="text-xl font-bold text-red-800 dark:text-red-300 mt-1" dir="ltr">{counters.critical}</div>
                 </div>
             </div>
 
