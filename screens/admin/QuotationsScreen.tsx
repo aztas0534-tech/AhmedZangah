@@ -6,7 +6,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 import PrintableQuotation from '../../components/admin/PrintableQuotation';
@@ -128,11 +128,13 @@ const QuotationsScreen: React.FC = () => {
     const [formCustomerAddress, setFormCustomerAddress] = useState('');
     const [formValidUntil, setFormValidUntil] = useState(toYmd(new Date(Date.now() + 15 * 86400000)));
     const [formCurrency, setFormCurrency] = useState('YER');
+    const [baseCurrency, setBaseCurrency] = useState('YER');
     const [formDiscountType, setFormDiscountType] = useState('none');
     const [formDiscountValue, setFormDiscountValue] = useState(0);
     const [formTaxRate, setFormTaxRate] = useState(0);
     const [formNotes, setFormNotes] = useState('');
     const [formTerms, setFormTerms] = useState('');
+    const [catalogCurrency, setCatalogCurrency] = useState('');
     const [formItems, setFormItems] = useState<Array<{
         id?: string;
         item_id: string | null;
@@ -193,6 +195,19 @@ const QuotationsScreen: React.FC = () => {
     }, [showNotification]);
 
     useEffect(() => { void fetchQuotations(); }, [fetchQuotations]);
+    useEffect(() => {
+        void getBaseCurrencyCode().then((code) => {
+            const normalized = String(code || '').trim().toUpperCase();
+            if (!normalized) return;
+            setBaseCurrency(normalized);
+            setCatalogCurrency(prev => String(prev || '').trim().toUpperCase() || normalized);
+            setFormCurrency(prev => {
+                const current = String(prev || '').trim().toUpperCase();
+                if (!current || current === 'YER') return normalized;
+                return current;
+            });
+        });
+    }, [baseCurrency]);
 
     // Filtered quotations
     const filteredQuotations = useMemo(() => {
@@ -219,7 +234,7 @@ const QuotationsScreen: React.FC = () => {
         setFormCustomerCompany('');
         setFormCustomerAddress('');
         setFormValidUntil(toYmd(new Date(Date.now() + 15 * 86400000)));
-        setFormCurrency('YER');
+        setFormCurrency(baseCurrency || 'YER');
         setFormDiscountType('none');
         setFormDiscountValue(0);
         setFormTaxRate(0);
@@ -227,7 +242,7 @@ const QuotationsScreen: React.FC = () => {
         setFormTerms('');
         setFormItems([]);
         setItemSearch('');
-    }, []);
+    }, [baseCurrency]);
 
     // Open create modal
     const openCreate = useCallback(() => {
@@ -246,7 +261,7 @@ const QuotationsScreen: React.FC = () => {
         setFormCustomerCompany(q.customer_company || '');
         setFormCustomerAddress(q.customer_address || '');
         setFormValidUntil(q.valid_until || toYmd(new Date(Date.now() + 15 * 86400000)));
-        setFormCurrency(q.currency || 'YER');
+        setFormCurrency(String(q.currency || baseCurrency || 'YER').trim().toUpperCase());
         setFormDiscountType(q.discount_type || 'none');
         setFormDiscountValue(q.discount_value || 0);
         setFormTaxRate(q.tax_rate || 0);
@@ -275,7 +290,7 @@ const QuotationsScreen: React.FC = () => {
             setFormItems([]);
         }
         setIsModalOpen(true);
-    }, []);
+    }, [baseCurrency]);
 
     // Duplicate quotation
     const handleDuplicate = useCallback(async (q: Quotation) => {
@@ -287,7 +302,7 @@ const QuotationsScreen: React.FC = () => {
         setFormCustomerCompany('');
         setFormCustomerAddress('');
         setFormValidUntil(toYmd(new Date(Date.now() + 15 * 86400000)));
-        setFormCurrency(q.currency || 'YER');
+        setFormCurrency(String(q.currency || baseCurrency || 'YER').trim().toUpperCase());
         setFormDiscountType(q.discount_type || 'none');
         setFormDiscountValue(q.discount_value || 0);
         setFormTaxRate(q.tax_rate || 0);
@@ -338,7 +353,7 @@ const QuotationsScreen: React.FC = () => {
                         p_warehouse_id: warehouseId,
                         p_quantity: 1,
                         p_customer_id: null,
-                        p_currency_code: formCurrency || 'YER',
+                        p_currency_code: String(formCurrency || baseCurrency || 'YER').trim().toUpperCase(),
                         p_batch_id: null,
                     });
                     if (fefoData && Number(fefoData.suggested_price) > 0) {
@@ -360,7 +375,7 @@ const QuotationsScreen: React.FC = () => {
             notes: '',
         }]);
         setItemSearch('');
-    }, [menuItems, sessionScope.scope?.warehouseId, formCurrency]);
+    }, [menuItems, sessionScope.scope?.warehouseId, formCurrency, baseCurrency]);
 
     // Add custom item
     const addCustomItem = useCallback(() => {
@@ -715,12 +730,13 @@ const QuotationsScreen: React.FC = () => {
             vatNumber: ((settings as any).vatNumber || '').trim(),
         };
 
+        const catalogCurrencyCode = String(catalogCurrency || baseCurrency || 'YER').trim().toUpperCase();
         const printData: QuotationPrintData = {
             quotationNumber: 'كتالوج أسعار',
             createdAt: new Date().toISOString(),
             validUntil: toYmd(new Date(Date.now() + 15 * 86400000)),
             customerName: '',
-            currency: 'YER',
+            currency: catalogCurrencyCode,
             items: allItems,
             subtotal,
             discountType: 'none',
@@ -743,7 +759,7 @@ const QuotationsScreen: React.FC = () => {
             />
         );
         printContent(content, 'كتالوج الأسعار');
-    }, [menuItems, settings, showNotification]);
+    }, [menuItems, settings, showNotification, baseCurrency, catalogCurrency]);
 
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto" dir="rtl">
@@ -754,10 +770,18 @@ const QuotationsScreen: React.FC = () => {
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">إنشاء وإدارة عروض الأسعار للعملاء والموزعين</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                        type="text"
+                        value={catalogCurrency}
+                        onChange={(e) => setCatalogCurrency(String(e.target.value || '').trim().toUpperCase())}
+                        className="px-3 py-2.5 w-28 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                        placeholder={baseCurrency || 'SAR'}
+                        title="عملة طباعة الكتالوج"
+                    />
                     <button
                         onClick={handlePrintCatalog}
                         className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2"
-                        title="طباعة كتالوج بكل أصناف النظام فوراً"
+                        title={`طباعة كتالوج بكل أصناف النظام فوراً (${String(catalogCurrency || baseCurrency || 'YER').trim().toUpperCase()})`}
                     >
                         🖨️ كتالوج الأسعار
                     </button>
@@ -994,8 +1018,8 @@ const QuotationsScreen: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">العملة</label>
-                                    <input type="text" value={formCurrency} onChange={e => setFormCurrency(e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500" placeholder="YER" />
+                                    <input type="text" value={formCurrency} onChange={e => setFormCurrency(String(e.target.value || '').trim().toUpperCase())}
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500" placeholder={baseCurrency || 'YER'} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">نسبة الضريبة %</label>
