@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import { renderToString } from 'react-dom/server';
@@ -20,6 +21,7 @@ const WarehouseTransfersScreen: React.FC = () => {
     const { showNotification } = useToast();
     const { settings } = useSettings();
     const { scope } = useSessionScope();
+    const { getUnitLabel } = useItemMeta();
 
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -297,6 +299,8 @@ const WarehouseTransfersScreen: React.FC = () => {
     };
 
     const getUnitLabelAr = (rawUnit?: string) => {
+        const byMeta = getUnitLabel(String(rawUnit || '').trim() as any, 'ar');
+        if (byMeta && byMeta !== String(rawUnit || '').trim()) return byMeta;
         const u = String(rawUnit || '').trim().toLowerCase();
         const map: Record<string, string> = {
             piece: 'قطعة',
