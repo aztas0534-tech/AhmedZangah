@@ -56,13 +56,6 @@ const paymentTranslations: Record<string, string> = {
     unknown: 'غير محدد'
 };
 
-const unitTranslations: Record<string, string> = {
-    piece: 'قطعة',
-    kg: 'كجم',
-    gram: 'جرام',
-    liter: 'لتر'
-};
-
 type OrderPurgeRequestLite = {
     id: string;
     order_id: string;
@@ -138,7 +131,7 @@ const ManageOrdersScreen: React.FC = () => {
     const sessionScope = useSessionScope();
     const { warehouses, getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
-    const { isWeightBasedUnit } = useItemMeta();
+    const { isWeightBasedUnit, getUnitLabel } = useItemMeta();
     const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all' | 'delivered_no_returns'>('all');
     const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
@@ -5583,12 +5576,12 @@ const ManageOrdersScreen: React.FC = () => {
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{name}</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{unitTranslations[mi.unitType || 'piece'] || (mi.unitType === 'piece' ? 'قطعة' : mi.unitType)}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))}</div>
                                                     {!isWeightBased && typeof available === 'number' ? (
                                                         <div className="text-xs text-gray-500 dark:text-gray-400">
                                                             متاح: {(!isWeightBased && typeof availableInUom === 'number') ? availableInUom : available}{' '}
                                                             {localizeUomCodeAr(String(line.uomCode || mi.unitType || 'piece'))}{' '}
-                                                            <span className="text-gray-400">({available} {unitTranslations[mi.unitType || 'piece'] || localizeUomCodeAr(String(mi.unitType || 'piece'))})</span>
+                                                            <span className="text-gray-400">({available} {getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))})</span>
                                                         </div>
                                                     ) : null}
                                                     <CurrencyDualAmount
@@ -5636,7 +5629,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                             onChange={(e) => {
                                                                 const code = String(e.target.value || '').trim();
                                                                 const baseLabel = String(mi.unitType || 'piece');
-                                                                const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                                                                const baseDisplay = getUnitLabel(baseLabel as any, 'ar') || localizeUomCodeAr(baseLabel);
                                                                 const fromMap = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
                                                                     ? itemUomRowsByItemId[mi.id]
                                                                     : [];
@@ -5673,7 +5666,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                         >
                                                             {(() => {
                                                                 const baseLabel = String(mi.unitType || 'piece');
-                                                                const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                                                                const baseDisplay = getUnitLabel(baseLabel as any, 'ar') || localizeUomCodeAr(baseLabel);
                                                                 const fromMap = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
                                                                     ? itemUomRowsByItemId[mi.id]
                                                                     : [];
@@ -5703,13 +5696,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 }
                                                                 const options = Array.from(uniq.values()).sort((a, b) => (a.qtyInBase || 0) - (b.qtyInBase || 0));
                                                                 return options.map((o: any) => {
-                                                                    const codeLower = String(o.code || '').trim().toLowerCase();
                                                                     const nameRaw = String(o.name || '').trim();
-                                                                    const displayName = codeLower === 'pack'
-                                                                        ? 'باكت'
-                                                                        : codeLower === 'carton'
-                                                                            ? 'كرتون'
-                                                                            : (nameRaw || o.code);
+                                                                    const displayName = nameRaw || getUnitLabel(String(o.code || '') as any, 'ar') || localizeUomCodeAr(String(o.code || ''));
                                                                     const qtyText = Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseDisplay})` : '';
                                                                     return (
                                                                         <option key={o.code} value={o.code}>

@@ -189,6 +189,21 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
       setGroups(allGroups.sort((a, b) => `${a.categoryKey}::${a.key}`.localeCompare(`${b.categoryKey}::${b.key}`)));
       setUnitTypes(allUnitTypes.sort((a, b) => String(a.key).localeCompare(String(b.key))));
       setFreshnessLevels(allFreshnessLevels.sort((a, b) => String(a.key).localeCompare(String(b.key))));
+      try {
+        const unitLabelMap: Record<string, string> = {};
+        for (const u of allUnitTypes) {
+          const keyRaw = String(u?.key || '').trim();
+          if (!keyRaw) continue;
+          const ar = String(u?.label?.ar || u?.label?.en || '').trim();
+          if (!ar) continue;
+          unitLabelMap[keyRaw] = ar;
+          unitLabelMap[keyRaw.toLowerCase()] = ar;
+        }
+        (globalThis as any).__AZTA_UNIT_LABELS_MAP = unitLabelMap;
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('AZTA_UNIT_LABELS_MAP', JSON.stringify(unitLabelMap));
+        }
+      } catch {}
     } catch (err) {
       const supabase = getSupabaseClient();
       if (supabase && isInvalidJwt(err)) {

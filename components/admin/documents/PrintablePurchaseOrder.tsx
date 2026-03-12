@@ -43,18 +43,8 @@ export default function PrintablePurchaseOrder(props: { order: PurchaseOrder; br
     if (!raw) return '—';
     if (/[\u0600-\u06FF]/.test(raw)) return raw;
     const mapped = localizeUomCodeAr(raw);
-    if (mapped && mapped !== '—' && mapped !== raw) return mapped;
-    const lower = raw.toLowerCase();
-    if (lower === 'piece' || lower === 'pcs' || lower === 'pc') return 'حبة';
-    if (lower === 'carton' || lower === 'ctn') return 'كرتون';
-    if (lower === 'box') return 'صندوق';
-    if (lower === 'pack' || lower === 'pkt') return 'باك';
-    if (lower === 'bottle') return 'زجاجة';
-    if (lower === 'kg') return 'كجم';
-    if (lower === 'gram' || lower === 'g') return 'جرام';
-    if (lower === 'bag') return 'كيس';
-    if (lower === 'bundle') return 'ربطة';
-    return raw;
+    if (!mapped || mapped === '—') return 'وحدة';
+    return mapped;
   };
 
   const fmt = (n: number) => {

@@ -233,25 +233,10 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
         if (!raw) return 'وحدة';
         if (/[\u0600-\u06FF]/.test(raw)) return raw;
         const label = getUnitLabel(raw as any, 'ar');
-        if (label && /[\u0600-\u06FF]/.test(String(label))) return String(label);
+        if (label) return String(label);
         const mapped = localizeUomCodeAr(raw);
         if (!mapped || mapped === '—') return 'وحدة';
-        if (String(mapped).trim() === raw) {
-            const lower = raw.toLowerCase();
-            if (
-                lower === 'piece' || lower === 'pcs' || lower === 'pc' ||
-                lower === 'pack' || lower === 'pkt' ||
-                lower === 'carton' || lower === 'ctn' ||
-                lower === 'box' ||
-                lower === 'bottle' ||
-                lower === 'kg' ||
-                lower === 'gram' || lower === 'g'
-            ) {
-                return mapped;
-            }
-            return 'وحدة';
-        }
-        return mapped;
+        return String(mapped);
     };
     const fmtByCode = (value: number, code: string) => {
         const c = String(code || '').trim().toUpperCase();

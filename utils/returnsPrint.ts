@@ -5,6 +5,7 @@ import { printContent } from './printUtils';
 import PrintableSalesReturnNote, { PrintableSalesReturnNoteData } from '../components/admin/returns/PrintableSalesReturnNote';
 import PrintablePurchaseReturnNote, { PrintablePurchaseReturnNoteData } from '../components/admin/returns/PrintablePurchaseReturnNote';
 import { DocumentAuditInfo } from './documentStandards';
+import { localizeUomCodeAr } from './displayLabels';
 
 type Brand = {
   name?: string;
@@ -276,7 +277,7 @@ export const printPurchaseReturnById = async (returnId: string, brand?: Brand, b
     const fromDb = unitLabelMap.get(raw);
     if (fromDb) return fromDb;
     if (/[\u0600-\u06FF]/.test(raw)) return raw;
-    return raw;
+    return localizeUomCodeAr(raw);
   };
 
   const data: PrintablePurchaseReturnNoteData = {

@@ -5,6 +5,37 @@ export const shortId = (value: string | null | undefined, tail: number = 8) => {
   return s.slice(-tail).toUpperCase();
 };
 
+const UNIT_LABELS_CACHE_KEY = 'AZTA_UNIT_LABELS_MAP';
+
+const readUnitLabelCache = () => {
+  try {
+    const fromWindow = (globalThis as any)?.__AZTA_UNIT_LABELS_MAP;
+    if (fromWindow && typeof fromWindow === 'object') return fromWindow as Record<string, string>;
+  } catch {}
+  try {
+    if (typeof localStorage === 'undefined') return {} as Record<string, string>;
+    const raw = localStorage.getItem(UNIT_LABELS_CACHE_KEY);
+    if (!raw) return {} as Record<string, string>;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {} as Record<string, string>;
+    return parsed as Record<string, string>;
+  } catch {
+    return {} as Record<string, string>;
+  }
+};
+
+const getCachedUnitLabelAr = (rawCode: string) => {
+  const raw = String(rawCode || '').trim();
+  if (!raw) return '';
+  const map = readUnitLabelCache();
+  const direct = String((map as any)?.[raw] || '').trim();
+  if (direct) return direct;
+  const normalized = raw.toLowerCase();
+  const byNormalized = String((map as any)?.[normalized] || '').trim();
+  if (byNormalized) return byNormalized;
+  return '';
+};
+
 export const localizeDocStatusAr = (status: string | null | undefined) => {
   const s = String(status || '').trim().toLowerCase();
   if (!s) return '—';
@@ -33,7 +64,10 @@ export const localizeDocTypeAr = (docType: string | null | undefined) => {
 export const localizeUomCodeAr = (code: string | null | undefined, name?: string | null) => {
   const rawName = String(name || '').trim();
   if (rawName) return rawName;
-  const s = String(code || '').trim().toLowerCase();
+  const raw = String(code || '').trim();
+  const cached = getCachedUnitLabelAr(raw);
+  if (cached) return cached;
+  const s = raw.toLowerCase();
   if (!s) return '—';
   if (/^unit_/i.test(s) || /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s)) return 'وحدة';
   if (s === 'piece') return 'قطعة';

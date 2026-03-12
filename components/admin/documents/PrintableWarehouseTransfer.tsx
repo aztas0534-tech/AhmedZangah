@@ -3,6 +3,7 @@ import { AZTA_IDENTITY } from '../../../config/identity';
 import DocumentAuditFooter from './DocumentAuditFooter';
 import { DocumentAuditInfo } from '../../../utils/documentStandards';
 import PrintCopyBadge from './PrintCopyBadge';
+import { localizeUomCodeAr } from '../../../utils/displayLabels';
 
 type Brand = {
   name?: string;
@@ -218,7 +219,7 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
                         <div className="font-bold-value text-blue-950">{it.itemName || it.itemId}</div>
                       </td>
                       <td className="text-center tabular font-bold-value text-charcoal" dir="ltr">{Number(it.quantity || 0)}</td>
-                      <td className="text-center font-bold-value text-slate-600">{it.unit || '—'}</td>
+                      <td className="text-center font-bold-value text-slate-600">{localizeUomCodeAr(String(it.unit || '')) || '—'}</td>
                       <td className="text-slate-500 font-thin-label text-[10px]">{it.notes || '—'}</td>
                     </tr>
                   );

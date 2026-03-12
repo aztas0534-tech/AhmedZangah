@@ -165,27 +165,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
         const hasArabic = /[\u0600-\u06FF]/.test(raw);
         if (hasArabic) return raw;
         const unitTypeLabel = getUnitLabel(raw as any, 'ar');
-        if (unitTypeLabel && /[\u0600-\u06FF]/.test(String(unitTypeLabel))) {
-            return String(unitTypeLabel);
-        }
+        if (unitTypeLabel) return String(unitTypeLabel);
         const mapped = localizeUomCodeAr(raw);
         if (!mapped || mapped === '—') return 'وحدة';
-        if (String(mapped).trim() === raw) {
-            const lower = raw.toLowerCase();
-            if (
-                lower === 'piece' || lower === 'pcs' || lower === 'pc' ||
-                lower === 'pack' || lower === 'pkt' ||
-                lower === 'carton' || lower === 'ctn' ||
-                lower === 'box' ||
-                lower === 'bottle' ||
-                lower === 'kg' ||
-                lower === 'gram' || lower === 'g'
-            ) {
-                return mapped;
-            }
-            return 'وحدة';
-        }
-        return mapped;
+        return String(mapped);
     };
 
     type InvoiceLinePricing = {
