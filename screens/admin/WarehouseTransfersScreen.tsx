@@ -42,6 +42,7 @@ const WarehouseTransfersScreen: React.FC = () => {
         allOk: boolean;
         rows: Array<{
             itemId: string;
+            unit: string;
             requestedQty: number;
             transferredQty: number;
             movedOut: number;
@@ -473,12 +474,13 @@ const WarehouseTransfersScreen: React.FC = () => {
 
             const rows = (Array.isArray(itemRows) ? itemRows : []).map((r: any) => {
                 const itemId = String(r?.item_id || '');
+                const unit = String((menuItems.find((mi) => String(mi.id) === itemId) as any)?.unitType || '').trim() || 'piece';
                 const requestedQty = Number(r?.quantity || 0) || 0;
                 const transferredQty = Number(r?.transferred_quantity || 0) || 0;
                 const movedOut = Number(movementByItem[itemId]?.movedOut || 0);
                 const movedIn = Number(movementByItem[itemId]?.movedIn || 0);
                 const ok = Math.abs(movedOut - transferredQty) < 1e-6 && Math.abs(movedIn - transferredQty) < 1e-6;
-                return { itemId, requestedQty, transferredQty, movedOut, movedIn, ok };
+                return { itemId, unit, requestedQty, transferredQty, movedOut, movedIn, ok };
             });
 
             const allOk = rows.length > 0 && rows.every((r) => r.ok);
@@ -708,6 +710,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                                             <thead>
                                                 <tr className="text-right text-gray-600 dark:text-gray-300">
                                                     <th className="py-1">الصنف</th>
+                                                    <th className="py-1">الوحدة</th>
                                                     <th className="py-1">الكمية المطلوبة</th>
                                                     <th className="py-1">الكمية المنقولة</th>
                                                     <th className="py-1">حركة خروج</th>
@@ -719,6 +722,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                                                 {verificationByTransferId[transfer.id].rows.map((row, idx) => (
                                                     <tr key={`${transfer.id}-${row.itemId}-${idx}`} className="border-t border-gray-200 dark:border-gray-700">
                                                         <td className="py-1">{getItemLabel(row.itemId)}</td>
+                                                        <td className="py-1">{row.unit}</td>
                                                         <td className="py-1">{row.requestedQty.toLocaleString('en-US')}</td>
                                                         <td className="py-1">{row.transferredQty.toLocaleString('en-US')}</td>
                                                         <td className="py-1">{row.movedOut.toLocaleString('en-US')}</td>
