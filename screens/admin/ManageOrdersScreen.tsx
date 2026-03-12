@@ -171,6 +171,24 @@ const ManageOrdersScreen: React.FC = () => {
     const [deliverPinOrderId, setDeliverPinOrderId] = useState<string | null>(null);
     const [deliveryPinInput, setDeliveryPinInput] = useState('');
     const [isDeliverConfirming, setIsDeliverConfirming] = useState(false);
+    const [totalOrderCount, setTotalOrderCount] = useState<number | null>(null);
+
+    // Lightweight total order count from database
+    useEffect(() => {
+        let active = true;
+        const fetchCount = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            try {
+                const { count, error } = await supabase
+                    .from('orders')
+                    .select('id', { count: 'exact', head: true });
+                if (!error && active && typeof count === 'number') setTotalOrderCount(count);
+            } catch { }
+        };
+        fetchCount();
+        return () => { active = false; };
+    }, [orders.length]);
 
     useEffect(() => {
         let active = true;
@@ -3670,7 +3688,12 @@ const ManageOrdersScreen: React.FC = () => {
         <div className="animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div className="flex flex-col gap-2">
-                    <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات ({filteredAndSortedOrders.length})</h1>
+                    <h1 className="text-3xl font-bold dark:text-white">
+                        إدارة الطلبات
+                        <span className="text-lg font-normal text-gray-500 dark:text-gray-400 mr-2">
+                            ({filteredAndSortedOrders.length}{totalOrderCount !== null && totalOrderCount > filteredAndSortedOrders.length ? ` من ${totalOrderCount}` : ''})
+                        </span>
+                    </h1>
                     {Object.keys(totalsByCurrency).length > 0 && typeof formatMoneyByCode === 'function' && (
                         <div className="flex flex-wrap gap-2">
                             {Object.entries(totalsByCurrency).map(([currency, total]) => (
