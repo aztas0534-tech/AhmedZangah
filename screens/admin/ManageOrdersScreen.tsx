@@ -200,6 +200,24 @@ const ManageOrdersScreen: React.FC = () => {
         const nested = String((order as any)?.data?.warehouseId || (order as any)?.data?.warehouse_id || '').trim();
         return nested;
     }, []);
+    const [totalOrderCount, setTotalOrderCount] = useState<number | null>(null);
+
+    // Lightweight total order count from database
+    useEffect(() => {
+        let active = true;
+        const fetchCount = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            try {
+                const { count, error } = await supabase
+                    .from('orders')
+                    .select('id', { count: 'exact', head: true });
+                if (!error && active && typeof count === 'number') setTotalOrderCount(count);
+            } catch { }
+        };
+        fetchCount();
+        return () => { active = false; };
+    }, [orders.length]);
 
     useEffect(() => {
         let active = true;
@@ -277,6 +295,21 @@ const ManageOrdersScreen: React.FC = () => {
     const [destinationAccounts, setDestinationAccounts] = useState<{id: string, name: string, code: string, parentCode: string}[]>([]);
     const [inStorePaymentDestinationAccountId, setInStorePaymentDestinationAccountId] = useState<string>('');
     const [partialPaymentDestinationAccountId, setPartialPaymentDestinationAccountId] = useState<string>('');
+
+    // ── Keyboard shortcut: Ctrl+Enter to submit in-store sale ──
+    const confirmInStoreSaleRef = useRef<(() => void) | null>(null);
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                confirmInStoreSaleRef.current?.();
+            }
+        };
+        window.addEventListener('keydown', handler, true);
+        return () => window.removeEventListener('keydown', handler, true);
+    }, [isInStoreSaleOpen]);
 
     useEffect(() => {
         const fetchAccounts = async () => {
@@ -1849,12 +1882,38 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification('لا تملك صلاحية إنشاء طلبات عكس جماعية.', 'error');
             return;
         }
-        const ids = bulkOrderIdsInput
+        const rawTokens = bulkOrderIdsInput
             .split(/[\s,;\n\r\t]+/)
-            .map(x => x.trim())
+            .map(x => x.trim().replace(/^#/, '').toUpperCase())
             .filter(Boolean);
+        if (rawTokens.length === 0) {
+            showNotification('أدخل أرقام الطلبات أولاً.', 'error');
+            return;
+        }
+        // Resolve short order IDs (e.g. A1B2C3) to full UUIDs
+        const allOrders = [...orders];
+        const ids: string[] = [];
+        const notFound: string[] = [];
+        for (const token of rawTokens) {
+            // Already a full UUID?
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
+                ids.push(token.toLowerCase());
+            } else {
+                // Match last 6 chars of order.id
+                const match = allOrders.find(o => o.id.slice(-6).toUpperCase() === token.toUpperCase());
+                if (match) {
+                    ids.push(match.id);
+                } else {
+                    notFound.push(token);
+                }
+            }
+        }
+        if (notFound.length > 0) {
+            showNotification(`لم يتم العثور على الطلبات: ${notFound.join(', ')}. تأكد أن الطلبات ظاهرة في الجدول الحالي.`, 'error');
+            return;
+        }
         if (ids.length === 0) {
-            showNotification('أدخل معرفات الطلبات أولاً.', 'error');
+            showNotification('لم يتم التعرف على أي طلب.', 'error');
             return;
         }
         const reason = bulkRequestReason.trim();
@@ -1923,7 +1982,8 @@ const ManageOrdersScreen: React.FC = () => {
                 return;
             }
 
-            setBulkOrderIdsInput(unique.join('\n'));
+            // Show short readable IDs in the textarea (the handler resolves them back)
+            setBulkOrderIdsInput(unique.map(id => id.slice(-6).toUpperCase()).join('\n'));
             showNotification(
                 `تم تجهيز ${unique.length} طلب مرشح (زيادة تحصيل: ${overpaidCount}، paidAt غير متطابق: ${stalePaidAtCount}، آجل مع تحصيل: ${creditWithPaidCount}).`,
                 'success'
@@ -2350,6 +2410,8 @@ const ManageOrdersScreen: React.FC = () => {
 
         await runCreateInStoreSale(payload);
     };
+    // Keep the ref in sync for keyboard shortcut
+    confirmInStoreSaleRef.current = confirmInStoreSale;
     const saveInStoreDraftQuotation = async () => {
         if (inStoreLines.length === 0) {
             showNotification('أضف أصنافًا أولاً.', 'error');
@@ -3668,7 +3730,12 @@ const ManageOrdersScreen: React.FC = () => {
         <div className="animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div className="flex flex-col gap-2">
-                    <h1 className="text-3xl font-bold dark:text-white">إدارة الطلبات ({filteredAndSortedOrders.length})</h1>
+                    <h1 className="text-3xl font-bold dark:text-white">
+                        إدارة الطلبات
+                        <span className="text-lg font-normal text-gray-500 dark:text-gray-400 mr-2">
+                            ({filteredAndSortedOrders.length}{totalOrderCount !== null && totalOrderCount > filteredAndSortedOrders.length ? ` من ${totalOrderCount}` : ''})
+                        </span>
+                    </h1>
                     {Object.keys(totalsByCurrency).length > 0 && typeof formatMoneyByCode === 'function' && (
                         <div className="flex flex-wrap gap-2">
                             {Object.entries(totalsByCurrency).map(([currency, total]) => (
@@ -3977,16 +4044,16 @@ const ManageOrdersScreen: React.FC = () => {
                     </div>
                     <div className="border-t border-gray-200 dark:border-gray-700 pt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
                         <div className="md:col-span-2">
-                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">معرفات طلبات جماعية (UUID مفصولة بمسافة/فاصلة)</label>
+                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">أرقام الطلبات (مفصولة بمسافة أو فاصلة)</label>
                             <textarea
                                 value={bulkOrderIdsInput}
                                 onChange={(e) => setBulkOrderIdsInput(e.target.value)}
                                 disabled={isReadOnlyOrdersView}
                                 className="w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs font-mono"
-                                placeholder="uuid1, uuid2, uuid3"
+                                placeholder="A1B2C3, D4E5F6, G7H8I9"
                             />
                             <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                زر "إحضار الطلبات المرشحة تلقائياً" يملأ هذه الخانة بناءً على مؤشرات أخطاء التحصيل الشائعة ضمن الفلاتر الحالية.
+                                أدخل أرقام الطلبات المختصرة (مثل A1B2C3) كما تظهر في الجدول، أو استخدم زر "إحضار الطلبات المرشحة تلقائياً".
                             </div>
                         </div>
                         <div>
@@ -4705,14 +4772,22 @@ const ManageOrdersScreen: React.FC = () => {
                 title={language === 'ar' ? 'بيع حضوري (داخل المحل)' : 'In-store sale'}
                 message=""
                 isConfirming={isInStoreCreating}
-                confirmText={language === 'ar' ? 'تسجيل البيع' : 'Create sale'}
+                confirmText={language === 'ar' ? 'تسجيل البيع ⏎' : 'Create sale ⏎'}
                 confirmingText={language === 'ar' ? 'جاري التسجيل...' : 'Creating...'}
                 cancelText={language === 'ar' ? 'رجوع' : 'Back'}
                 confirmButtonClassName="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400"
                 maxWidthClassName="max-w-5xl"
-                hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod || inStorePricingBusy || inStoreMissingServerPricing}
+                hideConfirmButton={true}
             >
-                <div className="space-y-4">
+                <div className="space-y-4 relative">
+                    {/* ── Loading Overlay ── */}
+                    {isInStoreCreating && (
+                        <div className="absolute inset-0 bg-white/70 dark:bg-gray-900/70 z-50 flex flex-col items-center justify-center rounded-lg backdrop-blur-sm">
+                            <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4" />
+                            <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300 animate-pulse">جاري تسجيل البيع...</div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">لا تغلق الصفحة</div>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between text-xs">
                         <div className="text-gray-600 dark:text-gray-300">الأصناف: <span className="font-mono">{inStoreLines.length}</span></div>
                         <CurrencyDualAmount
@@ -5674,20 +5749,49 @@ const ManageOrdersScreen: React.FC = () => {
                                                     fxRate={undefined}
                                                     compact
                                                 />
-                                                <div className="w-32">
-                                                    <NumberInput
-                                                        id={`qty-${index}`}
-                                                        name={`qty-${index}`}
-                                                        value={isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0)}
-                                                        onChange={(e) => {
-                                                            const val = parseFloat(e.target.value) || 0;
-                                                            updateInStoreLine(index, isWeightBased ? { weight: val } : { quantity: val });
-                                                        }}
-                                                        min={0}
-                                                        max={availableInUom}
-                                                        step={isWeightBased ? (mi.unitType === 'gram' ? 1 : 0.01) : 1}
-                                                        className={exceeded ? 'border-red-500' : ''}
-                                                    />
+                                                <div className="w-36">
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const step = isWeightBased ? (mi.unitType === 'gram' ? 100 : 0.5) : 1;
+                                                                const current = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
+                                                                const next = Math.max(0, current - step);
+                                                                updateInStoreLine(index, isWeightBased ? { weight: next } : { quantity: next });
+                                                            }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors text-lg font-bold shrink-0 select-none"
+                                                            aria-label="تقليل الكمية"
+                                                        >
+                                                            −
+                                                        </button>
+                                                        <NumberInput
+                                                            id={`qty-${index}`}
+                                                            name={`qty-${index}`}
+                                                            value={isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0)}
+                                                            onChange={(e) => {
+                                                                const val = parseFloat(e.target.value) || 0;
+                                                                updateInStoreLine(index, isWeightBased ? { weight: val } : { quantity: val });
+                                                            }}
+                                                            min={0}
+                                                            max={availableInUom}
+                                                            step={isWeightBased ? (mi.unitType === 'gram' ? 1 : 0.01) : 1}
+                                                            className={`text-center ${exceeded ? 'border-red-500' : ''}`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const step = isWeightBased ? (mi.unitType === 'gram' ? 100 : 0.5) : 1;
+                                                                const current = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
+                                                                const max = availableInUom;
+                                                                const next = typeof max === 'number' ? Math.min(max, current + step) : current + step;
+                                                                updateInStoreLine(index, isWeightBased ? { weight: next } : { quantity: next });
+                                                            }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-lg font-bold shrink-0 select-none"
+                                                            aria-label="زيادة الكمية"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
                                                     {exceeded && (
                                                         <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
                                                             يتجاوز المتاح: {availableInUom?.toFixed ? availableInUom.toFixed(2) : availableInUom}
@@ -5867,19 +5971,47 @@ const ManageOrdersScreen: React.FC = () => {
                             </div>
                         )
                     }
-                    <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                        <button
-                            type="button"
-                            onClick={saveInStoreDraftQuotation}
-                            disabled={isInStoreCreating || inStoreLines.length === 0}
-                            className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition text-sm font-semibold disabled:opacity-50"
-                        >
-                            حفظ كعرض سعر وطباعة
-                        </button>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                            العرض لا يحجز المخزون.
+                    {/* ── Sticky Summary Bar ── */}
+                    {inStoreLines.length > 0 && (
+                        <div className="sticky bottom-0 z-20 -mx-6 px-6 py-3 bg-gradient-to-t from-emerald-50 via-white to-white dark:from-emerald-950/40 dark:via-gray-800 dark:to-gray-800 border-t-2 border-emerald-200 dark:border-emerald-800 shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.1)]">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold">{inStoreLines.length}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">أصناف</span>
+                                    </div>
+                                    <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                                        <CurrencyDualAmount
+                                            amount={inStoreTotals.total}
+                                            currencyCode={inStoreTransactionCurrency}
+                                            baseAmount={undefined}
+                                            fxRate={undefined}
+                                            compact
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={saveInStoreDraftQuotation}
+                                        disabled={isInStoreCreating || inStoreLines.length === 0}
+                                        className="px-3 py-2 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition text-xs font-medium disabled:opacity-50"
+                                    >
+                                        📋 عرض سعر
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={confirmInStoreSale}
+                                        disabled={isInStoreCreating || inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod || inStorePricingBusy || inStoreMissingServerPricing}
+                                        className="px-5 py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 transition-all text-sm font-bold shadow-lg shadow-emerald-600/25 disabled:opacity-50 disabled:shadow-none flex items-center gap-2"
+                                    >
+                                        ✅ تسجيل البيع
+                                        <kbd className="hidden md:inline-block text-[10px] font-mono bg-emerald-700/50 px-1.5 py-0.5 rounded">⏎</kbd>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div >
             </ConfirmationModal >
             <ConfirmationModal
