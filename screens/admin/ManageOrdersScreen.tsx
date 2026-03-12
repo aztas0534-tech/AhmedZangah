@@ -249,6 +249,21 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStorePaymentDestinationAccountId, setInStorePaymentDestinationAccountId] = useState<string>('');
     const [partialPaymentDestinationAccountId, setPartialPaymentDestinationAccountId] = useState<string>('');
 
+    // ── Keyboard shortcut: Ctrl+Enter to submit in-store sale ──
+    const confirmInStoreSaleRef = useRef<(() => void) | null>(null);
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                confirmInStoreSaleRef.current?.();
+            }
+        };
+        window.addEventListener('keydown', handler, true);
+        return () => window.removeEventListener('keydown', handler, true);
+    }, [isInStoreSaleOpen]);
+
     useEffect(() => {
         const fetchAccounts = async () => {
             const supabase = getSupabaseClient();
@@ -2316,6 +2331,8 @@ const ManageOrdersScreen: React.FC = () => {
 
         await runCreateInStoreSale(payload);
     };
+    // Keep the ref in sync for keyboard shortcut
+    confirmInStoreSaleRef.current = confirmInStoreSale;
     const saveInStoreDraftQuotation = async () => {
         if (inStoreLines.length === 0) {
             showNotification('أضف أصنافًا أولاً.', 'error');
@@ -4633,14 +4650,22 @@ const ManageOrdersScreen: React.FC = () => {
                 title={language === 'ar' ? 'بيع حضوري (داخل المحل)' : 'In-store sale'}
                 message=""
                 isConfirming={isInStoreCreating}
-                confirmText={language === 'ar' ? 'تسجيل البيع' : 'Create sale'}
+                confirmText={language === 'ar' ? 'تسجيل البيع ⏎' : 'Create sale ⏎'}
                 confirmingText={language === 'ar' ? 'جاري التسجيل...' : 'Creating...'}
                 cancelText={language === 'ar' ? 'رجوع' : 'Back'}
                 confirmButtonClassName="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400"
                 maxWidthClassName="max-w-5xl"
                 hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod || inStorePricingBusy || inStoreMissingServerPricing}
             >
-                <div className="space-y-4">
+                <div className="space-y-4 relative">
+                    {/* ── Loading Overlay ── */}
+                    {isInStoreCreating && (
+                        <div className="absolute inset-0 bg-white/70 dark:bg-gray-900/70 z-50 flex flex-col items-center justify-center rounded-lg backdrop-blur-sm">
+                            <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4" />
+                            <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300 animate-pulse">جاري تسجيل البيع...</div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">لا تغلق الصفحة</div>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between text-xs">
                         <div className="text-gray-600 dark:text-gray-300">الأصناف: <span className="font-mono">{inStoreLines.length}</span></div>
                         <CurrencyDualAmount
@@ -5602,20 +5627,49 @@ const ManageOrdersScreen: React.FC = () => {
                                                     fxRate={undefined}
                                                     compact
                                                 />
-                                                <div className="w-32">
-                                                    <NumberInput
-                                                        id={`qty-${index}`}
-                                                        name={`qty-${index}`}
-                                                        value={isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0)}
-                                                        onChange={(e) => {
-                                                            const val = parseFloat(e.target.value) || 0;
-                                                            updateInStoreLine(index, isWeightBased ? { weight: val } : { quantity: val });
-                                                        }}
-                                                        min={0}
-                                                        max={availableInUom}
-                                                        step={isWeightBased ? (mi.unitType === 'gram' ? 1 : 0.01) : 1}
-                                                        className={exceeded ? 'border-red-500' : ''}
-                                                    />
+                                                <div className="w-36">
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const step = isWeightBased ? (mi.unitType === 'gram' ? 100 : 0.5) : 1;
+                                                                const current = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
+                                                                const next = Math.max(0, current - step);
+                                                                updateInStoreLine(index, isWeightBased ? { weight: next } : { quantity: next });
+                                                            }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors text-lg font-bold shrink-0 select-none"
+                                                            aria-label="تقليل الكمية"
+                                                        >
+                                                            −
+                                                        </button>
+                                                        <NumberInput
+                                                            id={`qty-${index}`}
+                                                            name={`qty-${index}`}
+                                                            value={isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0)}
+                                                            onChange={(e) => {
+                                                                const val = parseFloat(e.target.value) || 0;
+                                                                updateInStoreLine(index, isWeightBased ? { weight: val } : { quantity: val });
+                                                            }}
+                                                            min={0}
+                                                            max={availableInUom}
+                                                            step={isWeightBased ? (mi.unitType === 'gram' ? 1 : 0.01) : 1}
+                                                            className={`text-center ${exceeded ? 'border-red-500' : ''}`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const step = isWeightBased ? (mi.unitType === 'gram' ? 100 : 0.5) : 1;
+                                                                const current = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
+                                                                const max = availableInUom;
+                                                                const next = typeof max === 'number' ? Math.min(max, current + step) : current + step;
+                                                                updateInStoreLine(index, isWeightBased ? { weight: next } : { quantity: next });
+                                                            }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-lg font-bold shrink-0 select-none"
+                                                            aria-label="زيادة الكمية"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
                                                     {exceeded && (
                                                         <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
                                                             يتجاوز المتاح: {availableInUom?.toFixed ? availableInUom.toFixed(2) : availableInUom}
@@ -5795,19 +5849,39 @@ const ManageOrdersScreen: React.FC = () => {
                             </div>
                         )
                     }
-                    <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                        <button
-                            type="button"
-                            onClick={saveInStoreDraftQuotation}
-                            disabled={isInStoreCreating || inStoreLines.length === 0}
-                            className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition text-sm font-semibold disabled:opacity-50"
-                        >
-                            حفظ كعرض سعر وطباعة
-                        </button>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                            العرض لا يحجز المخزون.
+                    {/* ── Sticky Summary Bar ── */}
+                    {inStoreLines.length > 0 && (
+                        <div className="sticky bottom-0 z-20 -mx-6 px-6 py-3 bg-gradient-to-t from-emerald-50 via-white to-white dark:from-emerald-950/40 dark:via-gray-800 dark:to-gray-800 border-t-2 border-emerald-200 dark:border-emerald-800 shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.1)]">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold">{inStoreLines.length}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">أصناف</span>
+                                    </div>
+                                    <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                                        <CurrencyDualAmount
+                                            amount={inStoreTotals.total}
+                                            currencyCode={inStoreTransactionCurrency}
+                                            baseAmount={undefined}
+                                            fxRate={undefined}
+                                            compact
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={saveInStoreDraftQuotation}
+                                        disabled={isInStoreCreating || inStoreLines.length === 0}
+                                        className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition text-sm font-semibold disabled:opacity-50"
+                                    >
+                                        📋 عرض سعر
+                                    </button>
+                                    <div className="text-[10px] text-gray-400 dark:text-gray-500 hidden md:block">Ctrl+Enter للتسجيل</div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div >
             </ConfirmationModal >
             <ConfirmationModal
