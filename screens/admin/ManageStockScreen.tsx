@@ -643,7 +643,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
 
 const ManageStockScreen: React.FC = () => {
     const { menuItems } = useMenu();
-    const { stockItems, updateStock, getStockByItemId } = useStock();
+    const { stockItems, fetchStock, updateStock, getStockByItemId } = useStock();
     // const { language } = useSettings();
     const { categories: categoryDefs, getCategoryLabel, getGroupLabel, getUnitLabel } = useItemMeta();
     const { showNotification } = useToast();
@@ -659,6 +659,8 @@ const ManageStockScreen: React.FC = () => {
     const [expandedHistoryItemId, setExpandedHistoryItemId] = useState<string | null>(null);
     const [historyLoadingItemId, setHistoryLoadingItemId] = useState<string | null>(null);
     const [historyByItemId, setHistoryByItemId] = useState<Record<string, StockHistory[]>>({});
+    const [warehouseSignals, setWarehouseSignals] = useState({ hasMovements: false, hasBatches: false, checking: false });
+    const [resyncingWarehouseStock, setResyncingWarehouseStock] = useState(false);
 
     const [isWastageModalOpen, setIsWastageModalOpen] = useState(false);
     const [wastageItem, setWastageItem] = useState<MenuItem | null>(null);
@@ -683,6 +685,79 @@ const ManageStockScreen: React.FC = () => {
         if (!warehouseId) return '—';
         return String((activeWarehouses.find((w: any) => String(w.id) === String(warehouseId)) as any)?.name || '—');
     }, [activeWarehouses, warehouseId]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const run = async () => {
+            if (!warehouseId) {
+                if (!cancelled) setWarehouseSignals({ hasMovements: false, hasBatches: false, checking: false });
+                return;
+            }
+            if (!cancelled) setWarehouseSignals((prev) => ({ ...prev, checking: true }));
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) throw new Error('قاعدة البيانات غير متاحة');
+                const [{ data: mvRows }, { data: bRows }] = await Promise.all([
+                    supabase.from('inventory_movements').select('id').eq('warehouse_id', warehouseId).limit(1),
+                    supabase.from('batches').select('id').eq('warehouse_id', warehouseId).limit(1),
+                ]);
+                if (!cancelled) {
+                    setWarehouseSignals({
+                        hasMovements: (mvRows?.length || 0) > 0,
+                        hasBatches: (bRows?.length || 0) > 0,
+                        checking: false,
+                    });
+                }
+            } catch {
+                if (!cancelled) setWarehouseSignals({ hasMovements: false, hasBatches: false, checking: false });
+            }
+        };
+        void run();
+        return () => { cancelled = true; };
+    }, [warehouseId]);
+
+    const resyncWarehouseStock = async () => {
+        if (!warehouseId || resyncingWarehouseStock) return;
+        setResyncingWarehouseStock(true);
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('قاعدة البيانات غير متاحة');
+
+            const [{ data: mvRows, error: mvErr }, { data: bRows, error: bErr }] = await Promise.all([
+                supabase.from('inventory_movements').select('item_id').eq('warehouse_id', warehouseId).limit(5000),
+                supabase.from('batches').select('item_id').eq('warehouse_id', warehouseId).limit(5000),
+            ]);
+            if (mvErr) throw mvErr;
+            if (bErr) throw bErr;
+
+            const itemIds = new Set<string>();
+            for (const r of (Array.isArray(mvRows) ? mvRows : [])) {
+                const id = String((r as any)?.item_id || '').trim();
+                if (id) itemIds.add(id);
+            }
+            for (const r of (Array.isArray(bRows) ? bRows : [])) {
+                const id = String((r as any)?.item_id || '').trim();
+                if (id) itemIds.add(id);
+            }
+
+            if (itemIds.size === 0) {
+                showNotification('لا توجد حركات/دفعات لإعادة المزامنة في هذا المستودع.', 'error');
+                return;
+            }
+
+            for (const itemId of itemIds) {
+                const { error } = await supabase.rpc('recompute_stock_for_item', { p_item_id: itemId, p_warehouse_id: warehouseId } as any);
+                if (error) throw error;
+            }
+
+            await fetchStock();
+            showNotification('تمت مزامنة رصيد المستودع بنجاح.', 'success');
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر مزامنة رصيد المستودع'), 'error');
+        } finally {
+            setResyncingWarehouseStock(false);
+        }
+    };
 
     const saveActiveWarehouse = async (targetWarehouseId?: string, silent = false) => {
         try {
@@ -904,8 +979,22 @@ const ManageStockScreen: React.FC = () => {
             {/* Stock Table */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
                 {warehouseId && stockItems.length === 0 && (
-                    <div className="px-6 py-3 text-sm bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 border-b border-amber-200 dark:border-amber-800">
-                        لا توجد سجلات مخزون مرتبطة بهذا المستودع حالياً. تأكد أنك اخترت المستودع الصحيح وأن الأصناف نُقلت/استُلمت عليه.
+                    <div className="px-6 py-3 text-sm bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 flex-wrap">
+                        <span>
+                            {(warehouseSignals.hasMovements || warehouseSignals.hasBatches)
+                                ? 'توجد حركات/دفعات في هذا المستودع لكن لا توجد سجلات في stock_management بعد. جرّب مزامنة الرصيد.'
+                                : 'لا توجد سجلات مخزون مرتبطة بهذا المستودع حالياً. تأكد أنك اخترت المستودع الصحيح وأن الأصناف نُقلت/استُلمت عليه.'}
+                        </span>
+                        {(hasPermission('stock.manage') && (warehouseSignals.hasMovements || warehouseSignals.hasBatches)) && (
+                            <button
+                                type="button"
+                                onClick={() => { void resyncWarehouseStock(); }}
+                                disabled={resyncingWarehouseStock || warehouseSignals.checking}
+                                className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs disabled:opacity-60"
+                            >
+                                {resyncingWarehouseStock ? 'جاري المزامنة...' : 'مزامنة رصيد المستودع'}
+                            </button>
+                        )}
                     </div>
                 )}
                 <div className="overflow-x-auto">

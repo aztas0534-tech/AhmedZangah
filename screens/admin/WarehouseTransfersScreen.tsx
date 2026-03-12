@@ -296,6 +296,30 @@ const WarehouseTransfersScreen: React.FC = () => {
         return String(found?.name?.ar || found?.name?.en || found?.id || itemId);
     };
 
+    const getUnitLabelAr = (rawUnit?: string) => {
+        const u = String(rawUnit || '').trim().toLowerCase();
+        const map: Record<string, string> = {
+            piece: 'قطعة',
+            pcs: 'قطعة',
+            unit: 'وحدة',
+            box: 'صندوق',
+            carton: 'كرتون',
+            pack: 'عبوة',
+            bottle: 'زجاجة',
+            can: 'علبة',
+            bag: 'كيس',
+            tray: 'صينية',
+            kg: 'كجم',
+            g: 'جم',
+            gram: 'جم',
+            liter: 'لتر',
+            litre: 'لتر',
+            l: 'لتر',
+            ml: 'مل',
+        };
+        return map[u] || rawUnit || 'وحدة';
+    };
+
     const addItem = () => {
         setFormData({
             ...formData,
@@ -722,7 +746,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                                                 {verificationByTransferId[transfer.id].rows.map((row, idx) => (
                                                     <tr key={`${transfer.id}-${row.itemId}-${idx}`} className="border-t border-gray-200 dark:border-gray-700">
                                                         <td className="py-1">{getItemLabel(row.itemId)}</td>
-                                                        <td className="py-1">{row.unit}</td>
+                                                        <td className="py-1">{getUnitLabelAr(row.unit)}</td>
                                                         <td className="py-1">{row.requestedQty.toLocaleString('en-US')}</td>
                                                         <td className="py-1">{row.transferredQty.toLocaleString('en-US')}</td>
                                                         <td className="py-1">{row.movedOut.toLocaleString('en-US')}</td>
