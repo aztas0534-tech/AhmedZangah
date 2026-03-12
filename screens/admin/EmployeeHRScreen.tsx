@@ -180,6 +180,57 @@ export default function EmployeeHRScreen() {
     printContent(html, `ضمان موظف — ${emp?.full_name || ''}`);
   };
 
+  /* ── Print blank contract template ── */
+  const handlePrintBlankContract = () => {
+    const blankData: ContractPrintData = {
+      contractNumber: '',
+      contractType: 'indefinite',
+      startDate: '',
+      endDate: null,
+      jobTitle: null,
+      department: null,
+      workLocation: null,
+      salary: 0,
+      currency: 'YER',
+      salaryBreakdown: {},
+      probationDays: 90,
+      workingHoursPerDay: 8,
+      workingDaysPerWeek: 6,
+      vacationDaysAnnual: 30,
+      specialTerms: null,
+      employeeName: '',
+      employeeCode: null,
+    };
+    const html = renderToString(
+      <PrintableContract data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
+    );
+    printContent(html, 'نموذج عقد عمل فارغ');
+  };
+
+  /* ── Print blank guarantee template ── */
+  const handlePrintBlankGuarantee = () => {
+    const blankData: GuaranteePrintData = {
+      guaranteeNumber: '',
+      guaranteeType: 'personal',
+      guarantorName: '',
+      guarantorIdNumber: null,
+      guarantorPhone: null,
+      guarantorAddress: null,
+      guarantorRelationship: null,
+      guaranteeAmount: 0,
+      currency: 'YER',
+      validFrom: '',
+      validUntil: null,
+      specialTerms: null,
+      employeeName: '',
+      employeeCode: null,
+    };
+    const html = renderToString(
+      <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
+    );
+    printContent(html, 'نموذج ضمان موظف فارغ');
+  };
+
   const loadAll = useCallback(async () => {
     const s = getSupabaseClient(); if (!s) { setLoading(false); return; }
     setLoading(true);
@@ -402,6 +453,10 @@ export default function EmployeeHRScreen() {
           {(tab === 'contracts' ? statusOptionsContracts : statusOptionsGuarantees).map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
         </select>
         <div className="flex-1" />
+        <button type="button" onClick={tab === 'contracts' ? handlePrintBlankContract : handlePrintBlankGuarantee}
+          className={`${BTN} bg-amber-600 text-white`}
+          title={tab === 'contracts' ? 'طباعة نموذج عقد فارغ للتعبئة اليدوية' : 'طباعة نموذج ضمان فارغ للتعبئة اليدوية'}
+        >🖨️ {tab === 'contracts' ? 'نموذج عقد فارغ' : 'نموذج ضمان فارغ'}</button>
         <button type="button" disabled={!canManageHr} onClick={() => tab === 'contracts' ? openCModal() : openGModal()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>{tab === 'contracts' ? '+ عقد جديد' : '+ ضمان جديد'}</button>
       </div>
       {!canManageHr && canViewHr && <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">وضع قراءة فقط: صلاحية الإدارة غير متاحة لهذا الحساب.</div>}

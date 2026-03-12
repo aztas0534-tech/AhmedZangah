@@ -190,8 +190,8 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                         <tr><td className="ct-label">القسم / الإدارة</td><td>{data.department || '________________________'}</td></tr>
                         <tr><td className="ct-label">موقع العمل</td><td>{data.workLocation || '________________________'}</td></tr>
                         <tr><td className="ct-label">نوع العقد</td><td>{CONTRACT_TYPES[data.contractType] || data.contractType}</td></tr>
-                        <tr><td className="ct-label">تاريخ المباشرة</td><td>{fmtDate(data.startDate)}</td></tr>
-                        <tr><td className="ct-label">تاريخ انتهاء العقد</td><td>{data.endDate ? fmtDate(data.endDate) : 'غير محدد المدة'}</td></tr>
+                        <tr><td className="ct-label">تاريخ المباشرة</td><td>{data.startDate ? fmtDate(data.startDate) : '________________________'}</td></tr>
+                        <tr><td className="ct-label">تاريخ انتهاء العقد</td><td>{data.endDate ? fmtDate(data.endDate) : '________________________'}</td></tr>
                         <tr><td className="ct-label">فترة التجربة</td><td>{data.probationDays} يوم</td></tr>
                     </tbody>
                 </table>
@@ -200,11 +200,11 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                 <div className="ct-section-title" style={{ position: 'relative', zIndex: 10 }}>البند الثاني: المقابل المالي</div>
                 <table className="ct-table" style={{ position: 'relative', zIndex: 10 }}>
                     <tbody>
-                        <tr><td className="ct-label">الراتب الأساسي</td><td>{fmt(data.salary)} {data.currency}</td></tr>
+                        <tr><td className="ct-label">الراتب الأساسي</td><td>{data.salary ? <>{fmt(data.salary)} {data.currency}</> : '________________________'}</td></tr>
                         {Object.entries(bd).map(([k, v]) => (
                             <tr key={k}><td className="ct-label">{k}</td><td>{fmt(Number(v))} {data.currency}</td></tr>
                         ))}
-                        <tr className="ct-total"><td style={{ padding: '6px 10px' }}>إجمالي الراتب الشهري</td><td style={{ padding: '6px 10px' }}>{fmt(totalSalary)} {data.currency}</td></tr>
+                        <tr className="ct-total"><td style={{ padding: '6px 10px' }}>إجمالي الراتب الشهري</td><td style={{ padding: '6px 10px' }}>{totalSalary ? <>{fmt(totalSalary)} {data.currency}</> : '________________________'}</td></tr>
                     </tbody>
                 </table>
 

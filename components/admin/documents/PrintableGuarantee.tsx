@@ -189,10 +189,10 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
                 <div className="gt-section-title" style={{ position: 'relative', zIndex: 10 }}>ثالثاً: تفاصيل الضمان</div>
                 <table className="gt-table" style={{ position: 'relative', zIndex: 10 }}>
                     <tbody>
-                        <tr><td className="gt-label">نوع الضمان</td><td>{GUARANTEE_TYPES[data.guaranteeType] || data.guaranteeType}</td></tr>
-                        <tr><td className="gt-label">مبلغ الضمان</td><td>{fmt(data.guaranteeAmount)} {data.currency}</td></tr>
-                        <tr><td className="gt-label">ساري من تاريخ</td><td>{fmtDate(data.validFrom)}</td></tr>
-                        <tr><td className="gt-label">ساري حتى تاريخ</td><td>{data.validUntil ? fmtDate(data.validUntil) : 'غير محدد المدة'}</td></tr>
+                        <tr><td className="gt-label">نوع الضمان</td><td>{GUARANTEE_TYPES[data.guaranteeType] || data.guaranteeType || '________________________'}</td></tr>
+                        <tr><td className="gt-label">مبلغ الضمان</td><td>{data.guaranteeAmount ? <>{fmt(data.guaranteeAmount)} {data.currency}</> : '________________________'}</td></tr>
+                        <tr><td className="gt-label">ساري من تاريخ</td><td>{data.validFrom ? fmtDate(data.validFrom) : '________________________'}</td></tr>
+                        <tr><td className="gt-label">ساري حتى تاريخ</td><td>{data.validUntil ? fmtDate(data.validUntil) : '________________________'}</td></tr>
                     </tbody>
                 </table>
 
