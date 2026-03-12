@@ -1206,6 +1206,21 @@ const ManageOrdersScreen: React.FC = () => {
         setInStorePricingBusy(true);
 
         const run = async () => {
+            const withRpcTimeout = async <T,>(promiseLike: PromiseLike<T>, timeoutMs = 12000): Promise<T> => {
+                let timer: number | null = null;
+                try {
+                    return await Promise.race([
+                        Promise.resolve(promiseLike),
+                        new Promise<T>((_, reject) => {
+                            timer = window.setTimeout(() => {
+                                reject(new Error('IN_STORE_PRICING_TIMEOUT'));
+                            }, timeoutMs);
+                        }),
+                    ]);
+                } finally {
+                    if (timer != null) window.clearTimeout(timer);
+                }
+            };
             try {
                 const requests = inStoreLines.map((l) => {
                     const mi = menuItems.find(m => m.id === l.menuItemId);
@@ -1240,13 +1255,16 @@ const ManageOrdersScreen: React.FC = () => {
                     if (warehouseId && supabase) {
                         try {
                             const customerId = inStoreSelectedCustomerId || undefined;
-                            const { data: fefo, error: fefoErr } = await supabase.rpc('get_fefo_pricing', {
+                            const rpcReq = supabase.rpc('get_fefo_pricing', {
                                 p_item_id: r.itemId,
                                 p_warehouse_id: warehouseId,
                                 p_quantity: r.pricingQty,
                                 p_customer_id: customerId || null,
                                 p_currency_code: inStoreTransactionCurrency || null,
                             } as any);
+                            const rpcRes = await withRpcTimeout<{ data: any; error: any }>(rpcReq as any);
+                            const fefo = rpcRes?.data;
+                            const fefoErr = rpcRes?.error;
                             if (fefoErr || !fefo || (Array.isArray(fefo) && fefo.length === 0)) {
                                 return await fallback();
                             }
@@ -2260,11 +2278,16 @@ const ManageOrdersScreen: React.FC = () => {
 
     const filteredInStoreMenuItems = useMemo(() => {
         const needle = inStoreItemSearch.trim().toLowerCase();
-        if (!needle) return menuItems;
-        return menuItems.filter(mi => {
+        const source = menuItems;
+        if (!needle) {
+            return source.slice(0, 200);
+        }
+        return source.filter(mi => {
             const name = (mi.name?.[language] || mi.name?.ar || mi.name?.en || '').toLowerCase();
-            return name.includes(needle);
-        });
+            const barcode = String((mi as any)?.barcode || (mi as any)?.data?.barcode || '').toLowerCase();
+            const sku = String((mi as any)?.sku || (mi as any)?.data?.sku || '').toLowerCase();
+            return name.includes(needle) || barcode.includes(needle) || sku.includes(needle);
+        }).slice(0, 200);
     }, [inStoreItemSearch, language, menuItems]);
 
     const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }) => {
@@ -2398,6 +2421,7 @@ const ManageOrdersScreen: React.FC = () => {
             const order = await withTimeout(createInStoreSale({
                 ...payload,
                 existingOrderId,
+                clientTraceId: opId,
                 creditOverrideReason: creditOverrideReason ? String(creditOverrideReason).trim() : undefined,
                 belowCostOverrideReason: belowCostOverrideReason || undefined,
             }), 120000, 'IN_STORE_CREATE_TIMEOUT');

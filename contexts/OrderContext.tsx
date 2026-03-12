@@ -1691,6 +1691,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     phoneNumber?: string;
     notes?: string;
     invoiceStatement?: string;
+    clientTraceId?: string;
     belowCostOverrideReason?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
@@ -2328,6 +2329,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         throw new Error(typeof err?.message === 'string' && err.message ? err.message : 'تعذر التحقق من الطرف المالي.');
       }
     }
+    const clientTraceId = String((input as any).clientTraceId || '').trim();
     const newOrder: Order = {
       id: isResumingExistingOrder ? existingOrderId : crypto.randomUUID(),
       userId: effectiveCustomerAuthId,
@@ -2386,6 +2388,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (belowCostOverrideReason) (newOrder as any).belowCostOverrideReason = belowCostOverrideReason;
     (newOrder as any).fxRate = fxRate;
     (newOrder as any).baseCurrency = baseCurrency;
+    if (clientTraceId) {
+      (newOrder as any).clientTraceId = clientTraceId;
+      (newOrder as any).traceId = clientTraceId;
+    }
     if (isUuid(rawPartyId)) (newOrder as any).partyId = rawPartyId;
 
     const payloadItems = newOrder.items
