@@ -150,7 +150,9 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
             en: typeof nameObj?.en === 'string' ? nameObj.en : '',
           };
           const id = typeof d?.id === 'string' ? d.id : (typeof row?.id === 'string' ? row.id : crypto.randomUUID());
-          const categoryKey = typeof d?.categoryKey === 'string' ? d.categoryKey : (typeof row?.category_key === 'string' ? row.category_key : '');
+          const categoryKey = typeof row?.category_key === 'string'
+            ? row.category_key
+            : (typeof d?.categoryKey === 'string' ? d.categoryKey : '');
           const key = typeof d?.key === 'string' ? d.key : (typeof row?.key === 'string' ? row.key : '');
           const isActive = typeof d?.isActive === 'boolean' ? d.isActive : (typeof row?.is_active === 'boolean' ? row.is_active : true);
           const createdAt = typeof d?.createdAt === 'string' ? d.createdAt : '';
