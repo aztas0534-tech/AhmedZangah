@@ -32,6 +32,8 @@ type FixedAsset = {
   status: string;
   location: string | null;
   serial_number: string | null;
+  warehouse_id?: string | null;
+  impairment_accumulated?: number;
   notes: string | null;
   created_at: string;
 };
@@ -53,6 +55,22 @@ type DepreciationEntry = {
   depreciation_amount: number;
   accumulated_total: number;
   book_value: number;
+};
+
+type AssetComponent = {
+  id: string;
+  asset_id: string;
+  component_code: string;
+  name_ar: string;
+  acquisition_date: string;
+  cost: number;
+  salvage_value: number;
+  useful_life_months: number;
+  depreciation_method: string;
+  accumulated_depreciation: number;
+  impairment_accumulated: number;
+  status: string;
+  notes: string | null;
 };
 
 const fmtAmount = (n: number) => {
@@ -94,8 +112,16 @@ export default function FixedAssetsScreen() {
   const [showDispose, setShowDispose] = useState(false);
   const [showDepreciation, setShowDepreciation] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showComponents, setShowComponents] = useState(false);
+  const [showReplaceComponent, setShowReplaceComponent] = useState(false);
+  const [showImpairment, setShowImpairment] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<FixedAsset | null>(null);
   const [deprEntries, setDeprEntries] = useState<DepreciationEntry[]>([]);
+  const [components, setComponents] = useState<AssetComponent[]>([]);
+  const [selectedComponent, setSelectedComponent] = useState<AssetComponent | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   // Register form
   const [regForm, setRegForm] = useState({
@@ -125,6 +151,31 @@ export default function FixedAssetsScreen() {
   const now = new Date();
   const [deprYear, setDeprYear] = useState(now.getFullYear());
   const [deprMonth, setDeprMonth] = useState(now.getMonth() + 1);
+  const [impairAmount, setImpairAmount] = useState(0);
+  const [impairDate, setImpairDate] = useState(toDateInputValue());
+  const [impairReason, setImpairReason] = useState('');
+  const [transferDate, setTransferDate] = useState(toDateInputValue());
+  const [transferLocation, setTransferLocation] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [componentForm, setComponentForm] = useState({
+    name_ar: '',
+    cost: 0,
+    useful_life_months: 60,
+    acquisition_date: toDateInputValue(),
+    salvage_value: 0,
+    depreciation_method: 'straight_line',
+    notes: '',
+  });
+  const [replaceForm, setReplaceForm] = useState({
+    new_name_ar: '',
+    new_cost: 0,
+    new_useful_life_months: 60,
+    replacement_date: toDateInputValue(),
+    payment_method: 'cash',
+    new_salvage_value: 0,
+    new_depreciation_method: 'straight_line',
+    reason: '',
+  });
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -158,6 +209,21 @@ export default function FixedAssetsScreen() {
       return true;
     });
   }, [assets, filterStatus, filterCategory]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterStatus, filterCategory, assets.length, pageSize]);
+
+  const totalPages = useMemo(() => {
+    const n = Math.ceil(filteredAssets.length / pageSize);
+    return Math.max(1, n);
+  }, [filteredAssets.length, pageSize]);
+
+  const pagedAssets = useMemo(() => {
+    const safePage = Math.min(Math.max(page, 1), totalPages);
+    const start = (safePage - 1) * pageSize;
+    return filteredAssets.slice(start, start + pageSize);
+  }, [filteredAssets, page, pageSize, totalPages]);
 
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -255,6 +321,151 @@ export default function FixedAssetsScreen() {
     }
   };
 
+  const handleImpairment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAsset) return;
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { error } = await supabase.rpc('post_asset_impairment', {
+        p_asset_id: selectedAsset.id,
+        p_impairment_amount: impairAmount,
+        p_reason: impairReason || null,
+        p_impairment_date: impairDate,
+      });
+      if (error) throw error;
+      showNotification('تم ترحيل انخفاض القيمة بنجاح ✅', 'success');
+      setShowImpairment(false);
+      setImpairAmount(0);
+      setImpairDate(toDateInputValue());
+      setImpairReason('');
+      void fetchAll();
+    } catch (e: any) {
+      showNotification(e?.message || 'فشل ترحيل انخفاض القيمة', 'error');
+    }
+  };
+
+  const openComponents = async (asset: FixedAsset) => {
+    setSelectedAsset(asset);
+    setComponents([]);
+    setComponentForm({
+      name_ar: '',
+      cost: 0,
+      useful_life_months: 60,
+      acquisition_date: toDateInputValue(),
+      salvage_value: 0,
+      depreciation_method: 'straight_line',
+      notes: '',
+    });
+    setShowComponents(true);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('fixed_asset_components')
+        .select('*')
+        .eq('asset_id', asset.id)
+        .order('component_code', { ascending: true });
+      if (error) throw error;
+      setComponents((data as AssetComponent[]) || []);
+    } catch (e: any) {
+      showNotification(e?.message || 'فشل تحميل مكونات الأصل', 'error');
+    }
+  };
+
+  const handleAddComponent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAsset) return;
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { error } = await supabase.rpc('add_asset_component', {
+        p_asset_id: selectedAsset.id,
+        p_name_ar: componentForm.name_ar,
+        p_cost: componentForm.cost,
+        p_useful_life_months: componentForm.useful_life_months,
+        p_acquisition_date: componentForm.acquisition_date,
+        p_salvage_value: componentForm.salvage_value,
+        p_depreciation_method: componentForm.depreciation_method,
+        p_notes: componentForm.notes || null,
+      });
+      if (error) throw error;
+      showNotification('تمت إضافة المكوّن بنجاح ✅', 'success');
+      await openComponents(selectedAsset);
+      void fetchAll();
+    } catch (e: any) {
+      showNotification(e?.message || 'فشل إضافة مكوّن', 'error');
+    }
+  };
+
+  const openReplaceComponent = (component: AssetComponent) => {
+    setSelectedComponent(component);
+    setReplaceForm({
+      new_name_ar: component.name_ar,
+      new_cost: component.cost,
+      new_useful_life_months: component.useful_life_months,
+      replacement_date: toDateInputValue(),
+      payment_method: 'cash',
+      new_salvage_value: component.salvage_value,
+      new_depreciation_method: component.depreciation_method || 'straight_line',
+      reason: '',
+    });
+    setShowReplaceComponent(true);
+  };
+
+  const handleReplaceComponent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedComponent || !selectedAsset) return;
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { error } = await supabase.rpc('replace_asset_component', {
+        p_component_id: selectedComponent.id,
+        p_new_name_ar: replaceForm.new_name_ar,
+        p_new_cost: replaceForm.new_cost,
+        p_new_useful_life_months: replaceForm.new_useful_life_months,
+        p_replacement_date: replaceForm.replacement_date,
+        p_payment_method: replaceForm.payment_method,
+        p_new_salvage_value: replaceForm.new_salvage_value,
+        p_new_depreciation_method: replaceForm.new_depreciation_method,
+        p_reason: replaceForm.reason || null,
+      });
+      if (error) throw error;
+      showNotification('تم استبدال المكوّن بنجاح ✅', 'success');
+      setShowReplaceComponent(false);
+      setSelectedComponent(null);
+      await openComponents(selectedAsset);
+      void fetchAll();
+    } catch (e: any) {
+      showNotification(e?.message || 'فشل استبدال المكوّن', 'error');
+    }
+  };
+
+  const handleTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAsset) return;
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { error } = await supabase.rpc('transfer_fixed_asset', {
+        p_asset_id: selectedAsset.id,
+        p_new_location: transferLocation,
+        p_new_warehouse_id: null,
+        p_reason: transferReason || null,
+        p_transfer_date: transferDate,
+      });
+      if (error) throw error;
+      showNotification('تم نقل الأصل بنجاح ✅', 'success');
+      setShowTransfer(false);
+      setTransferDate(toDateInputValue());
+      setTransferLocation('');
+      setTransferReason('');
+      void fetchAll();
+    } catch (e: any) {
+      showNotification(e?.message || 'فشل نقل الأصل', 'error');
+    }
+  };
+
   const openSchedule = async (asset: FixedAsset) => {
     setSelectedAsset(asset);
     setDeprEntries([]);
@@ -326,7 +537,14 @@ export default function FixedAssetsScreen() {
           <option value="all">كل الفئات</option>
           {categories.map(c => <option key={c.id} value={c.id}>{c.name_ar}</option>)}
         </select>
-        <div className="mr-auto text-sm text-gray-500 dark:text-gray-400">{filteredAssets.length} أصل</div>
+        <div className="mr-auto flex items-center gap-2">
+          <div className="text-sm text-gray-500 dark:text-gray-400">{filteredAssets.length} أصل</div>
+          <select value={pageSize} onChange={(e) => setPageSize(parseInt(e.target.value) || 20)} className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white text-xs">
+            <option value={10}>10/صفحة</option>
+            <option value={20}>20/صفحة</option>
+            <option value={50}>50/صفحة</option>
+          </select>
+        </div>
       </div>
 
       {/* Assets Table */}
@@ -350,9 +568,10 @@ export default function FixedAssetsScreen() {
             ) : filteredAssets.length === 0 ? (
               <tr><td colSpan={8} className="p-8 text-center text-gray-500">لا توجد أصول ثابتة مسجلة</td></tr>
             ) : (
-              filteredAssets.map(asset => {
+              pagedAssets.map(asset => {
                 const totalCost = asset.acquisition_cost + asset.capitalized_costs;
                 const st = statusLabels[asset.status] || statusLabels.active;
+                const impair = Number((asset as any).impairment_accumulated || 0);
                 return (
                   <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
                     <td className="p-3 text-xs font-mono dark:text-gray-300 border-r dark:border-gray-600">{asset.asset_code}</td>
@@ -368,6 +587,9 @@ export default function FixedAssetsScreen() {
                       {asset.capitalized_costs > 0 && (
                         <div className="text-xs text-gray-500">+{fmtAmount(asset.capitalized_costs)} رسملة</div>
                       )}
+                      {impair > 0 && (
+                        <div className="text-xs text-red-500">-{fmtAmount(impair)} انخفاض قيمة</div>
+                      )}
                     </td>
                     <td className="p-3 text-xs dark:text-gray-300 border-r dark:border-gray-600">
                       {Math.floor(asset.useful_life_months / 12)} سنة {asset.useful_life_months % 12 > 0 ? `و ${asset.useful_life_months % 12} شهر` : ''}
@@ -381,7 +603,10 @@ export default function FixedAssetsScreen() {
                         <button onClick={() => openSchedule(asset)} className="text-blue-600 hover:text-blue-800 text-xs font-bold">📊 جدول</button>
                         {canManage && asset.status === 'active' && (
                           <>
+                            <button onClick={() => { void openComponents(asset); }} className="text-cyan-600 hover:text-cyan-800 text-xs font-bold">🧩 مكونات</button>
                             <button onClick={() => { setSelectedAsset(asset); setShowCapitalize(true); }} className="text-green-600 hover:text-green-800 text-xs font-bold">➕ رسملة</button>
+                            <button onClick={() => { setSelectedAsset(asset); setTransferLocation(asset.location || ''); setTransferDate(toDateInputValue()); setTransferReason(''); setShowTransfer(true); }} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold">🚚 نقل</button>
+                            <button onClick={() => { setSelectedAsset(asset); setImpairAmount(0); setImpairDate(toDateInputValue()); setImpairReason(''); setShowImpairment(true); }} className="text-orange-600 hover:text-orange-800 text-xs font-bold">📉 انخفاض قيمة</button>
                             <button onClick={() => { setSelectedAsset(asset); setShowDispose(true); }} className="text-red-600 hover:text-red-800 text-xs font-bold">🗑 استبعاد</button>
                           </>
                         )}
@@ -393,6 +618,30 @@ export default function FixedAssetsScreen() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between">
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          الصفحة {Math.min(page, totalPages)} من {totalPages}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-semibold disabled:opacity-60"
+          >
+            السابق
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-semibold disabled:opacity-60"
+          >
+            التالي
+          </button>
+        </div>
       </div>
 
       {/* Register Asset Modal */}
@@ -558,6 +807,247 @@ export default function FixedAssetsScreen() {
               <button onClick={() => setShowDepreciation(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800">إلغاء</button>
               <button onClick={handleRunDepreciation} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 font-bold">تنفيذ الإهلاك</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showImpairment && selectedAsset && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in-up">
+            <h2 className="text-xl font-bold mb-4 dark:text-white">انخفاض قيمة: {selectedAsset.name_ar}</h2>
+            <form onSubmit={handleImpairment} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">التاريخ</label>
+                <input type="date" value={impairDate} onChange={e => setImpairDate(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">مبلغ الانخفاض *</label>
+                <NumberInput id="impairAmount" name="impairAmount" value={impairAmount} onChange={e => setImpairAmount(parseFloat(e.target.value) || 0)} min={0.01} step={100} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">السبب</label>
+                <input type="text" value={impairReason} onChange={e => setImpairReason(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowImpairment(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 font-bold">ترحيل</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showTransfer && selectedAsset && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in-up">
+            <h2 className="text-xl font-bold mb-4 dark:text-white">نقل أصل: {selectedAsset.name_ar}</h2>
+            <form onSubmit={handleTransfer} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">تاريخ النقل</label>
+                <input type="date" value={transferDate} onChange={e => setTransferDate(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">الموقع الجديد *</label>
+                <input type="text" required value={transferLocation} onChange={e => setTransferLocation(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">سبب النقل</label>
+                <input type="text" value={transferReason} onChange={e => setTransferReason(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowTransfer(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-bold">تنفيذ النقل</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showComponents && selectedAsset && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl p-6 animate-fade-in-up max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4 dark:text-white">🧩 مكونات الأصل: {selectedAsset.name_ar}</h2>
+            <form onSubmit={handleAddComponent} className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
+              <input
+                type="text"
+                required
+                value={componentForm.name_ar}
+                onChange={(e) => setComponentForm({ ...componentForm, name_ar: e.target.value })}
+                placeholder="اسم المكوّن"
+                className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+              />
+              <NumberInput id="compCost" name="compCost" value={componentForm.cost} onChange={(e) => setComponentForm({ ...componentForm, cost: parseFloat(e.target.value) || 0 })} min={0.01} step={100} />
+              <NumberInput id="compLife" name="compLife" value={componentForm.useful_life_months} onChange={(e) => setComponentForm({ ...componentForm, useful_life_months: parseInt(e.target.value) || 60 })} min={1} step={1} />
+              <div className="flex gap-2">
+                <button type="submit" className="flex-1 px-3 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700 text-sm font-bold">إضافة مكوّن</button>
+                <button type="button" onClick={() => setShowComponents(false)} className="px-3 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800 text-sm">إغلاق</button>
+              </div>
+              <input
+                type="date"
+                value={componentForm.acquisition_date}
+                onChange={(e) => setComponentForm({ ...componentForm, acquisition_date: e.target.value })}
+                className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+              />
+              <NumberInput id="compSalvage" name="compSalvage" value={componentForm.salvage_value} onChange={(e) => setComponentForm({ ...componentForm, salvage_value: parseFloat(e.target.value) || 0 })} min={0} step={100} />
+              <select
+                value={componentForm.depreciation_method}
+                onChange={(e) => setComponentForm({ ...componentForm, depreciation_method: e.target.value })}
+                className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+              >
+                <option value="straight_line">القسط الثابت</option>
+                <option value="declining_balance">القسط المتناقص</option>
+              </select>
+              <input
+                type="text"
+                value={componentForm.notes}
+                onChange={(e) => setComponentForm({ ...componentForm, notes: e.target.value })}
+                placeholder="ملاحظة"
+                className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+              />
+            </form>
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">الكود</th>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">المكوّن</th>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">التاريخ</th>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">التكلفة</th>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">العمر</th>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">الإهلاك</th>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">الانخفاض</th>
+                    <th className="p-2 text-xs text-gray-600 dark:text-gray-300">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {components.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-4 text-center text-gray-500">لا توجد مكونات</td>
+                    </tr>
+                  ) : components.map((c) => (
+                    <tr key={c.id}>
+                      <td className="p-2 text-xs font-mono dark:text-gray-300">{c.component_code}</td>
+                      <td className="p-2 text-xs dark:text-gray-200">{c.name_ar}</td>
+                      <td className="p-2 text-xs dark:text-gray-300" dir="ltr">{fmtDate(c.acquisition_date)}</td>
+                      <td className="p-2 text-xs font-bold dark:text-gray-200" dir="ltr">{fmtAmount(c.cost)}</td>
+                      <td className="p-2 text-xs dark:text-gray-300">{c.useful_life_months} شهر</td>
+                      <td className="p-2 text-xs text-amber-600 font-bold" dir="ltr">{fmtAmount(c.accumulated_depreciation)}</td>
+                      <td className="p-2 text-xs text-red-600 font-bold" dir="ltr">{fmtAmount(c.impairment_accumulated)}</td>
+                      <td className="p-2 text-xs dark:text-gray-300">
+                        <div className="flex items-center gap-2">
+                          <span>{c.status}</span>
+                          {canManage && c.status === 'active' && (
+                            <button
+                              type="button"
+                              onClick={() => openReplaceComponent(c)}
+                              className="px-2 py-1 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200 text-[11px] font-bold"
+                            >
+                              استبدال
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReplaceComponent && selectedAsset && selectedComponent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6 animate-fade-in-up max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4 dark:text-white">استبدال مكوّن: {selectedComponent.name_ar}</h2>
+            <form onSubmit={handleReplaceComponent} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">اسم المكوّن الجديد *</label>
+                  <input
+                    type="text"
+                    required
+                    value={replaceForm.new_name_ar}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, new_name_ar: e.target.value })}
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">تاريخ الاستبدال *</label>
+                  <input
+                    type="date"
+                    required
+                    value={replaceForm.replacement_date}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, replacement_date: e.target.value })}
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">تكلفة المكوّن الجديد *</label>
+                  <NumberInput id="replaceCost" name="replaceCost" value={replaceForm.new_cost} onChange={(e) => setReplaceForm({ ...replaceForm, new_cost: parseFloat(e.target.value) || 0 })} min={0.01} step={100} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">العمر الإنتاجي (شهور)</label>
+                  <NumberInput id="replaceLife" name="replaceLife" value={replaceForm.new_useful_life_months} onChange={(e) => setReplaceForm({ ...replaceForm, new_useful_life_months: parseInt(e.target.value) || 60 })} min={1} step={1} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">طريقة الدفع</label>
+                  <select
+                    value={replaceForm.payment_method}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, payment_method: e.target.value })}
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  >
+                    <option value="cash">نقداً</option>
+                    <option value="credit">آجل</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">قيمة الخردة</label>
+                  <NumberInput id="replaceSalvage" name="replaceSalvage" value={replaceForm.new_salvage_value} onChange={(e) => setReplaceForm({ ...replaceForm, new_salvage_value: parseFloat(e.target.value) || 0 })} min={0} step={100} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">طريقة الإهلاك</label>
+                  <select
+                    value={replaceForm.new_depreciation_method}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, new_depreciation_method: e.target.value })}
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  >
+                    <option value="straight_line">القسط الثابت</option>
+                    <option value="declining_balance">القسط المتناقص</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">السبب</label>
+                  <input
+                    type="text"
+                    value={replaceForm.reason}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, reason: e.target.value })}
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div className="p-2 rounded border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 text-xs text-amber-800 dark:text-amber-200">
+                سيتم شطب المكوّن القديم محاسبيًا وتسجيل المكوّن الجديد بقيد متوازن.
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowReplaceComponent(false); setSelectedComponent(null); }}
+                  className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800"
+                >
+                  إلغاء
+                </button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-bold">
+                  تنفيذ الاستبدال
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
