@@ -246,6 +246,8 @@ const ManageOrdersScreen: React.FC = () => {
 
     const [isInStoreSaleOpen, setIsInStoreSaleOpen] = useState(false);
     const [isInStoreCreating, setIsInStoreCreating] = useState(false);
+    const [inStoreCreatingSlow, setInStoreCreatingSlow] = useState(false);
+    const inStoreCreatingSlowTimerRef = useRef<number | null>(null);
     const [inStoreIsCredit, setInStoreIsCredit] = useState(false); // NEW: Credit Sale State
     const [inStoreCreditDays, setInStoreCreditDays] = useState<number>(30);
     const [inStoreCreditDueDate, setInStoreCreditDueDate] = useState<string>('');
@@ -2219,6 +2221,15 @@ const ManageOrdersScreen: React.FC = () => {
         if (inStoreCreationLock.current) return;
         inStoreCreationLock.current = true;
         setIsInStoreCreating(true);
+        setInStoreCreatingSlow(false);
+        if (inStoreCreatingSlowTimerRef.current != null) {
+            window.clearTimeout(inStoreCreatingSlowTimerRef.current);
+            inStoreCreatingSlowTimerRef.current = null;
+        }
+        inStoreCreatingSlowTimerRef.current = window.setTimeout(() => {
+            setInStoreCreatingSlow(true);
+            showNotification('عملية البيع تستغرق وقتًا أطول من المعتاد. يمكنك الإغلاق والمتابعة بالخلفية دون تكرار الضغط.', 'info');
+        }, 15000);
         try {
             const belowCostOverrideReason = String((payload as any)?.belowCostOverrideReason || '').trim();
             const order = await createInStoreSale({
@@ -2307,6 +2318,11 @@ const ManageOrdersScreen: React.FC = () => {
                 : (localized ? `Failed to create in-store sale: ${localized}` : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.'));
             showNotification(message, 'error');
         } finally {
+            if (inStoreCreatingSlowTimerRef.current != null) {
+                window.clearTimeout(inStoreCreatingSlowTimerRef.current);
+                inStoreCreatingSlowTimerRef.current = null;
+            }
+            setInStoreCreatingSlow(false);
             inStoreCreationLock.current = false;
             setIsInStoreCreating(false);
         }
@@ -4848,7 +4864,7 @@ const ManageOrdersScreen: React.FC = () => {
             <ConfirmationModal
                 isOpen={isInStoreSaleOpen}
                 onClose={() => {
-                    if (isInStoreCreating) return;
+                    if (isInStoreCreating && !inStoreCreatingSlow) return;
                     setIsInStoreSaleOpen(false);
                 }}
                 onConfirm={confirmInStoreSale}
@@ -4863,12 +4879,24 @@ const ManageOrdersScreen: React.FC = () => {
                 hideConfirmButton={true}
             >
                 <div className="space-y-4 relative">
-                    {/* ── Loading Overlay ── */}
                     {isInStoreCreating && (
                         <div className="absolute inset-0 bg-white/70 dark:bg-gray-900/70 z-50 flex flex-col items-center justify-center rounded-lg backdrop-blur-sm">
                             <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4" />
-                            <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300 animate-pulse">جاري تسجيل البيع...</div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">لا تغلق الصفحة</div>
+                            <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300 animate-pulse">
+                                {inStoreCreatingSlow ? 'لا يزال تسجيل البيع جارياً...' : 'جاري تسجيل البيع...'}
+                            </div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                {inStoreCreatingSlow ? 'يمكنك إغلاق النافذة والمتابعة بالخلفية دون تكرار التسجيل.' : 'لا تغلق الصفحة'}
+                            </div>
+                            {inStoreCreatingSlow && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsInStoreSaleOpen(false)}
+                                    className="mt-3 px-3 py-1.5 rounded-md bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 text-xs font-medium"
+                                >
+                                    إغلاق ومتابعة بالخلفية
+                                </button>
+                            )}
                         </div>
                     )}
                     <div className="flex items-center justify-between text-xs">
