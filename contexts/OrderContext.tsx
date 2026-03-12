@@ -1753,6 +1753,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         uomCode: typeof l.uomCode === 'string' && l.uomCode.trim() ? l.uomCode.trim() : undefined,
         uomQtyInBase: typeof l.uomQtyInBase === 'number' && l.uomQtyInBase > 0 ? l.uomQtyInBase : 1,
         warehouseId: typeof l.warehouseId === 'string' && l.warehouseId.trim() ? String(l.warehouseId).trim() : undefined,
+        _pricedByRpc: l._pricedByRpc,
+        price: l.price,
+        pricePerUnit: l.pricePerUnit,
+        _fefoBatchId: l._fefoBatchId,
+        _fefoBatchCode: l._fefoBatchCode,
+        _fefoExpiryDate: l._fefoExpiryDate,
+        _fefoUnitCost: l._fefoUnitCost,
+        _fefoMinPrice: l._fefoMinPrice,
+        _fefoNextBatchMinPrice: l._fefoNextBatchMinPrice,
+        _fefoWarningNextBatchPriceDiff: l._fefoWarningNextBatchPriceDiff,
       }));
     const normalizedPromoLines = rawLines
       .filter((l: any) => typeof l?.promotionId === 'string' && Boolean(l.promotionId))
@@ -1825,6 +1835,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         uomCode,
         warehouseId: line.warehouseId,
         cartItemId: crypto.randomUUID(),
+        ...(line._pricedByRpc ? {
+          _pricedByRpc: line._pricedByRpc,
+          price: line.price !== undefined ? line.price : menuItem.price,
+          pricePerUnit: line.pricePerUnit !== undefined ? line.pricePerUnit : ((line.price !== undefined ? line.price : menuItem.price) * 1000),
+          _fefoBatchId: line._fefoBatchId,
+          _fefoBatchCode: line._fefoBatchCode,
+          _fefoExpiryDate: line._fefoExpiryDate,
+          _fefoUnitCost: line._fefoUnitCost,
+          _fefoMinPrice: line._fefoMinPrice,
+          _fefoNextBatchMinPrice: line._fefoNextBatchMinPrice,
+          _fefoWarningNextBatchPriceDiff: line._fefoWarningNextBatchPriceDiff,
+        } : {})
       };
     });
 
@@ -1888,9 +1910,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const hasPromoLines =
       Array.isArray((items as any[])) && (items as any[]).some((it: any) => it?.lineType === 'promotion' || it?.promotionId);
     const offlineHint = typeof navigator !== 'undefined' && navigator.onLine === false;
-    if (!offlineHint) {
-      await ensureSufficientStockForOrderItems(stockBearingItems, effectiveOrderWarehouseId);
-    }
+
+    // Client-side sequential stock checks were removed here because they caused 
+    // massive O(N) latency during checkout on slow connections. 
+    // Stock validation is strictly enforced by the backend RPC (confirm_order_delivery).
 
     let pricedItems: CartItem[] = items;
     if (!offlineHint) {

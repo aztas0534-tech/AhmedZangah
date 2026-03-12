@@ -2640,8 +2640,30 @@ const ManageOrdersScreen: React.FC = () => {
             showNotification('يرجى اختيار طريقة الدفع.', 'error');
             return;
         }
+
+        const linesWithPricing = inStoreLines.map((l) => {
+            const mi = menuItems.find(m => m.id === l.menuItemId);
+            const unitType = mi?.unitType || 'piece';
+            const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const pricingQty = (unitType === 'kg' || unitType === 'gram')
+                ? (Number(l.weight) || Number(l.quantity) || 0)
+                : ((Number(l.quantity) || 0) * uomQty);
+            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+            const pricing = inStorePricingMap[key];
+            
+            if (pricing?.isTxnPrice) {
+                return {
+                    ...l,
+                    _pricedByRpc: true,
+                    price: unitType === 'gram' ? pricing.unitPricePerKg : pricing.unitPrice,
+                    pricePerUnit: pricing.unitPricePerKg
+                };
+            }
+            return l;
+        });
+
         const payload: any = {
-            lines: inStoreLines,
+            lines: linesWithPricing,
             sourceQuotationId: sourceQuotation?.id || undefined,
             currency: inStoreTransactionCurrency,
             paymentMethod: primaryPaymentMethod,

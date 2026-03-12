@@ -1399,6 +1399,11 @@ const POSScreen: React.FC = () => {
         selectedAddons: addons,
         batchId: (i as any).forcedBatchId || undefined,
         warehouseId: (i as any).warehouseId || undefined,
+        ...(i._pricedByRpc ? {
+          _pricedByRpc: i._pricedByRpc,
+          price: i.price,
+          pricePerUnit: i.pricePerUnit,
+        } : {})
       };
     });
     if (pendingOrderId) {
