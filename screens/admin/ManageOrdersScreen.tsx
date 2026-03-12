@@ -103,6 +103,23 @@ const ManageOrdersScreen: React.FC = () => {
         const addr = String((order as any).address || '').trim();
         return addr === 'داخل المحل';
     };
+    const getOrderTraceId = (order: Order) => {
+        const direct = String((order as any)?.clientTraceId || (order as any)?.traceId || '').trim();
+        if (direct) return direct;
+        const nested = String((order as any)?.data?.clientTraceId || (order as any)?.data?.traceId || (order as any)?.data?.opId || '').trim();
+        return nested;
+    };
+    const getOrderFailureReason = (order: Order) => String((order as any)?.inStoreFailureReason || (order as any)?.data?.inStoreFailureReason || '').trim();
+    const copyTraceId = useCallback(async (traceId: string) => {
+        const value = String(traceId || '').trim();
+        if (!value) return;
+        try {
+            await navigator.clipboard.writeText(value);
+            showNotification('تم نسخ رقم التتبع', 'success');
+        } catch {
+            showNotification('تعذر نسخ رقم التتبع', 'error');
+        }
+    }, [showNotification]);
 
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
@@ -2745,6 +2762,9 @@ const ManageOrdersScreen: React.FC = () => {
             }
         }
 
+        if (!canMarkPaid) {
+            showNotification('سيتم إنشاء الطلب بحالة انتظار التحصيل حتى يقوم مخوّل بالتحصيل/التسليم بإكماله.', 'info');
+        }
         await runCreateInStoreSale(payload);
     };
     // Keep the ref in sync for keyboard shortcut
@@ -2897,7 +2917,8 @@ const ManageOrdersScreen: React.FC = () => {
                 const nameMatch = (order.customerName || '').toLowerCase().includes(term);
                 const phoneMatch = (order.phoneNumber || '').toLowerCase().includes(term);
                 const idMatch = (order.id || '').toLowerCase().includes(cleanTerm);
-                return nameMatch || phoneMatch || idMatch;
+                const traceMatch = getOrderTraceId(order).toLowerCase().includes(cleanTerm);
+                return nameMatch || phoneMatch || idMatch || traceMatch;
             });
         }
 
@@ -3577,6 +3598,25 @@ const ManageOrdersScreen: React.FC = () => {
                     <div>
                         <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
                         <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
+                        {getOrderTraceId(order) && (
+                            <div className="mt-1 flex items-center gap-2">
+                                <div className="text-[11px] text-cyan-700 dark:text-cyan-300 font-mono break-all" dir="ltr">
+                                    Trace: {getOrderTraceId(order)}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => void copyTraceId(getOrderTraceId(order))}
+                                    className="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200 text-[10px] font-bold"
+                                >
+                                    نسخ
+                                </button>
+                            </div>
+                        )}
+                        {getOrderFailureReason(order) && (
+                            <div className="text-[11px] text-red-600 dark:text-red-400 mt-1 break-words">
+                                سبب التعثر: {getOrderFailureReason(order)}
+                            </div>
+                        )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${adminStatusColors[order.status] || 'bg-gray-100 text-gray-800'}`}>
@@ -4111,7 +4151,7 @@ const ManageOrdersScreen: React.FC = () => {
                             id="customerNameFilter"
                             value={customerNameFilter}
                             onChange={(e) => setCustomerNameFilter(e.target.value)}
-                            placeholder="الاسم، الهاتف، أو رقم الطلب..."
+                            placeholder="الاسم، الهاتف، رقم الطلب، أو Trace..."
                             className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm w-56"
                         />
                         {customerNameFilter.trim() && (
@@ -4476,6 +4516,25 @@ const ManageOrdersScreen: React.FC = () => {
                                             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                                 <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
+                                                {getOrderTraceId(order) && (
+                                                    <div className="mt-1 flex items-center gap-2">
+                                                        <div className="text-[11px] text-cyan-700 dark:text-cyan-300 font-mono break-all" dir="ltr">
+                                                            Trace: {getOrderTraceId(order)}
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void copyTraceId(getOrderTraceId(order))}
+                                                            className="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200 text-[10px] font-bold"
+                                                        >
+                                                            نسخ
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {getOrderFailureReason(order) && (
+                                                    <div className="text-[11px] text-red-600 dark:text-red-400 mt-1 break-words">
+                                                        سبب التعثر: {getOrderFailureReason(order)}
+                                                    </div>
+                                                )}
                                                 {order.isScheduled && order.scheduledAt && (
                                                     <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold" title={new Date(order.scheduledAt).toLocaleString('ar-EG-u-nu-latn')}>
                                                         مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}</span>

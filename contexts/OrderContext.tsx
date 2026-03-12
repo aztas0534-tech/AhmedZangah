@@ -2348,8 +2348,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       phoneNumber: input.phoneNumber?.trim() || '',
       notes: input.notes?.trim() || undefined,
       address: 'داخل المحل',
-      paymentMethod: canMarkPaidUi ? orderPaymentMethod : 'unknown',
-      paymentBreakdown: canMarkPaidUi && paymentBreakdown.length > 0 ? paymentBreakdown.map((p) => ({
+      paymentMethod: orderPaymentMethod || 'cash',
+      paymentBreakdown: paymentBreakdown.length > 0 ? paymentBreakdown.map((p) => ({
         method: p.method,
         amount: p.amount,
         referenceNumber: p.referenceNumber,
@@ -2459,17 +2459,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         await createRemoteOrder({ ...newOrder, status: 'pending' });
       }
 
-      try {
-        const supabase = getSupabaseClient();
-        if (supabase) {
-          const sb1 = supabase!;
-          const { data: invNum } = await sb1.rpc('assign_invoice_number_if_missing', { p_order_id: newOrder.id });
-          if (typeof invNum === 'string' && invNum) {
-            invoiceNumber = invNum;
-            newOrder.invoiceNumber = invNum;
+      if (shouldAttemptImmediatePayment) {
+        try {
+          const supabase = getSupabaseClient();
+          if (supabase) {
+            const sb1 = supabase!;
+            const { data: invNum } = await sb1.rpc('assign_invoice_number_if_missing', { p_order_id: newOrder.id });
+            if (typeof invNum === 'string' && invNum) {
+              invoiceNumber = invNum;
+              newOrder.invoiceNumber = invNum;
+            }
           }
-        }
-      } catch { }
+        } catch { }
+      }
 
       const buildValidationInvoiceSnapshot = (): NonNullable<Order['invoiceSnapshot']> => {
         const issuedAt = nowIso;
