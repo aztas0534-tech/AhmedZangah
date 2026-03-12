@@ -63,6 +63,26 @@ const unitTranslations: Record<string, string> = {
     liter: 'لتر'
 };
 
+type OrderPurgeRequestLite = {
+    id: string;
+    order_id: string;
+    requested_by: string;
+    requested_at: string;
+    reason: string;
+    reason_category: string;
+    status: string;
+};
+
+type PurgeDashboardRow = {
+    id: string;
+    order_id: string;
+    requested_by: string;
+    requested_at: string;
+    reason: string;
+    reason_category: string;
+    status: string;
+};
+
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -126,6 +146,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [filterDateFrom, setFilterDateFrom] = useState('');
     const [filterDateTo, setFilterDateTo] = useState('');
     const [returnsOnly, setReturnsOnly] = useState(false);
+    const [autoCandidatesOnly, setAutoCandidatesOnly] = useState(false);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
     const [customerNameFilter, setCustomerNameFilter] = useState('');
@@ -137,6 +158,19 @@ const ManageOrdersScreen: React.FC = () => {
     const [purgePaymentOrderId, setPurgePaymentOrderId] = useState<string | null>(null);
     const [isPurgingPayment, setIsPurgingPayment] = useState(false);
     const [purgePaymentReason, setPurgePaymentReason] = useState('');
+    const [purgePaymentReasonCategory, setPurgePaymentReasonCategory] = useState('misapplied_payment');
+    const [purgeApprovalNote, setPurgeApprovalNote] = useState('');
+    const [pendingPurgeByOrderId, setPendingPurgeByOrderId] = useState<Record<string, OrderPurgeRequestLite>>({});
+    const [approvePurgeRequestId, setApprovePurgeRequestId] = useState<string | null>(null);
+    const [isApprovingPurge, setIsApprovingPurge] = useState(false);
+    const [purgeDashboardRows, setPurgeDashboardRows] = useState<PurgeDashboardRow[]>([]);
+    const [purgeDashboardLoading, setPurgeDashboardLoading] = useState(false);
+    const [bulkApproveNote, setBulkApproveNote] = useState('مراجعة ثنائية عاجلة وتمت مطابقة العملية');
+    const [bulkOrderIdsInput, setBulkOrderIdsInput] = useState('');
+    const [bulkRequestReason, setBulkRequestReason] = useState('تصحيح جماعي لدفعات مسجلة بالخطأ بعد مطابقة السجلات المحاسبية');
+    const [bulkRequestCategory, setBulkRequestCategory] = useState('misapplied_payment');
+    const [isBulkPurgeBusy, setIsBulkPurgeBusy] = useState(false);
+    const [autoCandidateScanBusy, setAutoCandidateScanBusy] = useState(false);
     const [expandedAuditOrderId, setExpandedAuditOrderId] = useState<string | null>(null);
     const [auditLoadingOrderId, setAuditLoadingOrderId] = useState<string | null>(null);
     const [auditByOrderId, setAuditByOrderId] = useState<Record<string, OrderAuditEvent[]>>({});
@@ -741,6 +775,8 @@ const ManageOrdersScreen: React.FC = () => {
     const canManageAccounting = hasPermission('accounting.manage');
     const isOwner = adminUser?.role === 'owner';
     const isManager = adminUser?.role === 'manager';
+    const canRequestPurge = isOwner || isManager || canManageAccounting;
+    const currentAdminAuthId = String((adminUser as any)?.id || '');
     const canVoidDelivered = hasPermission('accounting.void');
 
     const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
@@ -1642,28 +1678,36 @@ const ManageOrdersScreen: React.FC = () => {
     const handlePurgePayment = (orderId: string) => {
         setPurgePaymentOrderId(orderId);
         setPurgePaymentReason('');
+        setPurgePaymentReasonCategory('misapplied_payment');
     };
 
     const executePurgePayment = async () => {
         if (!purgePaymentOrderId || isPurgingPayment) return;
+        if (!canRequestPurge) {
+            showNotification('لا تملك صلاحية إنشاء طلب عكس الدفعة.', 'error');
+            return;
+        }
+        const reason = purgePaymentReason.trim();
+        if (reason.length < 20) {
+            showNotification('سبب الطلب إلزامي وبحد أدنى 20 حرفًا.', 'error');
+            return;
+        }
         setIsPurgingPayment(true);
         try {
             const supabase = getSupabaseClient();
             if (!supabase) throw new Error('Supabase غير مهيأ.');
-            const reason = purgePaymentReason.trim() || 'دفعة خاطئة — حذف يدوي';
-            const { data: result, error } = await supabase.rpc('purge_order_payment', {
+            const { data: result, error } = await supabase.rpc('request_order_payment_purge', {
                 p_order_id: purgePaymentOrderId,
                 p_reason: reason,
+                p_reason_category: purgePaymentReasonCategory,
             });
             if (error) throw error;
-            const deleted = Number((result as any)?.deletedPayments ?? 0);
-            showNotification(`تم مسح ${deleted} دفعة وقيودها المحاسبية نهائياً.`, 'success');
+            const rid = String((result as any)?.requestId || '');
+            showNotification(`تم إنشاء طلب عكس الدفعة${rid ? ` (${rid.slice(-6).toUpperCase()})` : ''} وبانتظار اعتماد مستخدم ثانٍ.`, 'success');
             setPurgePaymentOrderId(null);
             setPurgePaymentReason('');
-            try {
-                await fetchOrders();
-            } catch { /* non-critical */ }
-            await loadPaidSums(filteredAndSortedOrders.map(o => o.id));
+            setPurgePaymentReasonCategory('misapplied_payment');
+            await loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id));
         } catch (error) {
             const anyErr = error as any;
             const rawMsg = [
@@ -1672,10 +1716,193 @@ const ManageOrdersScreen: React.FC = () => {
                 `details=${anyErr?.details || '?'}`,
                 `hint=${anyErr?.hint || '?'}`,
             ].join(' | ');
-            console.error('purge_order_payment error', error);
-            showNotification(`خطأ مسح الدفعة: ${rawMsg}`, 'error');
+            console.error('request_order_payment_purge error', error);
+            showNotification(`خطأ طلب عكس الدفعة: ${rawMsg}`, 'error');
         } finally {
             setIsPurgingPayment(false);
+        }
+    };
+
+    const executeApprovePurge = async () => {
+        if (!approvePurgeRequestId || isApprovingPurge) return;
+        if (!canRequestPurge) {
+            showNotification('لا تملك صلاحية اعتماد طلبات العكس.', 'error');
+            return;
+        }
+        const note = purgeApprovalNote.trim();
+        if (note.length < 10) {
+            showNotification('ملاحظة الاعتماد إلزامية وبحد أدنى 10 أحرف.', 'error');
+            return;
+        }
+        setIsApprovingPurge(true);
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('Supabase غير مهيأ.');
+            const { data: result, error } = await supabase.rpc('approve_order_payment_purge', {
+                p_request_id: approvePurgeRequestId,
+                p_approval_note: note,
+            });
+            if (error) throw error;
+            const reversed = Number((result as any)?.reversedJournals || 0);
+            showNotification(`تم اعتماد الطلب وتنفيذ عكس محاسبي بعدد ${reversed} قيود.`, 'success');
+            setApprovePurgeRequestId(null);
+            setPurgeApprovalNote('');
+            try {
+                await fetchOrders();
+            } catch { }
+            await Promise.all([
+                loadPaidSums(filteredAndSortedOrders.map(o => o.id)),
+                loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id)),
+                loadPurgeDashboard(),
+            ]);
+        } catch (error) {
+            const anyErr = error as any;
+            const rawMsg = [
+                `code=${anyErr?.code || '?'}`,
+                `msg=${anyErr?.message || '?'}`,
+                `details=${anyErr?.details || '?'}`,
+                `hint=${anyErr?.hint || '?'}`,
+            ].join(' | ');
+            showNotification(`خطأ اعتماد طلب العكس: ${rawMsg}`, 'error');
+        } finally {
+            setIsApprovingPurge(false);
+        }
+    };
+
+    const executeBulkApprovePurge = async () => {
+        if (isBulkPurgeBusy) return;
+        if (!canRequestPurge) {
+            showNotification('لا تملك صلاحية اعتماد دفعات العكس.', 'error');
+            return;
+        }
+        const note = bulkApproveNote.trim();
+        if (note.length < 10) {
+            showNotification('ملاحظة الاعتماد الجماعي يجب ألا تقل عن 10 أحرف.', 'error');
+            return;
+        }
+        const eligibleIds = purgeDashboardRows
+            .filter(r => r.status === 'requested')
+            .filter(r => !currentAdminAuthId || r.requested_by !== currentAdminAuthId)
+            .map(r => r.id);
+        if (eligibleIds.length === 0) {
+            showNotification('لا توجد طلبات قابلة للاعتماد الجماعي حالياً.', 'error');
+            return;
+        }
+        setIsBulkPurgeBusy(true);
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('Supabase غير مهيأ.');
+            const { data, error } = await supabase.rpc('bulk_approve_order_payment_purge', {
+                p_request_ids: eligibleIds,
+                p_approval_note: note,
+            });
+            if (error) throw error;
+            const approved = Number((data as any)?.approved || 0);
+            const failed = Number((data as any)?.failed || 0);
+            const reversedTotal = Number((data as any)?.reversedJournalsTotal || 0);
+            showNotification(`تم اعتماد ${approved} طلب، فشل ${failed}، وإجمالي القيود المعكوسة ${reversedTotal}.`, failed > 0 ? 'error' : 'success');
+            try {
+                await fetchOrders();
+            } catch { }
+            await Promise.all([
+                loadPaidSums(filteredAndSortedOrders.map(o => o.id)),
+                loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id)),
+                loadPurgeDashboard(),
+            ]);
+        } catch (e: any) {
+            showNotification(e?.message || 'فشل الاعتماد الجماعي.', 'error');
+        } finally {
+            setIsBulkPurgeBusy(false);
+        }
+    };
+
+    const executeBulkRequestPurge = async () => {
+        if (isBulkPurgeBusy) return;
+        if (!canRequestPurge) {
+            showNotification('لا تملك صلاحية إنشاء طلبات عكس جماعية.', 'error');
+            return;
+        }
+        const ids = bulkOrderIdsInput
+            .split(/[\s,;\n\r\t]+/)
+            .map(x => x.trim())
+            .filter(Boolean);
+        if (ids.length === 0) {
+            showNotification('أدخل معرفات الطلبات أولاً.', 'error');
+            return;
+        }
+        const reason = bulkRequestReason.trim();
+        if (reason.length < 20) {
+            showNotification('سبب الطلب الجماعي يجب ألا يقل عن 20 حرفًا.', 'error');
+            return;
+        }
+        setIsBulkPurgeBusy(true);
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('Supabase غير مهيأ.');
+            const { data, error } = await supabase.rpc('bulk_request_order_payment_purge', {
+                p_order_ids: ids,
+                p_reason: reason,
+                p_reason_category: bulkRequestCategory,
+            });
+            if (error) throw error;
+            const requested = Number((data as any)?.requested || 0);
+            const failed = Number((data as any)?.failed || 0);
+            showNotification(`تم إنشاء ${requested} طلب عكس جماعي، وفشل ${failed}.`, failed > 0 ? 'error' : 'success');
+            setBulkOrderIdsInput('');
+            await Promise.all([
+                loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id)),
+                loadPurgeDashboard(),
+            ]);
+        } catch (e: any) {
+            showNotification(e?.message || 'فشل إنشاء الطلبات الجماعية.', 'error');
+        } finally {
+            setIsBulkPurgeBusy(false);
+        }
+    };
+
+    const fillAutoPurgeCandidates = () => {
+        if (autoCandidateScanBusy) return;
+        setAutoCandidateScanBusy(true);
+        try {
+            const ids: string[] = [];
+            let overpaidCount = 0;
+            let stalePaidAtCount = 0;
+            let creditWithPaidCount = 0;
+
+            filteredAndSortedOrders.forEach((order) => {
+                if (String(order.status || '').toLowerCase() !== 'delivered') return;
+                const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                if (isVoided) return;
+                if (pendingPurgeByOrderId[order.id]) return;
+
+                const hasPaidAt = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
+                const { paid, total, tol, isCreditSale } = getOrderPaymentSnapshot(order);
+
+                const isOverpaid = paid > (total + tol);
+                const isStalePaidAt = hasPaidAt && paid <= tol;
+                const isCreditWithPaid = isCreditSale && paid > tol;
+
+                if (isOverpaid || isStalePaidAt || isCreditWithPaid) {
+                    ids.push(order.id);
+                    if (isOverpaid) overpaidCount += 1;
+                    if (isStalePaidAt) stalePaidAtCount += 1;
+                    if (isCreditWithPaid) creditWithPaidCount += 1;
+                }
+            });
+
+            const unique = Array.from(new Set(ids));
+            if (unique.length === 0) {
+                showNotification('لا توجد طلبات مرشحة تلقائياً ضمن الفلاتر الحالية.', 'error');
+                return;
+            }
+
+            setBulkOrderIdsInput(unique.join('\n'));
+            showNotification(
+                `تم تجهيز ${unique.length} طلب مرشح (زيادة تحصيل: ${overpaidCount}، paidAt غير متطابق: ${stalePaidAtCount}، آجل مع تحصيل: ${creditWithPaidCount}).`,
+                'success'
+            );
+        } finally {
+            setAutoCandidateScanBusy(false);
         }
     };
 
@@ -2294,6 +2521,35 @@ const ManageOrdersScreen: React.FC = () => {
             });
         }
 
+        if (autoCandidatesOnly) {
+            processedOrders = processedOrders.filter((order) => {
+                if (pendingPurgeByOrderId[order.id]) return false;
+                if (String(order.status || '').toLowerCase() !== 'delivered') return false;
+                const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+                if (isVoided) return false;
+
+                const currency = String((order as any).currency || '').toUpperCase() || baseCode;
+                const total = roundMoneyByCode(Number(order.total) || 0, currency);
+                const tol = Math.pow(10, -getCurrencyDecimalsByCode(currency));
+                const rawPaid = roundMoneyByCode(Number(paidSumByOrderId[order.id]) || 0, currency);
+                const paymentMethod = String((order as any)?.paymentMethod || (order as any)?.payment_method || (order as any)?.data?.paymentMethod || '').toLowerCase().trim();
+                const invoiceTerms = String((order as any)?.invoiceTerms || (order as any)?.data?.invoiceTerms || '').toLowerCase().trim();
+                const hasArPayment = Array.isArray((order as any).payments) && (order as any).payments.some((p: any) => String(p?.method || '').toLowerCase() === 'ar');
+                const isCreditSale = paymentMethod === 'ar' || hasArPayment || invoiceTerms === 'credit';
+                const isDelivered = String(order.status || '').toLowerCase() === 'delivered';
+                const isCashLike = paymentMethod === 'cash' || invoiceTerms === 'cash';
+                const hasPaidAt = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
+                const isInStoreCashSettlement = isInStoreOrder(order) && isDelivered && isCashLike && !isCreditSale;
+                const isMarkedCashSettlement = hasPaidAt && isDelivered && isCashLike && !isCreditSale;
+                const paid = (rawPaid <= tol && (isInStoreCashSettlement || isMarkedCashSettlement)) ? total : rawPaid;
+
+                const isOverpaid = paid > (total + tol);
+                const isStalePaidAt = hasPaidAt && paid <= tol;
+                const isCreditWithPaid = isCreditSale && paid > tol;
+                return isOverpaid || isStalePaidAt || isCreditWithPaid;
+            });
+        }
+
         if (isDeliveryOnly && adminUser?.id) {
             processedOrders = processedOrders.filter(order => order.assignedDeliveryUserId === adminUser.id);
         }
@@ -2334,7 +2590,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, sortOrder, baseCode, recentShifts]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, autoCandidatesOnly, sortOrder, baseCode, recentShifts, paidSumByOrderId, pendingPurgeByOrderId]);
 
     const availableInStoreDestinations = useMemo(() => {
         const currency = String(inStoreTransactionCurrency || '').toUpperCase();
@@ -2393,9 +2649,71 @@ const ManageOrdersScreen: React.FC = () => {
         }
     }, []);
 
+    const loadPendingPurgeRequests = useCallback(async (orderIds: string[]) => {
+        const uniqueIds = Array.from(new Set(orderIds.filter(Boolean)));
+        if (uniqueIds.length === 0) {
+            setPendingPurgeByOrderId({});
+            return;
+        }
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) {
+                setPendingPurgeByOrderId({});
+                return;
+            }
+            const { data, error } = await supabase
+                .from('order_payment_purge_requests')
+                .select('id,order_id,requested_by,requested_at,reason,reason_category,status')
+                .eq('status', 'requested')
+                .in('order_id', uniqueIds)
+                .order('requested_at', { ascending: false });
+            if (error) throw error;
+            const map: Record<string, OrderPurgeRequestLite> = {};
+            ((data as any[]) || []).forEach((r) => {
+                const oid = String((r as any)?.order_id || '');
+                if (!oid) return;
+                if (!map[oid]) map[oid] = r as OrderPurgeRequestLite;
+            });
+            setPendingPurgeByOrderId(map);
+        } catch {
+            setPendingPurgeByOrderId({});
+        }
+    }, []);
+
+    const loadPurgeDashboard = useCallback(async () => {
+        setPurgeDashboardLoading(true);
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) {
+                setPurgeDashboardRows([]);
+                return;
+            }
+            const { data, error } = await supabase
+                .from('order_payment_purge_requests')
+                .select('id,order_id,requested_by,requested_at,reason,reason_category,status')
+                .eq('status', 'requested')
+                .order('requested_at', { ascending: false })
+                .limit(50);
+            if (error) throw error;
+            setPurgeDashboardRows(Array.isArray(data) ? data as PurgeDashboardRow[] : []);
+        } catch {
+            setPurgeDashboardRows([]);
+        } finally {
+            setPurgeDashboardLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         void loadPaidSums(filteredAndSortedOrders.map(o => o.id));
     }, [filteredAndSortedOrders, loadPaidSums]);
+
+    useEffect(() => {
+        void loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id));
+    }, [filteredAndSortedOrders, loadPendingPurgeRequests]);
+
+    useEffect(() => {
+        void loadPurgeDashboard();
+    }, [loadPurgeDashboard]);
 
     const getOrderPaymentSnapshot = useCallback((order: Order) => {
         const currency = String((order as any).currency || '').toUpperCase() || baseCode;
@@ -3072,16 +3390,32 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Purge Payment — owner / manager */}
-                    {order.status === 'delivered' && (paid > tol || isCreditSale || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && (isOwner || isManager) && !isVoided && (
+                    {order.status === 'delivered' && (paid > tol || isCreditSale || Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt)) && canRequestPurge && !isVoided && (
                         <div className="col-span-2">
+                            {pendingPurgeByOrderId[order.id] ? (
+                                <div className="space-y-2">
+                                    <div className="text-xs p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 text-amber-800 dark:text-amber-200">
+                                        طلب عكس قائم #{pendingPurgeByOrderId[order.id].id.slice(-6).toUpperCase()}
+                                    </div>
+                                    {currentAdminAuthId && pendingPurgeByOrderId[order.id].requested_by !== currentAdminAuthId && (
+                                        <button
+                                            onClick={() => { setApprovePurgeRequestId(pendingPurgeByOrderId[order.id].id); setPurgeApprovalNote(''); }}
+                                            disabled={isApprovingPurge}
+                                            className="w-full py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            اعتماد الطلب وتنفيذ العكس
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
                             <button
                                 onClick={() => handlePurgePayment(order.id)}
                                 disabled={isPurgingPayment}
                                 className="w-full py-2 bg-red-700 text-white rounded hover:bg-red-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                🗑️ مسح الدفعة نهائياً
+                                طلب عكس الدفعة (4-Eyes)
                             </button>
+                            )}
                         </div>
                     )}
 
@@ -3478,6 +3812,25 @@ const ManageOrdersScreen: React.FC = () => {
                             </button>
                         )}
                     </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="autoCandidatesOnly" className="text-sm font-medium dark:text-gray-300">المرشح تلقائيًا فقط:</label>
+                        <input
+                            id="autoCandidatesOnly"
+                            type="checkbox"
+                            checked={autoCandidatesOnly}
+                            onChange={(e) => setAutoCandidatesOnly(e.target.checked)}
+                            className="h-4 w-4"
+                        />
+                        {autoCandidatesOnly && (
+                            <button
+                                type="button"
+                                onClick={() => setAutoCandidatesOnly(false)}
+                                className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold"
+                            >
+                                مسح
+                            </button>
+                        )}
+                    </div>
                     <div>
                         <label htmlFor="sortOrder" className="text-sm font-medium dark:text-gray-300 mx-2">ترتيب حسب:</label>
                         <select
@@ -3492,6 +3845,123 @@ const ManageOrdersScreen: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {canRequestPurge && (
+                <div className="mb-4 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-bold text-gray-800 dark:text-gray-100">مركز التحكم السريع لعكس دفعات الطلبات</div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => void loadPurgeDashboard()}
+                                disabled={purgeDashboardLoading || isBulkPurgeBusy}
+                                className="px-3 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60"
+                            >
+                                تحديث
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void executeBulkApprovePurge()}
+                                disabled={isBulkPurgeBusy}
+                                className="px-3 py-1 rounded bg-indigo-700 text-white text-xs font-semibold disabled:opacity-60"
+                            >
+                                اعتماد جماعي قابل للتنفيذ
+                            </button>
+                            <button
+                                type="button"
+                                onClick={fillAutoPurgeCandidates}
+                                disabled={isBulkPurgeBusy || autoCandidateScanBusy}
+                                className="px-3 py-1 rounded bg-emerald-700 text-white text-xs font-semibold disabled:opacity-60"
+                            >
+                                إحضار الطلبات المرشحة تلقائياً
+                            </button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <div className="md:col-span-1">
+                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">ملاحظة الاعتماد الجماعي</label>
+                            <input
+                                value={bulkApproveNote}
+                                onChange={(e) => setBulkApproveNote(e.target.value)}
+                                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm"
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">طلبات عكس معلّقة (آخر 50 طلب)</label>
+                            <div className="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-md p-2 space-y-1">
+                                {purgeDashboardLoading ? (
+                                    <div className="text-xs text-gray-500">جاري التحميل...</div>
+                                ) : purgeDashboardRows.length === 0 ? (
+                                    <div className="text-xs text-gray-500">لا توجد طلبات معلقة.</div>
+                                ) : (
+                                    purgeDashboardRows.map((r) => (
+                                        <div key={r.id} className="flex items-center justify-between gap-2 text-xs border-b border-gray-100 dark:border-gray-700 pb-1">
+                                            <div className="truncate">
+                                                #{r.id.slice(-6).toUpperCase()} • طلب {r.order_id.slice(-6).toUpperCase()} • {new Date(r.requested_at).toLocaleString('ar-EG-u-nu-latn')}
+                                            </div>
+                                            {(!currentAdminAuthId || r.requested_by !== currentAdminAuthId) ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setApprovePurgeRequestId(r.id); setPurgeApprovalNote(bulkApproveNote); }}
+                                                    className="px-2 py-1 rounded bg-indigo-600 text-white text-[11px] font-semibold"
+                                                >
+                                                    اعتماد
+                                                </button>
+                                            ) : (
+                                                <span className="text-[11px] text-amber-700 dark:text-amber-300">بانتظار مستخدم ثانٍ</span>
+                                            )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+                        <div className="md:col-span-2">
+                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">معرفات طلبات جماعية (UUID مفصولة بمسافة/فاصلة)</label>
+                            <textarea
+                                value={bulkOrderIdsInput}
+                                onChange={(e) => setBulkOrderIdsInput(e.target.value)}
+                                className="w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs font-mono"
+                                placeholder="uuid1, uuid2, uuid3"
+                            />
+                            <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                زر "إحضار الطلبات المرشحة تلقائياً" يملأ هذه الخانة بناءً على مؤشرات أخطاء التحصيل الشائعة ضمن الفلاتر الحالية.
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">تصنيف السبب</label>
+                            <select
+                                value={bulkRequestCategory}
+                                onChange={(e) => setBulkRequestCategory(e.target.value)}
+                                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm"
+                            >
+                                <option value="misapplied_payment">دفعة مسجلة على الطلب الخطأ</option>
+                                <option value="duplicate_settlement">تسوية مكررة</option>
+                                <option value="fraud_risk">اشتباه احتيال/مخاطر</option>
+                                <option value="compliance_correction">تصحيح امتثال وتدقيق</option>
+                                <option value="other">أخرى</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">سبب موحد (20+ حرف)</label>
+                            <input
+                                value={bulkRequestReason}
+                                onChange={(e) => setBulkRequestReason(e.target.value)}
+                                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => void executeBulkRequestPurge()}
+                                disabled={isBulkPurgeBusy}
+                                className="mt-2 w-full px-3 py-2 rounded bg-red-700 text-white text-xs font-semibold disabled:opacity-60"
+                            >
+                                إنشاء طلبات جماعية
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="hidden md:block bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                 <div className="overflow-x-auto">
@@ -3721,14 +4191,31 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                     const hasPaidAtTbl = Boolean((order as any)?.paidAt || (order as any)?.data?.paidAt);
                                                     const { paid: paidTbl, tol: tolTbl, isCreditSale: isCreditSaleTbl } = getOrderPaymentSnapshot(order);
-                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || isCreditSaleTbl || hasPaidAtTbl) && (isOwner || isManager) && !isVoidedTbl ? (
-                                                        <button
-                                                            onClick={() => handlePurgePayment(order.id)}
-                                                            disabled={isPurgingPayment}
-                                                            className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            🗑️ مسح الدفعة
-                                                        </button>
+                                                    const purgeAction = order.status === 'delivered' && (paidTbl > tolTbl || isCreditSaleTbl || hasPaidAtTbl) && canRequestPurge && !isVoidedTbl ? (
+                                                        pendingPurgeByOrderId[order.id] ? (
+                                                            <div className="flex flex-col gap-2">
+                                                                <div className="text-[11px] px-2 py-1 rounded border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 text-amber-800 dark:text-amber-200">
+                                                                    طلب قائم #{pendingPurgeByOrderId[order.id].id.slice(-6).toUpperCase()}
+                                                                </div>
+                                                                {currentAdminAuthId && pendingPurgeByOrderId[order.id].requested_by !== currentAdminAuthId && (
+                                                                    <button
+                                                                        onClick={() => { setApprovePurgeRequestId(pendingPurgeByOrderId[order.id].id); setPurgeApprovalNote(''); }}
+                                                                        disabled={isApprovingPurge}
+                                                                        className="px-3 py-1 bg-indigo-700 text-white rounded hover:bg-indigo-800 transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    >
+                                                                        اعتماد وتنفيذ
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => handlePurgePayment(order.id)}
+                                                                disabled={isPurgingPayment}
+                                                                className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                طلب عكس الدفعة
+                                                            </button>
+                                                        )
                                                     ) : null;
 
                                                     if (Boolean((order as any).isDraft)) {
@@ -6396,38 +6883,89 @@ const ManageOrdersScreen: React.FC = () => {
                     if (isPurgingPayment) return;
                     setPurgePaymentOrderId(null);
                     setPurgePaymentReason('');
+                    setPurgePaymentReasonCategory('misapplied_payment');
                 }}
                 onConfirm={executePurgePayment}
-                title="⚠️ مسح الدفعة نهائياً"
+                title="طلب عكس دفعة مع اعتماد ثنائي"
                 message=""
                 isConfirming={isPurgingPayment}
-                confirmText="مسح نهائي"
-                confirmingText="جاري المسح..."
+                confirmText="إرسال طلب العكس"
+                confirmingText="جاري الإرسال..."
                 confirmButtonClassName="bg-red-700 hover:bg-red-800 disabled:bg-red-400"
             >
                 <div className="space-y-4">
                     <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-800 dark:text-red-200 leading-relaxed">
-                        <p className="font-semibold mb-1">سيتم حذف:</p>
+                        <p className="font-semibold mb-1">ضوابط التنفيذ:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>جميع سجلات الدفع لهذا الطلب</li>
-                            <li>جميع القيود المحاسبية المرتبطة</li>
-                            <li>جميع حركات كشف حساب الطرف المالي</li>
+                            <li>لا يتم حذف القيود، يتم إنشاء قيود عكس فقط</li>
+                            <li>يتطلب اعتماد مستخدم ثانٍ مختلف عن مقدم الطلب</li>
+                            <li>يرفض التنفيذ داخل الفترات المحاسبية المغلقة</li>
                         </ul>
-                        <p className="mt-2 font-bold">هذا الإجراء لا يمكن التراجع عنه.</p>
+                        <p className="mt-2 font-bold">السبب إلزامي (20 حرفًا على الأقل).</p>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">سبب المسح (اختياري)</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">تصنيف السبب *</label>
+                        <select
+                            value={purgePaymentReasonCategory}
+                            onChange={(e) => setPurgePaymentReasonCategory(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                            disabled={isPurgingPayment}
+                        >
+                            <option value="misapplied_payment">دفعة مسجلة على الطلب الخطأ</option>
+                            <option value="duplicate_settlement">تسوية مكررة</option>
+                            <option value="fraud_risk">اشتباه احتيال/مخاطر</option>
+                            <option value="compliance_correction">تصحيح امتثال وتدقيق</option>
+                            <option value="other">أخرى</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">سبب العكس *</label>
                         <input
                             type="text"
                             value={purgePaymentReason}
                             onChange={(e) => setPurgePaymentReason(e.target.value)}
-                            placeholder="دفعة خاطئة — حذف يدوي"
+                            placeholder="مثال: تم تسجيل التحصيل على فاتورة خاطئة وتم اكتشافها عبر المطابقة البنكية"
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                             disabled={isPurgingPayment}
                         />
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
                         الطلب: #{purgePaymentOrderId?.slice(-6).toUpperCase()}
+                    </div>
+                </div>
+            </ConfirmationModal>
+            <ConfirmationModal
+                isOpen={Boolean(approvePurgeRequestId)}
+                onClose={() => {
+                    if (isApprovingPurge) return;
+                    setApprovePurgeRequestId(null);
+                    setPurgeApprovalNote('');
+                }}
+                onConfirm={executeApprovePurge}
+                title="اعتماد طلب عكس الدفعة"
+                message=""
+                isConfirming={isApprovingPurge}
+                confirmText="اعتماد وتنفيذ"
+                confirmingText="جاري التنفيذ..."
+                confirmButtonClassName="bg-indigo-700 hover:bg-indigo-800 disabled:bg-indigo-400"
+            >
+                <div className="space-y-3">
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                        سيتم إنشاء قيد/قيود عكس محاسبية بدل الحذف، وتوثيق العملية بسجل تدقيق عالي الخطورة.
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ملاحظة الاعتماد *</label>
+                        <input
+                            type="text"
+                            value={purgeApprovalNote}
+                            onChange={(e) => setPurgeApprovalNote(e.target.value)}
+                            placeholder="مثال: تمت المراجعة والمطابقة البنكية وتمت الموافقة على العكس"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                            disabled={isApprovingPurge}
+                        />
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                        رقم الطلب: #{approvePurgeRequestId?.slice(-6).toUpperCase()}
                     </div>
                 </div>
             </ConfirmationModal>
