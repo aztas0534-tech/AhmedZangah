@@ -259,9 +259,12 @@ const WarehouseTransfersScreen: React.FC = () => {
             if (!matchesSearch) return false;
             if (!formData.from_warehouse_id) return true;
             const available = Number(warehouseStockByItem[id]?.available || 0);
+            if (normalizedItemSearch) return true;
             return available > 0 || selectedItemIds.has(id);
         });
     }, [menuItems, normalizedItemSearch, formData.from_warehouse_id, warehouseStockByItem, selectedItemIds]);
+
+    const quickSearchItems = useMemo(() => searchableItems.slice(0, 8), [searchableItems]);
 
     const getItemLabel = (itemId: string) => {
         const found = menuItems.find(mi => String(mi.id) === String(itemId));
@@ -277,7 +280,11 @@ const WarehouseTransfersScreen: React.FC = () => {
     };
 
     const addFirstSearchResult = () => {
-        const first = searchableItems[0];
+        const first = (() => {
+            if (!formData.from_warehouse_id) return searchableItems[0];
+            const withStock = searchableItems.find((mi) => Number(warehouseStockByItem[String(mi.id)]?.available || 0) > 0);
+            return withStock || searchableItems[0];
+        })();
         if (!first) {
             showNotification('لا توجد نتيجة مطابقة للبحث', 'error');
             return;
@@ -733,6 +740,44 @@ const WarehouseTransfersScreen: React.FC = () => {
                                                 className="w-full pr-9 pl-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
                                                 placeholder="بحث سريع عن الصنف (الاسم/الباركود/المعرف)"
                                             />
+                                            {normalizedItemSearch && (
+                                                <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                                                    {quickSearchItems.length > 0 ? (
+                                                        <div className="max-h-64 overflow-y-auto">
+                                                            {quickSearchItems.map((mi) => {
+                                                                const id = String(mi.id);
+                                                                const label = String(mi?.name?.ar || mi?.name?.en || mi.id);
+                                                                const available = Number(warehouseStockByItem[id]?.available || 0);
+                                                                const alreadyAdded = selectedItemIds.has(id);
+                                                                return (
+                                                                    <button
+                                                                        key={id}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            if (alreadyAdded) return;
+                                                                            setFormData({
+                                                                                ...formData,
+                                                                                items: [...formData.items, { itemId: id, quantity: 1, notes: '', uomId: '' }],
+                                                                            });
+                                                                            void loadItemUoms(id);
+                                                                        }}
+                                                                        disabled={alreadyAdded}
+                                                                        className="w-full px-3 py-2 text-right hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                                                                    >
+                                                                        <div className="text-sm font-medium dark:text-white">{label}</div>
+                                                                        <div className="text-xs text-gray-500">
+                                                                            {formData.from_warehouse_id ? `الرصيد المتاح: ${available.toLocaleString('en-US')}` : 'اختر المخزن المصدر لعرض الرصيد'}
+                                                                            {alreadyAdded ? ' — مضاف' : ''}
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="px-3 py-2 text-xs text-gray-500">لا توجد نتائج مطابقة</div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                         <button
                                             type="button"
