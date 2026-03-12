@@ -41,7 +41,7 @@ const SupplierStockReportScreen: React.FC = () => {
   const { settings } = useSettings();
   const { showNotification } = useToast();
 
-  const [warehouseId, setWarehouseId] = useState<string>('');
+  const [warehouseId, setWarehouseId] = useState<string>('all');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
@@ -54,7 +54,7 @@ const SupplierStockReportScreen: React.FC = () => {
   const [rowsRaw, setRowsRaw] = useState<SupplierStockRow[]>([]);
 
   useEffect(() => {
-    if (warehouseId) return;
+    if (warehouseId && warehouseId !== 'all') return;
     const fromScope = String(scope?.warehouseId || '');
     if (fromScope) {
       setWarehouseId(fromScope);
@@ -96,15 +96,15 @@ const SupplierStockReportScreen: React.FC = () => {
         if (active) setRowsRaw([]);
         return;
       }
-      if (!warehouseId) return;
       const supabase = getSupabaseClient();
       if (!supabase) return;
       setLoading(true);
       try {
         setError('');
+        const warehouseParam = warehouseId === 'all' ? null : warehouseId;
         const { data, error: qErr } = await supabase.rpc('get_supplier_stock_report', {
           p_supplier_id: selectedSupplier,
-          p_warehouse_id: warehouseId || null,
+          p_warehouse_id: warehouseParam,
           p_days: Math.max(1, Number(salesDays) || 7),
         } as any);
         if (qErr) throw qErr;
@@ -175,7 +175,7 @@ const SupplierStockReportScreen: React.FC = () => {
     const parts: string[] = [];
     parts.push(`المورد: ${selectedSupplierName}`);
     parts.push(`الفترة: ${Math.max(1, Number(salesDays) || 7)} يوم`);
-    parts.push(`المخزن: ${selectedWarehouse?.code || ''}${selectedWarehouse?.name ? ` — ${selectedWarehouse?.name}` : ''}`);
+    parts.push(`المخزن: ${warehouseId === 'all' ? 'كل المستودعات' : `${selectedWarehouse?.code || ''}${selectedWarehouse?.name ? ` — ${selectedWarehouse?.name}` : ''}`}`);
     parts.push(`الفئة: ${selectedCategory === 'all' ? 'الكل' : getCategoryLabel(selectedCategory, 'ar')}`);
     parts.push(`المجموعة: ${selectedGroup === 'all' ? 'الكل' : getGroupLabel(selectedGroup, selectedCategory !== 'all' ? selectedCategory : undefined, 'ar')}`);
     parts.push(`الحالة: ${stockFilter === 'all' ? 'الكل' : stockFilter === 'in' ? 'متوفر' : stockFilter === 'low' ? 'منخفض' : 'منعدم'}`);
@@ -330,6 +330,7 @@ const SupplierStockReportScreen: React.FC = () => {
               onChange={(e) => setWarehouseId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
+              <option value="all">كل المستودعات</option>
               {warehouses.map(w => (
                 <option key={w.id} value={w.id}>{`${w.code} — ${w.name}`}</option>
               ))}

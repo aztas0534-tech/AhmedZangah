@@ -1871,13 +1871,25 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (items.some((i) => getRequestedItemQuantity(i) <= 0)) {
       throw new Error('الكمية/الوزن يجب أن يكون أكبر من صفر.');
     }
+    const stockBearingItems = items.filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId));
+    const lineWarehouseIds = Array.from(new Set(
+      stockBearingItems
+        .map((it: any) => String(it?.warehouseId || warehouseId || '').trim())
+        .filter(Boolean)
+    ));
+    if (lineWarehouseIds.length > 1) {
+      throw new Error('الطلب الواحد لا يدعم حالياً التنفيذ من عدة مستودعات. أنشئ طلباً مستقلاً لكل مستودع.');
+    }
+    const effectiveOrderWarehouseId = String(lineWarehouseIds[0] || warehouseId || '').trim();
+    if (!effectiveOrderWarehouseId) {
+      throw new Error('لا يمكن إنشاء الطلب بدون تحديد مستودع تنفيذ.');
+    }
 
     const hasPromoLines =
       Array.isArray((items as any[])) && (items as any[]).some((it: any) => it?.lineType === 'promotion' || it?.promotionId);
     const offlineHint = typeof navigator !== 'undefined' && navigator.onLine === false;
     if (!offlineHint) {
-      const stockCheckItems = items.filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId));
-      await ensureSufficientStockForOrderItems(stockCheckItems, warehouseId);
+      await ensureSufficientStockForOrderItems(stockBearingItems, effectiveOrderWarehouseId);
     }
 
     let pricedItems: CartItem[] = items;
@@ -1918,7 +1930,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const call = async (customerId: string | null) => {
             return await supabaseForPricing!.rpc('get_fefo_pricing', {
               p_item_id: item.id,
-              p_warehouse_id: (item as any).warehouseId || warehouseId,
+              p_warehouse_id: (item as any).warehouseId || effectiveOrderWarehouseId,
               p_quantity: pricingQty,
               p_customer_id: customerId,
               p_currency_code: desiredCurrency,
@@ -2297,7 +2309,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       id: isResumingExistingOrder ? existingOrderId : crypto.randomUUID(),
       userId: effectiveCustomerAuthId,
       orderSource: 'in_store',
-      warehouseId,
+      warehouseId: effectiveOrderWarehouseId,
       currency: desiredCurrency,
       customerId: input.customerId || undefined,
       items,
@@ -2387,7 +2399,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_order_id: offlineOrder.id,
         p_order_data: offlineOrder,
         p_items: payloadItems,
-        p_warehouse_id: warehouseId,
+        p_warehouse_id: effectiveOrderWarehouseId,
         p_payments: (paymentBreakdown || []).map((p) => ({
           method: p.method,
           amount: Number(p.amount) || 0,
@@ -2531,7 +2543,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           orderId: newOrder.id,
           items: sanitizedItems,
           updatedData: sanitizedFinalized,
-          warehouseId,
+          warehouseId: effectiveOrderWarehouseId,
         });
 
         let confirmError: any = rpcError;
@@ -2610,7 +2622,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 orderId: newOrder.id,
                 items: sanitizedItems,
                 updatedData: retryFinalized,
-                warehouseId,
+                warehouseId: effectiveOrderWarehouseId,
               });
               confirmError = retryError;
               if (!confirmError) {
@@ -2855,7 +2867,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           .filter((x) => x.itemId && Number(x.quantity) > 0);
 
         if (reserveItems.length > 0) {
-          const reserveErr = await rpcReserveStockForOrder(sb2, { items: reserveItems, orderId: newOrder.id, warehouseId });
+          const reserveErr = await rpcReserveStockForOrder(sb2, { items: reserveItems, orderId: newOrder.id, warehouseId: effectiveOrderWarehouseId });
           if (reserveErr) {
             const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
             if (offlineNow || isAbortLikeError(reserveErr)) {
@@ -3012,7 +3024,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (items.some((i) => getRequestedItemQuantity(i) <= 0)) {
       throw new Error('الكمية/الوزن يجب أن يكون أكبر من صفر.');
     }
-    await ensureSufficientStockForOrderItems(items, warehouseId);
+    const lineWarehouseIds = Array.from(new Set(
+      items
+        .map((it: any) => String(it?.warehouseId || warehouseId || '').trim())
+        .filter(Boolean)
+    ));
+    if (lineWarehouseIds.length > 1) {
+      throw new Error('لا يمكن إنشاء طلب معلّق من عدة مستودعات ضمن نفس الطلب. أنشئ طلباً مستقلاً لكل مستودع.');
+    }
+    const effectiveOrderWarehouseId = String(lineWarehouseIds[0] || warehouseId || '').trim();
+    if (!effectiveOrderWarehouseId) {
+      throw new Error('لا يمكن إنشاء الطلب بدون تحديد مستودع تنفيذ.');
+    }
+    await ensureSufficientStockForOrderItems(items, effectiveOrderWarehouseId);
     const supabaseForPricing = getSupabaseClient();
     if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
     const pricedItems = await Promise.all(items.map(async (item) => {
@@ -3022,7 +3046,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         : item.quantity * uomFactor;
       const { data, error } = await supabaseForPricing!.rpc('get_fefo_pricing', {
         p_item_id: item.id,
-        p_warehouse_id: (item as any).warehouseId || warehouseId,
+        p_warehouse_id: (item as any).warehouseId || effectiveOrderWarehouseId,
         p_currency_code: desiredCurrency,
         p_customer_id: input.customerId ? String(input.customerId) : null,
         p_quantity: pricingQty,
@@ -3153,7 +3177,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       id: crypto.randomUUID(),
       userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
-      warehouseId,
+      warehouseId: effectiveOrderWarehouseId,
       currency: desiredCurrency,
       customerId: input.customerId || undefined,
       items,
@@ -3199,7 +3223,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     const sb3 = supabase!;
-    const reserveErr = await rpcReserveStockForOrder(sb3, { items: payloadItems, orderId: newOrder.id, warehouseId });
+    const reserveErr = await rpcReserveStockForOrder(sb3, { items: payloadItems, orderId: newOrder.id, warehouseId: effectiveOrderWarehouseId });
     if (reserveErr) {
       const { error: deleteErr } = await sb3.from('orders').delete().eq('id', newOrder.id);
       if (deleteErr) {

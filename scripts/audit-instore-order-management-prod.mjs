@@ -1,5 +1,7 @@
 import fs from 'fs';
 import { Client } from 'pg';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const args = process.argv.slice(2);
 const readArg = (name, fallback = '') => {
@@ -53,6 +55,7 @@ with scoped_orders as (
     o.status,
     o.created_at,
     o.updated_at,
+    o.warehouse_id::text as warehouse_id,
     coalesce(nullif(o.data->>'orderSource',''), '') as order_source,
     coalesce(
       nullif((o.data->>'baseTotal')::numeric, null),
@@ -114,6 +117,7 @@ const qDeliveryAnomalies = `
 ${scopeCte}
 select
   so.id,
+  so.warehouse_id,
   so.status,
   so.created_at,
   so.base_total,
@@ -203,6 +207,7 @@ const qSampleRecent = `
 ${scopeCte}
 select
   so.id,
+  so.warehouse_id,
   so.status,
   so.currency,
   so.total_foreign,
@@ -245,6 +250,28 @@ const run = async () => {
   console.log(JSON.stringify(returnAnomalies, null, 2));
   console.log('sample_recent');
   console.table(sampleRecent);
+  const payload = {
+    generated_at: new Date().toISOString(),
+    lookback_days: days,
+    limit,
+    overview,
+    failure_reasons: failureReasons,
+    delivery_anomalies: deliveryAnomalies,
+    cancellation_anomalies: cancellationAnomalies,
+    shift_anomalies: shiftAnomalies,
+    return_anomalies: returnAnomalies,
+    sample_recent: sampleRecent,
+  };
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const outDir = path.resolve(__dirname, '..', 'backups');
+  fs.mkdirSync(outDir, { recursive: true });
+  const stamp = payload.generated_at.replace(/[:.]/g, '-');
+  const latestPath = path.join(outDir, 'audit_instore_order_management_prod_latest.json');
+  const datedPath = path.join(outDir, `audit_instore_order_management_prod_${stamp}.json`);
+  fs.writeFileSync(latestPath, JSON.stringify(payload, null, 2));
+  fs.writeFileSync(datedPath, JSON.stringify(payload, null, 2));
+  console.log('saved_reports');
+  console.log(JSON.stringify({ latestPath, datedPath }, null, 2));
 
   await client.end();
 };

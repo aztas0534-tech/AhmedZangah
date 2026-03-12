@@ -305,6 +305,7 @@ const AdminLayout: React.FC = () => {
 
   const currentPage = navLinks.find(link => location.pathname.startsWith(`/admin/${link.to}`));
   const isSubPageRoute = location.pathname.split('/').filter(Boolean).length > 2;
+  const showWarehouseScopeHint = !location.pathname.startsWith('/admin/settings');
 
   useEffect(() => {
     try {
@@ -562,6 +563,14 @@ const AdminLayout: React.FC = () => {
           </button>
         </header>
         <ConnectivityBanner />
+        {showWarehouseScopeHint && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 px-4 py-2 text-xs md:text-sm text-amber-800 dark:text-amber-200">
+            البيانات التشغيلية مرتبطة بالمستودع النشط للجلسة:
+            <span className="font-bold mx-1">{currentWarehouseName}</span>
+            <Link to="/admin/settings" className="underline font-semibold mr-1">تغيير المستودع</Link>
+            قد يغيّر الأصناف المتاحة والأرصدة والتقارير.
+          </div>
+        )}
         {schemaCheck && !schemaCheck.ok && (
           <div className="bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 px-4 py-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

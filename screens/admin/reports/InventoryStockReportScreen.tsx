@@ -64,7 +64,7 @@ const InventoryStockReportScreen: React.FC = () => {
   const { settings } = useSettings();
   const { showNotification } = useToast();
 
-  const [warehouseId, setWarehouseId] = useState<string>('');
+  const [warehouseId, setWarehouseId] = useState<string>('all');
   const [groupBy, setGroupBy] = useState<'item' | 'category' | 'group' | 'supplier'>('item');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
@@ -85,7 +85,7 @@ const InventoryStockReportScreen: React.FC = () => {
   const [costModalBusy, setCostModalBusy] = useState(false);
 
   useEffect(() => {
-    if (warehouseId) return;
+    if (warehouseId && warehouseId !== 'all') return;
     const fromScope = String(scope?.warehouseId || '');
     if (fromScope) {
       setWarehouseId(fromScope);
@@ -98,7 +98,6 @@ const InventoryStockReportScreen: React.FC = () => {
   useEffect(() => {
     let active = true;
     const run = async () => {
-      if (!warehouseId) return;
       const supabase = getSupabaseClient();
       if (!supabase) return;
       setLoading(true);
@@ -107,8 +106,9 @@ const InventoryStockReportScreen: React.FC = () => {
         const isPaged = groupBy === 'item';
         const limit = isPaged ? pageSize : 20000;
         const offset = isPaged ? Math.max(0, (Math.max(1, page) - 1) * pageSize) : 0;
+        const warehouseParam = warehouseId === 'all' ? null : warehouseId;
         const { data, error: qErr } = await supabase.rpc('get_inventory_stock_report', {
-          p_warehouse_id: warehouseId,
+          p_warehouse_id: warehouseParam,
           p_category: selectedCategory === 'all' ? null : selectedCategory,
           p_group: selectedGroup === 'all' ? null : selectedGroup,
           p_supplier_id: selectedSupplier === 'all' ? null : selectedSupplier,
@@ -186,11 +186,10 @@ const InventoryStockReportScreen: React.FC = () => {
   useEffect(() => {
     let active = true;
     const run = async () => {
-      if (groupBy !== 'item') {
+      if (groupBy !== 'item' || warehouseId === 'all') {
         if (active) setCostSummaryByItemId({});
         return;
       }
-      if (!warehouseId) return;
       const supabase = getSupabaseClient();
       if (!supabase) return;
       const ids = filteredRows.map((r) => String(r.itemId || '').trim()).filter(Boolean);
@@ -229,7 +228,7 @@ const InventoryStockReportScreen: React.FC = () => {
   }, [filteredRows, groupBy, warehouseId]);
 
   const openCostModal = async (row: StockRow) => {
-    if (!warehouseId) return;
+    if (!warehouseId || warehouseId === 'all') return;
     const itemId = String(row.itemId || '').trim();
     if (!itemId) return;
     const supabase = getSupabaseClient();
@@ -299,7 +298,7 @@ const InventoryStockReportScreen: React.FC = () => {
 
   const filtersText = useMemo(() => {
     const parts: string[] = [];
-    parts.push(`المخزن: ${selectedWarehouse?.code || ''}${selectedWarehouse?.name ? ` — ${selectedWarehouse?.name}` : ''}`);
+    parts.push(`المخزن: ${warehouseId === 'all' ? 'كل المستودعات' : `${selectedWarehouse?.code || ''}${selectedWarehouse?.name ? ` — ${selectedWarehouse?.name}` : ''}`}`);
     parts.push(`التجميع: ${groupBy === 'item' ? 'الصنف' : groupBy === 'category' ? 'الفئة' : groupBy === 'group' ? 'المجموعة' : 'المورد'}`);
     parts.push(`الفئة: ${selectedCategory === 'all' ? 'الكل' : getCategoryLabel(selectedCategory, 'ar')}`);
     parts.push(`المجموعة: ${selectedGroup === 'all' ? 'الكل' : getGroupLabel(selectedGroup, selectedCategory !== 'all' ? selectedCategory : undefined, 'ar')}`);
@@ -311,9 +310,10 @@ const InventoryStockReportScreen: React.FC = () => {
 
   const loadRowsForExport = async (): Promise<StockRow[]> => {
     const supabase = getSupabaseClient();
-    if (!supabase || !warehouseId) return [];
+    if (!supabase) return [];
+    const warehouseParam = warehouseId === 'all' ? null : warehouseId;
     const { data, error: qErr } = await supabase.rpc('get_inventory_stock_report', {
-      p_warehouse_id: warehouseId,
+      p_warehouse_id: warehouseParam,
       p_category: selectedCategory === 'all' ? null : selectedCategory,
       p_group: selectedGroup === 'all' ? null : selectedGroup,
       p_supplier_id: selectedSupplier === 'all' ? null : selectedSupplier,
@@ -444,7 +444,7 @@ const InventoryStockReportScreen: React.FC = () => {
           </button>
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-300">
-          <span className="font-semibold">المخزن:</span> <span className="font-mono">{selectedWarehouse?.code || ''}</span> {selectedWarehouse?.name ? `— ${selectedWarehouse?.name}` : ''}
+          <span className="font-semibold">المخزن:</span> <span className="font-mono">{warehouseId === 'all' ? 'ALL' : (selectedWarehouse?.code || '')}</span> {warehouseId === 'all' ? '— كل المستودعات' : (selectedWarehouse?.name ? `— ${selectedWarehouse?.name}` : '')}
         </div>
       </div>
 
@@ -457,6 +457,7 @@ const InventoryStockReportScreen: React.FC = () => {
               onChange={(e) => setWarehouseId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
+              <option value="all">كل المستودعات</option>
               {warehouses.map(w => (
                 <option key={w.id} value={w.id}>{`${w.code} — ${w.name}`}</option>
               ))}

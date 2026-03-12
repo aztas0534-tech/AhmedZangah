@@ -21,6 +21,7 @@ type StockRowProps = {
     item: MenuItem;
     stock: StockManagement | undefined;
     warehouseId: string;
+    readOnlyMode: boolean;
     baseCode: string;
     getCategoryLabel: (categoryKey: string, language: 'ar' | 'en') => string;
     getUnitLabel: (unitKey: UnitType | undefined, language: 'ar' | 'en') => string;
@@ -33,7 +34,7 @@ type StockRowProps = {
     setWastageItem: (item: MenuItem | null) => void;
 };
 
-const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUnitLabel, handleUpdateStock, toggleHistory, expandedHistoryItemId, historyLoadingItemId, historyByItemId, setIsWastageModalOpen, setWastageItem }: StockRowProps) => {
+const StockRow = ({ item, stock, warehouseId, readOnlyMode, baseCode, getCategoryLabel, getUnitLabel, handleUpdateStock, toggleHistory, expandedHistoryItemId, historyLoadingItemId, historyByItemId, setIsWastageModalOpen, setWastageItem }: StockRowProps) => {
     const { hasPermission } = useAuth();
     const { showNotification } = useToast();
     const currentStock = Number(stock?.availableQuantity ?? 0);
@@ -145,8 +146,12 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     };
 
     useEffect(() => {
+        if (readOnlyMode) {
+            setBatches([]);
+            return;
+        }
         loadBatchesDetailed();
-    }, [item.id, warehouseId]);
+    }, [item.id, warehouseId, readOnlyMode]);
 
     const qcStatusLabel = (s: string) => {
         const v = String(s || '').trim();
@@ -280,6 +285,10 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     };
 
     const onStockBlur = () => {
+        if (readOnlyMode) {
+            setLocalStock(String(currentStock));
+            return;
+        }
         const val = parseFloat(localStock);
         const minVal = localMinStock ? parseFloat(localMinStock) : undefined;
         if (!Number.isNaN(val) && val !== currentStock) {
@@ -290,6 +299,10 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     };
 
     const onMinStockBlur = () => {
+        if (readOnlyMode) {
+            setLocalMinStock(String(stock?.minimumStockLevel ?? ''));
+            return;
+        }
         const minVal = localMinStock ? parseFloat(localMinStock) : undefined;
         const currentMin = stock?.minimumStockLevel;
         if (!Number.isNaN(minVal!) && minVal !== currentMin) {
@@ -346,6 +359,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => handleUpdateStock(item.id, currentStock - 1, unit, selectedBatchId || undefined, localMinStock ? parseFloat(localMinStock) : undefined)}
+                        disabled={readOnlyMode}
                         className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                     >
                         <MinusIcon />
@@ -356,12 +370,14 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         onChange={onStockChange}
                         onBlur={onStockBlur}
                         onKeyDown={onStockKeyDown}
+                        disabled={readOnlyMode}
                         className="w-20 px-2 py-1 text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         min="0"
                         step={unit === 'kg' || unit === 'gram' ? '0.5' : '1'}
                     />
                     <button
                         onClick={() => handleUpdateStock(item.id, currentStock + 1, unit, selectedBatchId || undefined, localMinStock ? parseFloat(localMinStock) : undefined)}
+                        disabled={readOnlyMode}
                         className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                     >
                         <PlusIcon />
@@ -377,37 +393,42 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         onChange={onMinStockChange}
                         onBlur={onMinStockBlur}
                         onKeyDown={onStockKeyDown}
+                        disabled={readOnlyMode}
                         placeholder={String(stock?.lowStockThreshold ?? 5)}
                         className="w-20 px-2 py-1 text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         min="0"
                         step={unit === 'kg' || unit === 'gram' ? '0.5' : '1'}
                     />
                 </div>
-                <div className="mt-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        اختيار الدُفعة
-                    </label>
-                    <select
-                        value={selectedBatchId}
-                        onChange={(e) => setSelectedBatchId(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                {!readOnlyMode && (
+                    <div className="mt-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            اختيار الدُفعة
+                        </label>
+                        <select
+                            value={selectedBatchId}
+                            onChange={(e) => setSelectedBatchId(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        >
+                            <option value="">الدفعة الأخيرة</option>
+                            {batches.map((b) => (
+                                <option key={b.batchId} value={b.batchId}>
+                                    {String(b.batchId).slice(0, 8)} • {qcStatusLabel(String((b as any).qcStatus || ''))} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                {!readOnlyMode && (
+                    <button
+                        type="button"
+                        onClick={() => setShowBatches(prev => !prev)}
+                        className="mt-2 w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition text-sm font-semibold dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                     >
-                        <option value="">الدفعة الأخيرة</option>
-                        {batches.map((b) => (
-                            <option key={b.batchId} value={b.batchId}>
-                                {String(b.batchId).slice(0, 8)} • {qcStatusLabel(String((b as any).qcStatus || ''))} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-                <button
-                    type="button"
-                    onClick={() => setShowBatches(prev => !prev)}
-                    className="mt-2 w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition text-sm font-semibold dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                >
-                    {showBatches ? 'إخفاء الدُفعات / QC' : 'دفعات المخزون / QC'}
-                </button>
-                {showBatches && (
+                        {showBatches ? 'إخفاء الدُفعات / QC' : 'دفعات المخزون / QC'}
+                    </button>
+                )}
+                {!readOnlyMode && showBatches && (
                     <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
                         {(batches || []).length > 0 ? (
                             <ul className="space-y-2 text-xs">
@@ -568,7 +589,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         )}
                     </div>
                 )}
-                {canRepairCost ? (
+                {!readOnlyMode && canRepairCost ? (
                     <button
                         type="button"
                         onClick={() => { void repairItemCost(); }}
@@ -578,7 +599,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         {repairCostBusy ? 'جاري إصلاح التكلفة...' : 'إصلاح تكلفة الصنف'}
                     </button>
                 ) : null}
-                {canRepairCost ? (
+                {!readOnlyMode && canRepairCost ? (
                     <button
                         type="button"
                         onClick={() => { void revalueSelectedBatchCost(); }}
@@ -588,16 +609,18 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                         {revalueBatchBusy ? 'جاري تعديل تكلفة الدفعة...' : 'تعديل تكلفة الدفعة'}
                     </button>
                 ) : null}
-                <button
-                    type="button"
-                    onClick={() => {
-                        setWastageItem(item);
-                        setIsWastageModalOpen(true);
-                    }}
-                    className="mt-2 w-full px-3 py-2 bg-red-100 text-red-800 rounded-md hover:bg-red-200 transition text-sm font-semibold dark:bg-red-900/30 dark:text-red-200 dark:hover:bg-red-900/50"
-                >
-                    تسجيل تالف
-                </button>
+                {!readOnlyMode && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setWastageItem(item);
+                            setIsWastageModalOpen(true);
+                        }}
+                        className="mt-2 w-full px-3 py-2 bg-red-100 text-red-800 rounded-md hover:bg-red-200 transition text-sm font-semibold dark:bg-red-900/30 dark:text-red-200 dark:hover:bg-red-900/50"
+                    >
+                        تسجيل تالف
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={() => toggleHistory(item.id)}
@@ -652,6 +675,7 @@ const ManageStockScreen: React.FC = () => {
     const { warehouses } = useWarehouses();
     const warehouseId = sessionScope.scope?.warehouseId || '';
     const [pendingWarehouseId, setPendingWarehouseId] = useState('');
+    const [viewWarehouseId, setViewWarehouseId] = useState('');
     const [baseCode, setBaseCode] = useState('—');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
@@ -661,6 +685,8 @@ const ManageStockScreen: React.FC = () => {
     const [historyByItemId, setHistoryByItemId] = useState<Record<string, StockHistory[]>>({});
     const [warehouseSignals, setWarehouseSignals] = useState({ hasMovements: false, hasBatches: false, checking: false });
     const [resyncingWarehouseStock, setResyncingWarehouseStock] = useState(false);
+    const [externalStockByItemId, setExternalStockByItemId] = useState<Record<string, StockManagement>>({});
+    const [externalStockLoading, setExternalStockLoading] = useState(false);
 
     const [isWastageModalOpen, setIsWastageModalOpen] = useState(false);
     const [wastageItem, setWastageItem] = useState<MenuItem | null>(null);
@@ -685,6 +711,96 @@ const ManageStockScreen: React.FC = () => {
         if (!warehouseId) return '—';
         return String((activeWarehouses.find((w: any) => String(w.id) === String(warehouseId)) as any)?.name || '—');
     }, [activeWarehouses, warehouseId]);
+    const effectiveViewWarehouseId = useMemo(() => (viewWarehouseId ? viewWarehouseId : warehouseId), [viewWarehouseId, warehouseId]);
+    const isReadOnlyView = useMemo(() => {
+        if (!effectiveViewWarehouseId) return true;
+        if (effectiveViewWarehouseId === 'all') return true;
+        return String(effectiveViewWarehouseId) !== String(warehouseId);
+    }, [effectiveViewWarehouseId, warehouseId]);
+    const effectiveViewWarehouseName = useMemo(() => {
+        if (!effectiveViewWarehouseId) return '—';
+        if (effectiveViewWarehouseId === 'all') return 'كل المستودعات';
+        return String((activeWarehouses.find((w: any) => String(w.id) === String(effectiveViewWarehouseId)) as any)?.name || '—');
+    }, [activeWarehouses, effectiveViewWarehouseId]);
+
+    useEffect(() => {
+        if (viewWarehouseId) return;
+        if (!warehouseId) return;
+        setViewWarehouseId('');
+    }, [viewWarehouseId, warehouseId]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const run = async () => {
+            if (!isReadOnlyView) {
+                if (!cancelled) {
+                    setExternalStockByItemId({});
+                    setExternalStockLoading(false);
+                }
+                return;
+            }
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            if (!cancelled) setExternalStockLoading(true);
+            try {
+                let q = supabase
+                    .from('stock_management')
+                    .select('item_id,warehouse_id,available_quantity,qc_hold_quantity,reserved_quantity,unit,low_stock_threshold,minimum_stock_level,last_updated,avg_cost');
+                if (effectiveViewWarehouseId && effectiveViewWarehouseId !== 'all') {
+                    q = q.eq('warehouse_id', effectiveViewWarehouseId);
+                }
+                const { data, error } = await q.limit(50000);
+                if (error) throw error;
+                const rows = Array.isArray(data) ? data : [];
+                const map: Record<string, StockManagement> = {};
+                for (const r of rows as any[]) {
+                    const itemId = String(r?.item_id || '').trim();
+                    if (!itemId) continue;
+                    const qty = Number(r?.available_quantity || 0) || 0;
+                    const reserved = Number(r?.reserved_quantity || 0) || 0;
+                    const qcHold = Number(r?.qc_hold_quantity || 0) || 0;
+                    const avgCost = Number(r?.avg_cost || 0) || 0;
+                    const unit = String(r?.unit || 'piece') as UnitType;
+                    const minLevel = Number(r?.minimum_stock_level ?? 0) || 0;
+                    const lowLevel = Number(r?.low_stock_threshold ?? 0) || 0;
+                    const updated = String(r?.last_updated || new Date().toISOString());
+                    if (!map[itemId]) {
+                        map[itemId] = {
+                            id: itemId,
+                            itemId,
+                            warehouseId: String(effectiveViewWarehouseId || 'all'),
+                            availableQuantity: qty,
+                            qcHoldQuantity: qcHold,
+                            unit,
+                            reservedQuantity: reserved,
+                            lastUpdated: updated,
+                            lowStockThreshold: lowLevel || undefined,
+                            minimumStockLevel: minLevel || undefined,
+                            avgCost: avgCost || undefined,
+                        };
+                    } else {
+                        map[itemId] = {
+                            ...map[itemId],
+                            availableQuantity: Number(map[itemId].availableQuantity || 0) + qty,
+                            qcHoldQuantity: Number(map[itemId].qcHoldQuantity || 0) + qcHold,
+                            reservedQuantity: Number(map[itemId].reservedQuantity || 0) + reserved,
+                            avgCost: avgCost > 0 ? avgCost : map[itemId].avgCost,
+                            minimumStockLevel: minLevel > 0 ? Math.min(Number(map[itemId].minimumStockLevel || minLevel), minLevel) : map[itemId].minimumStockLevel,
+                            lowStockThreshold: lowLevel > 0 ? Math.min(Number(map[itemId].lowStockThreshold || lowLevel), lowLevel) : map[itemId].lowStockThreshold,
+                            lastUpdated: updated,
+                        };
+                    }
+                }
+                if (!cancelled) setExternalStockByItemId(map);
+            } catch {
+                if (!cancelled) setExternalStockByItemId({});
+            } finally {
+                if (!cancelled) setExternalStockLoading(false);
+            }
+        };
+        void run();
+        return () => { cancelled = true; };
+    }, [effectiveViewWarehouseId, isReadOnlyView]);
 
     useEffect(() => {
         let cancelled = false;
@@ -807,6 +923,10 @@ const ManageStockScreen: React.FC = () => {
     }, [menuItems, searchTerm, selectedCategory, selectedGroup]);
 
     const handleUpdateStock = async (itemId: string, newQuantity: number, unit: string, batchId?: string, minStock?: number) => {
+        if (isReadOnlyView) {
+            showNotification('وضع العرض الحالي للقراءة فقط. غيّر العرض إلى المستودع النشط للجلسة لتفعيل التعديل.', 'error');
+            return;
+        }
         if (newQuantity < 0) return;
         if (!reason.trim()) {
             showNotification('سبب تعديل المخزون مطلوب.', 'error');
@@ -864,6 +984,10 @@ const ManageStockScreen: React.FC = () => {
             setHistoryLoadingItemId(null);
         }
     };
+    const getDisplayStockByItemId = (itemId: string) => {
+        if (!isReadOnlyView) return getStockByItemId(itemId);
+        return externalStockByItemId[itemId];
+    };
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -910,11 +1034,16 @@ const ManageStockScreen: React.FC = () => {
                 <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     المستودع الحالي: {currentWarehouseName}
                 </div>
+                {isReadOnlyView && (
+                    <div className="mt-2 text-sm bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                        وضع عرض فقط — يتم عرض بيانات المخزون لـ: <span className="font-semibold">{effectiveViewWarehouseName}</span>، والتعديل متاح فقط عند اختيار "المستودع النشط للجلسة".
+                    </div>
+                )}
             </div>
 
             {/* Filters */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                             البحث
@@ -963,12 +1092,31 @@ const ManageStockScreen: React.FC = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            نطاق العرض
+                        </label>
+                        <select
+                            value={viewWarehouseId}
+                            onChange={(e) => setViewWarehouseId(String(e.target.value || ''))}
+                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gold-500"
+                        >
+                            <option value="">المستودع النشط للجلسة</option>
+                            <option value="all">كل المستودعات (قراءة فقط)</option>
+                            {activeWarehouses.map((w: any) => (
+                                <option key={String(w.id)} value={String(w.id)}>
+                                    {String((w as any).name || '')}{String(w.id) === String(warehouseId) ? '' : ' (قراءة فقط)'}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                             سبب التعديل
                         </label>
                         <input
                             type="text"
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
+                            disabled={isReadOnlyView}
                             placeholder="مثال: جرد يومي / تلف / توريد جديد"
                             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gold-500"
                         />
@@ -978,7 +1126,7 @@ const ManageStockScreen: React.FC = () => {
 
             {/* Stock Table */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                {warehouseId && stockItems.length === 0 && (
+                {!isReadOnlyView && warehouseId && stockItems.length === 0 && (
                     <div className="px-6 py-3 text-sm bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 flex-wrap">
                         <span>
                             {(warehouseSignals.hasMovements || warehouseSignals.hasBatches)
@@ -995,6 +1143,11 @@ const ManageStockScreen: React.FC = () => {
                                 {resyncingWarehouseStock ? 'جاري المزامنة...' : 'مزامنة رصيد المستودع'}
                             </button>
                         )}
+                    </div>
+                )}
+                {isReadOnlyView && externalStockLoading && (
+                    <div className="px-6 py-3 text-sm bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200 border-b border-blue-200 dark:border-blue-800">
+                        جاري تحميل بيانات المخزون لنطاق العرض المحدد...
                     </div>
                 )}
                 <div className="overflow-x-auto">
@@ -1029,13 +1182,14 @@ const ManageStockScreen: React.FC = () => {
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {filteredItems.map((item: MenuItem) => {
-                                const stock = getStockByItemId(item.id);
+                                const stock = getDisplayStockByItemId(item.id);
                                 return (
                                     <StockRow
                                         key={item.id}
                                         item={item}
                                         stock={stock}
-                                        warehouseId={warehouseId}
+                                        warehouseId={isReadOnlyView ? (effectiveViewWarehouseId === 'all' ? '' : String(effectiveViewWarehouseId || '')) : warehouseId}
+                                        readOnlyMode={isReadOnlyView}
                                         baseCode={baseCode}
                                         getCategoryLabel={getCategoryLabel}
                                         getUnitLabel={getUnitLabel}
@@ -1070,7 +1224,7 @@ const ManageStockScreen: React.FC = () => {
                     </h3>
                     <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                         {filteredItems.filter(item => {
-                            const stock = getStockByItemId(item.id);
+                            const stock = getDisplayStockByItemId(item.id);
                             const available = Number(stock?.availableQuantity ?? 0) - Number(stock?.reservedQuantity ?? 0);
                             return available > 5;
                         }).length}
@@ -1082,7 +1236,7 @@ const ManageStockScreen: React.FC = () => {
                     </h3>
                     <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
                         {filteredItems.filter(item => {
-                            const stock = getStockByItemId(item.id);
+                            const stock = getDisplayStockByItemId(item.id);
                             const available = Number(stock?.availableQuantity ?? 0) - Number(stock?.reservedQuantity ?? 0);
                             return available > 0 && available <= 5;
                         }).length}
@@ -1094,7 +1248,7 @@ const ManageStockScreen: React.FC = () => {
                     </h3>
                     <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                         {filteredItems.filter(item => {
-                            const stock = getStockByItemId(item.id);
+                            const stock = getDisplayStockByItemId(item.id);
                             const available = Number(stock?.availableQuantity ?? 0) - Number(stock?.reservedQuantity ?? 0);
                             return available <= 0;
                         }).length}

@@ -2,6 +2,15 @@ import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = (process.env.AZTA_SUPABASE_URL || '').trim();
 const SUPABASE_KEY = (process.env.AZTA_SUPABASE_ANON_KEY || '').trim();
+const OWNER_EMAIL = (process.env.AZTA_SMOKE_OWNER_EMAIL || 'owner@azta.com').trim();
+const OWNER_PASSWORD = (process.env.AZTA_SMOKE_OWNER_PASSWORD || 'Owner@123').trim();
+const MULTI_WAREHOUSE = String(process.env.AZTA_SMOKE_MULTI_WAREHOUSE || '').trim() === '1';
+const FORCED_WAREHOUSE_ID = String(process.env.AZTA_SMOKE_FORCE_WAREHOUSE_ID || '').trim();
+const FORCED_WAREHOUSES = String(process.env.AZTA_SMOKE_WAREHOUSES || '')
+  .split(',')
+  .map((x) => x.trim())
+  .filter(Boolean);
+const KEEP_ORDERS = String(process.env.AZTA_SMOKE_KEEP_ORDERS || '').trim() === '1';
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error('Missing AZTA_SUPABASE_URL / AZTA_SUPABASE_ANON_KEY');
@@ -29,6 +38,7 @@ const ymd = nowIso.slice(0, 10);
 const IN_STORE_ZONE_ID = '11111111-1111-4111-8111-111111111111';
 
 let orderIdForCleanup = null;
+const orderIdsForCleanup = [];
 
 const fetchDefaultCompanyBranch = async () => {
   const { data: company, error: cErr } = await supabase.from('companies').select('id').order('created_at', { ascending: true }).limit(1).maybeSingle();
@@ -86,6 +96,138 @@ const ensureWarehouseScope = async () => {
   if (upErr) throw new Error(upErr.message);
 
   return { warehouseId };
+};
+
+const setWarehouseScope = async (warehouseId) => {
+  const wid = String(warehouseId || '').trim();
+  if (!wid) throw new Error('warehouseId is required');
+  const defaults = await fetchDefaultCompanyBranch();
+  const { data: u, error: uErr } = await supabase.auth.getUser();
+  if (uErr) throw new Error(uErr.message);
+  const authUserId = String(u?.user?.id || '');
+  if (!authUserId) throw new Error('no auth user id');
+  const { error: upErr } = await supabase
+    .from('admin_users')
+    .update({ warehouse_id: wid, company_id: defaults.companyId, branch_id: defaults.branchId })
+    .eq('auth_user_id', authUserId);
+  if (upErr) throw new Error(upErr.message);
+  return wid;
+};
+
+const getCandidateWarehouses = async (fallbackWarehouseId) => {
+  const { data, error } = await supabase
+    .from('stock_management')
+    .select('warehouse_id, available_quantity')
+    .gt('available_quantity', 0)
+    .limit(500);
+  if (error) throw new Error(error.message);
+  const counts = new Map();
+  for (const row of (data || [])) {
+    const wid = String(row?.warehouse_id || '').trim();
+    if (!wid) continue;
+    counts.set(wid, (counts.get(wid) || 0) + 1);
+  }
+  const ranked = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([wid]) => wid);
+  if (fallbackWarehouseId && !ranked.includes(fallbackWarehouseId)) ranked.unshift(fallbackWarehouseId);
+  return ranked.slice(0, 5);
+};
+
+const createOneInStoreSale = async ({ warehouseId, baseCurrency, label }) => {
+  await setWarehouseScope(warehouseId);
+  const itemId = await must(`ensure.item+stock.${label}`, async () => await ensureSellableItemWithStock(warehouseId));
+  const unitPrice = 100;
+  const orderId = await must(`sale.create+deliver+pay.${label}`, async () => {
+    const id = crypto.randomUUID();
+    orderIdForCleanup = id;
+    orderIdsForCleanup.push(id);
+
+    const orderData = {
+      id,
+      orderSource: 'in_store',
+      warehouseId,
+      deliveryZoneId: IN_STORE_ZONE_ID,
+      currency: baseCurrency,
+      subtotal: unitPrice,
+      discountAmount: 0,
+      total: unitPrice,
+      status: 'delivered',
+      createdAt: nowIso,
+      deliveredAt: nowIso,
+      paidAt: nowIso,
+      paymentMethod: 'card',
+      invoiceTerms: 'cash',
+      netDays: 0,
+      dueDate: ymd,
+      customerName: `زبون حضوري ${label}`,
+      phoneNumber: '',
+      address: 'داخل المحل',
+      items: [
+        {
+          id: itemId,
+          itemId: itemId,
+          quantity: 1,
+          unitType: 'piece',
+          price: unitPrice,
+          selectedAddons: {},
+          cartItemId: crypto.randomUUID(),
+        },
+      ],
+    };
+
+    const { error: insErr } = await supabase.from('orders').insert({
+      id,
+      status: 'pending',
+      delivery_zone_id: IN_STORE_ZONE_ID,
+      warehouse_id: warehouseId,
+      data: { ...orderData, status: 'pending', paidAt: undefined, deliveredAt: undefined },
+    });
+    if (insErr) throw new Error(insErr.message);
+
+    const { data: invNum, error: invErr } = await supabase.rpc('assign_invoice_number_if_missing', { p_order_id: id });
+    if (invErr) throw new Error(invErr.message);
+    if (typeof invNum === 'string' && invNum) {
+      orderData.invoiceNumber = invNum;
+    }
+
+    try {
+      const { error: cErr } = await supabase.rpc('confirm_order_delivery_with_credit', {
+        p_order_id: id,
+        p_items: [{ itemId, quantity: 1 }],
+        p_updated_data: orderData,
+        p_warehouse_id: warehouseId,
+      });
+      if (cErr) throw new Error(cErr.message);
+    } catch (e) {
+      if (!String(e).includes('posting already exists') && !String(e).includes('already delivered')) {
+        throw e;
+      }
+    }
+
+    const { error: payErr } = await supabase.rpc('record_order_payment', {
+      p_order_id: id,
+      p_amount: unitPrice,
+      p_method: 'card',
+      p_occurred_at: nowIso,
+      p_currency: baseCurrency,
+      p_idempotency_key: `pos-sale:${label}:${id}:${nowIso}`,
+    });
+    if (payErr) throw new Error(payErr.message);
+
+    return id;
+  });
+
+  await must(`sale.verify.currency.${label}`, async () => {
+    const { data, error } = await supabase.from('orders').select('data,status').eq('id', orderId).maybeSingle();
+    if (error) throw new Error(error.message);
+    const code = String(data?.data?.currency || '').trim().toUpperCase();
+    if (!code) throw new Error('currency missing in orders.data');
+    const st = String(data?.status || '');
+    return `${st}:${code}`;
+  });
+
+  return orderId;
 };
 
 const ensureSellableItemWithStock = async (warehouseId) => {
@@ -197,8 +339,8 @@ const ensureSellableItemWithStock = async (warehouseId) => {
 try {
   await must('auth.owner.signIn', async () => {
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: 'owner@azta.com',
-      password: 'Owner@123',
+      email: OWNER_EMAIL,
+      password: OWNER_PASSWORD,
     });
     if (error || !data.session) throw new Error(error?.message || 'no session');
     return data.user?.id;
@@ -212,117 +354,37 @@ try {
     return String(data?.[0]?.code || 'YER').toUpperCase();
   });
 
-  const itemId = await must('ensure.item+stock', async () => await ensureSellableItemWithStock(scope.warehouseId));
-
-  /*
-  const unitPrice = await must('rpc.get_item_price_with_discount', async () => {
-    const { data, error } = await supabase.rpc('get_item_price_with_discount', {
-      p_item_id: itemId,
-      p_customer_id: null,
-      p_quantity: 1,
-    });
-    if (error) throw new Error(error.message);
-    const n = Number(data);
-    if (!Number.isFinite(n) || n <= 0) throw new Error(`bad price ${String(data)}`);
-    return n;
-  });
-  */
-  const unitPrice = 100;
-
-  const orderId = await must('sale.create+deliver+pay', async () => {
-    const id = crypto.randomUUID();
-    orderIdForCleanup = id;
-
-    const orderData = {
-      id,
-      orderSource: 'in_store',
-      warehouseId: scope.warehouseId,
-      deliveryZoneId: IN_STORE_ZONE_ID,
-      currency: baseCurrency,
-      subtotal: unitPrice,
-      discountAmount: 0,
-      total: unitPrice,
-      status: 'delivered',
-      createdAt: nowIso,
-      deliveredAt: nowIso,
-      paidAt: nowIso,
-      paymentMethod: 'card',
-      invoiceTerms: 'cash',
-      netDays: 0,
-      dueDate: ymd,
-      customerName: 'زبون حضوري',
-      phoneNumber: '',
-      address: 'داخل المحل',
-      items: [
-        {
-          id: itemId,
-          itemId: itemId,
-          quantity: 1,
-          unitType: 'piece',
-          price: unitPrice,
-          selectedAddons: {},
-          cartItemId: crypto.randomUUID(),
-        },
-      ],
-    };
-
-    const { error: insErr } = await supabase.from('orders').insert({
-      id,
-      status: 'pending',
-      delivery_zone_id: IN_STORE_ZONE_ID,
-      warehouse_id: scope.warehouseId,
-      data: { ...orderData, status: 'pending', paidAt: undefined, deliveredAt: undefined },
-    });
-    if (insErr) throw new Error(insErr.message);
-
-    const { data: invNum, error: invErr } = await supabase.rpc('assign_invoice_number_if_missing', { p_order_id: id });
-    if (invErr) throw new Error(invErr.message);
-    if (typeof invNum === 'string' && invNum) {
-      orderData.invoiceNumber = invNum;
-    }
-
-    try {
-      const { error: cErr } = await supabase.rpc('confirm_order_delivery_with_credit', {
-        p_order_id: id,
-        p_items: [{ itemId, quantity: 1 }],
-        p_updated_data: orderData,
-        p_warehouse_id: scope.warehouseId,
-      });
-      if (cErr) throw new Error(cErr.message);
-    } catch (e) {
-      if (!String(e).includes('posting already exists') && !String(e).includes('already delivered')) {
-        throw e;
+  if (MULTI_WAREHOUSE) {
+    const candidates = await must('multiwarehouse.candidates', async () => {
+      const discovered = await getCandidateWarehouses(scope.warehouseId);
+      const list = FORCED_WAREHOUSES.length > 0 ? FORCED_WAREHOUSES : discovered;
+      const unique = Array.from(new Set(list));
+      if (unique.length < 2) {
+        throw new Error('need at least 2 distinct warehouses with stock');
       }
-      // console.log('⚠️ Order delivery already confirmed, skipping...');
-    }
-
-    const { error: payErr } = await supabase.rpc('record_order_payment', {
-      p_order_id: id,
-      p_amount: unitPrice,
-      p_method: 'card',
-      p_occurred_at: nowIso,
-      p_currency: baseCurrency,
-      p_idempotency_key: `pos-sale:${id}:${nowIso}`,
+      return unique.join(',');
     });
-    if (payErr) throw new Error(payErr.message);
-
-    return id;
-  });
-
-  await must('sale.verify.currency', async () => {
-    const { data, error } = await supabase.from('orders').select('data,status').eq('id', orderId).maybeSingle();
-    if (error) throw new Error(error.message);
-    const code = String(data?.data?.currency || '').trim().toUpperCase();
-    if (!code) throw new Error('currency missing in orders.data');
-    const st = String(data?.status || '');
-    return `${st}:${code}`;
-  });
+    const selected = String(candidates).split(',').map((x) => x.trim()).filter(Boolean);
+    if (selected.length < 2 || selected[0] === selected[1]) {
+      throw new Error('multiwarehouse selection invalid');
+    }
+    await createOneInStoreSale({ warehouseId: selected[0], baseCurrency, label: 'W1' });
+    await createOneInStoreSale({ warehouseId: selected[1], baseCurrency, label: 'W2' });
+    await must('multiwarehouse.summary', async () => `completed:${selected.slice(0, 2).join(',')}`);
+  } else {
+    const targetWarehouseId = FORCED_WAREHOUSE_ID || scope.warehouseId;
+    await must('singlewarehouse.target', async () => targetWarehouseId);
+    await createOneInStoreSale({ warehouseId: targetWarehouseId, baseCurrency, label: 'W1' });
+  }
 } catch {
 } finally {
-  if (orderIdForCleanup) {
-    try {
-      await supabase.from('orders').delete().eq('id', orderIdForCleanup);
-    } catch {
+  const cleanupList = Array.from(new Set([...(orderIdForCleanup ? [orderIdForCleanup] : []), ...orderIdsForCleanup]));
+  if (!KEEP_ORDERS) {
+    for (const oid of cleanupList) {
+      try {
+        await supabase.from('orders').delete().eq('id', oid);
+      } catch {
+      }
     }
   }
 }

@@ -18,6 +18,7 @@ const q1 = `
 select
   (select count(*) from public.warehouses) as warehouses_total,
   (select count(*) from public.warehouses where coalesce(is_active,true)=true) as warehouses_active,
+  (select array_agg(w.id::text order by w.created_at asc) from public.warehouses w where coalesce(w.is_active,true)=true) as active_warehouse_ids,
   (select count(*) from public.stock_management) as stock_rows,
   (select count(*) from public.stock_management where warehouse_id is null) as stock_null_warehouse,
   (select count(*) from public.inventory_movements) as movements_rows,

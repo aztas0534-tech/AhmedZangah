@@ -26,6 +26,7 @@ const WarehouseTransfersScreen: React.FC = () => {
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('all');
+    const [filterWarehouseId, setFilterWarehouseId] = useState<string>('');
     const [itemSearchTerm, setItemSearchTerm] = useState('');
     const [warehouseStockByItem, setWarehouseStockByItem] = useState<Record<string, { available: number; avgCost: number }>>({});
     const [itemUomUnits, setItemUomUnits] = useState<Record<string, Array<{ uomId: string; uomCode: string; uomName: string; qtyInBase: number }>>>({});
@@ -64,11 +65,23 @@ const WarehouseTransfersScreen: React.FC = () => {
     });
 
     const canManage = hasPermission('stock.manage');
+    const scopeWarehouseName = useMemo(() => {
+        const wid = String(scope?.warehouseId || '').trim();
+        if (!wid) return '—';
+        const w = warehouses.find((x: any) => String((x as any)?.id || '') === wid);
+        return String((w as any)?.name || (w as any)?.code || '—');
+    }, [scope?.warehouseId, warehouses]);
 
     useEffect(() => {
         setCostViewCurrency(baseCurrencyCode);
         setCostViewRate(1);
     }, [baseCurrencyCode, showModal]);
+
+    useEffect(() => {
+        if (filterWarehouseId) return;
+        const wid = String(scope?.warehouseId || '').trim();
+        if (wid) setFilterWarehouseId(wid);
+    }, [filterWarehouseId, scope?.warehouseId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -230,10 +243,12 @@ const WarehouseTransfersScreen: React.FC = () => {
                 transfer.fromWarehouseName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 transfer.toWarehouseName?.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesStatus = filterStatus === 'all' || transfer.status === filterStatus;
+            const wid = String(filterWarehouseId || '').trim();
+            const matchesWarehouse = !wid || String(transfer.fromWarehouseId || '') === wid || String(transfer.toWarehouseId || '') === wid;
 
-            return matchesSearch && matchesStatus;
+            return matchesSearch && matchesStatus && matchesWarehouse;
         });
-    }, [transfers, searchTerm, filterStatus]);
+    }, [transfers, searchTerm, filterStatus, filterWarehouseId]);
 
     const openAddModal = () => {
         setFormData({
@@ -583,6 +598,9 @@ const WarehouseTransfersScreen: React.FC = () => {
                     إدارة عمليات نقل البضائع بين المخازن المختلفة
                 </p>
             </div>
+            <div className="mb-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                النطاق التشغيلي الحالي مرتبط بالمستودع النشط: <span className="font-bold">{scopeWarehouseName}</span> — يمكنك عرض كل التحويلات أو تخصيص العرض لمستودع محدد من الفلتر.
+            </div>
 
             {/* Filters and Actions */}
             <div className="mb-6 flex flex-col md:flex-row gap-4">
@@ -611,6 +629,16 @@ const WarehouseTransfersScreen: React.FC = () => {
                     <option value="in_transit">قيد النقل</option>
                     <option value="completed">مكتمل</option>
                     <option value="cancelled">ملغي</option>
+                </select>
+                <select
+                    value={filterWarehouseId}
+                    onChange={(e) => setFilterWarehouseId(String(e.target.value || ''))}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800"
+                >
+                    <option value="">كل المستودعات</option>
+                    {warehouses.map((w: any) => (
+                        <option key={String(w.id)} value={String(w.id)}>{String(w.name || w.code || w.id)}</option>
+                    ))}
                 </select>
 
                 {/* Add Button */}

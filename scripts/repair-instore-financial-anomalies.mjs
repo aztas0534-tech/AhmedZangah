@@ -222,6 +222,29 @@ const run = async () => {
   )).rows[0]?.id || null;
   const serviceActor = parseUuid(actorSeed);
   const p = [days, limit];
+  const destinationCache = new Map();
+  const resolveDestinationAccountId = async (method, currency) => {
+    const normalizedMethod = normalizeMethod(method);
+    if (normalizedMethod !== 'network' && normalizedMethod !== 'kuraimi') return null;
+    const curr = String(currency || '').trim().toUpperCase() || 'YER';
+    const cacheKey = `${normalizedMethod}|${curr}`;
+    if (destinationCache.has(cacheKey)) return destinationCache.get(cacheKey);
+    const parentCode = normalizedMethod === 'kuraimi' ? '1020' : '1030';
+    const row = (await client.query(
+      `select c.id::text as id
+       from public.chart_of_accounts c
+       join public.chart_of_accounts p on p.id = c.parent_id
+       where c.is_active = true
+         and p.code = $1
+         and upper(coalesce(substring(c.code from '([A-Za-z]{3})$'), '')) = $2
+       order by c.created_at asc
+       limit 1`,
+      [parentCode, curr]
+    )).rows[0];
+    const resolved = row?.id ? String(row.id) : null;
+    destinationCache.set(cacheKey, resolved);
+    return resolved;
+  };
 
   const orderCandidates = mode === 'returns' ? [] : (await client.query(qOrderCandidates, p)).rows;
   const returnCandidatesRaw = mode === 'orders' ? [] : (await client.query(qReturnCandidates, p)).rows;
@@ -275,6 +298,7 @@ const run = async () => {
   let returnsUpdated = 0;
   let skippedCashOrdersNoShift = 0;
   let skippedCashReturnsNoShift = 0;
+  let skippedNetworkOrdersNoDestination = 0;
   const skippedOrderIds = [];
   const skippedReturnIds = [];
 
@@ -303,6 +327,12 @@ const run = async () => {
           continue;
         }
       }
+      const destinationAccountId = await resolveDestinationAccountId(method, currency);
+      if ((method === 'network' || method === 'kuraimi') && !destinationAccountId) {
+        skippedNetworkOrdersNoDestination += 1;
+        skippedOrderIds.push(row.order_id);
+        continue;
+      }
       const idempotencyKey = `repair:instore:order:${row.order_id}:missing_in:v1`;
       await client.query(
         `insert into public.payments(
@@ -311,7 +341,7 @@ const run = async () => {
         )
         values (
           'in', $1, $2, $3, $4, $5,
-          'orders', $6::text, $7, coalesce($8::uuid, $11::uuid), jsonb_build_object('orderId',$6::text,'repair','missing_order_payment_v1'), $9, $10::uuid
+          'orders', $6::text, $7, coalesce($8::uuid, $12::uuid), jsonb_strip_nulls(jsonb_build_object('orderId',$6::text,'repair','missing_order_payment_v1','destinationAccountId',$11::text)), $9, $10::uuid
         )
         on conflict (reference_table, reference_id, direction, idempotency_key)
         do update set
@@ -322,7 +352,7 @@ const run = async () => {
           base_amount = excluded.base_amount,
           occurred_at = excluded.occurred_at,
           shift_id = excluded.shift_id`,
-        [method, amountForeign, currency, fxRate, amountBase, row.order_id, occurredAt, actor, idempotencyKey, shiftId, serviceActor]
+        [method, amountForeign, currency, fxRate, amountBase, row.order_id, occurredAt, actor, idempotencyKey, shiftId, destinationAccountId, serviceActor]
       );
       ordersUpdated += 1;
     }
@@ -377,6 +407,7 @@ const run = async () => {
     returns_updated: returnsUpdated,
     skipped_cash_orders_no_shift: skippedCashOrdersNoShift,
     skipped_cash_returns_no_shift: skippedCashReturnsNoShift,
+    skipped_network_orders_no_destination: skippedNetworkOrdersNoDestination,
     skipped_order_ids: skippedOrderIds,
     skipped_return_ids: skippedReturnIds,
   }, null, 2));

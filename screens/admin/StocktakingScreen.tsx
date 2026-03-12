@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { useToast } from '../../contexts/ToastContext';
 import { getSupabaseClient } from '../../supabase';
 import type { InventoryCount, InventoryCountItem } from '../../types';
@@ -10,6 +11,7 @@ import { toYmdLocal } from '../../utils/dateUtils';
 const StocktakingScreen: React.FC = () => {
     const { user, hasPermission } = useAuth();
     const { warehouses } = useWarehouses();
+    const { scope } = useSessionScope();
     const { showNotification } = useToast();
 
     const [loading, setLoading] = useState(false);
@@ -26,6 +28,12 @@ const StocktakingScreen: React.FC = () => {
     const [formNotes, setFormNotes] = useState('');
 
     const canManage = hasPermission('stock.manage') || user?.role === 'owner' || user?.role === 'manager';
+    const scopeWarehouseName = (() => {
+        const wid = String(scope?.warehouseId || '').trim();
+        if (!wid) return '—';
+        const w = warehouses.find((x: any) => String((x as any)?.id || '') === wid);
+        return String((w as any)?.name || (w as any)?.code || '—');
+    })();
 
     const fetchCounts = async () => {
         const supabase = getSupabaseClient();
@@ -270,6 +278,9 @@ const StocktakingScreen: React.FC = () => {
                         جلسة جرد جديدة
                     </button>
                 )}
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                المستودع النشط للجلسة: <span className="font-bold">{scopeWarehouseName}</span> — قائمة جلسات الجرد تدعم التصفية على مستودع محدد أو عرض كل المستودعات.
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

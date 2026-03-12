@@ -138,6 +138,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [filterCurrency, setFilterCurrency] = useState<string>('all');
     const [filterDateFrom, setFilterDateFrom] = useState('');
     const [filterDateTo, setFilterDateTo] = useState('');
+    const [filterWarehouseView, setFilterWarehouseView] = useState<string>('');
     const [returnsOnly, setReturnsOnly] = useState(false);
     const [autoCandidatesOnly, setAutoCandidatesOnly] = useState(false);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -171,6 +172,34 @@ const ManageOrdersScreen: React.FC = () => {
     const [deliverPinOrderId, setDeliverPinOrderId] = useState<string | null>(null);
     const [deliveryPinInput, setDeliveryPinInput] = useState('');
     const [isDeliverConfirming, setIsDeliverConfirming] = useState(false);
+    const scopeWarehouseId = String(sessionScope.scope?.warehouseId || '').trim();
+    const effectiveWarehouseView = String(filterWarehouseView || scopeWarehouseId || '').trim();
+    const isReadOnlyOrdersView = Boolean(
+        effectiveWarehouseView === 'all' ||
+        (effectiveWarehouseView && scopeWarehouseId && effectiveWarehouseView !== scopeWarehouseId)
+    );
+    const scopeWarehouseName = useMemo(() => {
+        if (!scopeWarehouseId) return '—';
+        const w = warehouses.find((x: any) => String((x as any)?.id || '') === scopeWarehouseId);
+        return String((w as any)?.name || (w as any)?.code || '—');
+    }, [scopeWarehouseId, warehouses]);
+    const effectiveWarehouseViewName = useMemo(() => {
+        if (!effectiveWarehouseView) return scopeWarehouseName;
+        if (effectiveWarehouseView === 'all') return 'كل المستودعات';
+        const w = warehouses.find((x: any) => String((x as any)?.id || '') === effectiveWarehouseView);
+        return String((w as any)?.name || (w as any)?.code || '—');
+    }, [effectiveWarehouseView, scopeWarehouseName, warehouses]);
+    const assertMutableOrdersView = useCallback(() => {
+        if (!isReadOnlyOrdersView) return true;
+        showNotification('وضع العرض الحالي للقراءة فقط. اختر "المستودع النشط للجلسة" لتفعيل العمليات.', 'error');
+        return false;
+    }, [isReadOnlyOrdersView, showNotification]);
+    const getOrderWarehouseId = useCallback((order: Order) => {
+        const direct = String((order as any)?.warehouseId || '').trim();
+        if (direct) return direct;
+        const nested = String((order as any)?.data?.warehouseId || (order as any)?.data?.warehouse_id || '').trim();
+        return nested;
+    }, []);
 
     useEffect(() => {
         let active = true;
@@ -1302,6 +1331,7 @@ const ManageOrdersScreen: React.FC = () => {
     }, [inStorePaymentMethod, isInStoreSaleOpen]);
 
     const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+        if (!assertMutableOrdersView()) return;
         if (!canUpdateAllStatuses) {
             if (!canUpdateDeliveryStatuses) {
                 showNotification('لا تملك صلاحية تغيير حالة الطلب.', 'error');
@@ -1329,6 +1359,7 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const handleAssignDelivery = async (orderId: string, nextDeliveryUserId: string) => {
+        if (!assertMutableOrdersView()) return;
         if (!canAssignDelivery) return;
         try {
             await assignOrderToDelivery(orderId, nextDeliveryUserId === 'none' ? null : nextDeliveryUserId);
@@ -1635,6 +1666,7 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const handleAcceptDelivery = async (orderId: string) => {
+        if (!assertMutableOrdersView()) return;
         try {
             await acceptDeliveryAssignment(orderId);
             showNotification('تم قبول مهمة التوصيل.', 'success');
@@ -1647,6 +1679,7 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const handleMarkPaid = async (orderId: string) => {
+        if (!assertMutableOrdersView()) return;
         if (!canMarkPaid) {
             showNotification('لا تملك صلاحية تأكيد الدفع.', 'error');
             return;
@@ -1669,6 +1702,7 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const handlePurgePayment = (orderId: string) => {
+        if (!assertMutableOrdersView()) return;
         setPurgePaymentOrderId(orderId);
         setPurgePaymentReason('');
         setPurgePaymentReasonCategory('misapplied_payment');
@@ -2449,6 +2483,9 @@ const ManageOrdersScreen: React.FC = () => {
 
     const filteredAndSortedOrders = useMemo(() => {
         let processedOrders = [...orders];
+        if (effectiveWarehouseView && effectiveWarehouseView !== 'all') {
+            processedOrders = processedOrders.filter(order => getOrderWarehouseId(order) === effectiveWarehouseView);
+        }
 
         if (customerUserIdFilter.trim()) {
             processedOrders = processedOrders.filter(order => order.userId === customerUserIdFilter.trim());
@@ -2583,7 +2620,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, autoCandidatesOnly, sortOrder, baseCode, recentShifts, paidSumByOrderId, pendingPurgeByOrderId]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, autoCandidatesOnly, sortOrder, baseCode, recentShifts, paidSumByOrderId, pendingPurgeByOrderId, effectiveWarehouseView, getOrderWarehouseId]);
 
     const availableInStoreDestinations = useMemo(() => {
         const currency = String(inStoreTransactionCurrency || '').toUpperCase();
@@ -2728,6 +2765,7 @@ const ManageOrdersScreen: React.FC = () => {
     }, [baseCode, isInStoreOrder, paidSumByOrderId]);
 
     const openPartialPaymentModal = (orderId: string) => {
+        if (!assertMutableOrdersView()) return;
         const order = filteredAndSortedOrders.find(o => o.id === orderId) || orders.find(o => o.id === orderId);
         if (!order) return;
         const { currency, remaining } = getOrderPaymentSnapshot(order);
@@ -2747,6 +2785,7 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const confirmPartialPayment = async () => {
+        if (!assertMutableOrdersView()) return;
         if (!partialPaymentOrderId) return;
         if (!canMarkPaid) {
             showNotification('لا تملك صلاحية تسجيل دفعة.', 'error');
@@ -2883,6 +2922,7 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const handleConfirmCancel = async () => {
+        if (!assertMutableOrdersView()) return;
         if (!cancelOrderId) return;
         setIsCancelling(true);
         try {
@@ -3592,6 +3632,7 @@ const ManageOrdersScreen: React.FC = () => {
 
 
     const loadQuotationToCart = (order: Order) => {
+        if (!assertMutableOrdersView()) return;
         const lines = (order.items || []).map((item: any) => ({
             menuItemId: String(item.id || item.menuItemId || ''),
             quantity: Number(item.quantity) || 1,
@@ -3614,6 +3655,7 @@ const ManageOrdersScreen: React.FC = () => {
         setIsInStoreSaleOpen(true);
     };
     const openNewInStoreSale = () => {
+        if (!assertMutableOrdersView()) return;
         const base = String(baseCode || '').trim().toUpperCase();
         const preferred = base && operationalCurrencies.includes(base)
             ? base
@@ -3653,6 +3695,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <button
                             type="button"
                             onClick={openNewInStoreSale}
+                            disabled={isReadOnlyOrdersView}
                             className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition text-sm font-semibold"
                         >
                             {language === 'ar' ? 'إضافة بيع حضوري' : 'New in-store sale'}
@@ -3825,6 +3868,23 @@ const ManageOrdersScreen: React.FC = () => {
                         )}
                     </div>
                     <div>
+                        <label htmlFor="warehouseViewFilter" className="text-sm font-medium dark:text-gray-300 mx-1">نطاق المستودع:</label>
+                        <select
+                            id="warehouseViewFilter"
+                            value={filterWarehouseView}
+                            onChange={(e) => setFilterWarehouseView(String(e.target.value || ''))}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-orange-500 focus:border-orange-500 transition text-sm"
+                        >
+                            <option value="">المستودع النشط للجلسة</option>
+                            <option value="all">كل المستودعات (قراءة فقط)</option>
+                            {warehouses.map((w: any) => (
+                                <option key={String(w.id)} value={String(w.id)}>
+                                    {String(w.name || w.code || w.id)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
                         <label htmlFor="sortOrder" className="text-sm font-medium dark:text-gray-300 mx-2">ترتيب حسب:</label>
                         <select
                             id="sortOrder"
@@ -3838,6 +3898,11 @@ const ManageOrdersScreen: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {isReadOnlyOrdersView && (
+                <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                    وضع عرض فقط — النطاق الحالي: <span className="font-bold">{effectiveWarehouseViewName}</span>، بينما المستودع النشط للجلسة: <span className="font-bold">{scopeWarehouseName}</span>. عمليات التعديل معطلة حتى تعود إلى "المستودع النشط للجلسة".
+                </div>
+            )}
 
             {canRequestPurge && (
                 <div className="mb-4 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-4 space-y-3">
@@ -3855,7 +3920,7 @@ const ManageOrdersScreen: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => void executeBulkApprovePurge()}
-                                disabled={isBulkPurgeBusy}
+                                disabled={isBulkPurgeBusy || isReadOnlyOrdersView}
                                 className="px-3 py-1 rounded bg-indigo-700 text-white text-xs font-semibold disabled:opacity-60"
                             >
                                 اعتماد جماعي قابل للتنفيذ
@@ -3863,7 +3928,7 @@ const ManageOrdersScreen: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={fillAutoPurgeCandidates}
-                                disabled={isBulkPurgeBusy || autoCandidateScanBusy}
+                                disabled={isBulkPurgeBusy || autoCandidateScanBusy || isReadOnlyOrdersView}
                                 className="px-3 py-1 rounded bg-emerald-700 text-white text-xs font-semibold disabled:opacity-60"
                             >
                                 إحضار الطلبات المرشحة تلقائياً
@@ -3876,6 +3941,7 @@ const ManageOrdersScreen: React.FC = () => {
                             <input
                                 value={bulkApproveNote}
                                 onChange={(e) => setBulkApproveNote(e.target.value)}
+                                disabled={isReadOnlyOrdersView}
                                 className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm"
                             />
                         </div>
@@ -3915,6 +3981,7 @@ const ManageOrdersScreen: React.FC = () => {
                             <textarea
                                 value={bulkOrderIdsInput}
                                 onChange={(e) => setBulkOrderIdsInput(e.target.value)}
+                                disabled={isReadOnlyOrdersView}
                                 className="w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs font-mono"
                                 placeholder="uuid1, uuid2, uuid3"
                             />
@@ -3927,6 +3994,7 @@ const ManageOrdersScreen: React.FC = () => {
                             <select
                                 value={bulkRequestCategory}
                                 onChange={(e) => setBulkRequestCategory(e.target.value)}
+                                disabled={isReadOnlyOrdersView}
                                 className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm"
                             >
                                 <option value="misapplied_payment">دفعة مسجلة على الطلب الخطأ</option>
@@ -3941,12 +4009,13 @@ const ManageOrdersScreen: React.FC = () => {
                             <input
                                 value={bulkRequestReason}
                                 onChange={(e) => setBulkRequestReason(e.target.value)}
+                                disabled={isReadOnlyOrdersView}
                                 className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm"
                             />
                             <button
                                 type="button"
                                 onClick={() => void executeBulkRequestPurge()}
-                                disabled={isBulkPurgeBusy}
+                                disabled={isBulkPurgeBusy || isReadOnlyOrdersView}
                                 className="mt-2 w-full px-3 py-2 rounded bg-red-700 text-white text-xs font-semibold disabled:opacity-60"
                             >
                                 إنشاء طلبات جماعية
@@ -4167,14 +4236,14 @@ const ManageOrdersScreen: React.FC = () => {
                                                         <div className="flex flex-col gap-2">
                                                             <button
                                                                 onClick={() => openPartialPaymentModal(order.id)}
-                                                                disabled={!canMarkPaid}
+                                                                disabled={!canMarkPaid || isReadOnlyOrdersView}
                                                                 className="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition text-sm disabled:opacity-60"
                                                             >
                                                                 تحصيل جزئي
                                                             </button>
                                                             <button
                                                                 onClick={() => handleMarkPaid(order.id)}
-                                                                disabled={!canMarkPaid}
+                                                                disabled={!canMarkPaid || isReadOnlyOrdersView}
                                                                 className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition text-sm disabled:opacity-60"
                                                             >
                                                                 {order.paymentMethod === 'cash' ? 'تأكيد التحصيل' : 'تأكيد الدفع'}
@@ -4203,7 +4272,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                         ) : (
                                                             <button
                                                                 onClick={() => handlePurgePayment(order.id)}
-                                                                disabled={isPurgingPayment}
+                                                                disabled={isPurgingPayment || isReadOnlyOrdersView}
                                                                 className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                                             >
                                                                 طلب عكس الدفعة
@@ -4389,6 +4458,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     value={order.status}
                                                     onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
                                                     disabled={
+                                                        isReadOnlyOrdersView ||
                                                         order.status === 'delivered' ||
                                                         order.status === 'cancelled' ||
                                                         getEditableStatusesForOrder(order).length === 0 ||
@@ -4417,6 +4487,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     <button
                                                         type="button"
                                                         onClick={() => setCancelOrderId(order.id)}
+                                                        disabled={isReadOnlyOrdersView}
                                                         className="mt-2 w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-sm font-semibold"
                                                     >
                                                         {language === 'ar' ? 'إلغاء الطلب' : 'Cancel order'}
@@ -4482,6 +4553,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                         <select
                                                             value={order.assignedDeliveryUserId || 'none'}
                                                             onChange={(e) => handleAssignDelivery(order.id, e.target.value)}
+                                                            disabled={isReadOnlyOrdersView}
                                                             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-xs text-gray-900 dark:text-white focus:ring-orange-500 focus:border-orange-500 transition"
                                                         >
                                                             <option value="none">{language === 'ar' ? 'بدون مندوب' : 'Unassigned'}</option>
@@ -6003,6 +6075,7 @@ const ManageOrdersScreen: React.FC = () => {
                     setEditReservationResult([]);
                 }}
                 onConfirm={async () => {
+                    if (!assertMutableOrdersView()) return;
                     if (!editOrderId) return;
                     const supabase = getSupabaseClient();
                     if (!supabase) return;
