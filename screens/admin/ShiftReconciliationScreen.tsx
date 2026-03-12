@@ -87,6 +87,13 @@ const partyTypeLabel: Record<string, string> = {
     customer: 'عميل', supplier: 'مورد', employee: 'موظف',
 };
 
+function parseLocalDateInput(value?: string) {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const [y, m, d] = value.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+}
+
 function getDateRange(period: Period, cs?: string, ce?: string) {
     const now = new Date();
     const sod = (d: Date) => { const r = new Date(d); r.setHours(0, 0, 0, 0); return r; };
@@ -96,7 +103,11 @@ function getDateRange(period: Period, cs?: string, ce?: string) {
         case 'yesterday': { const y = new Date(now); y.setDate(y.getDate() - 1); return { start: sod(y), end: eod(y) }; }
         case 'week': { const w = new Date(now); w.setDate(w.getDate() - w.getDay()); return { start: sod(w), end: eod(now) }; }
         case 'month': return { start: sod(new Date(now.getFullYear(), now.getMonth(), 1)), end: eod(now) };
-        case 'custom': return { start: cs ? sod(new Date(cs)) : sod(now), end: ce ? new Date(new Date(ce).setHours(23, 59, 59, 999)) : eod(now) };
+        case 'custom': {
+            const startDate = parseLocalDateInput(cs) || now;
+            const endDate = parseLocalDateInput(ce) || now;
+            return { start: sod(startDate), end: eod(endDate) };
+        }
     }
 }
 
@@ -116,7 +127,7 @@ const StatCard: React.FC<{ label: string; value: string | number; color?: string
 
 /* ════════════════════════════════════════ MAIN SCREEN ════════════════════════════════════════ */
 const ShiftReconciliationScreen: React.FC = () => {
-    const { user } = useAuth();
+    const { hasPermission } = useAuth();
     const { settings } = useSettings();
     const supabase = getSupabaseClient();
 
@@ -140,7 +151,7 @@ const ShiftReconciliationScreen: React.FC = () => {
     const [reviewBusy, setReviewBusy] = useState(false);
     const [baseCurrency, setBaseCurrency] = useState('—');
 
-    const canManage = user?.role === 'owner' || user?.role === 'manager';
+    const canReviewShifts = hasPermission('cashShifts.manage');
     const dateRange = useMemo(() => getDateRange(period, customStart, customEnd), [period, customStart, customEnd]);
 
     useEffect(() => { void getBaseCurrencyCode().then(c => { if (c) setBaseCurrency(c); }); }, []);
@@ -161,13 +172,19 @@ const ShiftReconciliationScreen: React.FC = () => {
             // Always load dashboard summary
             const dArgs: any = { p_start_date: dateRange.start.toISOString(), p_end_date: dateRange.end.toISOString() };
             const { data: dData, error: dErr } = await supabase.rpc('get_accountant_dashboard_summary', dArgs);
-            if (!dErr && dData) setDashboard(dData as DashboardSummary);
+            if (dErr) {
+                throw dErr;
+            }
+            if (dData) setDashboard(dData as DashboardSummary);
 
             // Load shift reconciliation
             const rpcArgs: any = { p_start_date: dateRange.start.toISOString(), p_end_date: dateRange.end.toISOString() };
             if (selectedCashier) rpcArgs.p_cashier_id = selectedCashier;
             const { data: sData, error: sErr } = await supabase.rpc('get_shift_reconciliation_summary', rpcArgs);
-            if (!sErr && sData) setSummary(sData as ReconcSummary);
+            if (sErr) {
+                throw sErr;
+            }
+            if (sData) setSummary(sData as ReconcSummary);
 
             // Load individual shifts
             let q = supabase.from('cash_shifts')
@@ -187,7 +204,7 @@ const ShiftReconciliationScreen: React.FC = () => {
                 (uData || []).forEach((u: any) => { const lbl = String(u.full_name || u.username || u.email || '').trim(); if (u.auth_user_id && lbl) { cMap[String(u.auth_user_id)] = lbl; rMap[String(u.auth_user_id)] = lbl; } });
                 setCashierMap(cMap); setReviewerMap(rMap);
             }
-        } catch (err: any) { setError('تعذر تحميل البيانات.'); } finally { setLoading(false); }
+        } catch (err: any) { setError(err?.message || 'تعذر تحميل البيانات.'); } finally { setLoading(false); }
     }, [supabase, dateRange, selectedCashier]);
 
     useEffect(() => { void loadData(); }, [loadData]);
@@ -402,7 +419,7 @@ const ShiftReconciliationScreen: React.FC = () => {
                                     <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300">الفعلي</th>
                                     <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300">الفرق</th>
                                     <th className="p-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300">المراجعة</th>
-                                    {canManage && <th className="p-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300">إجراء</th>}
+                                    {canReviewShifts && <th className="p-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300">إجراء</th>}
                                 </tr></thead>
                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                                     {shifts.map(s => {
@@ -418,7 +435,7 @@ const ShiftReconciliationScreen: React.FC = () => {
                                                 <td className="p-3 font-mono dark:text-gray-200">{s.end_amount !== null ? fmt(s.end_amount) : '-'}</td>
                                                 <td className={`p-3 font-mono font-bold ${s.difference !== null && Math.abs(s.difference) > 0.01 ? 'text-red-600 dark:text-red-400' : 'dark:text-gray-200'}`}>{s.difference !== null ? `${s.difference > 0 ? '+' : ''}${fmt(s.difference)}` : '-'}</td>
                                                 <td className="p-3 text-center">{rs ? <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${reviewStatusColor[rs] || ''}`}>{rs === 'approved' && <Icons.CheckIcon className="w-3 h-3" />}{rs === 'rejected' && <Icons.XIcon className="w-3 h-3" />}{rs === 'pending' && <Icons.ClockIcon className="w-3 h-3" />}{reviewStatusLabel[rs] || rs}</span> : <span className="text-gray-400 text-xs">-</span>}</td>
-                                                {canManage && (
+                                                {canReviewShifts && (
                                                     <td className="p-3 text-center">
                                                         {s.status === 'closed' && rs !== 'approved' ? (
                                                             reviewingId === s.id ? (
@@ -437,7 +454,7 @@ const ShiftReconciliationScreen: React.FC = () => {
                                             </tr>
                                         );
                                     })}
-                                    {shifts.length === 0 && <tr><td colSpan={canManage ? 10 : 9} className="p-8 text-center text-gray-400 dark:text-gray-500">لا توجد ورديات</td></tr>}
+                                    {shifts.length === 0 && <tr><td colSpan={canReviewShifts ? 10 : 9} className="p-8 text-center text-gray-400 dark:text-gray-500">لا توجد ورديات</td></tr>}
                                 </tbody>
                             </table>
                         </div>

@@ -9,6 +9,8 @@ const SystemAuditScreen: React.FC = () => {
     const [dateFrom, setDateFrom] = useState('');
     const [actorNames, setActorNames] = useState<Record<string, string>>({});
     const [riskFilter, setRiskFilter] = useState('');
+    const [reviewOutcomeFilter, setReviewOutcomeFilter] = useState('');
+    const [criticalOnly, setCriticalOnly] = useState(false);
 
     useEffect(() => {
         fetchLogs({
@@ -25,6 +27,7 @@ const SystemAuditScreen: React.FC = () => {
         accounting: 'المحاسبة',
         settings: 'الإعدادات',
         shifts: 'الورديات',
+        shift_reviews: 'مراجعات الورديات',
         purchases: 'المشتريات',
         marketing: 'التسويق',
         customers: 'العملاء',
@@ -48,6 +51,7 @@ const SystemAuditScreen: React.FC = () => {
         order_updated: 'تحديث طلب',
         cash_shift_opened: 'فتح وردية',
         cash_shift_closed: 'إغلاق وردية',
+        cash_shift_reviewed: 'مراجعة وردية',
         insert: 'إضافة',
         update: 'تحديث',
         delete: 'حذف',
@@ -129,7 +133,19 @@ const SystemAuditScreen: React.FC = () => {
         return cleaned || raw;
     };
 
-    const formatDetails = (value: string) => {
+    const formatDetails = (value: string, metadata?: Record<string, any>, action?: string) => {
+        if (safeString(action) === 'cash_shift_reviewed' && metadata && typeof metadata === 'object') {
+            const shiftNumber = safeString((metadata as any)?.shiftNumber).trim();
+            const shiftId = safeString((metadata as any)?.shiftId).trim();
+            const oldStatus = safeString((metadata as any)?.oldReviewStatus).trim() || 'pending';
+            const newStatus = safeString((metadata as any)?.newReviewStatus).trim() || '-';
+            const note = safeString((metadata as any)?.reviewNote).trim();
+            const prefix = shiftNumber ? `الوردية #${shiftNumber}` : (shiftId ? `الوردية ${shiftId.slice(0, 8)}` : 'الوردية');
+            const out = note
+                ? `${prefix}: ${oldStatus} ← ${newStatus} | ملاحظة: ${note}`
+                : `${prefix}: ${oldStatus} ← ${newStatus}`;
+            return out.length > 300 ? `${out.slice(0, 300)}…` : out;
+        }
         const raw = safeString(value).trim();
         if (!raw) return '—';
         if (raw.startsWith('{') || raw.startsWith('[')) {
@@ -192,10 +208,35 @@ const SystemAuditScreen: React.FC = () => {
     }, [logs]);
 
     const filteredLogs = useMemo(() => {
+        const getReviewOutcome = (log: any) => {
+            const code = safeString(log?.reasonCode).trim().toUpperCase();
+            if (code === 'SHIFT_REJECTED') return 'rejected';
+            if (code === 'SHIFT_APPROVED') return 'approved';
+            const action = safeString(log?.action).trim();
+            const metadataStatus = safeString(log?.metadata?.newReviewStatus).trim().toLowerCase();
+            if (action === 'cash_shift_reviewed' && (metadataStatus === 'approved' || metadataStatus === 'rejected' || metadataStatus === 'pending')) {
+                return metadataStatus;
+            }
+            return '';
+        };
+
         const rf = riskFilter.trim().toUpperCase();
-        if (!rf) return logs;
-        return logs.filter(l => (l.riskLevel || '').toUpperCase() === rf);
-    }, [logs, riskFilter]);
+        return logs.filter(l => {
+            if (rf && (l.riskLevel || '').toUpperCase() !== rf) return false;
+
+            if (reviewOutcomeFilter) {
+                const outcome = getReviewOutcome(l);
+                if (outcome !== reviewOutcomeFilter) return false;
+            }
+
+            if (criticalOnly) {
+                const isHighRisk = (l.riskLevel || '').toUpperCase() === 'HIGH';
+                const isRejectedReview = getReviewOutcome(l) === 'rejected';
+                if (!isHighRisk && !isRejectedReview) return false;
+            }
+            return true;
+        });
+    }, [logs, riskFilter, reviewOutcomeFilter, criticalOnly]);
 
     useEffect(() => {
         if (actorIds.length === 0) return;
@@ -242,6 +283,9 @@ const SystemAuditScreen: React.FC = () => {
         if (v === 'USER_REQUEST') return 'طلب المستخدم';
         if (v === 'SYSTEM') return 'النظام';
         if (v === 'SECURITY') return 'أمني';
+        if (v === 'SHIFT_REJECTED') return 'رفض وردية';
+        if (v === 'SHIFT_APPROVED') return 'اعتماد وردية';
+        if (v === 'SHIFT_REVIEW_UPDATE') return 'تحديث مراجعة وردية';
         return code || '—';
     };
 
@@ -262,6 +306,7 @@ const SystemAuditScreen: React.FC = () => {
                         <option value="inventory">المخزون</option>
                         <option value="accounting">المحاسبة</option>
                         <option value="shifts">الورديات</option>
+                        <option value="shift_reviews">مراجعات الورديات</option>
                     </select>
                     <input
                         type="date"
@@ -279,6 +324,23 @@ const SystemAuditScreen: React.FC = () => {
                         <option value="MEDIUM">متوسطة</option>
                         <option value="LOW">منخفضة</option>
                     </select>
+                    <select
+                        value={reviewOutcomeFilter}
+                        onChange={(e) => setReviewOutcomeFilter(e.target.value)}
+                        className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    >
+                        <option value="">كل نتائج المراجعة</option>
+                        <option value="approved">اعتماد</option>
+                        <option value="rejected">رفض</option>
+                        <option value="pending">بانتظار</option>
+                    </select>
+                    <button
+                        type="button"
+                        onClick={() => setCriticalOnly(v => !v)}
+                        className={`px-3 py-2 rounded text-sm font-semibold ${criticalOnly ? 'bg-red-700 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'}`}
+                    >
+                        {criticalOnly ? 'السجلات الحرجة فقط ✅' : 'السجلات الحرجة فقط'}
+                    </button>
                     <button 
                         onClick={() => fetchLogs()} 
                         className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -338,7 +400,7 @@ const SystemAuditScreen: React.FC = () => {
                                             {formatReason(log.reasonCode)}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-md break-words whitespace-pre-wrap line-clamp-2 border-r dark:border-gray-700" title={log.details}>
-                                            {formatDetails(log.details)}
+                                            {formatDetails(log.details, log.metadata, log.action)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                             {actorNames[log.performedBy] || log.performedBy || 'النظام'}
