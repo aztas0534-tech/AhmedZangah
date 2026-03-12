@@ -86,6 +86,9 @@ const QuotationsScreen: React.FC = () => {
     const sessionScope = useSessionScope();
     const navigate = useNavigate();
     const fefoCache = useRef<Map<string, number>>(new Map());
+    const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+    const [isRepricingAll, setIsRepricingAll] = useState(false);
+    const repriceAbortRef = useRef<AbortController | null>(null);
 
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
@@ -209,6 +212,39 @@ const QuotationsScreen: React.FC = () => {
         });
     }, [baseCurrency]);
 
+    // Fetch system currencies for dropdown
+    useEffect(() => {
+        let active = true;
+        const run = async () => {
+            try {
+                // Try operational currencies from settings first
+                const opCurrencies = Array.isArray((settings as any).operationalCurrencies) && (settings as any).operationalCurrencies.length
+                    ? (settings as any).operationalCurrencies.map((c: any) => String(c || '').trim().toUpperCase()).filter(Boolean)
+                    : [];
+                if (opCurrencies.length > 0) {
+                    if (active) setCurrencyOptions(Array.from(new Set(opCurrencies)));
+                    return;
+                }
+                // Fallback: fetch from currencies table
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data, error } = await supabase
+                    .from('currencies')
+                    .select('code')
+                    .order('code', { ascending: true });
+                if (error) throw error;
+                const codes = (Array.isArray(data) ? data : [])
+                    .map((r: any) => String(r?.code || '').trim().toUpperCase())
+                    .filter(Boolean);
+                if (active) setCurrencyOptions(Array.from(new Set(codes)));
+            } catch {
+                if (active) setCurrencyOptions([]);
+            }
+        };
+        void run();
+        return () => { active = false; };
+    }, [settings]);
+
     // Filtered quotations
     const filteredQuotations = useMemo(() => {
         let list = quotations;
@@ -331,6 +367,33 @@ const QuotationsScreen: React.FC = () => {
         setIsModalOpen(true);
     }, []);
 
+    // Shared FEFO pricing helper
+    const fetchFefoPrice = useCallback(async (menuItemId: string, currency: string, warehouseId?: string): Promise<number | null> => {
+        const cacheKey = `${menuItemId}_${warehouseId}_${currency}`;
+        if (fefoCache.current.has(cacheKey)) {
+            return fefoCache.current.get(cacheKey) || null;
+        }
+        if (!warehouseId) return null;
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase) return null;
+            const { data: fefoData } = await supabase.rpc('get_fefo_pricing', {
+                p_item_id: menuItemId,
+                p_warehouse_id: warehouseId,
+                p_quantity: 1,
+                p_customer_id: null,
+                p_currency_code: String(currency || 'YER').trim().toUpperCase(),
+                p_batch_id: null,
+            });
+            if (fefoData && Number(fefoData.suggested_price) > 0) {
+                const price = Number(fefoData.suggested_price);
+                fefoCache.current.set(cacheKey, price);
+                return price;
+            }
+        } catch { /* fallback */ }
+        return null;
+    }, []);
+
     // Add item from menu with FEFO pricing
     const addItemFromMenu = useCallback(async (menuItemId: string) => {
         const mi = menuItems.find(m => m.id === menuItemId);
@@ -338,33 +401,11 @@ const QuotationsScreen: React.FC = () => {
         const name = mi.name?.['ar'] || mi.name?.en || mi.id;
         let price = Number(mi.price) || 0;
         const unit = String(mi.unitType || 'piece');
-
-        // Try FEFO pricing for dynamic batch price
+        const currency = String(formCurrency || baseCurrency || 'YER').trim().toUpperCase();
         const warehouseId = sessionScope.scope?.warehouseId;
-        const cacheKey = `${menuItemId}_${warehouseId}_${formCurrency}`;
-        if (fefoCache.current.has(cacheKey)) {
-            price = fefoCache.current.get(cacheKey) || price;
-        } else if (warehouseId) {
-            try {
-                const supabase = getSupabaseClient();
-                if (supabase) {
-                    const { data: fefoData } = await supabase.rpc('get_fefo_pricing', {
-                        p_item_id: menuItemId,
-                        p_warehouse_id: warehouseId,
-                        p_quantity: 1,
-                        p_customer_id: null,
-                        p_currency_code: String(formCurrency || baseCurrency || 'YER').trim().toUpperCase(),
-                        p_batch_id: null,
-                    });
-                    if (fefoData && Number(fefoData.suggested_price) > 0) {
-                        price = Number(fefoData.suggested_price);
-                        fefoCache.current.set(cacheKey, price);
-                    }
-                }
-            } catch {
-                // fallback to menu price
-            }
-        }
+
+        const fefoPrice = await fetchFefoPrice(menuItemId, currency, warehouseId);
+        if (fefoPrice !== null) price = fefoPrice;
 
         setFormItems(prev => [...prev, {
             item_id: mi.id,
@@ -375,7 +416,7 @@ const QuotationsScreen: React.FC = () => {
             notes: '',
         }]);
         setItemSearch('');
-    }, [menuItems, sessionScope.scope?.warehouseId, formCurrency, baseCurrency]);
+    }, [menuItems, sessionScope.scope?.warehouseId, formCurrency, baseCurrency, fetchFefoPrice]);
 
     // Add custom item
     const addCustomItem = useCallback(() => {
@@ -691,34 +732,130 @@ const QuotationsScreen: React.FC = () => {
             .slice(0, 10);
     }, [itemSearch, menuItems]);
 
-    // Add ALL menu items at once
-    const addAllMenuItems = useCallback(() => {
-        const newItems = menuItems.map(mi => ({
-            item_id: mi.id,
-            item_name: mi.name?.['ar'] || mi.name?.en || mi.id,
-            unit: String(mi.unitType || 'piece'),
-            quantity: 1,
-            unit_price: Number(mi.price) || 0,
-            notes: '',
-        }));
-        setFormItems(newItems);
-        showNotification(`تم إضافة ${newItems.length} صنف`, 'success');
-    }, [menuItems, showNotification]);
+    // Add ALL menu items at once with FEFO pricing
+    const addAllMenuItems = useCallback(async () => {
+        const currency = String(formCurrency || baseCurrency || 'YER').trim().toUpperCase();
+        const warehouseId = sessionScope.scope?.warehouseId;
+        setIsRepricingAll(true);
+        try {
+            const results = await Promise.allSettled(
+                menuItems.map(async (mi) => {
+                    let price = Number(mi.price) || 0;
+                    if (warehouseId) {
+                        const fefoPrice = await fetchFefoPrice(mi.id, currency, warehouseId);
+                        if (fefoPrice !== null) price = fefoPrice;
+                    }
+                    return {
+                        item_id: mi.id,
+                        item_name: mi.name?.['ar'] || mi.name?.en || mi.id,
+                        unit: String(mi.unitType || 'piece'),
+                        quantity: 1,
+                        unit_price: price,
+                        notes: '',
+                    };
+                })
+            );
+            const newItems = results
+                .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+                .map(r => r.value);
+            setFormItems(newItems);
+            showNotification(`تم إضافة ${newItems.length} صنف بتسعير ${currency}`, 'success');
+        } finally {
+            setIsRepricingAll(false);
+        }
+    }, [menuItems, showNotification, formCurrency, baseCurrency, sessionScope.scope?.warehouseId, fetchFefoPrice]);
+
+    // Re-price all items when currency changes
+    useEffect(() => {
+        if (!isModalOpen) return;
+        if (formItems.length === 0) return;
+        const currency = String(formCurrency || baseCurrency || 'YER').trim().toUpperCase();
+        const warehouseId = sessionScope.scope?.warehouseId;
+        if (!warehouseId) return;
+
+        // Only re-price items that have an item_id (system items, not custom)
+        const itemsWithId = formItems.filter(it => Boolean(it.item_id));
+        if (itemsWithId.length === 0) return;
+
+        // Abort previous re-price
+        if (repriceAbortRef.current) repriceAbortRef.current.abort();
+        const controller = new AbortController();
+        repriceAbortRef.current = controller;
+
+        // Clear FEFO cache for this currency change
+        fefoCache.current.clear();
+        setIsRepricingAll(true);
+
+        void (async () => {
+            try {
+                const priceMap = new Map<string, number>();
+                await Promise.allSettled(
+                    itemsWithId.map(async (it) => {
+                        if (controller.signal.aborted) return;
+                        const fefoPrice = await fetchFefoPrice(it.item_id!, currency, warehouseId);
+                        if (fefoPrice !== null) priceMap.set(it.item_id!, fefoPrice);
+                    })
+                );
+                if (controller.signal.aborted) return;
+                if (priceMap.size > 0) {
+                    setFormItems(prev => prev.map(it => {
+                        if (!it.item_id || !priceMap.has(it.item_id)) return it;
+                        return { ...it, unit_price: priceMap.get(it.item_id)! };
+                    }));
+                }
+            } finally {
+                if (!controller.signal.aborted) setIsRepricingAll(false);
+            }
+        })();
+
+        return () => { controller.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [formCurrency]);
 
     // Quick print: instant price catalog for ALL items
-    const handlePrintCatalog = useCallback(() => {
+    const handlePrintCatalog = useCallback(async () => {
         if (menuItems.length === 0) {
             showNotification('لا توجد أصناف في النظام', 'error');
             return;
         }
 
-        const allItems = menuItems.map(mi => ({
-            itemName: mi.name?.['ar'] || mi.name?.en || mi.id,
-            unit: String(mi.unitType || 'piece'),
-            quantity: 1,
-            unitPrice: Number(mi.price) || 0,
-            total: Number(mi.price) || 0,
-        }));
+        const catalogCurrencyCode = String(catalogCurrency || baseCurrency || 'YER').trim().toUpperCase();
+        const warehouseId = sessionScope.scope?.warehouseId;
+
+        // Fetch FEFO prices for catalog too
+        let allItems: Array<{ itemName: string; unit: string; quantity: number; unitPrice: number; total: number }> = [];
+        if (warehouseId) {
+            setIsRepricingAll(true);
+            try {
+                const results = await Promise.allSettled(
+                    menuItems.map(async (mi) => {
+                        let price = Number(mi.price) || 0;
+                        const fefoPrice = await fetchFefoPrice(mi.id, catalogCurrencyCode, warehouseId);
+                        if (fefoPrice !== null) price = fefoPrice;
+                        return {
+                            itemName: mi.name?.['ar'] || mi.name?.en || mi.id,
+                            unit: String(mi.unitType || 'piece'),
+                            quantity: 1,
+                            unitPrice: price,
+                            total: price,
+                        };
+                    })
+                );
+                allItems = results
+                    .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+                    .map(r => r.value);
+            } finally {
+                setIsRepricingAll(false);
+            }
+        } else {
+            allItems = menuItems.map(mi => ({
+                itemName: mi.name?.['ar'] || mi.name?.en || mi.id,
+                unit: String(mi.unitType || 'piece'),
+                quantity: 1,
+                unitPrice: Number(mi.price) || 0,
+                total: Number(mi.price) || 0,
+            }));
+        }
 
         const subtotal = roundMoney(allItems.reduce((s, i) => s + i.total, 0));
 
@@ -730,7 +867,6 @@ const QuotationsScreen: React.FC = () => {
             vatNumber: ((settings as any).vatNumber || '').trim(),
         };
 
-        const catalogCurrencyCode = String(catalogCurrency || baseCurrency || 'YER').trim().toUpperCase();
         const printData: QuotationPrintData = {
             quotationNumber: 'كتالوج أسعار',
             createdAt: new Date().toISOString(),
@@ -759,7 +895,7 @@ const QuotationsScreen: React.FC = () => {
             />
         );
         printContent(content, 'كتالوج الأسعار');
-    }, [menuItems, settings, showNotification, baseCurrency, catalogCurrency]);
+    }, [menuItems, settings, showNotification, baseCurrency, catalogCurrency, sessionScope.scope?.warehouseId, fetchFefoPrice]);
 
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto" dir="rtl">
@@ -770,14 +906,16 @@ const QuotationsScreen: React.FC = () => {
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">إنشاء وإدارة عروض الأسعار للعملاء والموزعين</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <input
-                        type="text"
+                    <select
                         value={catalogCurrency}
                         onChange={(e) => setCatalogCurrency(String(e.target.value || '').trim().toUpperCase())}
-                        className="px-3 py-2.5 w-28 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
-                        placeholder={baseCurrency || 'SAR'}
+                        className="px-3 py-2.5 w-32 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                         title="عملة طباعة الكتالوج"
-                    />
+                    >
+                        {(currencyOptions.length > 0 ? currencyOptions : [baseCurrency || 'YER']).map(code => (
+                            <option key={code} value={code}>{code}</option>
+                        ))}
+                    </select>
                     <button
                         onClick={handlePrintCatalog}
                         className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2"
@@ -1018,8 +1156,13 @@ const QuotationsScreen: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">العملة</label>
-                                    <input type="text" value={formCurrency} onChange={e => setFormCurrency(String(e.target.value || '').trim().toUpperCase())}
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500" placeholder={baseCurrency || 'YER'} />
+                                    <select value={formCurrency} onChange={e => setFormCurrency(String(e.target.value || '').trim().toUpperCase())}
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
+                                        {(currencyOptions.length > 0 ? currencyOptions : [baseCurrency || 'YER']).map(code => (
+                                            <option key={code} value={code}>{code}</option>
+                                        ))}
+                                    </select>
+                                    {isRepricingAll && <span className="text-xs text-amber-500 mt-1 block">⏳ جاري تحديث الأسعار...</span>}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">نسبة الضريبة %</label>
