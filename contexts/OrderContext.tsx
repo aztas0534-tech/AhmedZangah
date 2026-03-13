@@ -2732,6 +2732,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             await rollbackCreatedOrder(`schema_mismatch | ${schemaHint}${code ? ` | code:${code}` : ''}`);
             throw new Error(`${schemaHint}${code ? ` (code:${code})` : ''} تم إنشاء الطلب كـ "معلق" ويمكن إتمامه بعد تطبيق الترحيلات.`);
           }
+          const timeoutText = `${rawMsg}\n${combinedMsg}`.toLowerCase();
+          const isStatementTimeout =
+            timeoutText.includes('statement timeout') ||
+            timeoutText.includes('canceling statement due to statement timeout') ||
+            timeoutText.includes('query_canceled');
+          if (isStatementTimeout) {
+            await rollbackCreatedOrder(`statement_timeout | ${combinedForDisplay || combinedMsg || 'query_canceled'}${code ? ` | code:${code}` : ''}`);
+            const freshPending = await fetchRemoteOrderById(newOrder.id);
+            return freshPending || ({ ...newOrder, status: 'pending' } as Order);
+          }
           const rollbackReason = [combinedForDisplay || combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
           await rollbackCreatedOrder(rollbackReason);
           console.error('In-store sale confirmation failed:', confirmError);
