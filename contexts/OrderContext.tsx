@@ -474,20 +474,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const strict = isRpcStrictMode();
     if (strict) {
       let res = await tryDirect4();
-      if (res.error) {
+      if (res.error && isRpcNotFoundError(res.error)) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryDirect4();
       }
-      if (!res.error) {
+      if (!res.error || !isRpcNotFoundError(res.error)) {
         confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
         return res;
       }
       res = await tryWrapper();
-      if (res.error) {
+      if (res.error && isRpcNotFoundError(res.error)) {
         const reloaded = await reloadPostgrestSchema();
         if (reloaded) res = await tryWrapper();
       }
-      if (!res.error) {
+      if (!res.error || !isRpcNotFoundError(res.error)) {
         confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
         return res;
@@ -501,11 +501,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
       return res;
     }
+    if (!isRpcNotFoundError(res.error)) {
+      confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
+      return res;
+    }
 
     res = await tryWrapper();
     if (!res.error) {
       confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+      return res;
+    }
+    if (!isRpcNotFoundError(res.error)) {
+      confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
       return res;
     }
 
@@ -521,7 +529,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     // Final compatibility fallback: use non-credit delivery RPCs on legacy schemas
-    if (res?.error) {
+    if (res?.error && isRpcNotFoundError(res.error)) {
       try {
         const fallback = await rpcConfirmOrderDelivery(supabase, input);
         if (!fallback.error) {
