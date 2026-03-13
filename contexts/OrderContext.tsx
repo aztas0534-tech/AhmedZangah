@@ -2462,7 +2462,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     try {
       if (isResumingExistingOrder) {
-        await updateRemoteOrder({ ...newOrder, status: 'pending' });
+        // The order may not actually exist remotely if the previous attempt failed
+        // before the insert completed. Try update first, but fall back to create.
+        try {
+          await updateRemoteOrder({ ...newOrder, status: 'pending' });
+          // Verify the order actually exists after update (update on 0 rows is silent)
+          const supabaseCheck = getSupabaseClient();
+          if (supabaseCheck) {
+            const { data: existing } = await supabaseCheck.from('orders').select('id').eq('id', newOrder.id).maybeSingle();
+            if (!existing) {
+              await createRemoteOrder({ ...newOrder, status: 'pending' });
+            }
+          }
+        } catch {
+          // If update fails for any reason, try creating instead
+          await createRemoteOrder({ ...newOrder, status: 'pending' });
+        }
       } else {
         await createRemoteOrder({ ...newOrder, status: 'pending' });
       }
