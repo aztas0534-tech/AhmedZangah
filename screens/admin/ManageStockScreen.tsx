@@ -437,14 +437,20 @@ const StockRow = ({ item, stock, warehouseId, readOnlyMode, baseCode, getCategor
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
                                                 <div className="font-semibold">
-                                                    {String(b.batchId).slice(0, 8)} • كلفة {Number((b as any).unitCost || 0).toLocaleString('en-US')} {baseCode || '—'}
+                                                    {String(b.batchId).slice(0, 8)} • كلفة أساسية {Number((b as any).unitCost || 0).toLocaleString('en-US')} {baseCode || '—'}
                                                     {((b as any).unitCostOriginal && (b as any).unitCostCurrency) ? (
                                                         <>
-                                                            {' '}• أصل {Number((b as any).unitCostOriginal).toLocaleString('en-US')} {(b as any).unitCostCurrency}
-                                                            {Number((b as any).fxAtReceipt || 0) > 0 ? ` @FX=${Number((b as any).fxAtReceipt).toFixed(6)}` : ''}
+                                                            {' '}• كلفة المورد {Number((b as any).unitCostOriginal).toLocaleString('en-US')} {(b as any).unitCostCurrency}
+                                                            {Number((b as any).fxAtReceipt || 0) > 0 ? ` • FX ${Number((b as any).fxAtReceipt).toFixed(6)}` : ''}
+                                                            {Number((b as any).fxAtReceipt || 0) > 0 ? ` • محسوبة ${Number((Number((b as any).unitCostOriginal || 0) * Number((b as any).fxAtReceipt || 0)) || 0).toLocaleString('en-US')} ${baseCode || '—'}` : ''}
                                                         </>
                                                     ) : null}
                                                 </div>
+                                                {Number((b as any).unitCost || 0) > 0 && Number((b as any).unitCost || 0) < 1 ? (
+                                                    <div className="text-amber-700 dark:text-amber-300">
+                                                        تنبيه: التكلفة الأساسية أقل من 1 {baseCode || ''}. راجع كلفة المورد وسعر الصرف ووحدة الشراء.
+                                                    </div>
+                                                ) : null}
                                                 <div className="text-gray-500 dark:text-gray-400">
                                                     وارد {Number(b.receivedQuantity || 0).toLocaleString('en-US')} • مستهلك {Number(b.consumedQuantity || 0).toLocaleString('en-US')} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
                                                 </div>
