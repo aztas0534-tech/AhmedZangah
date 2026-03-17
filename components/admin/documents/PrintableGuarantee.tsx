@@ -217,27 +217,33 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
                     </div>
                 </div>
 
-                {/* SIGNATURES */}
-                <div className="gt-signatures" style={{ position: 'relative', zIndex: 10 }}>
-                    <div className="gt-sig-box">
-                        <div className="gt-sig-title">صاحب العمل</div>
-                        <div className="gt-sig-line"></div>
-                        <div className="gt-sig-label">التوقيع والختم</div>
-                        <div className="gt-sig-label">___ / ___ / ______</div>
-                    </div>
-                    <div className="gt-sig-box">
-                        <div className="gt-sig-title">الموظف (المكفول)</div>
-                        <div className="gt-sig-line"></div>
-                        <div className="gt-sig-label">التوقيع</div>
-                        <div className="gt-sig-label">___ / ___ / ______</div>
-                    </div>
-                    <div className="gt-sig-box">
-                        <div className="gt-sig-title">الكفيل / الضامن</div>
-                        <div className="gt-sig-line"></div>
-                        <div className="gt-sig-label">التوقيع وبصمة الإبهام</div>
-                        <div className="gt-sig-label">___ / ___ / ______</div>
-                    </div>
-                </div>
+                {/* SIGNATURES — table layout is universally reliable in print */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', borderTop: '2px solid rgba(212,175,55,0.27)', paddingTop: '14px', position: 'relative', zIndex: 10 } as React.CSSProperties}>
+                    <tbody>
+                        <tr>
+                            <td style={{ width: '33%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px 8px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>صاحب العمل</div>
+                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع والختم</div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
+                            </td>
+                            <td style={{ width: '6px' }}></td>
+                            <td style={{ width: '33%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px 8px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>الموظف (المكفول)</div>
+                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع</div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
+                            </td>
+                            <td style={{ width: '6px' }}></td>
+                            <td style={{ width: '33%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px 8px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>الكفيل / الضامن</div>
+                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع وبصمة الإبهام</div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
 
                 {/* FOOTER */}
                 <div className="gt-footer" style={{ position: 'relative', zIndex: 10 }}>

@@ -242,23 +242,28 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                     حُرر هذا العقد من نسختين أصليتين لكل طرف نسخة للعمل بموجبها.
                 </div>
 
-                {/* SIGNATURES */}
-                <div className="ct-signatures" style={{ position: 'relative', zIndex: 10 }}>
-                    <div className="ct-sig-box">
-                        <div className="ct-sig-title">الطرف الأول (صاحب العمل)</div>
-                        <div className="ct-sig-line"></div>
-                        <div className="ct-sig-label">الاسم: ________________________</div>
-                        <div className="ct-sig-label">التوقيع والختم</div>
-                        <div className="ct-sig-label">التاريخ: ___ / ___ / ______</div>
-                    </div>
-                    <div className="ct-sig-box">
-                        <div className="ct-sig-title">الطرف الثاني (الموظف)</div>
-                        <div className="ct-sig-line"></div>
-                        <div className="ct-sig-label">الاسم: ________________________</div>
-                        <div className="ct-sig-label">رقم الهوية: ____________________</div>
-                        <div className="ct-sig-label">التاريخ: ___ / ___ / ______</div>
-                    </div>
-                </div>
+                {/* SIGNATURES — table layout is universally reliable in print */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', borderTop: '2px solid rgba(212,175,55,0.27)', paddingTop: '14px', position: 'relative', zIndex: 10 } as React.CSSProperties}>
+                    <tbody>
+                        <tr>
+                            <td style={{ width: '50%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '14px 10px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, fontSize: '12px', color: '#1E3A8A', marginBottom: '4px' }}>الطرف الأول (صاحب العمل)</div>
+                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '28px 0 8px' }}></div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>الاسم: ________________________</div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع والختم</div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التاريخ: ___ / ___ / ______</div>
+                            </td>
+                            <td style={{ width: '8px' }}></td>
+                            <td style={{ width: '50%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '14px 10px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, fontSize: '12px', color: '#1E3A8A', marginBottom: '4px' }}>الطرف الثاني (الموظف)</div>
+                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '28px 0 8px' }}></div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>الاسم: ________________________</div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>رقم الهوية: ____________________</div>
+                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التاريخ: ___ / ___ / ______</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
 
                 {/* FOOTER */}
                 <div className="ct-footer" style={{ position: 'relative', zIndex: 10 }}>

@@ -4,18 +4,33 @@
  */
 
 /**
+ * Extract <style> tags from an HTML string, returning { styles, bodyHtml }.
+ * This allows component-owned CSS to be hoisted into <head> so it wins
+ * over any global reset (e.g. * { margin:0; padding:0 }).
+ */
+const hoistComponentStyles = (content: string): { hoistedCss: string; bodyHtml: string } => {
+  const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+  let hoistedCss = '';
+  const bodyHtml = content.replace(styleRegex, (_match, css) => {
+    hoistedCss += css + '\n';
+    return '';
+  });
+  return { hoistedCss, bodyHtml };
+};
+
+/**
  * فتح نافذة الطباعة
  */
-export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto', extraStyles?: string }) => {
+export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto', extraStyles?: string, includeAppStyles?: boolean }) => {
   const page = options?.page || 'A5';
   const pageCss = page === 'A5'
-    ? `
-          @page {
-            size: A5;
-            margin: 0;
-          }
-        `
+    ? `@page { size: A5; margin: 0; }`
     : ``;
+
+  // Hoist any <style> blocks from the component into <head> so they
+  // take precedence over the global reset below.
+  const { hoistedCss, bodyHtml } = hoistComponentStyles(content);
+
   return `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
@@ -26,114 +41,42 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
       <title>${title}</title>
       ${options?.extraStyles ? `<style>${options.extraStyles}</style>` : ''}
       <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        
-        body {
-          font-family: 'Cairo', 'Arial', sans-serif;
-          direction: rtl;
-          padding: 0;
-          margin: 0;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Cairo', 'Arial', sans-serif; direction: rtl; padding: 0; margin: 0; }
         @media print {
-          body {
-            padding: 0;
-          }
-          
-          .no-print {
-            display: none !important;
-          }
+          body { padding: 0; }
+          .no-print { display: none !important; }
           ${pageCss}
         }
-        
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 10px 0;
-        }
-        
-        th, td {
-          padding: 8px;
-          text-align: right;
-          border: 1px solid #ddd;
-        }
-        
-        th {
-          background-color: #f3f4f6;
-          font-weight: bold;
-        }
-        
-        .text-center {
-          text-align: center;
-        }
-        
-        .text-left {
-          text-align: left;
-        }
-        
-        .font-bold {
-          font-weight: bold;
-        }
-        
-        .mb-2 {
-          margin-bottom: 8px;
-        }
-        
-        .mb-4 {
-          margin-bottom: 16px;
-        }
-        
-        .mt-4 {
-          margin-top: 16px;
-        }
-        
-        .border-b {
-          border-bottom: 2px solid #000;
-          padding-bottom: 10px;
-          margin-bottom: 10px;
-        }
-        
-        .header {
-          text-align: center;
-          margin-bottom: 20px;
-        }
-        
-        .header h1 {
-          font-size: 24px;
-          margin-bottom: 5px;
-        }
-        
-        .header p {
-          color: #666;
-          font-size: 14px;
-        }
-        
-        .info-row {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 5px;
-        }
-        
-        .total-row {
-          background-color: #f9fafb;
-          font-weight: bold;
-          font-size: 16px;
-        }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { padding: 8px; text-align: right; border: 1px solid #ddd; }
+        th { background-color: #f3f4f6; font-weight: bold; }
+        .text-center { text-align: center; }
+        .text-left { text-align: left; }
+        .font-bold { font-weight: bold; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mt-4 { margin-top: 16px; }
+        .border-b { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { font-size: 24px; margin-bottom: 5px; }
+        .header p { color: #666; font-size: 14px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .total-row { background-color: #f9fafb; font-weight: bold; font-size: 16px; }
       </style>
+      ${hoistedCss ? `<style>/* Component styles hoisted from body */\n${hoistedCss}</style>` : ''}
     </head>
     <body class="allow-full-print">
-      ${content}
+      ${bodyHtml}
     </body>
     </html>
   `;
 };
 
 export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto', includeAppStyles?: boolean }) => {
-  // Extract all current styles from the document to inject safely as text
+  // By default, inject app styles for backward compatibility.
+  // Pass includeAppStyles: false for self-contained document components (contracts, guarantees, etc.)
+  // that already have their own complete CSS and must not be polluted by Tailwind/app overrides.
   let extraStyles = '';
   if (options?.includeAppStyles !== false) {
     try {
@@ -144,53 +87,12 @@ export const printContent = (content: string, title: string = 'طباعة', opti
 
   const html = buildPrintHtml(content, title, { ...options, extraStyles });
 
-  const openAndPrint = (targetWindow: Window, cleanup: () => void) => {
-    targetWindow.document.open();
-    targetWindow.document.write(html);
-    targetWindow.document.close();
 
-    let didTrigger = false;
-    const triggerPrint = () => {
-      if (didTrigger) return;
-      didTrigger = true;
-      try {
-        targetWindow.focus();
-        const maybePromise = (targetWindow as any).print?.();
-        if (maybePromise && typeof maybePromise.then === 'function' && typeof maybePromise.catch === 'function') {
-          maybePromise.catch(() => undefined);
-        }
-      } catch {
-        return;
-      }
-
-      targetWindow.addEventListener('afterprint', cleanup, { once: true });
-      setTimeout(cleanup, 60000);
-    };
-
-    targetWindow.addEventListener('load', () => setTimeout(triggerPrint, 50), { once: true });
-    setTimeout(triggerPrint, 250);
-  };
-
-  const printWindow = window.open(
-    'about:blank',
-    '_blank',
-    `noopener,noreferrer,width=${window.screen.availWidth},height=${window.screen.availHeight}`
-  );
-  if (printWindow) {
-    openAndPrint(printWindow, () => {
-      try { printWindow.close(); } catch { }
-    });
-    return;
-  }
-
+  // Always use a hidden iframe — never window.open('about:blank') which triggers
+  // the SPA router in a new tab and shows a blank white app screen.
   const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.style.visibility = 'hidden';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0;visibility:hidden;';
   document.body.appendChild(iframe);
 
   const iframeWindow = iframe.contentWindow;
@@ -201,13 +103,30 @@ export const printContent = (content: string, title: string = 'طباعة', opti
   }
 
   const removeIframe = () => {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    try { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch { }
   };
 
-  iframeWindow.addEventListener('afterprint', removeIframe, { once: true });
-  setTimeout(removeIframe, 60000);
+  iframeWindow.document.open();
+  iframeWindow.document.write(html);
+  iframeWindow.document.close();
 
-  openAndPrint(iframeWindow, removeIframe);
+  let didTrigger = false;
+  const triggerPrint = () => {
+    if (didTrigger) return;
+    didTrigger = true;
+    try {
+      iframeWindow.focus();
+      const maybePromise = (iframeWindow as any).print?.();
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.catch(() => undefined);
+      }
+    } catch { return; }
+    iframeWindow.addEventListener('afterprint', removeIframe, { once: true });
+    setTimeout(removeIframe, 60_000);
+  };
+
+  iframeWindow.addEventListener('load', () => setTimeout(triggerPrint, 80), { once: true });
+  setTimeout(triggerPrint, 350);
 };
 
 /**
@@ -245,4 +164,72 @@ export const formatDateOnly = (dateString: string): string => {
     month: 'long',
     day: 'numeric',
   });
+};
+
+/**
+ * printBlobDocument — مخصص لطباعة المستندات المستقلة (عقود، ضمانات، ...).
+ *
+ * يعمل بثلاث خطوات:
+ *  1. استخراج <style> من HTML المُصيَّر ووضعه في <head>
+ *  2. تحويل HTML كاملاً إلى Blob URL (معزول تماماً عن التطبيق)
+ *  3. فتح popup window حقيقية (ليست tab) — لا يتدخل فيها SPA router أبداً
+ */
+export const printBlobDocument = (renderedHtml: string, title: string = 'طباعة'): void => {
+  // Hoist component <style> to <head>
+  const { hoistedCss, bodyHtml } = hoistComponentStyles(renderedHtml);
+
+  const fullHtml = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: white; }
+    @media print {
+      html, body { width: 100%; height: auto; overflow: visible; }
+    }
+  </style>
+  ${hoistedCss ? `<style>\n${hoistedCss}\n</style>` : ''}
+</head>
+<body>
+${bodyHtml}
+<script>
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      window.focus();
+      window.print();
+      window.addEventListener('afterprint', function() { window.close(); });
+      setTimeout(function() { window.close(); }, 120000);
+    }, 250);
+  });
+<\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  // Use popup window (not tab) — SPA router NEVER intercepts popup windows
+  const sw = window.screen.availWidth;
+  const sh = window.screen.availHeight;
+  const pw = Math.min(900, sw);
+  const ph = Math.min(1100, sh);
+  const left = Math.floor((sw - pw) / 2);
+  const top = Math.floor((sh - ph) / 2);
+
+  const popup = window.open(
+    blobUrl,
+    'azta_doc_print',
+    `width=${pw},height=${ph},left=${left},top=${top},toolbar=1,menubar=1,scrollbars=1,resizable=1`
+  );
+
+  // Revoke blob URL once the popup loads (browser already has the content)
+  const revoke = () => URL.revokeObjectURL(blobUrl);
+  if (popup) {
+    popup.addEventListener('load', revoke, { once: true });
+  }
+  // Fallback revoke after 30s even if popup is blocked
+  setTimeout(revoke, 30_000);
 };
